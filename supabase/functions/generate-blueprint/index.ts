@@ -26,7 +26,7 @@ import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
-import { scrubPrivate, isPrivate, guardScript, statedQuantities } from '../_shared/privacyGuard.ts'
+import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe } from '../_shared/privacyGuard.ts'
 import { traceLines, type LineSourceInput } from '../_shared/lineSources.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
@@ -9995,20 +9995,20 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // ⚠️ AUDIT 2026-09-29 #5: A STANCE SHE NEVER TOOK, SPOKEN AS HERS. The
     // caption model is told to fill pov/enemy even when her posts say nothing,
     // and those guesses were written as her beliefs. A guessed stance now
-    // carries the same label the business facts do. (The NONE STORED fallback
-    // is a measured, deliberate choice — see theWriterWasToldToInventHerEnemy
-    // — and is left for the owner to decide.)
+    // carries the same label the business facts do, and with none stored the
+    // writer takes no stance for her (owner decision, 2026-09-29: a flatter
+    // script beats one that claims a belief she never stated).
     const provOf = (k: string) => ((vp as { _provenance?: Record<string, unknown> } | null)?._provenance ?? {})[k]
     const povLine = povAnswers.length
       ? fromAnswers(povAnswers)
       : povList.length
         ? `${povList.join(' | ')}${guessedMark(provOf('pov'))}`
-        : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
+        : 'NONE STORED. Do not invent a belief or opinion for this creator; make the point from what she supplied, without claiming a stance she has not taken.'
     const enemyLine = enemyAnswers.length
       ? fromAnswers(enemyAnswers)
       : vp?.enemy
         ? `${vp.enemy}${guessedMark(provOf('enemy'))}`
-        : 'NONE STORED. Infer the conventional wisdom, bad habit or villain this creator would push against, from their niche and tone.'
+        : 'NONE STORED. Do not invent something she pushes against; contrast only with what her own material or the reference says.'
     // FENCING UNTRUSTED TEXT.
     //
     // Four sources reach this prompt and NONE is authored by us: the creator
@@ -12903,6 +12903,22 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             extensionReason = ext.reason
             invented = ext.invented
             if (ext.accepted) {
+              // ⚠️ AUDIT 2026-09-29 #6: THE PADDING PASS RAN AFTER THE CLAIM
+              // CHECK and was never re-checked, so a lengthened line could
+              // claim more than she is entitled to. A lengthened line that now
+              // fails the entitlement check, where its original did not, goes
+              // back to the original.
+              try {
+                const before = integrity.beats as Array<{ line?: unknown }>
+                const after = ext.beats as Array<{ line?: unknown }>
+                if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) {
+                  const wasBad = new Set(entitlementFailures(before, suppliedForCheck).map((f) => f.index))
+                  const nowBad = entitlementFailures(after, suppliedForCheck)
+                    .filter((f) => !wasBad.has(f.index) && after[f.index]?.line !== before[f.index]?.line)
+                  for (const f of nowBad) after[f.index] = before[f.index]
+                  if (nowBad.length) console.warn(JSON.stringify({ event: 'extension_claim_reverted', lines: nowBad.length }))
+                }
+              } catch { /* the re-check never fails a build */ }
               bpAny.script = ext.beats
               wordsAfter = ext.wordsAfter
               integrity.report.words = ext.wordsAfter
@@ -13695,8 +13711,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
                   SPAN_REPAIR_SCHEMA,
                 )
                 const repairParsed = JSON.parse(repairRaw) as { candidates?: unknown }
+                // ⚠️ AUDIT 2026-09-29: these are offered to her with "use this",
+                // which writes the line straight into her script, after the
+                // privacy guard has run. A candidate is offered only when it
+                // says nothing private, no excluded fact and no new number.
+                const allowedForRepair = srBeats.map((b) => (typeof b?.line === 'string' ? b.line : '')).join('\n')
                 repairCandidates = Array.isArray(repairParsed.candidates)
-                  ? repairParsed.candidates.filter((c): c is string => typeof c === 'string').slice(0, 3)
+                  ? repairParsed.candidates.filter((c): c is string => typeof c === 'string')
+                    .filter((c) => rewriteIsSafe(c, { allowedText: allowedForRepair, excludedTexts: guardExcludedTexts }))
+                    .slice(0, 3)
                   : null
               } catch (repairErr) {
                 // ⚠️ A FAILED REPAIR CALL LOSES THE REPAIR, NEVER THE SCRIPT.

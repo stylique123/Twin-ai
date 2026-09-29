@@ -17,7 +17,7 @@ import { assessReadiness, isCommercialField } from '../../lib/api'
 import { judgeFit, warningForPickedVideo, recordTalkingHeadChoice } from '../../lib/api'
 import type { FitWarning, FitReason } from '../../lib/api'
 import { TalkingHeadWarning } from '../../components/TalkingHeadWarning'
-import { buildVideoPlan, planUseItems, defaultExcluded } from '@twinai/shared'
+import { buildVideoPlan, planUseItems, defaultExcluded, twinIds } from '@twinai/shared'
 import { compileVideoIntent, showsCommercialBlock } from '@twinai/shared'
 import { recognitionLines, RECOGNITION_CITATION, type RecognitionLine } from '@twinai/shared'
 import { readProfileAnswers } from '../../lib/profileAnswersRead'
@@ -57,7 +57,7 @@ import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
 import { VideoPlanCard } from '../../components/VideoPlanCard'
 import type { VideoPlanInput } from '@twinai/shared'
-import { loadKnowledgeForPlan, loadObjectiveAnswers } from '../../lib/creatorAnswers'
+import { loadKnowledgeForPlan, loadObjectiveAnswers, rememberLeftOut } from '../../lib/creatorAnswers'
 import { LogoMark } from '../../components/Logo'
 import { buildRecordingScript } from '../../lib/api'
 import { saveRecordingScript } from '../../lib/api'
@@ -779,6 +779,11 @@ export default function V2Building() {
   // main seeds the ref from a product card's `selected_product_id`; this branch
   // added `chosenProductName` for the refusal screen. They touch different
   // things and are simply kept together.
+  // ⚖️ AUDIT 2026-09-29 #15: ONE READ OF "WHICH PRODUCT DID SHE PICK". The same
+  // expression was repeated at seven sites; one of them drifting is how the
+  // picked product was later reported as "No product attached".
+  const productChoice = (from: Record<string, string>): string | null =>
+    from[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null
   const answersRef = useRef<Record<string, string>>({
     // ⚖️ THE REMEMBERED ANSWER WINS. A creator who arrived from a product card
     // and then changed their mind in the picker must not have the card's
@@ -1081,12 +1086,12 @@ export default function V2Building() {
             // hand the entire time; nothing that needed it could see it.
             const chosen = pickedProduct(
               libraryProducts,
-              answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null)
+              productChoice(answersRef.current))
             // ⚖️ THE WHOLE BRAND AS THE SUBJECT. Picked as `brand:<id>` in the same
             // "Which one is this video about?" question. A brand is hers by
             // definition, so its relationship is OWN_PRODUCT, and her own
             // description of it is what the video may say about it.
-            const pickedId = answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? ''
+            const pickedId = (productChoice(answersRef.current) ?? '')
             const chosenBrand = pickedId.startsWith(BRAND_CHOICE_PREFIX)
               ? libraryBrands.find((b) => `${BRAND_CHOICE_PREFIX}${b.id}` === pickedId) ?? null
               : null
@@ -1327,7 +1332,7 @@ export default function V2Building() {
                 // ⚖️ THE DOOR'S CHOICE COUNTS AS AN ANSWER. Without this the
                 // screen re-asks "which one is this video about?" straight
                 // after the creator picked one to get here.
-                chosenId: answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
+                chosenId: productChoice(answersRef.current),
                 mayUseAProduct: true,
               })
                 ? [{
@@ -1723,7 +1728,7 @@ export default function V2Building() {
         // ⚖️ BOTH SOURCES, IN PRECEDENCE ORDER. An answer given ON this screen
         // outranks the one carried into it: if the picker did render and they
         // chose again, the later choice is the one they made last.
-        const seeded = (answersRef.current[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? '').trim()
+        const seeded = (productChoice(answersRef.current) ?? '').trim()
         const decided = selectProduct({
           ownedProductIds: seeded === '' ? [] : [seeded],
           chosenId: seeded,
@@ -2274,6 +2279,20 @@ export default function V2Building() {
   // starts the build, so the list she saw was null when the request read it and
   // the server chose for itself. The list is captured at the tap.
   const idsAtWrite = useRef<string[] | null>(null)
+  // ⚖️ ONE TOGGLE FOR BOTH CARDS. Her tap takes the fact AND its near-duplicate
+  // twins out (the card shows one of a pair), and is saved to her rows at once
+  // so the writer's view honours it even if the request does not.
+  const toggleLeftOut = (id: string): void => {
+    const src = askPlan ?? plan
+    const ids = twinIds((src?.knowledge ?? []) as never, id)
+    const leaving = !excludedKnowledge.has(id)
+    setExcludedKnowledge((prev) => {
+      const next = new Set(prev)
+      for (const x of ids) if (leaving) next.add(x); else next.delete(x)
+      return next
+    })
+    void rememberLeftOut(ids, leaving)
+  }
   // ⚖️ AUDIT #3 (0253): only what SHE tapped off is remembered for later videos;
   // what starts off by default (private, unconfirmed numbers, off-topic) is not.
   const herExclusionsAtWrite = useRef<string[] | null>(null)
@@ -2346,7 +2365,7 @@ export default function V2Building() {
   // ⚖️ AND NULL FALLS BACK TO WHAT THE SERVER ALREADY CHOSE. An objective with
   // no question of its own, or a non-product build, keeps `q.question`
   // untouched — this only ever replaces a generic sentence with a specific one.
-  const liveProductId = askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null
+  const liveProductId = productChoice(askAnswers)
   const liveOfferForm = offerFormOf(pickedProduct(products, liveProductId)?.type ?? null)
   // ⚖️ ROTATION: the next pooled question she has NOT answered for this product
   // (then the least recently answered). Null when the objective has no pool.
@@ -2374,7 +2393,7 @@ export default function V2Building() {
       askAnswers.video_goal ?? null,
       offerFormOf(pickedProduct(
         products,
-        askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? null,
+        productChoice(askAnswers),
       )?.type ?? null),
     )
     : null
@@ -2621,7 +2640,7 @@ export default function V2Building() {
                 <>
                 <div className="mt-2.5 flex flex-wrap gap-2">
                   {(q.field === 'video_goal' && isProductSubject
-                    && (askAnswers[PRODUCT_CHOICE_FIELD] ?? state.selected_product_id ?? '').startsWith(BRAND_CHOICE_PREFIX)
+                    && (productChoice(askAnswers) ?? '').startsWith(BRAND_CHOICE_PREFIX)
                     ? BUSINESS_OBJECTIVES : q.options).map((o) => {
                     // A grouped option is chosen when ANY of its children is.
                     const kids = o.options ?? []
@@ -2898,11 +2917,7 @@ export default function V2Building() {
             needsProduct={asOneOf(VIDEO_GOALS, answersRef.current.video_goal) === 'sell' && !productPicked}
             onAddProduct={openAddProduct}
             excluded={excludedKnowledge}
-            onToggle={(id) => setExcludedKnowledge((prev) => {
-              const next = new Set(prev)
-              if (next.has(id)) next.delete(id); else next.add(id)
-              return next
-            })}
+            onToggle={toggleLeftOut}
             busy={false}
             onWrite={() => {
               // ⚠️ STUCK AT 12% (owner, 2026-09-28): the build effect returns
@@ -3091,11 +3106,7 @@ export default function V2Building() {
                   needsProduct={liveCommercial && !productPicked}
                   onAddProduct={openAddProduct}
                   excluded={excludedKnowledge}
-                  onToggle={(id) => setExcludedKnowledge((prev) => {
-                    const next = new Set(prev)
-                    if (next.has(id)) next.delete(id); else next.add(id)
-                    return next
-                  })}
+                  onToggle={toggleLeftOut}
                 />
               </div>
             )}

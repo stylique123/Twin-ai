@@ -510,3 +510,22 @@ export async function loadObjectiveAnswers(): Promise<Array<{ source_ref: string
     return []
   }
 }
+
+/**
+ * ⚠️ AUDIT 2026-09-29 (THE BRAZIL CASE): a fact she tapped off on the plan card
+ * reached the writer anyway — the tap lived only in page state and the request
+ * that carried it did not arrive intact. The tap is now written to her row the
+ * moment she makes it (0253), so the writer's view leaves it out whatever the
+ * request says. Switching it back on clears it. Fire-and-forget: a failed
+ * write costs the memory, never the screen.
+ */
+export async function rememberLeftOut(ids: readonly string[], leftOut: boolean): Promise<void> {
+  if (!ids.length) return
+  try {
+    await supabase.from('creator_knowledge')
+      .update({ creator_excluded_at: leftOut ? new Date().toISOString() : null })
+      .in('id', [...ids])
+  } catch (e) {
+    console.warn('[plan] left-out not saved', e)
+  }
+}
