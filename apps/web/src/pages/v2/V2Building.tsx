@@ -1800,6 +1800,7 @@ export default function V2Building() {
           idempotency_key: key,
           ...(excludedKnowledge.size > 0 ? { exclude_knowledge_ids: [...excludedKnowledge] } : {}),
           ...((ids) => (ids ? { use_knowledge_ids: ids } : {}))(usedKnowledgeIds ?? idsAtWrite.current),
+          ...((ids) => (ids?.length ? { excluded_by_her_ids: ids } : {}))(excludedByHer ?? herExclusionsAtWrite.current),
           ...(transcript_id ? { transcript_id } : {}),
           // ⚖️ ONLY WHEN THEY ANSWERED. An absent field means "not asked or not
           // answered" and leaves the server's stopgap exactly as it was;
@@ -2253,6 +2254,15 @@ export default function V2Building() {
   // starts the build, so the list she saw was null when the request read it and
   // the server chose for itself. The list is captured at the tap.
   const idsAtWrite = useRef<string[] | null>(null)
+  // ⚖️ AUDIT #3 (0253): only what SHE tapped off is remembered for later videos;
+  // what starts off by default (private, unconfirmed numbers, off-topic) is not.
+  const herExclusionsAtWrite = useRef<string[] | null>(null)
+  const excludedByHer = useMemo(() => {
+    const src = askPlan ?? plan
+    if (!src) return null
+    const defaults = new Set(defaultExcluded(planUseItems(src.knowledge as never, state.reference_note || '')))
+    return [...excludedKnowledge].filter((id) => !defaults.has(id))
+  }, [askPlan, plan, state.reference_note, excludedKnowledge])
   const usedKnowledgeIds = useMemo(() => {
     const src = askPlan ?? plan
     if (!src) return null
@@ -2881,6 +2891,7 @@ export default function V2Building() {
               // script request was never sent. Reset it here too.
               started.current = false
               idsAtWrite.current = usedKnowledgeIds
+              herExclusionsAtWrite.current = excludedByHer
               setPlan(null)
               setRetryNonce((n) => n + 1)
             }}
