@@ -2217,8 +2217,15 @@ export default function V2Building() {
     const sig = items.map((i) => i.id).join('|')
     if (seededFor.current === sig) return
     seededFor.current = sig
-    setExcludedKnowledge(new Set(defaultExcluded(items)))
+    // ⚖️ FACT-SCOPING: what she tapped out survives a reload of this build.
+    let saved: string[] | null = null
+    try { saved = JSON.parse(sessionStorage.getItem(`twinai.excluded.${buildKey(state)}`) ?? 'null') } catch { /* storage off */ }
+    setExcludedKnowledge(new Set(Array.isArray(saved) ? saved.map(String) : defaultExcluded(items)))
   }, [askPlan, plan, state.reference_note])
+  useEffect(() => {
+    if (!seededFor.current) return
+    try { sessionStorage.setItem(`twinai.excluded.${buildKey(state)}`, JSON.stringify([...excludedKnowledge])) } catch { /* storage off */ }
+  }, [excludedKnowledge])
   // The exact list the plan card shows as "in". Null when no card was shown,
   // so the server keeps choosing for itself.
   // ⚠️ ROUND 3, 2.9: a product she had picked was later reported as "No product
