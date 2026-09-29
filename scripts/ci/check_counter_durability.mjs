@@ -716,6 +716,7 @@ const EVENTS = {
   lessons_learned: { kind: 'counter_ephemeral', why: 'Lessons filed by one learner pass; the durable record is the creator_lessons rows themselves (0250).' },
   lessons_broken: { kind: 'incident', why: 'A script still contains a "never write" phrase she taught Twin in a rating (0250); recorded on the blueprint as lessons_broken.' },
   script_guard_removed: { kind: 'incident', why: 'The final privacy guard removed sentences carrying a private term or a tapped-out fact from a finished script (0252); recorded on the blueprint as guardrail_report.' },
+  line_sources_traced: { kind: 'counter_ephemeral', why: 'Each finished script records which fact, her words, product or brand every spoken sentence rests on (line_sources) in the blueprint itself; unsourced counts sentences resting on nothing she gave.' },
   lessons_supplied: { kind: 'counter_ephemeral', why: 'How many of her learned lessons the writer was given (0250); durable use counts live in creator_lessons.times_used.' },
   stories_withheld: { kind: 'incident', why: 'A stored story withheld: off-product, or told in 2 of the last 5 scripts (item 32).' },
   script_length_extended: { kind: 'counter_ephemeral', why: 'Item 38: a script under 80% of its word budget got one grounded extension pass; accepted or why not (invented, integrity_removed, not_longer, call_failed). A rate worth a column only once the pass has run long enough to show whether it is ever rejected.' },

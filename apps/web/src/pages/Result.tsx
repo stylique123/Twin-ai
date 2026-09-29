@@ -23,6 +23,7 @@ import { creatorPick, defaultCapture, freeformEntry } from '../lib/api'
 import { withSelectedHook, establishDurableRecordingScriptLive } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
+import { LineSources } from '../components/LineSources'
 import { TwinKnowledgeLink } from '../components/TwinKnowledgeLink'
 import { ProductCaptureCard, readProductCapturePrompt } from '../components/ProductCaptureCard'
 import { ScriptOriginPanel } from '../components/ScriptOriginPanel'
@@ -1464,6 +1465,7 @@ export default function Result() {
               {droppedLine && <p className="text-xs text-sand" data-testid="dropped-beats-line">{droppedLine}</p>}
               {shortfallLine && <p className="text-xs text-sand" data-testid="shortfall-line">{shortfallLine}</p>}
               {unsourcedLine && <p className="text-xs text-amber" data-testid="unsourced-figures">{unsourcedLine}</p>}
+              <LineSources blueprint={raw} />
               {/* WHAT A PERSON FORWARDING THIS SCRIPT NEEDS TO KNOW ABOUT IT.
                   The agency's report: "I need to know which product each script
                   used, or I'll send a client the wrong one."
@@ -1869,6 +1871,7 @@ export default function Result() {
               {droppedLine && <p className="text-xs text-sand" data-testid="dropped-beats-line">{droppedLine}</p>}
               {shortfallLine && <p className="text-xs text-sand" data-testid="shortfall-line">{shortfallLine}</p>}
               {unsourcedLine && <p className="text-xs text-amber" data-testid="unsourced-figures">{unsourcedLine}</p>}
+              <LineSources blueprint={raw} />
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
