@@ -10,9 +10,6 @@ import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, list
 import type { BrandVoice, Generation } from '../lib/types'
 import { draftTitle } from '@twinai/shared'
 import { Aurora } from '../components/Aurora'
-import { TwinStrengthCard } from '../components/TwinStrengthCard'
-import { OwnAccountFitCard } from '../components/OwnAccountFitCard'
-import { WhatWorksCard } from '../components/WhatWorksCard'
 import { AddYourProductCard } from '../components/AddYourProductCard'
 import { OutcomeHistory } from '../components/OutcomeHistory'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
@@ -148,28 +145,9 @@ export default function Dashboard() {
           <p className="mt-4 max-w-md text-base text-stone">
             Everything you've shipped, and what to make next.
           </p>
-          {/* ⚠️ THE SILENT FAILURE, MADE VISIBLE. A creator whose catalogue is
-              captions gets a hollow twin and nothing tells them — they find out
-              by reading a disappointing script and concluding the product is bad
-              at its job. This says what the twin holds, in counts, and renders
-              nothing at all when it cannot say. */}
+          {/* ⚖️ OWNER, 2026-09-30: the "what your twin knows / what we could
+              read / what works" cards were taken off the dashboard. */}
           <div className="mt-6 max-w-md space-y-3">
-            <TwinStrengthCard voiceId={brand?.id ?? null} />
-            {/* ⚠️ THE OTHER HALF OF THE SAME GATE, WHICH HAD NO SCREEN. The
-                picked-video warning has spoken to creators since it shipped;
-                `messageForOwnAccount` was written, stored against, tested and
-                imported by nothing. A creator whose account holds nothing of
-                them talking to camera was never told, and found out by reading
-                a script that did not sound like them.
-
-                ⚖️ IT SITS BESIDE THE STRENGTH METER BECAUSE THEY ANSWER THE SAME
-                WORRY. One says what the twin knows; this says what it had to
-                learn from. Both render nothing when they cannot speak. */}
-            <OwnAccountFitCard voiceId={brand?.id ?? null} />
-            {/* ⚠️ THEIR OWN NUMBERS, WHICH THE SCAN HAS ALWAYS STORED AND NOTHING
-                EVER READ. Renders only when the shared rule finds a real outlier
-                over enough measured posts — silence is the default. */}
-            <WhatWorksCard voiceId={brand?.id ?? null} />
             {/* ⚠️ THE CARD THAT PAYS FOR A REMOVAL. Onboarding stopped asking
                 thirteen options about what a creator sells and now asks one
                 yes/no. Somebody who answers yes has stated a commercial fact

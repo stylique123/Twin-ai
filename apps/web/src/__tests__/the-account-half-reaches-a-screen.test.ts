@@ -23,9 +23,9 @@ const LOADER = read('lib/ownSampleLoad.ts')
 const DASHBOARD = read('pages/Dashboard.tsx')
 
 describe('a creator can actually see it', () => {
-  it('the card is mounted on a screen, not merely defined', () => {
-    expect(DASHBOARD).toMatch(/<OwnAccountFitCard\b/)
-    expect(DASHBOARD).toMatch(/from '\.\.\/components\/OwnAccountFitCard'/)
+  it('the card is off the dashboard (owner decision)', () => {
+    // ⚖️ OWNER, 2026-09-30: taken off the dashboard on purpose.
+    expect(DASHBOARD).not.toMatch(/<OwnAccountFitCard\b/)
   })
 
   it('the card asks the shared rule what to say', () => {

@@ -57,7 +57,8 @@ describe('the count has one home, and it is the dashboard', () => {
     expect(SETTINGS).not.toMatch(/import \{ TwinStrengthCard \}/)
   })
 
-  it('the dashboard still does', () => {
-    expect(read('apps/web/src/pages/Dashboard.tsx')).toMatch(/<TwinStrengthCard/)
+  it('the dashboard no longer shows it (owner decision)', () => {
+    // ⚖️ OWNER, 2026-09-30: taken off the dashboard on purpose.
+    expect(read('apps/web/src/pages/Dashboard.tsx')).not.toMatch(/<TwinStrengthCard/)
   })
 })
