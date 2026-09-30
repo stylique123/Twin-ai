@@ -14,14 +14,15 @@ const CARD = readFileSync(join(HERE, '..', 'components', 'TwinStrengthCard.tsx')
 const LOAD = readFileSync(join(HERE, 'twinStrengthLoad.ts'), 'utf8')
 
 describe('the meter is actually mounted', () => {
-  it('the dashboard imports it', () => {
-    expect(DASH).toMatch(/import \{ TwinStrengthCard \} from '\.\.\/components\/TwinStrengthCard'/)
+  it('the dashboard no longer imports it (owner decision)', () => {
+    // ⚖️ OWNER, 2026-09-30: taken off the dashboard on purpose.
+    expect(DASH).not.toMatch(/import \{ TwinStrengthCard \}/)
   })
 
   // ⚠️ ANCHORED ON THE JSX, NOT THE IMPORT. An unused import type-checks and
   // renders nothing — the exact way a "built" feature stays invisible.
-  it('the dashboard renders it', () => {
-    expect(DASH).toMatch(/<TwinStrengthCard\s+voiceId=/)
+  it('the dashboard no longer renders it (owner decision)', () => {
+    expect(DASH).not.toMatch(/<TwinStrengthCard\s+voiceId=/)
   })
 })
 

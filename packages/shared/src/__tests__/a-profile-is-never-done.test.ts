@@ -125,9 +125,10 @@ describe('what Twin has learned has exactly ONE home', () => {
     expect(SETTINGS).not.toMatch(/<TwinStrengthCard/)
   })
 
-  it('and the Dashboard does', () => {
+  // ⚖️ OWNER, 2026-09-30: taken off the dashboard too, on purpose.
+  it('and neither does the Dashboard (owner decision)', () => {
     const dashboard = readFileSync(
       resolve(REPO, 'apps/web/src/pages/Dashboard.tsx'), 'utf8')
-    expect(dashboard).toMatch(/<TwinStrengthCard/)
+    expect(dashboard).not.toMatch(/<TwinStrengthCard/)
   })
 })
