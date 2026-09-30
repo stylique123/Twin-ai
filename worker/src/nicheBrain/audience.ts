@@ -7,7 +7,7 @@
 
 import { db } from '../db.js'
 import { syncShotListSpokenText } from '../generated/shotListSync.js'
-import { rewriteIsSafe } from '../generated/privacyGuard.js'
+import { rewriteIsSafe, guardScript } from '../generated/privacyGuard.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { noteKey } from './librarian.js'
@@ -222,6 +222,10 @@ export async function runAudienceTests(log: Log): Promise<void> {
     for (const q of new Set(r.viewers.map((v) => v.question).filter((x): x is string => !!x))) {
       const key = noteKey(q)
       if (key.length < 3) continue
+      // ⚠️ AUDIT 2026-09-30: "Did the neighbor come talk to you first before
+      // calling code enforcement?" was filed as her objection although she had
+      // marked that matter private. A question that touches it is never filed.
+      if (guardScript([{ line: q }], { allowedText: '', excludedTexts: privateFacts }).removed.length) continue
       const id = await fileNote(
         { kind: 'objection', bucket: null, sub_niche: sub, mode: null, goal: null, key, title: q, body: 'asked by a test viewer' },
         g.id, 0, g.user_id,

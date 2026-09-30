@@ -902,10 +902,18 @@ export default function Result() {
     return rows
   })()
   // ⚖️ A BEAT WITH NOTHING ON FILE IS LEFT OUT, NOT ASKED MID-SCRIPT (coffee report 2.4).
-  const dropped = Array.isArray((raw as { dropped_beats?: unknown }).dropped_beats)
-    ? ((raw as { dropped_beats: Array<{ section?: string }> }).dropped_beats) : []
+  // ⚠️ AUDIT 2026-09-30: the page said "7 scenes" over eight cards and "the
+  // hook was left out" beside a hook. A hook put back in front is counted, and
+  // a dropped hook beat is not reported while a hook is shown. (The count sits
+  // beside the script, as `scriptLengthOnScreen.test.ts` pins.)
+  const hookAdded = shotRows.length > b.shot_list.length ? 1 : 0
+  const sceneCount = updatedScript.length + hookAdded
+  const hookShown = (chosenHook ?? '').trim() !== ''
+  const dropped = (Array.isArray((raw as { dropped_beats?: unknown }).dropped_beats)
+    ? ((raw as { dropped_beats: Array<{ section?: string }> }).dropped_beats) : [])
+    .filter((d) => !(hookShown && /\bhook\b/i.test(String(d.section ?? ''))))
   const droppedLine = dropped.length > 0
-    ? `Twin left out ${dropped.length === 1 ? 'one part' : `${dropped.length} parts`} (${dropped.map((d) => d.section || 'a beat').join(', ')}) because nothing you gave Twin covered ${dropped.length === 1 ? 'it' : 'them'}, so the script is shorter rather than made up. Add the detail in your idea and remake it to include ${dropped.length === 1 ? 'it' : 'them'}.`
+    ? `Twin left out ${dropped.length === 1 ? 'one part' : `${dropped.length} parts`} (${dropped.map((d) => d.section || 'a beat').join(', ')}) because nothing you gave Twin covered ${dropped.length === 1 ? 'it' : 'them'}, or ${dropped.length === 1 ? 'it' : 'they'} said something you asked Twin not to use, so the script is shorter rather than made up. Add the detail in your idea and remake it to include ${dropped.length === 1 ? 'it' : 'them'}.`
     : null
   const noStoryLine = (b.reference_read as { reference_has_story?: boolean | null }).reference_has_story === false
     ? 'The reference is tips or a list with no personal story in it — so any story in this script comes from what you told Twin, not from the reference.'
@@ -1327,12 +1335,12 @@ export default function Result() {
               <div className="flex flex-col rounded-card border border-teal/25 bg-teal/[0.06] p-4">
                 <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal">Your video idea</div>
                 <p className="text-sm font-semibold leading-snug text-cream">{b.concept.premise}</p>
-                {b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Film it solo: </span>{b.concept.your_scale}</p>}
+                {hasReference && b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Film it solo: </span>{b.concept.your_scale}</p>}
                 {/* ⚖️ ITEM 26: a round-up/comparison reference built for ONE product says so. */}
                 {typeof (raw as { reference_scope_note?: unknown }).reference_scope_note === 'string' && (
                   <p className="mt-1.5 text-xs leading-snug text-sand/85">{(raw as { reference_scope_note: string }).reference_scope_note}</p>
                 )}
-                {b.concept.translations?.length ? (
+                {hasReference && b.concept.translations?.length ? (
                   <div className="mt-2 space-y-1">
                     {b.concept.translations.map((t, i) => (
                       <div key={i} className="text-xs leading-snug"><span className="text-stone">{t.theirs}</span><span className="text-teal"> → </span><span className="text-cream">{t.yours}</span></div>
@@ -1464,7 +1472,7 @@ export default function Result() {
                 <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
                   <FileText className="h-4 w-4 text-stone" /> Script teleprompter
                 </h2>
-                <span className="text-xs text-stone">{updatedScript.length} scenes</span>
+                <span className="text-xs text-stone">{sceneCount} scenes</span>
               </div>
               <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
@@ -1870,7 +1878,7 @@ export default function Result() {
                   <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
                     <FileText className="h-4 w-4 text-stone" /> Script teleprompter
                   </h2>
-                  <span className="text-xs text-stone">{updatedScript.length} scenes</span>
+                  <span className="text-xs text-stone">{sceneCount} scenes</span>
                 </div>
                 <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}

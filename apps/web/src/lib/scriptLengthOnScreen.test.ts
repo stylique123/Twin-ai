@@ -28,7 +28,7 @@ describe('the length reaches the screen', () => {
   // ⚖️ EACH ONE SITS WITH ITS OWN SCENE COUNT. Two renders in the same layout
   // would satisfy the count above while leaving the other layout silent.
   it('and each sits beside a scene count', () => {
-    const counts = SRC.match(/\{updatedScript\.length\} scenes<\/span>\s*<\/div>\s*<p[^>]*>\{lengthLine\}<\/p>/g) ?? []
+    const counts = SRC.match(/\{sceneCount\} scenes<\/span>\s*<\/div>\s*<p[^>]*>\{lengthLine\}<\/p>/g) ?? []
     expect(counts.length).toBe(2)
   })
 })
