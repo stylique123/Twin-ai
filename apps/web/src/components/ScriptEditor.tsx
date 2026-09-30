@@ -413,11 +413,10 @@ function BeatLength({ scene }: { scene?: RecordingScene }) {
     // NOT the same sentence as a planned beat. "about" and "no beat length
     // planned" together say: this is an estimate of the words as written, and
     // nothing decided it should be that long.
-    return (
-      <span className="text-[11px] text-sand/50">
-        about {reading.liveSec}s · no beat length planned
-      </span>
-    )
+    // ⚠️ AUDIT 2026-09-30: "no beat length planned" read as debug text on
+    // every scene. With no plan there is nothing to compare, so only the
+    // estimate is shown.
+    return <span className="text-[11px] text-sand/50">about {reading.liveSec}s</span>
   }
   if (reading.kind === 'planned_unmeasured') {
     // ⚠️ NOT "{n}s beat". That sentence says the words were checked against the

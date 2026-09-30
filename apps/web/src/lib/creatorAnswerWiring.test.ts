@@ -138,11 +138,11 @@ describe('it is mounted where a creator actually is', () => {
       const before = RESULT.slice(0, cardIndex)
       const after = RESULT.slice(cardIndex)
       const lastScriptEditorOpen = before.lastIndexOf('<ScriptEditor')
-      const nextShotListHeading = after.indexOf('Shots & extra clips')
+      const nextShotListHeading = after.indexOf('Extra clips')
       expect(lastScriptEditorOpen).toBeGreaterThan(-1)
       expect(nextShotListHeading).toBeGreaterThan(-1)
       // Nothing else that opens a ScriptEditor or shot list sits closer.
-      expect(before.lastIndexOf('Shots & extra clips')).toBeLessThan(lastScriptEditorOpen)
+      expect(before.lastIndexOf('Extra clips')).toBeLessThan(lastScriptEditorOpen)
     }
   })
 })

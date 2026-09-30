@@ -25,7 +25,11 @@
 // ⚖️ SO THE TRIGGER IS HER COMING BACK. Opening a script she generated some time
 // ago is the moment she knows the answer, and it needs no scheduling, no email
 // and no notification — she is already looking at the thing being asked about.
-export const ASK_AFTER_MS = 12 * 60 * 60 * 1000
+//
+// ⚠️ AUDIT 2026-09-30: twelve hours was too early — the owner saw the question
+// on top of a script she had not recorded yet. It now waits for a recording,
+// or for her to come back to a script some days old.
+export const ASK_AFTER_MS = 3 * 24 * 60 * 60 * 1000
 
 export type FilmedAsk =
   /** No outcome row: nothing to answer into. See `no_row` below. */
@@ -44,6 +48,8 @@ export interface FilmedAskInput {
   generatedAt: string | null
   /** Epoch ms. Passed in so this is pure and testable at a boundary. */
   now: number
+  /** She has recorded a take of this script: the answer is knowable now. */
+  recorded?: boolean
 }
 
 /**
@@ -77,6 +83,7 @@ export function filmedAsk(input: FilmedAskInput): FilmedAsk {
   // established that it has elapsed. The null check precedes the arithmetic:
   // `now - Date.parse(null)` is NaN, and every comparison against NaN is false,
   // which would read as "too soon" by accident rather than by decision.
+  if (input.recorded) return { kind: 'ask' }
   if (!generatedAt) return { kind: 'too_soon' }
   const at = Date.parse(generatedAt)
   if (!Number.isFinite(at)) return { kind: 'too_soon' }

@@ -106,10 +106,32 @@ export function TestViewers({ generationId }: { generationId: string }) {
   if (test.status !== 'done' || test.viewers.length === 0) return null
 
   const n = test.panel_size ?? test.viewers.length
+  // ⚠️ AUDIT 2026-09-30: the useful part was buried under a dense paragraph.
+  // Lead with the two things she acts on: how the best hook scored, and the
+  // one line most worth fixing. The method note and the rest sit behind a tap.
+  const bestStopped = Math.max(0, ...test.hooks.map((h) => h.stopped))
+  const topFix = [...test.fixes].sort((a, b) => b.count - a.count)[0] ?? null
+  const otherFixes = topFix ? test.fixes.filter((f) => f !== topFix) : test.fixes
 
   return (
     <div className="space-y-5" data-testid="test-viewers">
-      <p className="text-[11px] text-stone">
+      <div className="space-y-2" data-testid="test-viewers-lead">
+        {test.hooks.length > 0 && (
+          <p className="font-heading text-sm text-cream">
+            Your best hook stopped <span className="font-semibold text-teal">{bestStopped} of {n}</span> test viewers.
+          </p>
+        )}
+        {topFix && (
+          <p className="text-xs text-sand leading-relaxed">
+            <span className="font-semibold text-coral">The one line to fix{topFix.beat >= 0 ? ` (line ${topFix.beat + 1})` : ''}: </span>
+            {topFix.fix}
+          </p>
+        )}
+      </div>
+
+      <details className="group">
+        <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-teal">How this was tested</summary>
+      <p className="mt-2 text-[11px] text-stone">
         {test.panel_voice_id
           ? `Twin tested this on your ${n} regular viewers, built from how your real posts performed.`
           : `Twin tested this on ${n} viewers like yours.`}
@@ -121,12 +143,13 @@ export function TestViewers({ generationId }: { generationId: string }) {
         )}
         {' '}Twin plays them, so treat it as a practice audience, not a promise. Their hook scores are on the hooks above. They judge whether people stay past the opening; numbers in the rest of the script are checked separately against what you gave Twin.
       </p>
+      </details>
 
-      {test.fixes.length > 0 && (
+      {otherFixes.length > 0 && (
         <div className="space-y-2">
-          <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">What your viewers flagged</h3>
+          <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Also flagged</h3>
           <ul className="space-y-2">
-            {test.fixes.map((f, i) => (
+            {otherFixes.map((f, i) => (
               <li key={i} className="text-xs text-sand leading-relaxed">
                 {f.count > 0 && <span className="font-semibold text-coral">{f.count} of {n} · </span>}
                 {f.beat >= 0 && <span className="text-stone">Line {f.beat + 1}: </span>}
