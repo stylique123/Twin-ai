@@ -228,8 +228,10 @@ The seam between the synchronous and asynchronous planes. Defined in
 4. **Publish + analytics** — `social` edge function → Outstand → publish + pull metrics → Calendar insights.
 
 **The Scene Timeline is the single in-app source of truth** (`docs/PRODUCT_VISION.md`
-§8): script, teleprompter and publish copy all read from one scene object, so scene
-counts / hooks / captions can never disagree.
+§8): script, teleprompter and publish copy all read from one scene object. The
+teleprompter's scenes are built from the script (`buildRecordingScript`) and the
+shot list is re-synced to the final script (`syncShotListSpokenText`), so the two
+agree line by line; silent inserts from the shot list are the only extra scenes.
 
 ---
 

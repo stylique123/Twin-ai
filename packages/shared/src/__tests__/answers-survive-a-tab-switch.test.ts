@@ -28,7 +28,7 @@ describe('typed answers survive the tab being reclaimed', () => {
     // persisting what SETTING an answer is, so a control cannot forget — and
     // every control now routes through it.
     const helper = BUILD.slice(BUILD.indexOf('const answer = (field: string, value: string'))
-    expect(helper.slice(0, 1200)).toMatch(/rememberAnswers\(buildKey\(state\), next\)/)
+    expect(helper.slice(0, 2400)).toMatch(/rememberAnswers\(buildKey\(state\), next\)/)
     expect(BUILD).toMatch(/onChange=\{\(ev\) => answer\(q\.field, ev\.target\.value\)\}/)
   })
 

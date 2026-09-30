@@ -80,7 +80,7 @@ The objective: a creator inputs a viral reference (link or gallery) → TwinAI u
 | Script/hooks | build (moat) | Gemini 3.1 Pro (edge function — done) |
 | Record + teleprompter | fork | addyosmani/recorder + voice-scroll |
 | Auto-edit/render | fork | Revideo (MIT) + auto-editor |
-| Publish + analytics | buy → fork | Ayrshare → Postiz later |
+| Publish + analytics | buy | Outstand (Postiz retired 2026-09-27) |
 | Payments | buy | Stripe |
 
 ---

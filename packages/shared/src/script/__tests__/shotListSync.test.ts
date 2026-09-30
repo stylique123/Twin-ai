@@ -137,3 +137,14 @@ describe('Sunflower #17–#18', () => {
     expect(collapseDoubledNumbers('I roast 12 two times')).toBe('I roast 12 two times')
   })
 })
+
+describe('the shot list comes from the script in both directions (audit 2026-09-29)', () => {
+  it('a spoken beat with no shot row left gets its own row', () => {
+    const r = syncShotListSpokenText(
+      [{ shot: 'Hook', shot_type: 'talking_head', spoken_text: 'one' }],
+      [{ line: 'one', section: 'Hook' }, { line: 'two', section: 'Payoff' }],
+    )
+    expect(r.shots).toHaveLength(2)
+    expect(r.shots[1]).toMatchObject({ shot: 'Payoff', spoken_text: 'two' })
+  })
+})

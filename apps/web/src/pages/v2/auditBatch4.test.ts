@@ -32,3 +32,10 @@ describe('#15 one read of the picked product', () => {
     expect((B.match(/productChoice\(/g) ?? []).length).toBeGreaterThanOrEqual(7)
   })
 })
+
+describe('#14 each objective keeps its own answers', () => {
+  it('switching stores the old objective\'s answers and restores the new one\'s', () => {
+    expect(B).toMatch(/answersByGoal\.current\[a\.video_goal!\] = /)
+    expect(B).toMatch(/const restored = switched \? \(answersByGoal\.current\[value\] \?\? \{\}\) : \{\}/)
+  })
+})
