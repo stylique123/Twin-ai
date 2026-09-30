@@ -11,6 +11,7 @@ import { protectedRouteDecision } from './lib/authRouting'
 // Landing + Auth stay eager (the entry points — no chunk wait on first paint).
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
+import { SignOutCorner } from './components/SignOutCorner'
 // The app pages are code-split so the initial bundle (which was a single ~724KB
 // chunk → slow parse, the "big lag / blank page" on load + login) only ships the
 // page you're actually on.
@@ -238,7 +239,7 @@ export default function App() {
           <Route path="/r/:token" element={<Page><ClientReport /></Page>} />
           {/* Public, login-free client APPROVAL of a finished video (agency → client). */}
           <Route path="/review/:token" element={<Page><ReviewApproval /></Page>} />
-          <Route path="/onboarding" element={<AuthOnly><Page><Onboarding /></Page></AuthOnly>} />
+          <Route path="/onboarding" element={<AuthOnly><Page><SignOutCorner /><Onboarding /></Page></AuthOnly>} />
           {/* Teammate accepting a workspace invite — auth required, but NOT onboarded
               (a teammate uses the owner's workspace and skips their own onboarding). */}
           <Route path="/join/:token" element={<AuthOnly><Page><JoinWorkspace /></Page></AuthOnly>} />

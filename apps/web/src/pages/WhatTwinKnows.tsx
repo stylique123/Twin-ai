@@ -33,6 +33,15 @@ export function topicMap(rows: ReadonlyArray<{ kind: string; text: string; times
     const key = r.text.trim().toLowerCase()
     if (!key || seen.has(key)) continue
     const words = key.split(/\s+/).filter((w) => w.length > 3)
+    // ⚠️ AUDIT 2026-09-30: two near-identical "what you talk about" topics
+    // showed side by side. A topic sharing most of its words with one already
+    // listed is the same topic; the higher count stands.
+    const twin = [...seen.values()].find((t) => {
+      const tw = new Set(t.text.toLowerCase().split(/\s+/).filter((w) => w.length > 3))
+      const shared = words.filter((w) => tw.has(w)).length
+      return shared > 0 && shared / Math.min(words.length || 1, tw.size || 1) >= 0.6
+    })
+    if (twin) { twin.times_seen = Math.max(twin.times_seen, Math.max(1, Number(r.times_seen) || 1)); continue }
     seen.set(key, {
       text: r.text.trim(), times_seen: Math.max(1, Number(r.times_seen) || 1),
       covered: covered.some((c) => words.length > 0 && words.filter((w) => c.includes(w)).length >= Math.ceil(words.length / 2)),
@@ -104,7 +113,7 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
         if (ids.length) {
           const { data: posts } = await supabase.from('scraped_posts').select('id, caption').in('id', ids)
           if (alive) setCaptions(Object.fromEntries(((posts ?? []) as Array<{ id: string; caption: string | null }>)
-            .map((p) => [p.id, (p.caption ?? '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()])
+            .map((p) => [p.id, (p.caption ?? '').replace(/https?:\/\/\S+|www\.\S+/gi, '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()])
             .filter(([, c]) => c)))
         }
         setNiche((shared.data ?? []) as Note[])
@@ -119,6 +128,11 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
     })()
     return () => { alive = false }
   }, [])
+
+  // One page now ("My Twin"); the old /brain/niche link lands on its second half.
+  useEffect(() => {
+    if (view === 'niche' && loaded) document.getElementById('around-you')?.scrollIntoView({ block: 'start' })
+  }, [view, loaded])
 
   // She decides whether each one is her. Only a "yes" ever reaches a script.
   const decide = async (id: string, isMe: boolean) => {
@@ -137,6 +151,24 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
     return { mine: g(mine), niche: g(niche) }
   }, [mine, niche])
 
+  // ⚠️ AUDIT 2026-09-30: one caption was quoted as proof for six patterns,
+  // each labelled "your post". A pattern now says how many of her posts it
+  // rests on, and a caption is quoted under one pattern only.
+  const postsLabel = (n: Note) => {
+    const c = Array.isArray(n.sources) ? new Set((n.sources as unknown[]).map(String)).size : 0
+    return c > 1 ? `from ${c} of your posts` : 'from 1 post'
+  }
+  const quoteFor = useMemo(() => {
+    const used = new Set<string>()
+    const out: Record<string, string> = {}
+    for (const n of mine) {
+      const ids = Array.isArray(n.sources) ? (n.sources as unknown[]).map(String) : []
+      const id = ids.find((x) => captions[x] && !used.has(captions[x]!))
+      if (id) { used.add(captions[id]!); out[n.id] = captions[id]! }
+    }
+    return out
+  }, [mine, captions])
+
   const section = (title: string, rows: Record<string, Note[]>, hers: boolean) => (
     <section className="mt-8">
       <h2 className="font-display text-2xl tracking-tight">{title}</h2>
@@ -149,11 +181,10 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
                 <li key={n.id}>
                   {n.title}
                   <span className="ml-1 text-xs text-stone">
-                    ({[hers ? 'your post' : n.times_seen > 1 ? `seen in ${n.times_seen} other creators' videos` : null, views(n.total_views)].filter(Boolean).join(', ')})
+                    ({[hers ? postsLabel(n) : n.times_seen > 1 ? `seen in ${n.times_seen} other creators' videos` : null, views(n.total_views)].filter(Boolean).join(', ')})
                   </span>
                   {hers && (() => {
-                    const said = (Array.isArray(n.sources) ? (n.sources as unknown[]).map(String) : [])
-                      .map((id) => captions[id]).find(Boolean)
+                    const said = quoteFor[n.id]
                     return said ? <span className="mt-0.5 block text-xs italic text-sand/80">You wrote: “{said.slice(0, 140)}”</span> : null
                   })()}
                 </li>
@@ -168,23 +199,17 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-8">
       <p className="eyebrow">What Twin knows</p>
-      <h1 className="mt-2 font-display text-4xl tracking-tight">{view === 'you' ? 'My content profile' : 'My niche'}</h1>
+      <h1 className="mt-2 font-display text-4xl tracking-tight">My Twin</h1>
       <p className="mt-2 max-w-2xl text-sm text-stone">
-        {view === 'you'
-          ? 'Learned only from your own posts and answers — this is you.'
-          : <>What other creators{subNiche ? <> in <b>{subNiche}</b></> : null} and the world are doing. Ideas for your scripts — never facts about you or your business.</>}
+        First, what Twin learned from your own posts and answers — this is you. Then, further down, what is happening around you: ideas from other creators, never facts about you.
       </p>
-      <nav className="mt-4 flex gap-2 text-sm" aria-label="What Twin knows">
-        <Link to="/brain" className={view === 'you' ? 'rounded-full bg-white/[0.08] px-3 py-1 text-cream' : 'rounded-full px-3 py-1 text-stone hover:text-cream'}>About you</Link>
-        <Link to="/brain/niche" className={view === 'niche' ? 'rounded-full bg-white/[0.08] px-3 py-1 text-cream' : 'rounded-full px-3 py-1 text-stone hover:text-cream'}>Around you</Link>
-      </nav>
       {!loaded && <p className="mt-8 text-sm text-stone">Loading…</p>}
       {loaded && mine.length === 0 && niche.length === 0 && moments.length === 0 && topics.length === 0 && (
         <p className="mt-8 text-sm text-stone">
           Twin is still reading. Check back soon — or <Link to="/v2" className="underline">make a script</Link> now.
         </p>
       )}
-      {view === 'you' && (
+      {(
         <>
       {/* ⚠️ TWO KINDS OF KNOWLEDGE, NOW VISIBLY APART. Everything in "About
           you" is read from her own posts and answers; "Around you" is other
@@ -258,8 +283,10 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
       {mine.length > 0 && section('Your patterns', byKind.mine, true)}
         </>
       )}
-      {view === 'niche' && (
+      {(
         <>
+      <h2 id="around-you" className="mt-12 scroll-mt-6 border-t border-white/10 pt-8 font-display text-3xl tracking-tight">Around you</h2>
+      <p className="mt-1 text-sm text-stone">What other creators{subNiche ? <> in <b>{subNiche}</b></> : null} and the world are doing. Ideas for your scripts — never facts about you or your business.</p>
       {moments.length > 0 && (
         <section className="mt-8">
           <h2 className="font-display text-2xl tracking-tight">Happening now{bucket ? ` in ${bucket.replace('_', ' & ')}` : ''}</h2>

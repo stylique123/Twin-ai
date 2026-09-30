@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { logEvent, logSessionEvent } from '../lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users, CalendarDays, Package, Brain, Globe } from 'lucide-react'
+import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users, CalendarDays, Package, Brain } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { BrandSwitcher } from './BrandSwitcher'
 import { BrandReminder } from './BrandReminder'
@@ -26,8 +26,8 @@ const NAV = [
   // ⚖️ TWO PAGES, NOT ONE (owner review): what Twin learned from HER posts is
   // her content profile; what other creators and the world are doing is her
   // niche — market research, never facts about her.
-  { to: '/brain',     label: 'My content profile', icon: Brain,  note: 'Learned from your posts' },
-  { to: '/brain/niche', label: 'My niche', icon: Globe,          note: 'Other creators & the world' },
+  // One page (audit 2026-09-30): what Twin knows about you, then around you.
+  { to: '/brain',     label: 'My Twin', icon: Brain,  note: 'You, then your niche' },
   { to: '/settings',  label: 'Settings',   icon: Settings,        note: 'Account & DNA' },
 ]
 
@@ -126,7 +126,7 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
   const navItems = NAV.filter((n) => !n.agencyOnly || profile?.plan === 'agency')
   // Studio's tab links to /app, which redirects into /v2 — both (plus an open
   // result) count as "in the studio" so the tab highlights correctly.
-  const isActive = (to: string) => to === '/app' ? pathname === '/app' || pathname.startsWith('/v2') || pathname.startsWith('/result') : to === '/brain' ? pathname === '/brain' : pathname.startsWith(to)
+  const isActive = (to: string) => to === '/app' ? pathname === '/app' || pathname.startsWith('/v2') || pathname.startsWith('/result') : to === '/brain' ? pathname.startsWith('/brain') : pathname.startsWith(to)
   // Hard navigation (full reload), not SPA navigate(): a client-side route change
   // here raced the AnimatePresence route exit while `profile` was torn down,
   // leaving a blank screen on logout. A full reload guarantees a clean render.

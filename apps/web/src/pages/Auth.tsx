@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { REFERRAL_CODE_KEY } from '../lib/api'
 import { motion } from 'framer-motion'
-import { Check, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react'
+import { Check, ArrowRight, ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { planFor, PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
@@ -32,6 +32,9 @@ export default function Auth() {
   )
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // ⚠️ AUDIT 2026-09-30: a browser-suggested password was accepted unseen and
+  // she never knew it. The password can always be shown.
+  const [showPassword, setShowPassword] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [msgType, setMsgType] = useState<'error' | 'success'>('error')
   const [busy, setBusy] = useState(false)
@@ -325,9 +328,10 @@ export default function Auth() {
             {mode !== 'forgot' && (
               <div>
                 <label className="eyebrow">{mode === 'reset' ? 'New password' : 'Password'}</label>
+                <div className="relative">
                 <input
-                  className="field mt-1.5"
-                  type="password"
+                  className="field mt-1.5 pr-10"
+                  type={showPassword ? 'text' : 'password'}
                   // MODE-DEPENDENT, and it matters: on sign-in a manager should
                   // FILL the saved password, while on sign-up or reset it should
                   // OFFER a new one. Marking both `current-password` makes a
@@ -340,6 +344,15 @@ export default function Auth() {
                   minLength={6}
                   required
                 />
+                <button type="button" onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-2 top-1/2 mt-[3px] -translate-y-1/2 p-1.5 text-stone hover:text-cream">
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                </div>
+                {mode !== 'signin' && (
+                  <p className="mt-1.5 text-[11px] text-stone">If your browser suggests a password, tap the eye to see it and keep a note of it.</p>
+                )}
               </div>
             )}
             <button className="btn-gradient w-full" disabled={busy}>
