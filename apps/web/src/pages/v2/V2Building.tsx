@@ -818,6 +818,7 @@ export default function V2Building() {
    *  persisting IS. */
   // The questions read from her paragraph, by field, so her answers reach the note with them.
   const ideaQuestionText = useRef<Record<string, string>>({})
+  const answersByGoal = useRef<Record<string, Record<string, string>>>({})
   // `auto`: Twin filled it (standing goal, the paragraph's guess), not her tap.
   // Only her own change of objective drops the old objective's answers.
   const answer = (field: string, value: string, auto = false): void => setAskAnswers((a) => {
@@ -826,10 +827,22 @@ export default function V2Building() {
     // an answer, so switching it kept the old objective's text. A changed
     // objective drops the answers that belonged to the old one.
     const switched = !auto && field === 'video_goal' && (a.video_goal ?? '') !== '' && a.video_goal !== value
+    const shared = (k: string) => INTENT_FIELDS.has(k) || k === PRODUCT_CHOICE_FIELD
+    // ⚖️ AUDIT 2026-09-29 #14: EACH OBJECTIVE KEEPS ITS OWN ANSWERS. They were
+    // one field per build, so switching wiped what she typed; switching back
+    // now brings her answers for that objective back, and never carries them
+    // into a different one.
+    if (switched) {
+      answersByGoal.current[a.video_goal!] = Object.fromEntries(Object.entries(a).filter(([k]) => !shared(k)))
+    }
+    const restored = switched ? (answersByGoal.current[value] ?? {}) : {}
     const kept = switched
-      ? Object.fromEntries(Object.entries(a).filter(([k]) => INTENT_FIELDS.has(k) || k === PRODUCT_CHOICE_FIELD))
+      ? { ...Object.fromEntries(Object.entries(a).filter(([k]) => shared(k))), ...restored }
       : a
-    if (switched) for (const k of Object.keys(a)) if (!(k in kept)) delete answersRef.current[k]
+    if (switched) {
+      for (const k of Object.keys(a)) if (!(k in kept)) delete answersRef.current[k]
+      Object.assign(answersRef.current, restored)
+    }
     const next = { ...kept, [field]: value }
     rememberAnswers(buildKey(state), next)
     return next

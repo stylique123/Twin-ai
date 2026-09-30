@@ -883,6 +883,14 @@ export default function Result() {
     const hook = (chosenHook ?? '').trim()
     if (!hook || rows.some((r) => (r.spoken_text ?? '').trim() === hook)) return rows
     const first = rows.findIndex((r) => (r.spoken_text ?? '').trim() !== '')
+    // ⚠️ AUDIT 2026-09-29 (THE ESPRESSO RUN): the writer's own hook shot said a
+    // blend of two lines that matched neither the chosen hook nor any option,
+    // so the shot list showed a hook she never picked. A shot named as the hook
+    // speaks the chosen hook.
+    if (first >= 0 && /\bhook\b/i.test(String(rows[first].shot ?? ''))) {
+      rows[first] = { ...rows[first], spoken_text: hook }
+      return rows
+    }
     if (first >= 0 && b.hook_options.includes((rows[first].spoken_text ?? '').trim())) {
       rows[first] = { ...rows[first], spoken_text: hook }
       return rows

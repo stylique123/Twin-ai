@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isDisclaimer, splitDisclaimersFromCtas, claimsPrefillFrom } from '../claimDisclaimers.js'
+import { isDisclaimer, splitDisclaimersFromCtas } from '../claimDisclaimers.js'
 
 /**
  * ⚠️ THE FIRST STRING BELOW IS REAL. The scan of a Senior MSK Physiotherapist
@@ -92,17 +92,3 @@ describe('splitDisclaimersFromCtas', () => {
   })
 })
 
-describe('claimsPrefillFrom', () => {
-  it('is null when nothing was found — absent is not empty', () => {
-    expect(claimsPrefillFrom([])).toBeNull()
-  })
-
-  it('joins what was found in the creator own words', () => {
-    expect(claimsPrefillFrom([REAL, 'Not medical advice.']))
-      .toBe(`${REAL} · Not medical advice.`)
-  })
-
-  it('is null when everything is blank', () => {
-    expect(claimsPrefillFrom(['  ', ''])).toBeNull()
-  })
-})

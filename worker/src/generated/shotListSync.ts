@@ -124,7 +124,22 @@ export function syncShotListSpokenText<T extends SyncedShotRow>(
     return { ...row, spoken_text: resolved, ...(label && 'shot' in row ? { shot: label } : {}) }
   }).filter((r): r is T => r !== null)
 
-  return { shots: out, resynced, orphaned }
+  // ⚖️ AND THE OTHER DIRECTION (audit 2026-09-29): a spoken beat with no shot
+  // row left was simply missing from the shot list, so the teleprompter had a
+  // scene the shot list did not. Every remaining spoken beat gets its own row,
+  // named for its section, quoting the script. The shot list now comes from
+  // the script in both directions.
+  let appended = 0
+  for (; rows.length > 0 && beatIndex < beats.length; beatIndex += 1) {
+    const beat = beats[beatIndex]
+    const line = typeof beat?.line === 'string' ? beat.line : ''
+    if (!line.trim() || isSilentBeat(line)) continue
+    const label = typeof beat?.section === 'string' && beat.section.trim() ? beat.section.trim() : `Beat ${beatIndex + 1}`
+    out.push({ shot: label, framing: '', notes: '', shot_type: 'talking_head', spoken_text: line } as unknown as T)
+    appended += 1
+  }
+
+  return { shots: out, resynced: resynced + appended, orphaned }
 }
 
 // ⚠️ "I HAVE 26 SIX DAYS" (Sunflower #18). A repair pass merged two spellings of

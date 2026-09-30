@@ -16,6 +16,8 @@ export function LineSources({ blueprint }: { blueprint: unknown }) {
   const removed = Array.isArray(bp.guardrail_report) ? bp.guardrail_report as GuardRemoval[] : []
   if (!lines.length && !removed.length) return null
   const unsourced = lines.filter((l) => !l.from?.length).length
+  const methodCut = removed.filter((r) => (r as { reason?: string }).reason === 'invented_method').length
+  const privateCut = removed.length - methodCut
   return (
     <details className="rounded-xl border border-white/10 bg-ink2/40 p-3 text-xs text-sand" data-testid="line-sources">
       <summary className="cursor-pointer font-semibold text-cream">
@@ -34,9 +36,14 @@ export function LineSources({ blueprint }: { blueprint: unknown }) {
           </li>
         ))}
       </ol>
-      {removed.length > 0 && (
+      {privateCut > 0 && (
         <p className="mt-3 text-stone" data-testid="guard-removed">
-          Twin removed {removed.length === 1 ? 'one sentence' : `${removed.length} sentences`} before showing you this script because {removed.length === 1 ? 'it' : 'they'} used something private or something you left out.
+          Twin removed {privateCut === 1 ? 'one sentence' : `${privateCut} sentences`} before showing you this script because {privateCut === 1 ? 'it' : 'they'} used something private or something you left out.
+        </p>
+      )}
+      {methodCut > 0 && (
+        <p className="mt-2 text-stone" data-testid="method-removed">
+          Twin also removed {methodCut === 1 ? 'one step' : `${methodCut} steps`} that gave an exact method, amount or technique you never gave it. Add the real detail in your idea to include {methodCut === 1 ? 'it' : 'them'}.
         </p>
       )}
     </details>

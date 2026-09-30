@@ -94,15 +94,3 @@ export function splitDisclaimersFromCtas(raw: unknown): SplitCtas {
   return { ctas, disclaimers }
 }
 
-/**
- * The claims-field prefill, as ONE string, because that is what the field holds.
- *
- * ⚖️ IT IS OFFERED AS A GUESS, NEVER AS AN ANSWER. The caller marks it. A
- * restriction the creator never confirmed is still our inference about their
- * registration, and presenting it as settled is how a creator stops reading a
- * screen that is telling them something they need to check.
- */
-export function claimsPrefillFrom(disclaimers: readonly string[]): string | null {
-  const kept = disclaimers.map((d) => d.trim()).filter((d) => d !== '')
-  return kept.length === 0 ? null : kept.join(' · ')
-}

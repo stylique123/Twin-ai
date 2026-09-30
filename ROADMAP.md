@@ -57,7 +57,7 @@ Next:
   visibility) with RLS (public readable by all; private readable by owner).
 
 ## C. Publishing + analytics (Phase 7)
-- Self-hosted **Postiz** (free) for one-click publish + real analytics → dashboard.
+- One-click publish + real analytics via Outstand (Postiz was retired 2026-09-27).
 - Before/after-TwinAI lift, retention, engagement.
 
 ## D. Monetization & teams
@@ -68,5 +68,5 @@ Next:
 1. **Gallery v2** (creator/niche search + Top/All) — quick, ships now.
 2. **Gallery submissions** (public/private, DB-backed) — the "CapCut feed".
 3. **Editor v3** (transitions → b-roll via Higgsfield → reframe → music).
-4. **Postiz publishing + analytics**.
+4. **Outstand publishing + analytics** (Postiz retired 2026-09-27).
 5. **Stripe + agency**.

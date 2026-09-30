@@ -27,7 +27,7 @@ import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
 import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe } from '../_shared/privacyGuard.ts'
-import { traceLines, type LineSourceInput } from '../_shared/lineSources.ts'
+import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
@@ -13959,7 +13959,32 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           { kind: 'product', label: String((ownedEntity as { name?: unknown } | null)?.name ?? 'The product'), text: [JSON.stringify(ownedEntity ?? ''), ...productFactsForCheck].join(' ') },
           { kind: 'brand', label: 'Your brand', text: JSON.stringify(confirmedBrand ?? '') },
         ]
-        const traced = traceLines(bp.script as Array<{ line?: unknown }>, sources)
+        let traced = traceLines(bp.script as Array<{ line?: unknown }>, sources)
+        // ⚠️ AUDIT 2026-09-29 (THE ESPRESSO RUN): a precise method she never
+        // gave — a tamp, an extraction cue, a pinch of something — traced to
+        // nothing, yet shipped. Such a sentence is removed; a beat left empty
+        // is dropped and disclosed like any other, never refilled.
+        const invented = traced.filter(isInventedMethod)
+        if (invented.length) {
+          const b2 = bp as { script: Array<{ line?: unknown }>; shot_list?: unknown; dropped_beats?: unknown; guardrail_report?: unknown }
+          const cut = new Map<number, Set<string>>()
+          for (const t of invented) cut.set(t.beat, (cut.get(t.beat) ?? new Set()).add(t.sentence))
+          const next = b2.script.map((beat, i) => {
+            const drop = cut.get(i)
+            if (!drop || typeof beat.line !== 'string') return beat
+            return { ...beat, line: beat.line.split(/(?<=[.!?])\s+/).filter((x) => !drop.has(x)).join(' ').trim() }
+          })
+          const emptied = next.filter((b) => typeof b.line === 'string' && !b.line.trim())
+          b2.script = next.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
+          if (emptied.length) b2.dropped_beats = [...(Array.isArray(b2.dropped_beats) ? b2.dropped_beats : []), ...emptied]
+          b2.guardrail_report = [...(Array.isArray(b2.guardrail_report) ? b2.guardrail_report : []),
+            ...invented.map((t) => ({ beat: t.beat, reason: 'invented_method', sentence: t.sentence }))]
+          if (Array.isArray(b2.shot_list)) {
+            b2.shot_list = syncShotListSpokenText(b2.shot_list as Array<{ spoken_text?: unknown }>, b2.script).shots
+          }
+          console.warn(JSON.stringify({ event: 'invented_method_removed', sentences: invented.length, emptied: emptied.length }))
+          traced = traceLines(b2.script, sources)
+        }
         bp.line_sources = traced
         console.log(JSON.stringify({
           event: 'line_sources_traced', sentences: traced.length,
