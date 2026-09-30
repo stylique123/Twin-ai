@@ -65,3 +65,14 @@ export function traceLines(
   })
   return out
 }
+
+/**
+ * A precise method nobody gave (audit 2026-09-29, the espresso run: tamping,
+ * "honey stream" extraction, a pinch of cinnamon). The writer's rule against
+ * invented technique was ignored twice; this is the deterministic backstop.
+ * Only applied to a sentence that traces to nothing she supplied.
+ */
+const METHOD = /\b(\d+(?:\.\d+)?\s*(?:g|grams?|ml|oz|ounces?|°|degrees?|seconds?|secs?|minutes?|mins?|%)|grams?|milliliters?|degrees|temperature|ratio|dose|dosing|tamp\w*|grind(?:er|ing)?\s+(?:size|setting)|extraction|extract(?:ed|ing)?\s+for|pinch|teaspoons?|tablespoons?|tsp|tbsp|preheat\w*|dial(?:ed|ing)?\s+in|bloom\w*|steep\w*\s+for|brew\s+for|stream)\b/i
+export function isInventedMethod(t: TracedLine): boolean {
+  return t.from.length === 0 && METHOD.test(t.sentence)
+}
