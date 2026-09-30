@@ -36,7 +36,7 @@
 // still costs an explicit assertion. What the suggestion saves is typing, which
 // is the difference between a page nobody fills in and one they finish.
 import { useEffect, useRef, useState } from 'react'
-import { isOutcomeClaim, setBrandForbiddenClaims, setProductForbiddenClaims } from '@twinai/shared'
+import { isOutcomeClaim, setBrandForbiddenClaims, setProductForbiddenClaims, dismissProductSuggestion } from '@twinai/shared'
 // OfferEditor moved to components/ProductFields.tsx so the add form and the panel share it.
 import { OfferEditor, BlurText, StoryFields } from '../components/ProductFields'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -1200,7 +1200,14 @@ export default function ProductLibrary() {
             {availability[e.id]?.availability === 'partly_sold_out' && (
               <span className="rounded-full bg-sand/15 px-2 py-0.5 text-[11px] text-sand">Some sold out</span>
             )}
-            <span className="text-xs font-medium text-teal">Open</span>
+            {/* ⚠️ AUDIT 2026-09-30: a product Twin cannot use yet said so, but
+                offered nothing to do about it. It now names the action. */}
+            {(() => {
+              const st = productLifecycle(e, photoPathsOf(e).length)
+              return st !== 'READY' && st !== 'REVIEW_REQUIRED'
+                ? <span className="rounded-full bg-teal px-3 py-1 text-xs font-semibold text-black" data-testid="add-details">Add details</span>
+                : <span className="text-xs font-medium text-teal">Open</span>
+            })()}
           </span>
         </button>
       ) : (
@@ -2346,7 +2353,7 @@ export default function ProductLibrary() {
                   <button type="button" onClick={() => setOpenBrandId(b.id)}
                     aria-label={`Open ${b.name}`}
                     className="flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-white/[0.03]">
-                    <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-300/80 to-coral/80 text-base font-semibold text-black/80">
+                    <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber to-coral text-base font-semibold text-black ring-1 ring-white/20">
                       {b.name.trim().charAt(0).toUpperCase() || '·'}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -2569,11 +2576,24 @@ export default function ProductLibrary() {
                   // questions, which is the whole point of the page. A button
                   // that promises more than it performs is how a creator decides
                   // the page is broken when nothing appears to happen.
-                  <button
-                    type="button"
-                    className="mt-2 rounded-lg border border-white/15 px-3 py-1 text-xs text-cream hover:border-white/30"
-                    onClick={() => setClaimingId(s.id)}
-                  >This one is mine — add it</button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-white/15 px-3 py-1 text-xs text-cream hover:border-white/30"
+                      onClick={() => setClaimingId(s.id)}
+                    >This one is mine — add it</button>
+                    {/* ⚠️ AUDIT 2026-09-30: a wrong guess could only be ignored.
+                        "Not mine" remembers it, so it is never suggested again. */}
+                    <button
+                      type="button"
+                      data-testid="suggestion-not-mine"
+                      className="rounded-lg px-3 py-1 text-xs text-stone hover:text-cream"
+                      onClick={() => {
+                        void dismissProductSuggestion(s.id).catch(() => undefined)
+                        setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
+                      }}
+                    >Not mine</button>
+                  </div>
                 )}
               </li>
             ))}

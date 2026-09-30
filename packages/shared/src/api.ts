@@ -2284,21 +2284,31 @@ export interface ProductSuggestion {
  *  Rows already represented by an entity are dropped, matched on the entity name
  *  appearing in the claim — deliberately loose, because showing a duplicate is a
  *  smaller failure than hiding a product they have not registered yet. */
+/** "Not mine" on a product suggestion (audit 2026-09-30): the row is stamped
+ *  as excluded, so it is never suggested again and never reaches a script. */
+export async function dismissProductSuggestion(id: string): Promise<void> {
+  const { error } = await supabase.from('creator_knowledge')
+    .update({ creator_excluded_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
 export async function loadProductSuggestions(
   claimed: ReadonlyArray<ProductEntityRecord> = [],
 ): Promise<ProductSuggestion[]> {
   const { data, error } = await supabase
     .from('creator_knowledge')
-    .select('id, text, basis, source, times_seen')
+    .select('id, text, basis, source, times_seen, creator_excluded_at')
     .eq('kind', 'product')
     .order('times_seen', { ascending: false })
   if (error) throw error
+  // "Not mine" (audit 2026-09-30) stamps the row; it is never suggested again.
+  const rows = (data ?? []).filter((r) => !(r as { creator_excluded_at?: string | null }).creator_excluded_at)
 
   const names = claimed
     .map((e) => (e.name ?? '').trim().toLowerCase())
     .filter((n) => n.length > 2)
 
-  return ((data ?? []) as Array<Record<string, unknown>>)
+  return (rows as Array<Record<string, unknown>>)
     .map((r) => ({
       id: String(r.id ?? ''),
       text: String(r.text ?? '').trim(),

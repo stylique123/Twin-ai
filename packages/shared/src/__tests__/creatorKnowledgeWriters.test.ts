@@ -70,6 +70,13 @@ const ALLOWED: Record<string, { ops: string[]; sources: string[]; why: string }>
     sources: ['asked'],
     why: 'A creator\'s own typed answer (question card / typed material); update only stamps creator_confirmed_at.',
   },
+  // 2026-09-30: "Not mine" on a product suggestion stamps creator_excluded_at
+  // on her own row; it writes no text.
+  'packages/shared/src/api.ts': {
+    ops: ['update'],
+    sources: [],
+    why: 'The creator tapping "Not mine" on a product suggestion; stamps creator_excluded_at only.',
+  },
   'supabase/functions/answer-beat-ask/index.ts': {
     ops: ['insert'],
     sources: ['asked'],

@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { cn } from '../lib/cn'
+import { groupLessons, GROUP_TITLE } from '../lib/lessonGroups'
 
 interface Lesson {
   id: string; kind: string; text: string; phrase: string | null; source: string
@@ -42,21 +43,29 @@ export function LearnedFromYou() {
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-stone">Nothing yet. Rate a script and say what you would change; Twin learns from it within a few minutes.</p>
       ) : (
-        <ul className="mt-3 space-y-2">
-          {rows.map((l) => (
-            <li key={l.id} className={cn('rounded-lg border px-3 py-2 text-sm', l.active ? 'border-white/12 text-cream' : 'border-white/5 text-stone')}>
-              <div className="flex items-start justify-between gap-3">
-                <span className={cn(!l.active && 'line-through')}>{l.text}</span>
-                <button type="button" onClick={() => void toggle(l)} className="shrink-0 text-xs text-stone underline underline-offset-2 hover:text-cream">
-                  {l.active ? 'Turn off' : 'Turn on'}
-                </button>
-              </div>
-              <span className="mt-0.5 block text-[11px] text-stone">
-                From {FROM[l.source] ?? 'you'}{l.heard > 1 ? ` · heard ${l.heard}×` : ''}{l.times_used > 0 ? ` · used in ${l.times_used} script${l.times_used === 1 ? '' : 's'}` : ''}
-              </span>
-            </li>
+        <div className="mt-3 space-y-5">
+          {groupLessons(rows).map(({ group, items }) => (
+            <div key={group} data-testid={`lesson-group-${group}`}>
+              <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-stone">{GROUP_TITLE[group]}</h3>
+              <ul className="mt-2 space-y-2">
+                {items.slice(0, group === 'openings' ? 6 : 12).map((l) => (
+                  <li key={l.id} className={cn('rounded-lg border px-3 py-2 text-sm', l.active ? 'border-white/12 text-cream' : 'border-white/5 text-stone')}>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className={cn(!l.active && 'line-through')}>{l.shown}</span>
+                      <button type="button" onClick={() => void toggle(l)} className="shrink-0 text-xs text-stone underline underline-offset-2 hover:text-cream">
+                        {l.active ? 'Turn off' : 'Turn on'}
+                      </button>
+                    </div>
+                    <span className="mt-0.5 block text-[11px] text-stone">
+                      From {FROM[l.source] ?? 'you'}{l.heard > 1 ? ` · heard ${l.heard}×` : ''}{l.times_used > 0 ? ` · used in ${l.times_used} script${l.times_used === 1 ? '' : 's'}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+          <p className="text-[11px] text-stone">Twin's own rules — never invent a detail, a number or a quote you did not give — always apply and are not listed here.</p>
+        </div>
       )}
     </section>
   )
