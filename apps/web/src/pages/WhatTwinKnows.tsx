@@ -7,7 +7,7 @@
 // is an honest window, not a separate feature. RLS decides what she can see.
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listBrandVoices, nicheBucket } from '@twinai/shared'
+import { listBrandVoices, nicheBucket, isPrivate } from '@twinai/shared'
 import { supabase } from '../lib/supabase'
 import { LearnedFromYou } from '../components/LearnedFromYou'
 
@@ -94,7 +94,8 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
             .eq('status', 'found').order('created_at', { ascending: false }).limit(4),
         ])
         if (!alive) return
-        setMine((own.data ?? []) as Note[])
+        // Private matter she marked off-limits is never listed as something to answer.
+        setMine(((own.data ?? []) as Note[]).filter((n) => !isPrivate(`${n.title} ${n.body ?? ''}`)))
         // ⚠️ HER REAL WORDS, NOT ONLY THE PATTERN. A note like "[Thrifted/cheap
         // material] 🤝 [aesthetic upgrade]" read as invented; it came from her
         // caption "thrifted tiles 🤝 coffeebar backsplash". Show that caption.

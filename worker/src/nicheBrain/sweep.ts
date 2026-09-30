@@ -13,6 +13,7 @@ import {
   type CorpusCard, type CorpusRead,
 } from './reader.js'
 import { runMomentWatcher } from './moments.js'
+import { isPrivate } from '../generated/privacyGuard.js'
 import { runIdeaWriter } from './ideas.js'
 import { runLessonLearner } from './lessons.js'
 import { runAvailabilitySweep } from './availabilitySweep.js'
@@ -35,6 +36,9 @@ async function knownSubNiches(bucketHint: string | null): Promise<string[]> {
 
 /** File one note: merge into its twin, or insert and (maybe) link as related. */
 export async function fileNote(n: NoteDraft, sourceId: string, views: number, owner: string | null = null): Promise<string | null> {
+  // ⚖️ ONE DOOR, ONE RULE: private matter (police, neighbours, code
+  // enforcement, health…) is never filed as a note, hers or shared.
+  if (isPrivate(`${n.title} ${n.body ?? ''}`)) return null
   const emb = await geminiEmbed(embedText(n))
   let target: string | null = null
   let relatedTo: string | null = null

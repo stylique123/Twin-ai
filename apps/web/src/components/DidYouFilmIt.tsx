@@ -21,9 +21,11 @@ interface Props {
   /** The generation's own `created_at`. Null when unknown — never treated as
    *  "long ago"; see `filmedAsk`. */
   generatedAt: string | null
+  /** She has recorded a take: ask now rather than waiting days. */
+  recorded?: boolean
 }
 
-export function DidYouFilmIt({ generationId, generatedAt }: Props) {
+export function DidYouFilmIt({ generationId, generatedAt, recorded = false }: Props) {
   const [outcome, setOutcome] =
     useState<{ was_filmed: boolean | null; filmed_answered_at: string | null } | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -45,7 +47,7 @@ export function DidYouFilmIt({ generationId, generatedAt }: Props) {
   // predates the table — the 85 that can never be answered.
   if (!loaded) return null
 
-  const ask = filmedAsk({ outcome, generatedAt, now: Date.now() })
+  const ask = filmedAsk({ outcome, generatedAt, now: Date.now(), recorded })
   if (ask.kind === 'no_row' || ask.kind === 'too_soon') return null
 
   const answer = async (filmed: boolean) => {

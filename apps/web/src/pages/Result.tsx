@@ -16,6 +16,7 @@ const UPLOAD_URLS: Record<string, string> = {
   instagram: 'https://www.instagram.com/',
 }
 import { ScriptIntentAsk } from '../components/ScriptIntentAsk'
+import { FocusTeleprompter } from '../components/FocusTeleprompter'
 import { recordScriptIntent } from '../lib/api'
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getPendingSourceAsset, pollSourceAssetReady, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
 import { explainFailure } from '../lib/api'
@@ -39,7 +40,7 @@ import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedT
 import WouldYouPostThis from '../components/WouldYouPostThis'
 import { DidYouFilmIt } from '../components/DidYouFilmIt'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
-import { cameFromAReference, spokenLineIsAnAsk, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime, readBeatPlan,
+import { cameFromAReference, notBilledNotice, shootingNoteAt, hookVarietyNote, isSilentBeat, lengthSentence, measureScriptLength, readVisualHook, shotLabel, stockPhraseNote, stockPhrasesIn , advisoryNote, type AdvisoryFinding, parallelTriadsIn, parallelTriadNote, craftContractNotes, sentenceUniformityNote, compareRuntime, spokenTime, readBeatPlan,
   // ⚠️ MERGED INTO THE EXISTING BLOCK, NOT ADDED AS A SECOND ONE. Six wiring
   // tests match the FIRST `@twinai/shared` import in this file to prove a card
   // reads a shared helper; a new import above them answered for all six at
@@ -305,6 +306,7 @@ export default function Result() {
   const [needsApproval, setNeedsApproval] = useState<boolean | null>(null)
   const [mobileTab, setMobileTab] = useState<'script' | 'strategy' | 'spec' | 'publish'>('script')
   const [activeTab, setActiveTab] = useState<'strategy' | 'spec' | 'publish'>('strategy')
+  const [focusOpen, setFocusOpen] = useState(false)
   // On-demand AI thumbnail (parity with the V2 plan): signed URL + busy/error.
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   useEffect(() => {
@@ -902,10 +904,22 @@ export default function Result() {
     return rows
   })()
   // ⚖️ A BEAT WITH NOTHING ON FILE IS LEFT OUT, NOT ASKED MID-SCRIPT (coffee report 2.4).
-  const dropped = Array.isArray((raw as { dropped_beats?: unknown }).dropped_beats)
-    ? ((raw as { dropped_beats: Array<{ section?: string }> }).dropped_beats) : []
+  // ⚠️ AUDIT 2026-09-30: the page said "7 scenes" over eight cards and "the
+  // hook was left out" beside a hook. A hook put back in front is counted, and
+  // a dropped hook beat is not reported while a hook is shown. (The count sits
+  // beside the script, as `scriptLengthOnScreen.test.ts` pins.)
+  // ⚠️ AUDIT 2026-09-30: the shot list repeated every spoken line under "What
+  // to say", printing the script twice. The scene cards already carry the
+  // framing for her talking shots, so this list is only the extra clips.
+  const extraClips = shotRows.filter((r) => r.shot_type !== 'talking_head')
+  const hookAdded = shotRows.length > b.shot_list.length ? 1 : 0
+  const sceneCount = updatedScript.length + hookAdded
+  const hookShown = (chosenHook ?? '').trim() !== ''
+  const dropped = (Array.isArray((raw as { dropped_beats?: unknown }).dropped_beats)
+    ? ((raw as { dropped_beats: Array<{ section?: string }> }).dropped_beats) : [])
+    .filter((d) => !(hookShown && /\bhook\b/i.test(String(d.section ?? ''))))
   const droppedLine = dropped.length > 0
-    ? `Twin left out ${dropped.length === 1 ? 'one part' : `${dropped.length} parts`} (${dropped.map((d) => d.section || 'a beat').join(', ')}) because nothing you gave Twin covered ${dropped.length === 1 ? 'it' : 'them'}, so the script is shorter rather than made up. Add the detail in your idea and remake it to include ${dropped.length === 1 ? 'it' : 'them'}.`
+    ? `Twin left out ${dropped.length === 1 ? 'one part' : `${dropped.length} parts`} (${dropped.map((d) => d.section || 'a beat').join(', ')}) because nothing you gave Twin covered ${dropped.length === 1 ? 'it' : 'them'}, or ${dropped.length === 1 ? 'it' : 'they'} said something you asked Twin not to use, so the script is shorter rather than made up. Add the detail in your idea and remake it to include ${dropped.length === 1 ? 'it' : 'them'}.`
     : null
   const noStoryLine = (b.reference_read as { reference_has_story?: boolean | null }).reference_has_story === false
     ? 'The reference is tips or a list with no personal story in it — so any story in this script comes from what you told Twin, not from the reference.'
@@ -1001,7 +1015,6 @@ export default function Result() {
               ⚖️ IT GATES ITSELF. `filmedAsk` renders nothing when there is no
               outcome row (every generation older than 0191) or when it is too
               soon, so no condition is duplicated here where it could drift. */}
-          <DidYouFilmIt generationId={gen.id} generatedAt={gen.created_at ?? null} />
           {/* One-tap rating a few seconds after the script appears; feeds the niche brain. */}
           <RateThisScript generationId={gen.id} ownerId={profile?.id ?? null} />
 
@@ -1011,14 +1024,12 @@ export default function Result() {
             transition={{ duration: 0.5, ease: EASE }}
             className="mt-8"
           >
-            <h1 className="mt-3 font-display text-3xl leading-tight tracking-tight text-cream sm:text-4xl">
-              {b.reference_read.format_label}
+            {/* ⚠️ AUDIT 2026-09-30: the title was the internal format label
+                ("Direct Q and A Confessional"). It is her hook — what the video
+                opens on — and the label only stands in when there is none. */}
+            <h1 className="mt-3 max-w-4xl font-display text-2xl leading-tight tracking-tight text-cream sm:text-3xl">
+              {(chosenHook || b.hook_options[0] || '').trim() || b.reference_read.format_label}
             </h1>
-            {chosenHook && (
-              <p className="mt-4 max-w-4xl font-heading text-base leading-relaxed text-cream/90 italic pl-3 border-l border-white/10">
-                “{chosenHook}”
-              </p>
-            )}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {/* ⚠️⚠️ NEITHER CHIP MAY APPEAR WITHOUT A REFERENCE, and both used to.
                   Measured 2026-09-07: all FOUR referenceless generations carry
@@ -1327,12 +1338,12 @@ export default function Result() {
               <div className="flex flex-col rounded-card border border-teal/25 bg-teal/[0.06] p-4">
                 <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal">Your video idea</div>
                 <p className="text-sm font-semibold leading-snug text-cream">{b.concept.premise}</p>
-                {b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Film it solo: </span>{b.concept.your_scale}</p>}
+                {hasReference && b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Film it solo: </span>{b.concept.your_scale}</p>}
                 {/* ⚖️ ITEM 26: a round-up/comparison reference built for ONE product says so. */}
                 {typeof (raw as { reference_scope_note?: unknown }).reference_scope_note === 'string' && (
                   <p className="mt-1.5 text-xs leading-snug text-sand/85">{(raw as { reference_scope_note: string }).reference_scope_note}</p>
                 )}
-                {b.concept.translations?.length ? (
+                {hasReference && b.concept.translations?.length ? (
                   <div className="mt-2 space-y-1">
                     {b.concept.translations.map((t, i) => (
                       <div key={i} className="text-xs leading-snug"><span className="text-stone">{t.theirs}</span><span className="text-teal"> → </span><span className="text-cream">{t.yours}</span></div>
@@ -1464,7 +1475,7 @@ export default function Result() {
                 <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
                   <FileText className="h-4 w-4 text-stone" /> Script teleprompter
                 </h2>
-                <span className="text-xs text-stone">{updatedScript.length} scenes</span>
+                <span className="text-xs text-stone">{sceneCount} scenes</span>
               </div>
               <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
@@ -1529,12 +1540,12 @@ export default function Result() {
             </div>
 
             {/* Shot List */}
-            <div className="space-y-4">
+            <div className={extraClips.length === 0 ? "hidden" : "space-y-4"}>
               <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
-                <Clapperboard className="h-4 w-4 text-stone" /> Shots & extra clips
+                <Clapperboard className="h-4 w-4 text-stone" /> Extra clips
               </h2>
               <div className="grid grid-cols-1 gap-4">
-                {shotRows.map((s, i) => {
+                {extraClips.map((s, i) => {
                   const isBroll = s.shot_type === 'b_roll'
                   const isTalkingHead = s.shot_type === 'talking_head'
                   const isReplicate = s.b_roll_type === 'replicate'
@@ -1621,14 +1632,6 @@ export default function Result() {
                           enough." — under this exact heading. Nobody says "one
                           sentence is enough" on camera. The ask still reaches
                           her on the question card, where it is a question. */}
-                      {s.spoken_text && s.spoken_text.trim() !== '' && !spokenLineIsAnAsk(s.spoken_text) && (
-                        <div className="border-t border-white/[0.04] pt-3 mt-3">
-                          <span className="text-[9px] font-bold text-stone uppercase tracking-wider block mb-1">What to say</span>
-                          <p className="text-xs italic text-sand pl-2 border-l border-teal/30 leading-relaxed">
-                            “{s.spoken_text}”
-                          </p>
-                        </div>
-                      )}
                     </div>
                   )
                 })}
@@ -1672,6 +1675,12 @@ export default function Result() {
                   className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-6 shadow-glass backdrop-blur-md"
                 >
                   <TestViewers generationId={gen.id} />
+                  <button type="button" onClick={() => setFocusOpen(true)} data-testid="focus-mode-open"
+                    className="w-full rounded-full border border-teal/30 bg-teal/10 px-4 py-2 text-xs font-semibold text-teal hover:bg-teal/20">
+                    Read it in focus mode
+                  </button>
+                  <details className="space-y-6">
+                    <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-stone">How the script is built</summary>
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-stone" />
@@ -1705,6 +1714,7 @@ export default function Result() {
                       ))}
                     </div>
                   </div>
+                  </details>
                 </motion.div>
               )}
 
@@ -1870,7 +1880,7 @@ export default function Result() {
                   <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
                     <FileText className="h-4 w-4 text-stone" /> Script teleprompter
                   </h2>
-                  <span className="text-xs text-stone">{updatedScript.length} scenes</span>
+                  <span className="text-xs text-stone">{sceneCount} scenes</span>
                 </div>
                 <p className="text-xs text-stone/80">{lengthLine}</p>
               {referenceCompareLine && <p className="text-xs text-stone/80">{referenceCompareLine}</p>}
@@ -1905,12 +1915,12 @@ export default function Result() {
               </div>
 
               {/* Shot List */}
-              <div className="space-y-4">
+              <div className={extraClips.length === 0 ? "hidden" : "space-y-4"}>
                 <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
-                  <Clapperboard className="h-4 w-4 text-stone" /> Shots & extra clips
+                  <Clapperboard className="h-4 w-4 text-stone" /> Extra clips
                 </h2>
                 <div className="grid grid-cols-1 gap-4">
-                  {shotRows.map((s, i) => {
+                  {extraClips.map((s, i) => {
                     const isBroll = s.shot_type === 'b_roll'
                     const isTalkingHead = s.shot_type === 'talking_head'
                     const isReplicate = s.b_roll_type === 'replicate'
@@ -1992,14 +2002,6 @@ export default function Result() {
                           enough." — under this exact heading. Nobody says "one
                           sentence is enough" on camera. The ask still reaches
                           her on the question card, where it is a question. */}
-                      {s.spoken_text && s.spoken_text.trim() !== '' && !spokenLineIsAnAsk(s.spoken_text) && (
-                          <div className="border-t border-white/[0.04] pt-3 mt-3">
-                            <span className="text-[9px] font-bold text-stone uppercase tracking-wider block mb-1">What to say</span>
-                            <p className="text-xs italic text-sand pl-2 border-l border-teal/30 leading-relaxed">
-                              “{s.spoken_text}”
-                            </p>
-                          </div>
-                        )}
                       </div>
                     )
                   })}
@@ -2011,6 +2013,12 @@ export default function Result() {
           {mobileTab === 'strategy' && (
             <div className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-6 shadow-glass backdrop-blur-md">
               <TestViewers generationId={gen.id} />
+                  <button type="button" onClick={() => setFocusOpen(true)} data-testid="focus-mode-open"
+                    className="w-full rounded-full border border-teal/30 bg-teal/10 px-4 py-2 text-xs font-semibold text-teal hover:bg-teal/20">
+                    Read it in focus mode
+                  </button>
+                  <details className="space-y-6">
+                    <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-stone">How the script is built</summary>
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-stone" />
@@ -2041,6 +2049,7 @@ export default function Result() {
                   ))}
                 </div>
               </div>
+              </details>
             </div>
           )}
           {mobileTab === 'strategy' && (
@@ -2112,6 +2121,22 @@ export default function Result() {
           )}
         </div>
 
+      </div>
+
+      {focusOpen && (
+        <FocusTeleprompter
+          lines={[
+            ...((chosenHook ?? '').trim() && !updatedScript.some((x) => String(x.line ?? '').trim() === (chosenHook ?? '').trim()) ? [chosenHook] : []),
+            ...updatedScript.map((x) => String(x.line ?? '')),
+          ]}
+          onClose={() => setFocusOpen(false)}
+        />
+      )}
+      {/* ⚠️ AUDIT 2026-09-30: asked at the top, before she had recorded
+          anything. It now sits after the script, and appears only once she
+          has a take or comes back to a script some days old. */}
+      <div className="mx-auto mt-8 max-w-7xl px-4">
+        <DidYouFilmIt generationId={gen.id} generatedAt={gen.created_at ?? null} recorded={!!(gen.take_path || gen.edit_path || rawTakePath)} />
       </div>
 
     </main>

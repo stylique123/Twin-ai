@@ -28,6 +28,7 @@ import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptV
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
 import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
+import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
@@ -1907,7 +1908,7 @@ const NICHE_BUCKET_PATTERNS_INLINE: ReadonlyArray<{ bucket: string; test: RegExp
   { bucket: 'business', test: /\b(entrepreneur\w*|business\w*|startups?|founders?|scal\w+|hustles?|wealth|sales|b2b|saas|marketing|real estate|investing|property|resale|e-?commerce|viral products?|product ideas?)\b/i },
   { bucket: 'tech', test: /\b(ai|artificial intelligence|tech\w*|coding|software|develop\w*|android|ios|apps?)\b/i },
   { bucket: 'beauty_fashion', test: /\b(beauty|skincare|fashion|makeup|style|grooming)\b/i },
-  { bucket: 'food', test: /\b(food|bak\w+|cook\w*|recipes?|kitchen|micro-?bakery)\b/i },
+  { bucket: 'food', test: /\b(food|bak\w+|cook\w*|recipes?|kitchen|micro-?bakery|coffee|roast\w*|espresso|caf(e|é)s?|barista\w*|brew\w*)\b/i },
   { bucket: 'health', test: /\b(fitness|health\w*|physio\w*|training|wellness|rehab)\b/i },
   { bucket: 'creator', test: /\b(content creation|creators?|youtube|tiktok|short-?form|videography)\b/i },
   { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?|illusions?|magic)\b/i },
@@ -2029,6 +2030,12 @@ function inHerLane(rows: readonly BrainNoteInline[], herBucket: string | null, h
   }
   return rows.filter((r) => {
     if (!r) return false
+    // ⚠️ AUDIT 2026-09-30: a test viewer's question about a neighbour calling
+    // code enforcement was filed as HER objection and handed to the writer to
+    // "pre-empt". Private matter never reaches the prompt, hers or not; and a
+    // follow-ask close is never offered as one that works.
+    if (isPrivate(`${r.title} ${r.body ?? ''}`)) return false
+    if (r.kind === 'cta' && isFollowAsk(r.title)) return false
     if (r.is_hers) return true
     if (sub !== '' && (r.sub_niche ?? '').toLowerCase() === sub) return true
     // Facts (topics, proof, objections) must be about HER subject.
@@ -2238,7 +2245,19 @@ function renderNicheVocabularyInline(
 function nicheBucketInline(niche: unknown): string | null {
   const t = typeof niche === 'string' ? niche.trim() : ''
   if (t === '') return null
-  return NICHE_BUCKET_PATTERNS_INLINE.find((b) => b.test.test(t))?.bucket ?? null
+  const first = NICHE_BUCKET_PATTERNS_INLINE.find((b) => b.test.test(t))?.bucket ?? null
+  // ⚠️ AUDIT 2026-09-30: "micro coffee roasting business" landed in the broad
+  // business bucket on the word "business" alone, so her niche page and her
+  // writer were fed dropshipping and Prime Day. When "business" is only the
+  // generic suffix and a specific bucket also matches, the specific one wins.
+  if (first === 'business') {
+    const bare = t.replace(/\b(small |micro |home |local )?business(es)?\b/gi, ' ')
+    if (!NICHE_BUCKET_PATTERNS_INLINE[0].test.test(bare)) {
+      const specific = NICHE_BUCKET_PATTERNS_INLINE.find((b) => ['food', 'beauty_fashion', 'health', 'making', 'automotive'].includes(b.bucket) && b.test.test(bare))
+      if (specific) return specific.bucket
+    }
+  }
+  return first
 }
 
 /** Mirrors MIN_COHORT. Twenty cards before a cohort may recommend anything. */
@@ -8812,9 +8831,29 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // knowledge is chosen by topic, never by which product was selected. When a
     // product IS selected, an item that names another of her products and not
     // this one is held back: it belongs to that other product's script.
+    // ⚠️ AUDIT 2026-09-30 (THE COFFEE-CART IDEA RUN): with NOTHING picked there
+    // was no scoping at all, so a fact naming her brand and a roast reached an
+    // Idea script and was said aloud as a plug. With no pick, a fact that names
+    // any product or the brand she did not pick is held back here, and the
+    // final script is held to the same rule after writing.
+    const namesNotPicked = unpickedNames(
+      [...csEntities.map((e) => e.name), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')],
+      [String((ownedEntity as { name?: unknown } | null)?.name ?? ''),
+        ...(ownedEntity ? [String((confirmedBrand as { name?: unknown } | null)?.name ?? '')] : []),
+        ...csEntities.filter((e) => e.id === String(body.mentioned_product_id ?? '')).map((e) => e.name)],
+      [reference_note, ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string')].join(' '),
+    )
     const focusOrdered = (() => {
       const chosenName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim().toLowerCase()
-      if (!chosenName) return focusOrderedAll
+      if (!chosenName) {
+        if (namesNotPicked.length === 0) return focusOrderedAll
+        const kept = focusOrderedAll.filter((k) => !namedIn(
+          `${String((k as { text?: unknown }).text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`, namesNotPicked))
+        if (kept.length !== focusOrderedAll.length) {
+          console.log(JSON.stringify({ event: 'knowledge_held_back_unpicked', held_back: focusOrderedAll.length - kept.length }))
+        }
+        return kept
+      }
       const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ')
       const words = (n: string) => norm(n).split(/\s+/).filter((w) => w.length >= 3 && !['the', 'and', 'for', 'with', 'ceramic', 'handmade', 'small', 'large', 'red', 'blue'].includes(w))
       const mine = new Set(words(chosenName))
@@ -13940,6 +13979,58 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
       }
     } catch { /* the guard never fails a generation */ }
+
+    // ⚠️ AUDIT 2026-09-30: AN IDEA HAS NO REFERENCE. The concept schema asks
+    // how "the reference" scales down, so an Idea run invented one ("the
+    // reference relies on fast paced founder dialogue") while the page said no
+    // reference was read. With no reference URL, those fields are not shipped.
+    if (!reference_url) {
+      const c = (blueprint as { concept?: Record<string, unknown> }).concept
+      if (c && typeof c === 'object') { delete c.your_scale; delete c.translations }
+    }
+
+    // ⚠️ AUDIT 2026-09-30: THE TWO RULES THE PROMPT ONLY ADVISED. A sentence
+    // naming a product or brand she did not pick, and a follow ask she did not
+    // choose ("Follow for Part 2"), are removed from the finished script. A beat
+    // left empty is dropped and disclosed, never refilled.
+    try {
+      const bp = blueprint as { script?: unknown; shot_list?: unknown; dropped_beats?: unknown; guardrail_report?: unknown }
+      if (Array.isArray(bp.script)) {
+        const ruled = enforceScriptRules(bp.script as Array<{ line?: unknown }>, {
+          unpicked: namesNotPicked,
+          followAllowed: String(body.outcome ?? '') === 'follow',
+        })
+        // The hook options are held to the same rules: a hook that says
+        // something excluded, private, an unpicked product or a follow ask is
+        // not offered, so the page can never show a hook the script refused.
+        const bh = blueprint as { hook_options?: unknown }
+        if (Array.isArray(bh.hook_options)) {
+          const opts = bh.hook_options.filter((h): h is string => typeof h === 'string')
+          const safeOpts = opts.filter((h) =>
+            !guardScript([{ line: h }], { allowedText: '', excludedTexts: guardExcludedTexts }).removed.some((r) => r.reason === 'private' || r.reason === 'excluded')
+            && enforceScriptRules([{ line: h }], { unpicked: namesNotPicked, followAllowed: String(body.outcome ?? '') === 'follow' }).removed.length === 0)
+          if (safeOpts.length && safeOpts.length !== opts.length) {
+            bh.hook_options = safeOpts
+            console.warn(JSON.stringify({ event: 'hook_options_ruled_out', removed: opts.length - safeOpts.length }))
+          }
+        }
+        if (ruled.removed.length) {
+          const emptied = ruled.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
+          bp.script = ruled.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
+          if (emptied.length) bp.dropped_beats = [...(Array.isArray(bp.dropped_beats) ? bp.dropped_beats : []), ...emptied]
+          bp.guardrail_report = [...(Array.isArray(bp.guardrail_report) ? bp.guardrail_report : []), ...ruled.removed]
+          if (Array.isArray(bp.shot_list)) {
+            bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>).shots
+          }
+          console.warn(JSON.stringify({
+            event: 'script_rule_removed',
+            unpicked_product: ruled.removed.filter((r) => r.reason === 'unpicked_product').length,
+            follow_ask: ruled.removed.filter((r) => r.reason === 'follow_ask').length,
+            emptied: emptied.length,
+          }))
+        }
+      }
+    } catch { /* the rule check never fails a generation */ }
 
     // ⚖️ WHERE EACH LINE CAME FROM (fact-scoping part 3): every spoken sentence
     // traced to the fact, her words, the product or the brand it rests on, so

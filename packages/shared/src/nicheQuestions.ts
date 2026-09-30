@@ -65,7 +65,7 @@ const BUCKET_PATTERNS: ReadonlyArray<{ bucket: NicheBucket; test: RegExp }> = [
   { bucket: 'business', test: /\b(entrepreneur\w*|business\w*|startups?|founders?|scal\w+|hustles?|wealth|sales|b2b|saas|marketing|real estate|investing|property|resale|e-?commerce|viral products?|product ideas?)\b/i },
   { bucket: 'tech', test: /\b(ai|artificial intelligence|tech\w*|coding|software|develop\w*|android|ios|apps?)\b/i },
   { bucket: 'beauty_fashion', test: /\b(beauty|skincare|fashion|makeup|style|grooming)\b/i },
-  { bucket: 'food', test: /\b(food|bak\w+|cook\w*|recipes?|kitchen|micro-?bakery)\b/i },
+  { bucket: 'food', test: /\b(food|bak\w+|cook\w*|recipes?|kitchen|micro-?bakery|coffee|roast\w*|espresso|caf(e|é)s?|barista\w*|brew\w*)\b/i },
   { bucket: 'health', test: /\b(fitness|health\w*|physio\w*|training|wellness|rehab)\b/i },
   { bucket: 'creator', test: /\b(content creation|creators?|youtube|tiktok|short-?form|videography)\b/i },
   { bucket: 'entertainment', test: /\b(entertainment|humou?r|comedy|challenges?|dubbing|music|skits?|illusions?|magic)\b/i },
@@ -104,7 +104,19 @@ const BUCKET_PATTERNS: ReadonlyArray<{ bucket: NicheBucket; test: RegExp }> = [
 export function nicheBucket(niche: unknown): NicheBucket | null {
   const t = typeof niche === 'string' ? niche.trim() : ''
   if (t === '') return null
-  return BUCKET_PATTERNS.find((b) => b.test.test(t))?.bucket ?? null
+  const first = BUCKET_PATTERNS.find((b) => b.test.test(t))?.bucket ?? null
+  // ⚠️ AUDIT 2026-09-30: "micro coffee roasting business" landed in the broad
+  // business bucket on the word "business" alone, so her niche page and her
+  // writer were fed dropshipping and Prime Day. When "business" is only the
+  // generic suffix and a specific bucket also matches, the specific one wins.
+  if (first === 'business') {
+    const bare = t.replace(/\b(small |micro |home |local )?business(es)?\b/gi, ' ')
+    if (!BUCKET_PATTERNS[0].test.test(bare)) {
+      const specific = BUCKET_PATTERNS.find((b) => ['food', 'beauty_fashion', 'health', 'making', 'automotive'].includes(b.bucket) && b.test.test(bare))
+      if (specific) return specific.bucket
+    }
+  }
+  return first
 }
 
 /**

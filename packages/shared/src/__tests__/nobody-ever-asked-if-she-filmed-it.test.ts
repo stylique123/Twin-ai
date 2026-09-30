@@ -191,7 +191,7 @@ describe('the question reaches a creator', () => {
     // ⚠️ A COMPONENT NOTHING RENDERS is the defect class this session has
     // closed eleven times. The panel is useless without `generatedAt` — it
     // would never leave `too_soon`.
-    expect(RESULT).toMatch(/<DidYouFilmIt generationId=\{gen\.id\} generatedAt=\{gen\.created_at \?\? null\} \/>/)
+    expect(RESULT).toMatch(/<DidYouFilmIt generationId=\{gen\.id\} generatedAt=\{gen\.created_at \?\? null\} recorded=\{/)
     expect(RESULT).toMatch(/import \{ DidYouFilmIt \}/)
   })
 
@@ -215,5 +215,16 @@ describe('the question reaches a creator', () => {
 
   it('it reads filmed_answered_at, which is why the column may exist', () => {
     expect(PANEL).toMatch(/ask\.answeredAt/)
+  })
+})
+
+describe('audit 2026-09-30: not before she could have filmed it', () => {
+  const NOW2 = Date.parse('2026-09-30T12:00:00Z')
+  const row = { was_filmed: null, filmed_answered_at: null }
+  it('a day-old script she has not recorded is not asked about', () => {
+    expect(filmedAsk({ outcome: row, generatedAt: new Date(NOW2 - 24 * 3600e3).toISOString(), now: NOW2 }).kind).toBe('too_soon')
+  })
+  it('a recorded take asks at once', () => {
+    expect(filmedAsk({ outcome: row, generatedAt: new Date(NOW2 - 60e3).toISOString(), now: NOW2, recorded: true }).kind).toBe('ask')
   })
 })
