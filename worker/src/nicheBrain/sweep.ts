@@ -180,6 +180,7 @@ export async function runBrainSweep(log: Log): Promise<void> {
       bucket: r?.bucket ?? null, sub_niche: r?.sub_niche ?? null, topic: r?.topic ?? null,
       mode: r?.mode ?? null, goal: r?.goal ?? null, language: r?.language ?? null,
       hook_type: r?.hook_type ?? null, hook_pattern: r?.hook_pattern ?? null,
+      hook_move: r?.hook_move ?? null, hook_gap: r?.hook_gap ?? null,
       structure: r?.structure ?? null, persuasion: r?.persuasion ?? null,
       why_it_works: r?.why_it_works ?? null, views: views || null, model, failure,
       read_at: new Date().toISOString(),

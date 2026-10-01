@@ -22,6 +22,15 @@ export const BRAIN_BUCKETS = [
 export const MODES = ['educate', 'entertain', 'teach', 'inspire', 'sell'] as const
 export const GOALS = ['views', 'leads', 'sales', 'authority', 'community'] as const
 
+/** Kept in step with HOOK_MOVES in packages/shared/src/script/scriptFamily.ts
+ *  (owner brief 2026-10-01): "bold claim" was 42–73% of every family, so the
+ *  old free label could not tell a coach hook from a product hook. Pinned by a test. */
+export const HOOK_MOVE_IDS = [
+  'reveal_verdict', 'someone_result', 'buyer_callout', 'counted_list', 'contrarian_order', 'insider_credential',
+  'question_answered', 'mid_step', 'confession', 'shared_list', 'cold_open', 'stakes_number', 'other',
+] as const
+export const HOOK_GAPS = ['open', 'closed', 'none'] as const
+
 export interface CorpusCard {
   id: string
   title?: string | null
@@ -41,6 +50,8 @@ export interface CorpusRead {
   language: string | null
   hook_type: string | null
   hook_pattern: string | null
+  hook_move: string | null
+  hook_gap: string | null
   structure: { before_ask: string | null; ask: string | null; after_ask: string | null } | null
   persuasion: { proof: string | null; objection: string | null; cta: string | null } | null
   why_it_works: string | null
@@ -56,6 +67,8 @@ export const READER_SYSTEM = [
   '- mode and goal: what it is trying to do.',
   '- hook_type: a short label (e.g. "question", "bold claim", "pov", "result first", "myth bust", "list").',
   '- hook_pattern: the opening as a reusable template with [slots], not the literal words.',
+  '- hook_move: the SHAPE of the opening, one of the allowed moves: reveal_verdict (shows the thing + a verdict), someone_result (a person\'s result), buyer_callout (names the exact viewer), counted_list (promises a count), contrarian_order (rejects default advice), insider_credential (what an insider knows), question_answered (asks the viewer\'s question), mid_step (opens already doing it), confession (first-person admission), shared_list (shared experience), cold_open (inside a scene), stakes_number (a day count or amount), other.',
+  '- hook_gap: open if the opening raises a question and holds the answer back; closed if it states its own conclusion; none if there is no tension.',
   '- structure: what comes before the ask/payoff, the ask or payoff, and after it.',
   '- persuasion: proof used, objection answered, call to action — null where absent.',
   '- why_it_works: one concrete sentence a creator can act on. No generic "uses hashtags".',
@@ -72,6 +85,8 @@ export const READER_SCHEMA = {
     mode: { type: 'STRING', nullable: true, enum: [...MODES] },
     goal: { type: 'STRING', nullable: true, enum: [...GOALS] },
     language: S, hook_type: S, hook_pattern: S,
+    hook_move: { type: 'STRING', nullable: true, enum: [...HOOK_MOVE_IDS] },
+    hook_gap: { type: 'STRING', nullable: true, enum: [...HOOK_GAPS] },
     structure: { type: 'OBJECT', nullable: true, properties: { before_ask: S, ask: S, after_ask: S } },
     persuasion: { type: 'OBJECT', nullable: true, properties: { proof: S, objection: S, cta: S } },
     why_it_works: S,
@@ -108,7 +123,7 @@ export function normalizeRead(raw: unknown): CorpusRead {
   if (!readable) {
     return {
       readable: false, bucket: null, sub_niche: null, topic: null, mode: null, goal: null, language: null,
-      hook_type: null, hook_pattern: null, structure: null, persuasion: null, why_it_works: null,
+      hook_type: null, hook_pattern: null, hook_move: null, hook_gap: null, structure: null, persuasion: null, why_it_works: null,
     }
   }
   return {
@@ -121,6 +136,8 @@ export function normalizeRead(raw: unknown): CorpusRead {
     language: txt(r.language, 30),
     hook_type: txt(r.hook_type, 40)?.toLowerCase() ?? null,
     hook_pattern: txt(r.hook_pattern, 200),
+    hook_move: pick(r.hook_move, HOOK_MOVE_IDS),
+    hook_gap: pick(r.hook_gap, HOOK_GAPS),
     structure: st ? { before_ask: txt(st.before_ask), ask: txt(st.ask), after_ask: txt(st.after_ask) } : null,
     persuasion: pe ? { proof: txt(pe.proof), objection: txt(pe.objection), cta: txt(pe.cta) } : null,
     why_it_works: txt(r.why_it_works, 300),
