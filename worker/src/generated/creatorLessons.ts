@@ -115,6 +115,8 @@ interface AudienceTestLike {
   panel_size?: unknown
   /** What landed and why (owner audit 2026-10-01): the positive signal. */
   working?: unknown
+  /** Facts only she can give that her viewers needed (0257). */
+  needs_her?: unknown
 }
 
 /** What her test viewers taught: the winning hook as an example, a repeated gap as a rule. */
@@ -145,6 +147,15 @@ export function lessonsFromAudience(t: AudienceTestLike): CreatorLesson[] {
   for (const w of working.slice(0, 2)) {
     if (typeof w?.what !== 'string' || typeof w?.why !== 'string') continue
     out.push({ kind: 'style', phrase: null, source: 'audience', weight: 1, text: `Worked with her test viewers: ${w.what.slice(0, 120)} — ${w.why.slice(0, 120)} Keep doing this.` })
+  }
+  // ⚠️ MOAT AUDIT 2026-10-01 (3.1): the SPECIFIC gap ("what size batch do you
+  // roast?") used to evaporate — only a generic rule survived. An unanswered
+  // one is now a standing lesson: the writer keeps that line general instead
+  // of inventing the answer next time. Answered ones are already her facts.
+  const needs = Array.isArray(t.needs_her) ? t.needs_her as Array<{ question?: unknown; answer?: unknown }> : []
+  for (const q of needs.slice(0, 2)) {
+    if (typeof q?.question !== 'string' || typeof q?.answer === 'string') continue
+    out.push({ kind: 'avoid', phrase: null, source: 'audience', weight: 1, text: `Her viewers needed a fact she has not given yet: "${q.question.slice(0, 160)}" Never invent it; keep that line general until she answers.` })
   }
   for (const f of fixes) {
     const issue = String(f?.issue ?? '')
