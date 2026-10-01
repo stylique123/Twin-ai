@@ -71,7 +71,7 @@ export async function runLessonLearner(log: Log): Promise<void> {
 
   // 2. Her test viewers: the hook that stopped most, and gaps they keep flagging.
   const { data: tests } = await db.from('audience_tests')
-    .select('generation_id, owner_id, hooks, fixes, panel_size, working')
+    .select('generation_id, owner_id, hooks, fixes, panel_size, working, needs_her')
     .eq('status', 'done').is('lessons_at', null).limit(20)
   for (const t of tests ?? []) {
     let allSaved = true

@@ -13,6 +13,7 @@ import {
   type CorpusCard, type CorpusRead,
 } from './reader.js'
 import { runMomentWatcher } from './moments.js'
+import { runNicheResearch } from './nicheResearch.js'
 import { isPrivate } from '../generated/privacyGuard.js'
 import { runIdeaWriter } from './ideas.js'
 import { runLessonLearner } from './lessons.js'
@@ -145,6 +146,7 @@ export function kickBrainSweep(log: Log): void {
     await runLearner(log)
     await runLessonLearner(log)
     await runMomentWatcher(log)
+    await runNicheResearch(log)
     await runIdeaWriter(log)
     await runAvailabilitySweep(log)
     await runShapeSweep(log)

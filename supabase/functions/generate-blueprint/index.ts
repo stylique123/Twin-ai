@@ -2123,6 +2123,19 @@ function renderMomentsInline(rows: readonly MomentInline[]): string {
   const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
   return `\n\nWHAT THE WORLD IS TALKING ABOUT — from today's web search for her niche. Use one ONLY if it connects naturally to her product and this video's goal; a forced tie-in is worse than none.\n<<<UNTRUSTED_DATA world moments\n${body}\nEND_UNTRUSTED_DATA>>>`
 }
+// ⚠️ OWNER 2026-10-01 ("the moat"): every sub-niche a creator brings is
+// researched on its own (worker/src/nicheBrain/nicheResearch.ts, 0259) — dated
+// days, news, new products, competitors, live questions — with real sources only.
+// It is context for the IDEA and the ANGLE, never a fact about her (one source).
+interface NicheResearchItemInline { kind?: string; name?: string; when?: string | null; detail?: string | null }
+function renderNicheResearchInline(items: readonly NicheResearchItemInline[]): string {
+  const rows = (Array.isArray(items) ? items : []).filter((m) => m && typeof m.name === 'string').slice(0, 10)
+  if (rows.length === 0) return ''
+  const label: Record<string, string> = { date: 'coming up', news: 'news', product: 'new product', competitor: 'others in the niche', question: 'people are asking' }
+  const lines = rows.map((m) => `  - [${label[String(m.kind)] ?? 'note'}] ${String(m.name).slice(0, 110)}${m.when ? ` (${String(m.when).slice(0, 60)})` : ''}${m.detail ? ` — ${String(m.detail).slice(0, 200)}` : ''}`)
+  const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
+  return `\n\nWHAT IS HAPPENING IN HER SUB-NICHE — researched from the web this week. Use a date, a question or a piece of news ONLY if it fits this video naturally. Never present a competitor's or a product's details as hers, and never state any of this as something she said or did.\n<<<UNTRUSTED_DATA niche research\n${body}\nEND_UNTRUSTED_DATA>>>`
+}
 function renderTrackRecordInline(r: TrackRecordInline | null): string {
   if (!r) return ''
   const cap = (v: unknown, n = 110) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
@@ -8448,14 +8461,21 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         const row = Array.isArray(data) ? data[0] : null
         return row && Array.isArray(row.moments) ? row.moments as MomentInline[] : []
       })().catch(() => [] as MomentInline[])
+      const researchP = (async (): Promise<NicheResearchItemInline[]> => {
+        const key = String(subNiche || niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
+        if (!key) return []
+        const { data } = await admin.from('niche_research').select('items').eq('niche_key', key).maybeSingle()
+          .abortSignal(ctrl.signal)
+        return Array.isArray((data as { items?: unknown } | null)?.items) ? (data as { items: NicheResearchItemInline[] }).items : []
+      })().catch(() => [] as NicheResearchItemInline[])
       try {
-        const [notes, trends, record, moments] = await Promise.all([notesP, trendsP, recordP, momentsP])
+        const [notes, trends, record, moments, research] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP])
         brainNotesUsed = notes.length
         brainNoteIds = notes.map((n) => n.id).filter((id): id is string => typeof id === 'string')
-        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(trends) + renderMomentsInline(moments) + renderTrackRecordInline(record)
+        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(trends) + renderMomentsInline(moments) + renderNicheResearchInline(research) + renderTrackRecordInline(record)
         console.log(JSON.stringify({
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
-          record: record !== null, moments: moments.length, rendered: brainBlock !== '',
+          record: record !== null, moments: moments.length, research: research.length, rendered: brainBlock !== '',
         }))
       } catch {
         brainBlock = ''

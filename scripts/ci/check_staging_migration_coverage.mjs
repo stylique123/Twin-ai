@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0259_niches_research_themselves':
+    'Adds niche_research + niche_research_due, widens the new-niche discovery trigger to thin niches (<12 videos), and leaves fabrication-tagged ratings out of brain_learn credit; read by the worker brain and generate-blueprint only. The editor never reads it.',
   '0258_gallery_reads_the_brain':
     'Enables pg_trgm and adds the gallery_for_me RPC (the Gallery ranked by the read corpus sub-niche/topic); read by the Gallery page only. The editor never reads it.',
   '0257_panel_closes_the_loop':
