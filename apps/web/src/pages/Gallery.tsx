@@ -7,7 +7,7 @@ import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
 import { useAuth } from '../context/AuthContext'
 import {
-  listGalleryItems, listBrandVoices, logEvent, loadReferenceProfiles,
+  listGalleryItems, galleryForMe, listBrandVoices, logEvent, loadReferenceProfiles,
   projectShape, shapeSummary, shapeSummaryLine, shapeLabel,
   loadProductEntities, galleryCreatorView, emptyReferenceProfile,
   loadPreScriptBrief, assembleCreatorProfile, briefToProfileAnswers,
@@ -15,6 +15,7 @@ import {
   type GalleryItem, type ReferenceProfile, type FillableEntity,
 } from '../lib/api'
 import { decideGallery } from '../lib/galleryDecisions'
+import { creatorBucket } from '@twinai/shared'
 import { cn } from '../lib/cn'
 
 // Base niches we always seed the filter with. The live list GROWS beyond these
@@ -485,6 +486,24 @@ export default function Gallery() {
       .catch(() => {})
   }, [])
 
+  // ⚠️ OWNER AUDIT 2026-10-01: "For you" used to rank on gallery_items.niche,
+  // which records whoever's search found a video, from the newest 200 rows only.
+  // The read corpus (0258) now ranks the whole library by how close each video's
+  // own sub-niche and topic are to hers. `brainMatch` says which level matched.
+  const [brainMatch, setBrainMatch] = useState<ReadonlyMap<string, string>>(new Map())
+  useEffect(() => {
+    if (!voiceNiche && !voiceSubNiche) return
+    let alive = true
+    void galleryForMe(voiceSubNiche, voiceNiche, creatorBucket(voiceNiche, voiceSubNiche)).then((rows) => {
+      if (!alive || rows.length === 0) return
+      const cards = rows.filter((r) => r.item.visibility === 'public').map((r) => fromDb(r.item))
+      setBrainMatch(new Map(rows.map((r) => [r.item.url, r.match])))
+      setCommunity((prev) => dedupeByUrl([...cards, ...prev]))
+    }, () => {})
+    return () => { alive = false }
+  }, [voiceNiche, voiceSubNiche])
+  const closeCount = useMemo(() => [...brainMatch.values()].filter((m) => m === 'sub_niche' || m === 'niche').length, [brainMatch])
+
   const all: Card[] = useMemo(() => [...FEATURED, ...community], [community])
 
   // The live niche universe = base set ∪ whatever niches discovery has added.
@@ -549,8 +568,10 @@ export default function Gallery() {
   }, [voiceFlags])
 
   const factsById = useMemo(() => {
+    const fromBrain: Record<string, NicheRelation> = { sub_niche: 'same_sub_niche', niche: 'same_niche', bucket: 'related' }
     const relationOf = (c: Card): NicheRelation =>
-      !myNiche && !mySubNiche ? 'unknown'
+      brainMatch.size > 0 ? (fromBrain[brainMatch.get(c.url) ?? ''] ?? 'unrelated')
+      : !myNiche && !mySubNiche ? 'unknown'
       : c.niche === mySubNiche ? 'same_sub_niche'
       : c.niche === myNiche ? 'same_niche'
       : related.includes(c.niche) ? 'related'
@@ -571,7 +592,7 @@ export default function Gallery() {
       })
     }
     return m
-  }, [all, myNiche, mySubNiche, related, creatorCapability])
+  }, [all, myNiche, mySubNiche, related, creatorCapability, brainMatch])
 
   const signalsById = useMemo(() => {
     const m = new Map<string, ReturnType<typeof rankSignals>>()
@@ -648,8 +669,13 @@ export default function Gallery() {
     const isForYou = (!!mySubNiche && niche === mySubNiche) || (!!myNiche && niche === myNiche)
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
     if (formatFilter) out = out.filter((c) => cardMatchesFormat(c, formatFilter))
-    const rank = (c: Card) =>
-      c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
+    const brainRank = (c: Card) => {
+      const m = brainMatch.get(c.url)
+      return m === 'sub_niche' ? 0 : m === 'niche' ? 1 : m === 'bucket' ? 2 : 3
+    }
+    // The read corpus when it answered; the old search label only as a fallback.
+    const rank = (c: Card) => brainMatch.size > 0 ? brainRank(c)
+      : c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
     if (isForYou) {
       const w = widenForYou(out.filter((c) => rank(c) < 3), out)
       out = [...w.cards]
@@ -679,7 +705,7 @@ export default function Gallery() {
     const relevanceOf = (c: Card) =>
       (isForYou ? (3 - rank(c)) * 1_000_000 : 0) + (place.get(c.id) ?? 0)
     return { cards: diversify(out, relevanceOf), widened }
-  }, [all, myNiche, mySubNiche, niche, formatFilter, q, searchBlobs, related, factsById, decisions])
+  }, [all, myNiche, mySubNiche, niche, formatFilter, q, searchBlobs, related, factsById, decisions, brainMatch])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
   // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
@@ -818,6 +844,12 @@ export default function Gallery() {
             ))}
           </div>
         </Reveal>
+        {brainMatch.size > 0 && closeCount < 12 && (
+          <div className="glass mt-6 p-4 text-sm text-sand" data-testid="gallery-thin-niche-notice">
+            Twin has found {closeCount === 0 ? 'no videos' : closeCount === 1 ? 'one video' : `${closeCount} videos`} close to your niche so far.
+            More are added as Twin reads new videos; the rest below are from your wider category.
+          </div>
+        )}
         {widened && (
           <div className="glass mt-6 p-4 text-sm text-sand" data-testid="gallery-widened-notice">
             Not enough in your niche yet, so this is the whole shelf. Pick a niche
