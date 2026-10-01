@@ -6184,7 +6184,7 @@ const OBJECTIVE_CONTRACT_INLINE: Record<string, string> = {
   sell: 'OBJECTIVE CONTRACT — LAUNCH / ANNOUNCE: the video must say what is new or why now, whether it is available and how much or how long (only if stated), and where to get it. Close on where to get it, naming the confirmed sizes, prices or formats from her product facts when they exist ("12oz or 5lb, whole bean or ground, link in bio"), never a bare "link in bio" when those are on file. A business with nothing new to announce gets no invented origin story.',
   educate: 'OBJECTIVE CONTRACT — EXPLAIN WHAT IT ACTUALLY DOES: the video must say what it is, what you get (sizes, price, what is included, from the facts on file) and how it is made or works. No storytime replaces the explanation. Close on how to get it or try it.',
   leads: 'OBJECTIVE CONTRACT — GET PEOPLE TO TRY IT: the video must name the smallest way to try it and invite the viewer to take that step. No unrelated stored story (a move, a hardship) carries this video. Close on that first step.',
-  conversations: 'OBJECTIVE CONTRACT — ANSWER WHAT PEOPLE KEEP ASKING: state the real question, then her answer, plainly, before the close. Never tease it and never replace it with a plan or a poll.',
+  conversations: 'OBJECTIVE CONTRACT — ANSWER WHAT PEOPLE KEEP ASKING: state the real question, then her answer, plainly, before the close. Never tease it and never replace it with a plan or a poll. A fact reading "Viewers ask: …" is a REAL question from her comments: prefer it as THE question, in its words. Use her answer only where one is given ("her answer: …"); with none, ask her for it, never invent it.',
   personal_brand: 'OBJECTIVE CONTRACT — SAY WHY I MADE IT: what was going on when she started, and one specific moment, only from her own words. If none is given, keep it short and general rather than invent one.',
 }
 
@@ -6816,7 +6816,10 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     .from('creator_knowledge_writable')
     .select(cols)
     .eq('owner_id', ownerId)
-    .eq('source', 'asked'))
+    // ⚖️ AND THE COMMENTS SHE CONFIRMED (0263): real questions from her own
+    // audience, the natural material for "answer what people keep asking".
+    // Same read as the plan screen's (`loadKnowledgeForPlan`).
+    .in('source', ['asked', 'comment']))
     .order('created_at', { ascending: false })
     .limit(20))
   const askedRows = askedRead.rows

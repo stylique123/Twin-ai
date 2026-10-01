@@ -74,6 +74,10 @@ export const env = {
   // caption but NOT the follower count — that is a separate charged run, so
   // ScrapedProfileFacts reports audience as null rather than guessing.
   apifyInstagramProfileActor: (process.env.APIFY_INSTAGRAM_PROFILE_ACTOR ?? 'shu8hvrXbJbY3Eb9W').trim(),
+  // Comments under her own posts (owner brief 2026-10-01). Public comment
+  // scrapers on the same Apify account; a slug works where an id does.
+  apifyTiktokCommentsActor: (process.env.APIFY_TIKTOK_COMMENTS_ACTOR ?? 'clockworks~tiktok-comments-scraper').trim(),
+  apifyInstagramCommentsActor: (process.env.APIFY_INSTAGRAM_COMMENTS_ACTOR ?? 'apify~instagram-comment-scraper').trim(),
   // ⚠️⚠️ THE SIBLING SCRAPE IS THE ONLY PART OF A REFERENCE READ THAT COSTS
   // MONEY, SO IT IS A SWITCH AND IT IS OFF. A pasted video's own view count,
   // follower count and uploader come free from the metadata call the ingest path

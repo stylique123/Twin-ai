@@ -451,7 +451,9 @@ export async function loadKnowledgeForPlan(): Promise<
       supabase.from('creator_knowledge')
         .select('id, kind, text, source, creator_excluded_at')
         .eq('owner_id', ownerId)
-        .eq('source', 'asked')
+        // Her confirmed comment questions ride the same second read as her answers,
+        // exactly as the writer reads them (generate-blueprint `askedRead`).
+        .in('source', ['asked', 'comment'])
         .order('created_at', { ascending: false })
         .limit(20),
     ])

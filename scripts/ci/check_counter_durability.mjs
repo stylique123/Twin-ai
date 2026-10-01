@@ -176,9 +176,17 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per cron tick: posts whose comments were read and unanswered questions kept. Durable in `post_questions` (one row per comment) and `posts.questions_synced_at`.',
   },
-  post_questions_filed: {
+  post_questions_candidates: {
     kind: 'counter_ephemeral',
-    why: 'Per worker tick: audience questions filed into her brain. Durable as `post_questions.filed_at` and the `brain_notes` rows themselves.',
+    why: 'Per worker tick: questions under Twin-published posts turned into candidates she confirms. Durable as `post_questions.filed_at` and `comment_candidates` rows.',
+  },
+  comment_candidates: {
+    kind: 'counter_ephemeral',
+    why: 'Per voice read: comments read under her top posts and candidates kept. Durable in `comment_reads` (posts, comments, candidates, failure) and `comment_candidates`.',
+  },
+  comments_filed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker tick: confirmed comments filed as knowledge. Durable as `comment_candidates.filed_at` and `creator_knowledge` rows with source \'comment\'.',
   },
   her_replies_filed: {
     kind: 'counter_ephemeral',

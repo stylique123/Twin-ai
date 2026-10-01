@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0263_comments_become_candidates':
+    'Adds comment_candidates / comment_reads, decide_comment and comments_due, and the \'comment\' knowledge source; read by My Twin, the worker and generate-blueprint only. The editor never reads them.',
   '0262_sub_niches_merge':
     'Adds corpus_reads.sub_niche_canonical + merge_sub_niches() and lets gallery_for_me match on it; read by the worker brain and the Gallery only. The editor never reads them.',
   '0261_views_against_her_normal':
