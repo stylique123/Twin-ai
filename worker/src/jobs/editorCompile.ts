@@ -837,14 +837,22 @@ export function resolveAllowedDomain(source: CompileSource): Interval[] {
       bad('accepted window outside the measured source duration', 'edit_plan_divergent')
     }
   }
-  // The manifest already guarantees sorted, non-overlapping windows; normalizing
-  // is a re-proof, not a repair. Windows that MERGE here would mean the manifest
-  // let two takes touch, so a change in count is a contradiction, not a fix.
-  const normalized = normalizeIntervals(source.acceptedWindows)
-  if (normalized.length !== source.acceptedWindows.length) {
-    bad('accepted capture windows overlap or touch', 'edit_plan_divergent')
+  // ⚠️ AUDIT 2026-10-01 (E1): the manifest (packages/shared/src/editor/capture.ts)
+  // deliberately ALLOWS consecutive accepted scenes to share a boundary instant —
+  // a continuous recorder pauses and resumes with no gap. This check used to
+  // merge touching windows and fail on the count change, so every teleprompter
+  // take with abutting scenes failed to compile. Only a TRUE overlap is a
+  // contradiction; touching windows stay separate so each keeps its own scene
+  // boundary guard band.
+  const sorted = [...source.acceptedWindows]
+    .map((w) => ({ startMs: w.startMs, endMs: w.endMs }))
+    .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs)
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i]!.startMs < sorted[i - 1]!.endMs) {
+      bad('accepted capture windows overlap', 'edit_plan_divergent')
+    }
   }
-  return normalized
+  return sorted
 }
 
 // ---- protections ------------------------------------------------------------

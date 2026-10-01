@@ -57,7 +57,9 @@ describe('COVERAGE — no creator hits a failure nobody classified', () => {
     // Scans the WHOLE jobs tree, not a hand-picked few files: an EditPlanError
     // code is just as creator-visible as a PermanentJobError one, and picking
     // three files to grep would make this pass by looking in the wrong place.
-    const emitted = new Set([...permanentCodesInSource(), 'retries_exhausted'])
+    // `lost_job` / `job_dead_lettered` are synthesised by the reconciler in SQL
+    // (0081, 0102), not thrown by a job — and they reached a creator unmapped.
+    const emitted = new Set([...permanentCodesInSource(), 'retries_exhausted', 'lost_job', 'job_dead_lettered'])
     let src = ''
     const collect = (d: string) => {
       for (const e of readdirSync(d, { withFileTypes: true })) {
@@ -74,7 +76,7 @@ describe('COVERAGE — no creator hits a failure nobody classified', () => {
 
 describe('the four questions a creator is actually asking', () => {
   it('a transient failure says retry, and means it', () => {
-    const e = explainFailure('retries_exhausted')
+    const e = explainFailure('director_call_failed')
     expect(e.failureClass).toBe('retry_helps')
     expect(e.retryCanHelp).toBe(true)
     expect(e.footageRetained).toBe(true)
@@ -170,5 +172,13 @@ describe('every explanation is fit to show a person', () => {
       const e = explainFailure(code)
       expect(e.footageRetained).toBe(e.failureClass !== 'refilm' && e.failureClass !== 'reupload')
     }
+  })
+})
+
+// ⚠️ AUDIT 2026-10-01 (E5): a deterministic failure that used up its retries
+// fails the same way again, so "Try again" would be a lie.
+describe('exhausted retries do not offer a retry', () => {
+  it('retries_exhausted is not retry-helps', () => {
+    expect(explainFailure('retries_exhausted').retryCanHelp).toBe(false)
   })
 })
