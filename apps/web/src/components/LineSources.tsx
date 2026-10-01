@@ -18,7 +18,8 @@ export function LineSources({ blueprint }: { blueprint: unknown }) {
   const unsourced = lines.filter((l) => !l.from?.length).length
   const methodCut = removed.filter((r) => (r as { reason?: string }).reason === 'invented_method').length
   const figureCut = removed.filter((r) => (r as { reason?: string }).reason === 'unbacked_figure').length
-  const privateCut = removed.length - methodCut - figureCut
+  const roleCut = removed.filter((r) => (r as { reason?: string }).reason === 'unbacked_identity').length
+  const privateCut = removed.length - methodCut - figureCut - roleCut
   return (
     <details className="rounded-xl border border-white/10 bg-ink2/40 p-3 text-xs text-sand" data-testid="line-sources">
       <summary className="cursor-pointer font-semibold text-cream">
@@ -45,6 +46,11 @@ export function LineSources({ blueprint }: { blueprint: unknown }) {
       {figureCut > 0 && (
         <p className="mt-2 text-stone" data-testid="figure-removed">
           Twin removed {figureCut === 1 ? 'one sentence' : `${figureCut} sentences`} with a number nothing you gave it states. Add the real number to your facts to use it.
+        </p>
+      )}
+      {roleCut > 0 && (
+        <p className="mt-2 text-stone" data-testid="role-removed">
+          Twin removed {roleCut === 1 ? 'one sentence' : `${roleCut} sentences`} that said you run or own something you never told it you do. Tell Twin in your idea if it is true.
         </p>
       )}
       {methodCut > 0 && (

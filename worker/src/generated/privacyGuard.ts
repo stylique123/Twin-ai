@@ -105,7 +105,25 @@ export function statedFigures(text: string): Set<string> {
 }
 
 export interface GuardBeat { line?: unknown; [k: string]: unknown }
-export interface GuardRemoval { beat: number; reason: 'private' | 'excluded' | 'unbacked_figure'; sentence: string }
+export interface GuardRemoval { beat: number; reason: 'private' | 'excluded' | 'unbacked_figure' | 'unbacked_identity'; sentence: string }
+
+/**
+ * ⚠️ OWNER RETEST 2026-10-01: "I run a coffee cart every morning" passed every
+ * guard, because "coffee cart business" sat in a topic Twin GUESSED from a
+ * caption. A role she claims in the first person ("I run / own / operate a …")
+ * must be named in something she STATED (her answers, her stated facts, a
+ * product she owns) — not a guessed topic.
+ */
+const ROLE_CLAIM = /\b(?:i|we)(?:'ve| have)?\s+(?:run|runs|own|owns|operate|operates|manage|manages|started|founded|opened|built)\s+(?:a|an|my|our|this)\s+((?:[a-z-]+\s+){0,3}?(?:cart|truck|shop|store|caf[eé]|bakery|roastery|studio|salon|gym|clinic|practice|agency|business|brand|company|restaurant|stand|stall|farm|boutique|kitchen|food truck))\b/i
+export function unbackedRole(sentence: string, identityText: string): string | null {
+  const m = sentence.match(ROLE_CLAIM)
+  if (!m) return null
+  const head = m[1]!.trim().toLowerCase().split(/\s+/).pop()!
+  // Naming the thing is not owning it ("people ask how to start a coffee cart"):
+  // her stated words must tie it to herself — "my cart", "I run the cart".
+  const owned = new RegExp(`\\b(?:my|our|i (?:run|own|operate|manage|started|founded|opened|built|have)|we (?:run|own|operate|started|opened|built|have))\\s+(?:[a-z-]+\\s+){0,3}?${head.replace(/[^a-z]/g, '')}s?\\b`, 'i')
+  return owned.test(norm(identityText)) ? null : m[0]
+}
 
 /**
  * The final check. `allowedText` is everything she allowed for this video (the
@@ -114,7 +132,7 @@ export interface GuardRemoval { beat: number; reason: 'private' | 'excluded' | '
  */
 export function guardScript<T extends GuardBeat>(
   beats: readonly T[],
-  opts: { allowedText: string; excludedTexts: readonly string[]; figuresMustBeBacked?: boolean },
+  opts: { allowedText: string; excludedTexts: readonly string[]; figuresMustBeBacked?: boolean; identityText?: string },
 ): { beats: T[]; removed: GuardRemoval[] } {
   const allowedNorm = ` ${norm(opts.allowedText)} `
   const allowedRuns = runs(opts.allowedText)
@@ -140,6 +158,9 @@ export function guardScript<T extends GuardBeat>(
       // A figure (10 or more, or any number with a unit) that nothing she gave states.
       if (opts.figuresMustBeBacked && [...statedFigures(s)].some((f) => !allowedFigures.has(f) && !(f.endsWith('|') && allowedQty.has(Number(f.slice(0, -1)))))) {
         removed.push({ beat: i, reason: 'unbacked_figure', sentence: s }); continue
+      }
+      if (typeof opts.identityText === 'string' && unbackedRole(s, opts.identityText)) {
+        removed.push({ beat: i, reason: 'unbacked_identity', sentence: s }); continue
       }
       kept.push(s)
     }

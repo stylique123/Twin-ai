@@ -14049,7 +14049,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // only LISTED as "check before you record". It is now removed, sentence by
         // sentence, like a private term. Only what she was shown and kept, her
         // product/brand facts and her words for this video count (one source, 5.1).
-        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true })
+        // A role she claims ("I run a cart") must be in something she STATED —
+        // not a topic guessed from a caption (owner retest 2026-10-01).
+        const identityText = [
+          JSON.stringify(ownedEntity ?? {}),
+          JSON.stringify(confirmedBrand ?? {}),
+          ...(speakable ?? []).filter((k) => String((k as { basis?: unknown }).basis ?? '') === 'stated').map((k) => String(k.text ?? '')),
+          reference_note,
+          ...Object.values(brief ?? {}).filter((v): v is string => typeof v === 'string'),
+          ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string'),
+        ].join('\n')
+        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true, identityText })
         if (guarded.removed.length) {
           const emptied = guarded.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
           bp.script = guarded.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
