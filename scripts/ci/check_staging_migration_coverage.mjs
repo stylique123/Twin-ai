@@ -74,6 +74,10 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
 export const EXCLUDED = {
   '0263_comments_become_candidates':
     'Adds comment_candidates / comment_reads, decide_comment and comments_due, and the \'comment\' knowledge source; read by My Twin, the worker and generate-blueprint only. The editor never reads them.',
+  '0264_definer_functions_are_not_public':
+    'Revokes EXECUTE from anon on four SECURITY DEFINER RPCs that no migration meant to expose '
+    + '(panel_answers_pending, niche_research_due, merge_sub_niches, ensure_review_token); '
+    + 'grants only, no schema change, and the editor calls none of them.',
   '0262_sub_niches_merge':
     'Adds corpus_reads.sub_niche_canonical + merge_sub_niches() and lets gallery_for_me match on it; read by the worker brain and the Gallery only. The editor never reads them.',
   '0261_views_against_her_normal':
