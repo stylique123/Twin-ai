@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0258_gallery_reads_the_brain':
+    'Enables pg_trgm and adds the gallery_for_me RPC (the Gallery ranked by the read corpus sub-niche/topic); read by the Gallery page only. The editor never reads it.',
   '0257_panel_closes_the_loop':
     'Adds audience_tests needs_her/working/unverified/out_of_scope, the answer_panel_question and panel_answers_pending RPCs, and a panel-version condition in panels_due; read by the worker audience test and the script page only. The editor never reads them.',
   '0256_corpus_hook_moves':

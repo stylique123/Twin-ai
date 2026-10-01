@@ -6803,9 +6803,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   const askedRows = askedRead.rows
   // Her consent wins: a private fact she switched on for this video is read
   // from the table by id, and only those ids.
+  // ⚠️ AUDIT 2026-10-01 (5.1): the screen and the writer rank the store
+  // differently (the screen also lists switched-off and private rows), so a fact
+  // shown and kept on could fall outside the writer's 40 and silently vanish —
+  // the old cap of 10 here dropped the rest. Every kept id is now read.
   const optInIds = (Array.isArray(body.use_knowledge_ids) ? body.use_knowledge_ids.map(String) : [])
     .filter((id) => !rankedRows.some((r) => String(r.id) === id) && !askedRows.some((r) => String(r.id) === id))
-    .slice(0, 10)
+    .slice(0, 60)
   if (optInIds.length) {
     const optIn = await readKnowledge((cols) => admin.from('creator_knowledge').select(cols)
       .eq('owner_id', ownerId).in('id', optInIds))
@@ -8944,6 +8948,12 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       String((confirmedBrand as { name?: unknown } | null)?.name ?? ''),
     ].filter((n) => n.trim() !== '')
     const knowledgeParts: string[] = []
+    // ⚠️ OWNER FABRICATION AUDIT 2026-10-01 (5.1): the writer also sees her DNA,
+    // her own captions, niche notes and reference text, none of which the "what
+    // I'll use" screen shows. Those shape VOICE and STRUCTURE only. A fact, a
+    // number, an event, a role or an identity may come only from what she was
+    // shown and kept, her product and brand facts, or her own words for this video.
+    knowledgeParts.push('\nONE SOURCE OF FACTS: state a fact, number, event, role or identity ONLY if it is in WHAT THIS CREATOR ACTUALLY KNOWS below, her product or brand facts, or her own words for this video. Her DNA, her past captions, niche notes and any reference are for voice, shape and ideas — never a source of a claim about her or her business. If a beat needs a fact that is not there, keep the line general or leave the beat for her to fill.\n')
     if (speakable.length) {
       knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
         + ' The tag on an item is when we last OBSERVED her saying it — the date we'
@@ -13993,8 +14003,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // ⚠️ OWNER FABRICATION AUDIT 2026-10-01: a figure nothing she gave contains
         // ("cup score above 82", "two-pound batches", "six months on a shelf") was
         // only LISTED as "check before you record". It is now removed, sentence by
-        // sentence, like a private term. Her DNA (her own scraped words) counts as given.
-        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText: `${allowedText}\n${creatorDna}`, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true })
+        // sentence, like a private term. Only what she was shown and kept, her
+        // product/brand facts and her words for this video count (one source, 5.1).
+        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true })
         if (guarded.removed.length) {
           const emptied = guarded.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
           bp.script = guarded.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))

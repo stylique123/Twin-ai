@@ -1844,6 +1844,18 @@ export interface GalleryItem {
 }
 
 // RLS returns public items + the caller's own (incl. their private ones).
+/**
+ * ⚠️ OWNER AUDIT 2026-10-01: the Gallery matched on gallery_items.niche — the
+ * niche of whoever's SEARCH found the video. This asks the read corpus instead
+ * (0258): the whole library ranked by how close each video's own sub-niche and
+ * topic are to hers, with the level that matched. [] on any failure.
+ */
+export async function galleryForMe(subNiche: string, niche: string, bucket: string | null): Promise<Array<{ item: GalleryItem; match: 'sub_niche' | 'niche' | 'bucket' | 'other' }>> {
+  const { data, error } = await supabase.rpc('gallery_for_me', { p_sub_niche: subNiche, p_niche: niche, p_bucket: bucket ?? '', p_limit: 120 })
+  if (error || !Array.isArray(data)) return []
+  return (data as Array<{ item: GalleryItem; match: 'sub_niche' | 'niche' | 'bucket' | 'other' }>).filter((r) => r && r.item)
+}
+
 export async function listGalleryItems(): Promise<GalleryItem[]> {
   const { data, error } = await supabase
     .from('gallery_items')
