@@ -29,6 +29,7 @@ import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_
 import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
+import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript } from '../_shared/shownJob.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
@@ -5587,6 +5588,8 @@ const blueprintSchema = obj(
           wardrobe: str,
           cuts_info: str,
           action_posing: str,
+          // THE SHOWN HALF (owner spec 2026-10-01): what the camera does for this beat.
+          shown_job: str,
           // SUBSTANCE, DECLARED PER BEAT (§5e). Structure was never the defect:
           // every check passed on a run whose spoken line was "[Phone Model]".
           // Resolving each beat before writing would need a second model call —
@@ -5596,7 +5599,7 @@ const blueprintSchema = obj(
           substance: str,
           substance_evidence: str,
         },
-        ['section', 'line', 'direction', 'background', 'location', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'substance', 'substance_evidence'],
+        ['section', 'line', 'direction', 'background', 'location', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'shown_job', 'substance', 'substance_evidence'],
       ),
     ),
     shot_list: arr(
@@ -5721,6 +5724,7 @@ SCRIPT & HOOK INTEGRATION:
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
 - action_posing: the creator's physical action, gesture, body language and positioning for this beat. NAME THE THING IN THEIR HANDS, never "it", "the product" or "the item" — a creator holding three objects cannot act on "point at a specific spot on it". Say which object and which part. Good: "Hold the cracked tin up to chest height, thumb over the split seam." "Rest the finished candle flat on an open palm so the window light catches the surface." Bad: "Hold product at eye level." "Point one finger at a specific spot on it." If no product is attached to this video, direct the body and face instead and name nothing you were not told exists.
+${SHOWN_JOB_RULE}
 - SUBSTANCE BEFORE PROSE. Before writing any line, decide WHAT GOES IN IT, then declare where that came from. Two fields on every beat:
   * "substance": exactly one of creator_knowledge | product_dna | general | needs_user | none.
     - creator_knowledge = the beat is built on something listed under WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID. You may only choose this if the item is actually in that list above. Inventing a plausible-sounding position and labelling it creator_knowledge is the single worst thing you can do here, and it is checked.
@@ -14077,6 +14081,27 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
       }
     } catch { /* the rule check never fails a generation */ }
+
+    // THE SHOWN HALF (owner spec 2026-10-01): every beat carries a job, and the
+    // finished script is measured against the spec's criteria. Measured, not
+    // repaired: a missing demonstration is disclosed on the page, never faked.
+    try {
+      const bp = blueprint as { script?: unknown; shown_audit?: unknown }
+      if (Array.isArray(bp.script)) {
+        const beats = bp.script as Array<Record<string, unknown>>
+        for (const b of beats) b.shown_job = normalizeShownJob(b.shown_job, b.section)
+        const show = String((ownedEntity as { showability?: unknown } | null)?.showability ?? '')
+        const goal = String(body.goal ?? '')
+        const sellsShowable = !!ownedEntity && (show === 'ALWAYS' || show === 'SOMETIMES')
+          && (goal === 'sell' || goal === 'leads' || goal === '' )
+        const audit = auditShownScript(beats, { sellsShowable })
+        bp.shown_audit = audit
+        console.log(JSON.stringify({
+          event: 'shown_script_audit', shows_in_use: audit.showsInUse, distinct_locations: audit.distinctLocations,
+          showing_framed_like_talk: audit.showingFramedLikeTalk, generic_gestures: audit.genericGestures,
+        }))
+      }
+    } catch { /* measuring never fails a generation */ }
 
     // ⚖️ WHERE EACH LINE CAME FROM (fact-scoping part 3): every spoken sentence
     // traced to the fact, her words, the product or the brand it rests on, so

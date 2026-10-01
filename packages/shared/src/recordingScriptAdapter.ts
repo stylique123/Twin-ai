@@ -146,9 +146,9 @@ function framingFor(
   seg?: {
     background?: string; action_posing?: string; direction?: string
     location?: string; broll_request?: string; editor_intent?: string; wardrobe?: string
-    line?: string
+    line?: string; shown_job?: string
   },
-): { camera_framing: string; background: string; movement: string } {
+): { camera_framing: string; background: string; movement: string; shows: string | null } {
   // ⚠️ COFFEE REPORT 1.3: direction differed between the teleprompter and the
   // shot list on three of four scenes. Position is not a pairing — a silent
   // cutaway row shifts every index after it — so the shot that QUOTES this
@@ -169,8 +169,12 @@ function framingFor(
   // tune. A shot-list note is stripped too — it lands in the same field a person
   // performs, so it is the same instruction whatever wrote it.
   const stand = placeToStand(readShotDirection(seg)) ?? stripPalette(shot?.notes)
+  // The beat's declared job (owner spec 2026-10-01): what the camera does, and
+  // its default shot when the shot list did not name one.
+  const job = isShownJob(seg?.shown_job) ? seg.shown_job : null
   return {
-    camera_framing: shot?.framing?.trim() || 'Chest-up shot',
+    shows: job ? SHOWN_JOB_LABEL[job] : null,
+    camera_framing: shot?.framing?.trim() || (job ? SHOWN_JOB_SHOT[job] : '') || 'Chest-up shot',
     background: stand || 'Clean, well-lit background',
     // Movement/expression comes from the beat's action_posing (gestures + face), not a
     // fixed default, so the card actually guides how to perform the scene.
@@ -182,6 +186,7 @@ import { readBeatPlan, beatDurationSec, purposeAt, type PlannedBeat } from './be
 import { ctaMechanismIn, isTemplateCta } from './cta'
 import { blueprintCountIssues, type MechanismIssue } from './referenceMechanism'
 import { placeToStand, readShotDirection, stripPalette } from './shotDirection'
+import { isShownJob, SHOWN_JOB_LABEL, SHOWN_JOB_SHOT } from './script/shownJob'
 
 export interface BuildRecordingScriptInput {
   generationId: string

@@ -809,6 +809,8 @@ function SilentCard({ scene }: { scene: RecordingScene }) {
  *  would delete the only place that instruction appears. */
 function Guidance({ scene, inSetup = false }: { scene: RecordingScene; inSetup?: boolean }) {
   const rows = [
+    // What the camera does for this scene (owner spec 2026-10-01 — the shown half).
+    { icon: Video, color: 'text-teal', label: 'This shot shows', value: scene.shows ?? '' },
     ...(inSetup ? [] : [{ icon: Video, color: 'text-amber', label: 'Where to film', value: scene.background }]),
     { icon: User, color: 'text-coral', label: 'How to stand & move', value: scene.movement },
     ...(inSetup ? [] : [{ icon: SlidersHorizontal, color: 'text-teal', label: 'Framing', value: scene.camera_framing }]),

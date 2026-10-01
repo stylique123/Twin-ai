@@ -45,6 +45,9 @@ export interface RecordingScene {
    *  this existed has none, and no generation written before the writer emitted
    *  `ask` can ever grow one. */
   ask?: string | null
+  /** What the camera does for this scene, in plain words ("Show it in use").
+   *  Owner spec 2026-10-01. Optional: older scripts have none. */
+  shows?: string | null
   /** Items 40/41: the missing fact (shared across beats), what the beat shows,
    *  and an example answer. Optional; absent on older scripts. */
   ask_fact?: string | null
