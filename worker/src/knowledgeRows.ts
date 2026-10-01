@@ -77,6 +77,9 @@ export function knowledgeRowsFrom(
     return t === '' ? null : t.slice(0, 240)
   }
   let rows: KnowledgeRow[] = items
+    // ⚠️ AUDIT 2026-10-01 (B6): links, hashtags and @handles were kept in
+    // knowledge text and shown back to her. A row that is nothing else is dropped.
+    .map((r) => (typeof r?.text === 'string' ? { ...r, text: stripChrome(r.text) } : r))
     .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
     .slice(0, cap)
     .map((r) => ({
@@ -89,7 +92,8 @@ export function knowledgeRowsFrom(
       // actually known to be junk.
       basis: ['stated', 'demonstrated', 'inferred'].includes(r.basis) ? r.basis : 'inferred',
       source: r.__source,
-      times_seen: Math.max(1, Math.min(50, Number(r.times_seen) || 1)),
+      // A pattern cannot have been seen in more videos than were read (B6).
+      times_seen: Math.max(1, Math.min(50, urls.length || 50, Number(r.times_seen) || 1)),
       // ⚖️ AN UNREADABLE CONFIDENCE IS 0.5, NEVER 1. Silence about how sure
       // the extractor was must not read as certainty — the same rule that
       // makes an unstated `basis` degrade to `inferred`.
@@ -152,4 +156,9 @@ export function knowledgeRowsFrom(
   rows = rows.filter((r) => KNOWLEDGE_KINDS_WORKER.includes(r.kind))
 
   return rows
+}
+
+/** Links, hashtags and @handles out; whitespace collapsed. */
+export function stripChrome(t: string): string {
+  return t.replace(/https?:\/\/\S+|www\.\S+|[#@][\w.]+/gi, '').replace(/\s+/g, ' ').trim()
 }

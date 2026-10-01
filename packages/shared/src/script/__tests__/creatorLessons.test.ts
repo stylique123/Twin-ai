@@ -16,10 +16,13 @@ const NOTE = 'This is close. Don\'t add "for twenty years," I never said that. A
 describe('Twin learns from her ratings, viewers and picks (0250)', () => {
   it('every tag on the rating card that teaches something is mapped', () => {
     const tags = [...RATE.matchAll(/'([^']+)'/g)].map((m) => m[1])
-    for (const t of ['Too long', 'Too salesy', 'Hook is weak', 'Not my voice', 'Wrong product facts', 'Hard to film']) {
+    for (const t of ['Too long', 'Too salesy', 'Hook is weak', 'Not my voice', 'Hard to film']) {
       expect(tags).toContain(t)
       expect(lessonsFromTags([t]).length, t).toBe(1)
     }
+    // A system rule, not her preference (audit 2026-10-01 B4).
+    expect(tags).toContain('Wrong product facts')
+    expect(lessonsFromTags(['Wrong product facts'])).toEqual([])
   })
 
   it('a phrase is kept only when she actually quoted it', () => {

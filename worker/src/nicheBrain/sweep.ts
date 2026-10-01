@@ -65,6 +65,12 @@ export async function fileNote(n: NoteDraft, sourceId: string, views: number, ow
   if (target) {
     const { data: cur } = await db.from('brain_notes').select('times_seen, total_views, sources').eq('id', target).single()
     if (!cur) return null
+    // ⚠️ AUDIT 2026-10-01 (B5): re-reading a video it already counted used to
+    // add it again, so one video could look like an established pattern.
+    if (((cur.sources as string[]) ?? []).includes(sourceId)) {
+      await db.from('brain_notes').update({ last_seen: new Date().toISOString() }).eq('id', target)
+      return target
+    }
     const sources = [sourceId, ...((cur.sources as string[]) ?? []).filter((s) => s !== sourceId)].slice(0, MAX_SOURCES)
     await db.from('brain_notes').update({
       times_seen: (cur.times_seen as number) + 1,

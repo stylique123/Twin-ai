@@ -28,7 +28,8 @@ async function existing(owner: string): Promise<string[]> {
 
 async function file(owner: string, l: CreatorLesson, sourceId: string): Promise<boolean> {
   const have = await existing(owner)
-  const twin = l.kind === 'hook' ? undefined : have.find((t) => sameLesson(t, l.text))
+  // Hook lessons dedupe on exact text only (audit B4): near-identical hooks are different shapes.
+  const twin = l.kind === 'hook' ? have.find((t) => t === l.text) : have.find((t) => sameLesson(t, l.text))
   const text = twin ?? l.text
   if (!twin) have.push(l.text)
   const { error } = await db.rpc('learn_lesson', {
@@ -48,19 +49,24 @@ export async function runLessonLearner(log: Log): Promise<void> {
     .select('generation_id, owner_id, stars, tags, change_note')
     .is('lessons_at', null)
     .order('updated_at', { ascending: true }).limit(10)
+  // ⚠️ AUDIT 2026-10-01 (B4): a rating is marked learned only when every
+  // lesson from it was saved (a failed save used to be stamped and lost), and
+  // a note the model cannot read no longer blocks the queue forever: its tag
+  // lessons are kept and the rating is marked so the next ten can be read.
   for (const r of ratings ?? []) {
-    try {
-      const lessons = lessonsFromTags(Array.isArray(r.tags) ? r.tags : [])
-      const note = String(r.change_note ?? '').trim()
-      if (note.length >= 12) {
+    const lessons = lessonsFromTags(Array.isArray(r.tags) ? r.tags : [])
+    const note = String(r.change_note ?? '').trim()
+    if (note.length >= 12) {
+      try {
         const raw = await geminiJson(RATING_LESSON_SYSTEM, `Stars: ${r.stars}/5\nHer note: ${note}`, RATING_LESSON_SCHEMA, 45_000, 0, modelForTask('read'))
         lessons.push(...cleanRatingLessons(raw, note))
+      } catch (err) {
+        log('warn', 'lessons_rating_failed', { event: 'lessons_rating_failed', error: err instanceof Error ? err.message : String(err) })
       }
-      for (const l of lessons) if (await file(r.owner_id, l, r.generation_id)) filed++
-      await db.from('script_ratings').update({ lessons_at: new Date().toISOString() }).eq('generation_id', r.generation_id)
-    } catch (err) {
-      log('warn', 'lessons_rating_failed', { event: 'lessons_rating_failed', error: err instanceof Error ? err.message : String(err) })
     }
+    let allSaved = true
+    for (const l of lessons) { if (await file(r.owner_id, l, r.generation_id)) filed++; else allSaved = false }
+    if (allSaved) await db.from('script_ratings').update({ lessons_at: new Date().toISOString() }).eq('generation_id', r.generation_id)
   }
 
   // 2. Her test viewers: the hook that stopped most, and gaps they keep flagging.
@@ -68,8 +74,9 @@ export async function runLessonLearner(log: Log): Promise<void> {
     .select('generation_id, owner_id, hooks, fixes, panel_size')
     .eq('status', 'done').is('lessons_at', null).limit(20)
   for (const t of tests ?? []) {
-    for (const l of lessonsFromAudience(t)) if (await file(t.owner_id, l, t.generation_id)) filed++
-    await db.from('audience_tests').update({ lessons_at: new Date().toISOString() }).eq('generation_id', t.generation_id)
+    let allSaved = true
+    for (const l of lessonsFromAudience(t)) { if (await file(t.owner_id, l, t.generation_id)) filed++; else allSaved = false }
+    if (allSaved) await db.from('audience_tests').update({ lessons_at: new Date().toISOString() }).eq('generation_id', t.generation_id)
   }
 
   // 3. Her own hook pick over Twin's default, once per script.
