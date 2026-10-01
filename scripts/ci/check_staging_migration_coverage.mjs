@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0256_corpus_hook_moves':
+    'Adds nullable corpus_reads.hook_move and hook_gap (the finer hook labels from the creator-family research); written by the worker corpus sweep only. The editor never reads them.',
   '0255_private_by_model_or_word':
     'Widens the creator_knowledge sensitive word list and ORs in the extractor\'s own private flag; read by generate-blueprint and the plan screen only. The editor never reads it.',
   '0254_her_jobs_first':
