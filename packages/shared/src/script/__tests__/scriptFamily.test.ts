@@ -17,13 +17,15 @@ describe('script family (owner brief 2026-10-01, by niche)', () => {
     expect(shared).toEqual([])
   })
 
-  it('every family has enough moves, each defined, with two real examples', () => {
+  it('every family has enough moves, each defined, with two real examples, and a shape', () => {
     for (const f of SCRIPT_FAMILIES) {
       expect(FAMILY_MOVES[f].length).toBeGreaterThanOrEqual(MIN_DISTINCT_MOVES + 1)
       for (const id of FAMILY_MOVES[f]) expect(HOOK_MOVES[id]?.examples.length).toBe(2)
       const rule = renderFamilyHookRule(f)
       expect(rule).toContain('hook_moves')
       expect(rule).toContain('OPEN, NEVER CLOSED')
+      expect(rule).toContain('hook_promise')
+      expect(rule).toContain('SHAPE FOR THIS FAMILY')
     }
   })
 

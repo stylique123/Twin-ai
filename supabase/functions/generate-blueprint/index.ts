@@ -5573,6 +5573,7 @@ const blueprintSchema = obj(
     ),
     hook_options: arr(str),
     hook_moves: arr(str),
+    hook_promise: str,
     script: arr(
       obj(
         {
@@ -5642,6 +5643,7 @@ const blueprintSchema = obj(
     'visual_hook',
     'hook_options',
     'hook_moves',
+    'hook_promise',
     'script',
     'shot_list',
     'captions',

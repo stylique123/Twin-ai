@@ -93,7 +93,20 @@ export function renderFamilyHookRule(family: ScriptFamily): string {
     `- Draw the 5 hooks from AT LEAST ${MIN_DISTINCT_MOVES} DIFFERENT moves above, the strongest first. Use her words, never the examples' words — they show the SHAPE only.`,
     `- hook_moves: one move id per hook, same order as hook_options.`,
     OPEN_GAP_RULE,
+    `- hook_promise: one line — what the recommended hook (hook_options[0]) opens that the video must close (the count it promised, the question it asked, the result it teased).`,
+    `- SHAPE FOR THIS FAMILY: ${FAMILY_SHAPE[family]}`,
+    `- WORDS GO TO THE BODY: real videos of every kind skip the warm-up. Setup is optional and at most ~15% of the words; the ask is at most ~15%; the body carries the rest.`,
+    `- PAY THE PROMISE OFF BEFORE THE ASK: a line before the call to action must deliver hook_promise in full — every counted item, the answer to the question, the result shown. A script that never closes its hook loses the viewer before the ask lands.`,
   ].join('\n')
+}
+
+/** The beat shape real videos of each family follow (research 4.2). */
+export const FAMILY_SHAPE: Record<ScriptFamily, string> = {
+  product: 'hook (reveal or verdict) → SHOW it doing its job (most of the video) → the one specific reason it is worth it → where to get it.',
+  coach_expert: 'hook (counted list, contrarian order or credential) → the points, numbered out loud, exactly as many as promised → a one-line recap of the lesson or a soft offer.',
+  educator: 'hook (the question) → answer it straight away → the steps or the why → a one-line recap.',
+  community: 'hook (first-person confession or belief) → the story → what it meant to her → invite replies from people who feel the same; no hard sell.',
+  entertainer: 'cold open inside the scene → escalation → punchline. No call to action unless she chose one.',
 }
 
 /** Universal: 59–78% of real hooks in every family keep the question open. */

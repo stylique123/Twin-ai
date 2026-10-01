@@ -11,7 +11,7 @@ const S0 = { type: 'STRING' }
 /** Closed list so the mistakes log can count the same mistake across scripts. */
 export const ISSUES = [
   'slow_start', 'weak_hook', 'missing_price', 'unanswered_question', 'unclear_product',
-  'too_long', 'weak_ending', 'too_salesy', 'not_believable', 'hard_to_follow',
+  'too_long', 'weak_ending', 'too_salesy', 'not_believable', 'hard_to_follow', 'promise_not_kept',
 ] as const
 export type Issue = typeof ISSUES[number]
 
@@ -69,6 +69,7 @@ export const AUDIENCE_SYSTEM = [
   'Then list at most 3 fixes the panel points to, each with an issue from the allowed list, a concrete fix in one sentence, and the 0-based script line it applies to (-1 for the whole video).',
   'NEVER suggest adding facts that are not already in the script or the product facts given (no invented prices, numbers, awards or claims). If a viewer asks for a missing fact, the fix is "say it if true", not a made-up value.',
   'Be tough but fair: a good script can have zero fixes.',
+  'promise_kept: true if a script line BEFORE the call to action delivers what hook option 0 opens (every promised item, the answer to its question, the result it teased); false if the video never closes it. If false, include a promise_not_kept fix on the line that should deliver it.',
   'Finally, closed_hooks: the 0-based indexes of hooks that ANSWER THEIR OWN QUESTION — the hook already states the conclusion, so nothing is left to stay for (e.g. "A belly band will not heal your core"). A hook that raises a question or tension and holds the answer back is open. Judge the wording, not the topic.',
 ].join('\n')
 
@@ -95,6 +96,7 @@ export const AUDIENCE_SCHEMA = {
     },
     summary: S,
     closed_hooks: { type: 'ARRAY', items: N },
+    promise_kept: { type: 'BOOLEAN' },
   },
   required: ['viewers', 'fixes', 'summary'],
 }
@@ -155,6 +157,8 @@ export interface AudienceResult {
   best_hook: number | null
   fixes: Fix[]
   summary: string | null
+  /** Did a line before the ask close what hook 0 opened? Null when not judged. */
+  promise_kept: boolean | null
 }
 
 const txt = (v: unknown, n: number): string | null => {
@@ -215,7 +219,7 @@ export function normalizeAudience(raw: unknown, s: ScriptForTest): AudienceResul
     return [{ issue, fix, beat, count }]
   })
 
-  return { viewers, hooks, best_hook, fixes, summary: oneBased(txt(r.summary, 300)) }
+  return { viewers, hooks, best_hook, fixes, summary: oneBased(txt(r.summary, 300)), promise_kept: typeof r.promise_kept === 'boolean' ? r.promise_kept : null }
 }
 
 // ── MAKE THE HOOK BETTER, THEN SHOW IT (owner: the panel must change the
@@ -327,7 +331,10 @@ export function applyLineRewrites(lines: readonly string[], raw: unknown): { lin
  *  hook did not get worse. */
 export function betterVersion(before: AudienceResult, after: AudienceResult): boolean {
   const best = (x: AudienceResult) => Math.max(0, ...x.hooks.map((h) => h.stopped))
-  return watchedToEnd(after.viewers) > watchedToEnd(before.viewers) && best(after) >= best(before)
+  if (best(after) < best(before)) return false
+  // Closing a hook the video left open counts, as long as nobody more leaves.
+  if (before.promise_kept === false && after.promise_kept === true) return watchedToEnd(after.viewers) >= watchedToEnd(before.viewers)
+  return watchedToEnd(after.viewers) > watchedToEnd(before.viewers) && after.promise_kept !== false
 }
 
 /**

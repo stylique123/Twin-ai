@@ -156,7 +156,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // stay to the end on the same panel; otherwise the tested version stands.
     let lineRounds = 0
     const changedLines = new Set<number>()
-    while (lineRounds < SCRIPT_ROUNDS && watchedToEnd(r.viewers) < SCRIPT_TARGET) {
+    while (lineRounds < SCRIPT_ROUNDS && (watchedToEnd(r.viewers) < SCRIPT_TARGET || r.promise_kept === false)) {
       lineRounds += 1
       const drafted = applyLineRewrites(tested.lines, await geminiJson(SCRIPT_REWRITE_SYSTEM, scriptRewritePrompt(tested, r), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model))
       if (!drafted) break
@@ -185,11 +185,15 @@ export async function runAudienceTests(log: Log): Promise<void> {
     const bp = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
     const oldOrder = Array.isArray(bp.hook_options) ? (bp.hook_options as unknown[]).join('\u0000') : ''
     const reordered = ordered.length > 0 && ordered.join('\u0000') !== oldOrder
-    if (reordered || lineChanges.length > 0) {
+    const shown = (bp.shown_audit && typeof bp.shown_audit === 'object' ? bp.shown_audit : null) as Record<string, unknown> | null
+    const promiseChanged = r.promise_kept !== null && (shown?.promiseKept ?? null) !== r.promise_kept
+    if (reordered || lineChanges.length > 0 || promiseChanged) {
       // Only the version that tested best is what she sees: better lines
       // replace the old ones on the teleprompter AND on the shot card.
       const next: Record<string, unknown> = { ...bp }
       if (reordered) next.hook_options = ordered
+      // Owner brief 2026-10-01 (1.6): did the video close what its hook opened?
+      if (r.promise_kept !== null) next.shown_audit = { ...(shown ?? {}), promiseKept: r.promise_kept }
       if (lineChanges.length > 0 && Array.isArray(bp.script)) {
         const script = [...(bp.script as Array<Record<string, unknown>>)]
         const shots = Array.isArray(bp.shot_list) ? [...(bp.shot_list as Array<Record<string, unknown>>)] : null
@@ -244,7 +248,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       if (id) filed += 1
     }
     await db.from('audience_tests').update({ learned_at: new Date().toISOString() }).eq('generation_id', g.id)
-    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: changedLines.size, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length })
+    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: changedLines.size, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length, promise_kept: r.promise_kept })
   } catch (err) {
     const failure = err instanceof Error ? err.message.slice(0, 300) : 'unknown'
     // A quota wall says nothing about the script: leave it untested so the next tick retries.
