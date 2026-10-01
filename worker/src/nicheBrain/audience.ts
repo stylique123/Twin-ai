@@ -244,7 +244,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       if (id) filed += 1
     }
     await db.from('audience_tests').update({ learned_at: new Date().toISOString() }).eq('generation_id', g.id)
-    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: changedLines.size, fixes: r.fixes.length, filed, her_panel: panel.length > 0 })
+    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: changedLines.size, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length })
   } catch (err) {
     const failure = err instanceof Error ? err.message.slice(0, 300) : 'unknown'
     // A quota wall says nothing about the script: leave it untested so the next tick retries.

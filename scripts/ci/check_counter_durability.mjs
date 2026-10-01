@@ -718,6 +718,7 @@ const EVENTS = {
   lessons_broken: { kind: 'incident', why: 'A script still contains a "never write" phrase she taught Twin in a rating (0250); recorded on the blueprint as lessons_broken.' },
   script_guard_removed: { kind: 'incident', why: 'The final privacy guard removed sentences carrying a private term or a tapped-out fact from a finished script (0252); recorded on the blueprint as guardrail_report.' },
   shown_script_audit: { kind: 'counter_ephemeral', why: 'The shown half of each script measured against the owner spec (demo beat present, distinct locations, showing framed like talk, generic gestures); stored on blueprint.shown_audit.' },
+  hook_family_audit: { kind: 'counter_ephemeral', why: 'Which creator family a script was written for and how many distinct hook moves its hook set used (owner brief 2026-10-01); stored on blueprint.hook_audit.' },
   published_text_ruled: { kind: 'counter_ephemeral', why: 'Sentences in captions, titles, thumbnail text, visual hook or shot notes that were private, excluded, named an unpicked product or asked for a follow were removed (audit 2026-10-01 S2).' },
   script_rule_removed: { kind: 'counter_ephemeral', why: 'Sentences naming an unpicked product/brand or asking for a follow she did not choose were removed (audit 2026-09-30); recorded on the blueprint as guardrail_report.' },
   hook_options_ruled_out: { kind: 'counter_ephemeral', why: 'Hook options that were private, excluded, named an unpicked product or asked for a follow were not offered (audit 2026-09-30).' },

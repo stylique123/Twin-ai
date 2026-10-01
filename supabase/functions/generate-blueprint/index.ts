@@ -30,6 +30,7 @@ import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe }
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
 import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript, referenceShownKept } from '../_shared/shownJob.ts'
+import { scriptFamily, renderFamilyHookRule, normalizeHookMoves, auditHookSet } from '../_shared/scriptFamily.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
@@ -5571,6 +5572,7 @@ const blueprintSchema = obj(
       ['opening_frame', 'why_it_interrupts'],
     ),
     hook_options: arr(str),
+    hook_moves: arr(str),
     script: arr(
       obj(
         {
@@ -5639,6 +5641,7 @@ const blueprintSchema = obj(
     'beat_plan',
     'visual_hook',
     'hook_options',
+    'hook_moves',
     'script',
     'shot_list',
     'captions',
@@ -10127,7 +10130,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 
     const hookPatternsLine = hookPatterns.length
       ? hookPatterns.join(' | ')
-      : 'NONE STORED. Build 5 DISTINCT opener moves that fit this niche and voice (contrarian claim, number drop, confession, direct callout, curiosity gap) and write one hook from each.'
+      : 'NONE STORED. Use the moves listed under THIS VIDEO\'S FAMILY below.'
     // The creator's PLAYBOOK — their real video formats + packaging patterns. Newer
     // scans capture these; when a profile predates them, infer from the niche so the
     // concept adapts one of THEIR archetypes and packaging matches their look.
@@ -10850,9 +10853,19 @@ This is the video's position. Every field below must serve it. If the reference'
         String((ownedEntity as { offer?: unknown } | null)?.offer ?? ''),
       ].join(' '),
     })
+    // THE FAMILY OF THIS VIDEO (owner brief 2026-10-01, by niche): which hook
+    // moves real videos of this kind open with. Per video, from what she chose.
+    const family = scriptFamily({
+      goal: String(videoGoal ?? body.goal ?? ''), focus: String(body.focus ?? ''),
+      hasProduct: !!ownedEntity,
+      offerText: String((ownedEntity as { offer?: unknown } | null)?.offer ?? ''),
+    })
+    const familyHookRule = renderFamilyHookRule(family)
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}
+
+${familyHookRule}
 
 ${positionBlock}${referenceBlock}${historyBlock ? `
 
@@ -14111,6 +14124,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           ? referenceShownKept(refShown.map((r) => (r as { shown_job?: unknown })?.shown_job), audit.jobs)
           : null
         bp.shown_audit = audit
+        const hooks = Array.isArray((blueprint as { hook_options?: unknown }).hook_options) ? (blueprint as { hook_options: unknown[] }).hook_options : []
+        const moves = normalizeHookMoves((blueprint as { hook_moves?: unknown }).hook_moves, hooks.length, family)
+        const hookAudit = auditHookSet(moves, family)
+        ;(bp as Record<string, unknown>).script_family = family
+        ;(bp as Record<string, unknown>).hook_moves = moves
+        ;(bp as Record<string, unknown>).hook_audit = hookAudit
+        console.log(JSON.stringify({ event: 'hook_family_audit', family, distinct_moves: hookAudit.distinctMoves, in_family: hookAudit.inFamily, hooks: moves.length }))
         console.log(JSON.stringify({
           event: 'shown_script_audit', shows_in_use: audit.showsInUse, distinct_locations: audit.distinctLocations,
           showing_framed_like_talk: audit.showingFramedLikeTalk, generic_gestures: audit.genericGestures, repeated_actions: audit.repeatedActions,
