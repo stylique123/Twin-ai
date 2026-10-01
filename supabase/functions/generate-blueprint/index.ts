@@ -6629,7 +6629,7 @@ const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, sour
 // ⚠️ `creator_confirmed_at` (0219) JOINS THE WIDE LIST, NOT THE BASE ONE, so an
 // unapplied migration costs the marker and never the knowledge — the narrow
 // retry below already exists for exactly this and needs no new branch.
-const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence, creator_confirmed_at, product_entity_id`
+const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence, creator_confirmed_at, product_entity_id, fact_scope, brand_id`
 
 /** Read creator knowledge with the rotation columns, or without them if 0215 has
  *  not been applied. `narrow` is reported so the degraded state is visible rather
@@ -8896,10 +8896,22 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // matching, no guess. The name heuristic below remains for facts with no id.
     const pickedId = String((ownedEntity as { id?: unknown } | null)?.id ?? '')
     const mentionedIdForScope = String(body.mentioned_product_id ?? '')
+    // ⚖️ EVERY FACT NOW CARRIES ITS SCOPE (0265): 'product' (an id), 'brand' (a
+    // brand id) or 'account' (about her, usable anywhere). A scoped row is decided
+    // here and never reaches the name heuristic below; only a row with no scope
+    // at all (none since the backfill) falls back to it.
+    const pickedBrandId = String((ownedEntity as { brand_id?: unknown } | null)?.brand_id ?? '')
+    const confirmedBrandId = String((confirmedBrand as { id?: unknown } | null)?.id ?? '')
+    const scopeOf = (k: unknown) => String((k as { fact_scope?: unknown }).fact_scope ?? '')
     const byId = focusOrderedAll.filter((k) => {
       const pid = String((k as { product_entity_id?: unknown }).product_entity_id ?? '')
+      const bid = String((k as { brand_id?: unknown }).brand_id ?? '')
+      const scope = scopeOf(k)
+      if (scope === 'account') return true
+      if (scope === 'brand') return !!bid && (bid === pickedBrandId || (!!ownedEntity && bid === confirmedBrandId))
       return !pid || pid === pickedId || pid === mentionedIdForScope
     })
+    const scopedRows = new Set(byId.filter((k) => scopeOf(k) !== ''))
     if (byId.length !== focusOrderedAll.length) {
       console.log(JSON.stringify({ event: 'knowledge_scoped_by_id', held_back: focusOrderedAll.length - byId.length }))
     }
@@ -8908,7 +8920,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       const chosenName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim().toLowerCase()
       if (!chosenName) {
         if (namesNotPicked.length === 0) return focusOrderedAll
-        const kept = focusOrderedAll.filter((k) => !namedIn(
+        const kept = focusOrderedAll.filter((k) => scopedRows.has(k) || !namedIn(
           `${String((k as { text?: unknown }).text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`, namesNotPicked))
         if (kept.length !== focusOrderedAll.length) {
           console.log(JSON.stringify({ event: 'knowledge_held_back_unpicked', held_back: focusOrderedAll.length - kept.length }))
@@ -8922,6 +8934,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       const otherWords = new Set(others.flatMap(words).filter((w) => !mine.has(w)))
       if (otherWords.size === 0) return focusOrderedAll
       const kept = focusOrderedAll.filter((k) => {
+        if (scopedRows.has(k)) return true
         const t = ` ${norm(String((k as { text?: unknown }).text ?? ''))} ${norm(String((k as { evidence?: unknown }).evidence ?? ''))} `
         const namesOther = [...otherWords].some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))
         const namesMine = [...mine].some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))
