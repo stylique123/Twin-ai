@@ -113,7 +113,7 @@ describe('a confirmed row is worth more TO THE WRITER, or the column is decorati
   })
 
   it('is selected, or the marker could never appear', () => {
-    expect(EDGE).toMatch(/KNOWLEDGE_COLS_FULL = `\$\{KNOWLEDGE_COLS_BASE\}[^`]*creator_confirmed_at`/)
+    expect(EDGE).toMatch(/KNOWLEDGE_COLS_FULL = `\$\{KNOWLEDGE_COLS_BASE\}[^`]*creator_confirmed_at[^`]*`/)
   })
 
   it('an unapplied 0219 costs the marker and never the knowledge', () => {

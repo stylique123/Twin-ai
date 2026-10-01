@@ -3,6 +3,7 @@
 // ⚖️ IT READS WHAT THE BRAIN ALREADY KNOWS; it adds no new source. One voice per
 // run, every ten minutes, so it never competes with a creator's own jobs.
 
+import { nicheKey } from './nicheResearchParse.js'
 import { db } from '../db.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
@@ -33,7 +34,8 @@ export async function runIdeaWriter(log: Log): Promise<void> {
     const productIds = new Set((products ?? []).map((r) => r.id as string))
     const soon = [0, 1, 2, 3, 4].map((w) => new Date(Date.now() + w * 7 * 86_400_000))
     const months = [...new Set(soon.map((d) => d.getUTCMonth() + 1))]
-    const [{ data: record }, { data: trends }, { data: moments }, { data: open }, { data: hidden }, { data: seasonal }] = await Promise.all([
+    const nkey = nicheKey(sub || niche)
+    const [{ data: record }, { data: trends }, { data: moments }, { data: open }, { data: hidden }, { data: seasonal }, { data: research }] = await Promise.all([
       db.rpc('creator_track_record', { p_owner: v.owner_id, p_voice: v.voice_id }),
       db.rpc('brain_trends', { p_bucket: null, p_sub_niche: sub || null }),
       db.from('brain_moments').select('bucket, moments').order('day', { ascending: false }).limit(12),
@@ -41,6 +43,8 @@ export async function runIdeaWriter(log: Log): Promise<void> {
       db.from('creator_ideas').select('title, why').eq('voice_id', v.voice_id).not('dismissed_at', 'is', null)
         .order('dismissed_at', { ascending: false }).limit(20),
       db.from('creator_seasonal_ideas').select('month, day, title, outcome').eq('voice_id', v.voice_id).in('month', months).limit(12),
+      // Owner 2026-10-01: her sub-niche's own researched dates, news, products, questions (0259).
+      nkey ? db.from('niche_research').select('items').eq('niche_key', nkey).maybeSingle() : Promise.resolve({ data: null }),
     ])
     const emb = await geminiEmbed([sub, niche, String(p.audience ?? '')].filter(Boolean).join(' | '))
     const notes = emb
@@ -52,6 +56,7 @@ export async function runIdeaWriter(log: Log): Promise<void> {
       `HER TRACK RECORD: ${j(record, 2500)}`,
       `RISING IN HER LANE: ${j((Array.isArray(trends) ? trends : []).filter((t: { kind?: string }) => t.kind !== 'moment').slice(0, 6), 800)}`,
       `WORLD MOMENTS (all niches, pick only relevant): ${j(moments, 2000)}`,
+      `HER SUB-NICHE THIS WEEK (researched from the web; dates, news, new products, questions people ask — context for ideas, never facts about her): ${j((research as { items?: unknown } | null)?.items ?? [], 2000)}`,
       `TODAY: ${day}`,
       `HER OPEN IDEAS (do not repeat): ${j((open ?? []).map((r) => r.title), 1200)}`,
       `IDEAS SHE HID (never again without a clearly new reason): ${j(hidden, 1500)}`,

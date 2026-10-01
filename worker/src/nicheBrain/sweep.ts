@@ -247,5 +247,8 @@ export async function runLearner(log: Log): Promise<void> {
   lastLearn = Date.now()
   const { data, error } = await db.rpc('brain_learn')
   if (error) { log('error', 'brain_learn_failed', { error: error.message }); return }
+  // Owner audit 2026-10-01: fold one-off sub-niche labels into established ones (0262).
+  const merged = await db.rpc('merge_sub_niches')
+  if (merged.error) log('error', 'merge_sub_niches_failed', { error: merged.error.message })
   log('info', 'brain_learn', { event: 'brain_learn', notes_updated: Number(data ?? 0) })
 }

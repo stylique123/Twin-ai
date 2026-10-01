@@ -6629,7 +6629,7 @@ const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, sour
 // ⚠️ `creator_confirmed_at` (0219) JOINS THE WIDE LIST, NOT THE BASE ONE, so an
 // unapplied migration costs the marker and never the knowledge — the narrow
 // retry below already exists for exactly this and needs no new branch.
-const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence, creator_confirmed_at`
+const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence, creator_confirmed_at, product_entity_id`
 
 /** Read creator knowledge with the rotation columns, or without them if 0215 has
  *  not been applied. `narrow` is reported so the degraded state is visible rather
@@ -6730,6 +6730,12 @@ function reserveAskedInline<T extends { source?: string | null }>(
 const OBJECTIVE_SOURCE_REF_PREFIX_INLINE = 'asked:objective:'
 const OBJECTIVE_QUESTION_ID_PATTERN_INLINE = /^[a-z_]{2,40}\.[a-z_]{2,40}$/
 const OBJECTIVE_PRODUCT_KEY_PATTERN_INLINE = /^[A-Za-z0-9:_-]{1,80}$/
+
+/** The product an objective answer was asked about, only when it is the picked one (never a client-supplied id alone). */
+function objectiveProductIdInline(sourceRef: string, pickedId: string): string | null {
+  const key = sourceRef.slice(OBJECTIVE_SOURCE_REF_PREFIX_INLINE.length).split(':')[0] ?? ''
+  return pickedId && key === pickedId && /^[0-9a-f-]{36}$/i.test(key) ? key : null
+}
 
 function objectiveAnswerInline(answers: Record<string, unknown>): {
   questionId: string; question: string; text: string; sourceRef: string
@@ -7867,6 +7873,8 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       times_seen: 1,
       source_ref: objectiveAnswer.sourceRef,
       question_id: objectiveAnswer.questionId,
+      // 0260: the answer belongs to the product it was asked about.
+      product_entity_id: objectiveProductIdInline(objectiveAnswer.sourceRef, String((ownedEntity as { id?: unknown } | null)?.id ?? '')),
       last_observed_at: new Date().toISOString(),
     })
     // ⚖️ BEST EFFORT: a failed store costs rotation, never the script. A
@@ -8880,7 +8888,20 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         ...csEntities.filter((e) => e.id === String(body.mentioned_product_id ?? '')).map((e) => e.name)],
       [reference_note, ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string')].join(' '),
     )
+    // ⚖️ SCOPE BY ID FIRST (owner audit 2026-10-01, 0260). A fact that carries
+    // the product it belongs to is used ONLY in that product's scripts — no name
+    // matching, no guess. The name heuristic below remains for facts with no id.
+    const pickedId = String((ownedEntity as { id?: unknown } | null)?.id ?? '')
+    const mentionedIdForScope = String(body.mentioned_product_id ?? '')
+    const byId = focusOrderedAll.filter((k) => {
+      const pid = String((k as { product_entity_id?: unknown }).product_entity_id ?? '')
+      return !pid || pid === pickedId || pid === mentionedIdForScope
+    })
+    if (byId.length !== focusOrderedAll.length) {
+      console.log(JSON.stringify({ event: 'knowledge_scoped_by_id', held_back: focusOrderedAll.length - byId.length }))
+    }
     const focusOrdered = (() => {
+      const focusOrderedAll = byId
       const chosenName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim().toLowerCase()
       if (!chosenName) {
         if (namesNotPicked.length === 0) return focusOrderedAll
@@ -14088,6 +14109,25 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // shipped. Every published string is held to the same rules: a failing
         // sentence is dropped, never rewritten.
         const followOk = String(body.outcome ?? '') === 'follow'
+        // ⚠️ FABRICATION AUDIT 2026-10-01: titles, captions, thumbnail text and
+        // hooks are held to the same figure rule as the script — a number nothing
+        // she gave states (and the checked script does not already say) is cut.
+        const figureAllowed = [
+          JSON.stringify(ownedEntity ?? {}),
+          JSON.stringify(confirmedBrand ?? {}),
+          ...(speakable ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
+          ...productFactsForCheck,
+          reference_note,
+          ...Object.values(brief ?? {}).filter((v): v is string => typeof v === 'string'),
+          ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string'),
+          ...(bp.script as Array<{ line?: unknown }>).map((b) => (typeof b?.line === 'string' ? b.line : '')),
+        ].join('\n')
+        const unbackedFigure = (t: string) => guardScript([{ line: t }], { allowedText: figureAllowed, excludedTexts: [], figuresMustBeBacked: true }).removed.length > 0
+        if (Array.isArray(bh.hook_options)) {
+          const before = (bh.hook_options as unknown[]).length
+          bh.hook_options = (bh.hook_options as unknown[]).filter((h) => typeof h !== 'string' || !unbackedFigure(h))
+          if ((bh.hook_options as unknown[]).length !== before) console.warn(JSON.stringify({ event: 'hook_options_ruled_out', removed: before - (bh.hook_options as unknown[]).length, reason: 'unbacked_figure' }))
+        }
         const textCuts: Array<{ field: string; reason: string; sentence: string }> = []
         const clean = (field: string, t: unknown): unknown => {
           if (typeof t !== 'string' || !t.trim()) return t
@@ -14097,6 +14137,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               .find((r) => r.reason === 'private' || r.reason === 'excluded')
             const rule = enforceScriptRules([{ line: sent }], { unpicked: namesNotPicked, followAllowed: followOk }).removed[0]
             if (priv || rule) { textCuts.push({ field, reason: String(priv?.reason ?? rule?.reason), sentence: sent }); continue }
+            if (unbackedFigure(sent)) { textCuts.push({ field, reason: 'unbacked_figure', sentence: sent }); continue }
             kept.push(sent)
           }
           return kept.join(' ').trim()
