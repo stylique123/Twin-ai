@@ -24,7 +24,7 @@
 
 /** What kind of thing is being sold. Mirrors `product_entities.type`. */
 export type ProductKind =
-  | 'PHYSICAL_PRODUCT' | 'DIGITAL_PRODUCT' | 'SAAS' | 'SERVICE' | 'OTHER'
+  | 'PHYSICAL_PRODUCT' | 'DIGITAL_PRODUCT' | 'SAAS' | 'APP' | 'SERVICE' | 'OTHER'
 
 /** Whether it can appear on camera at all. Mirrors `product_entities.showability`. */
 export type Showability = 'ALWAYS' | 'SOMETIMES' | 'NEVER' | 'UNKNOWN'
@@ -90,6 +90,14 @@ export const SELF_DIRECTIONS: readonly DirectionOption[] = [
   { id: 'step_back', does: 'Step back and let your hands drop', bestFor: 'Releasing tension after the hard part.' },
   { id: 'still', does: 'Stop moving entirely and just say it', bestFor: 'A single sentence that should land on its own.' },
   { id: 'gesture_offscreen', does: 'Gesture off-camera toward the thing you are naming', bestFor: 'Referring to something real that is not in shot.' },
+  // ⚠️ AUDIT 2026-10-01 ("SHOWN SCRIPT"): only gestures that PICTURE the words
+  // (a size, a distance, a comparison, a sequence) lift how competent and
+  // persuasive a speaker reads; generic movement does nothing. These cues are
+  // the illustrator gestures, and they work for every creator, product or not.
+  { id: 'show_size', does: 'Show the size or distance you are describing with your hands', bestFor: 'A word like big, tiny, far, close, a little, a lot.' },
+  { id: 'two_sides', does: 'Hold one hand out for each side, then weigh them', bestFor: 'A before/after, this-versus-that, or two options.' },
+  { id: 'mark_steps', does: 'Mark each step in the air, left to right', bestFor: 'A sequence, a process, first-then-finally.' },
+  { id: 'fingertips', does: 'Bring your fingertips together, precise', bestFor: 'The exact detail, the one thing that matters.' },
 ]
 
 /** Shape narrows the physical set — a bag has no cap to twist, a flat card has
@@ -145,6 +153,20 @@ export function directionsFor(ctx: DirectionContext): DirectionSet {
   const showability = ctx.showability ?? 'UNKNOWN'
   const sections = (ctx.sections ?? []).filter((s) => typeof s === 'string' && s.trim() !== '')
 
+  // ⚠️ AUDIT 2026-10-01: NO PRODUCT USED TO GET THE FULL PRODUCT-HANDLING MENU.
+  // A storytime, an opinion or a lesson fell through to "twist it open, hold it
+  // up" — props that do not exist. With nothing to sell, the body and face ARE
+  // the shown half of the video, and they get the presence cues.
+  if (!kind && !ctx.shape) {
+    return {
+      format: 'Talking Review',
+      options: SELF_DIRECTIONS,
+      nameableSections: [],
+      because: 'No product is in this video. The shown half is the creator: what the hands '
+        + 'picture, where the eyes go, how the posture changes. Never invent a prop.',
+    }
+  }
+
   // ⚠️ THE GATE, AND THE GLASS OF WATER. A product recorded as never showable
   // gets NO handling cue — not a softened one, not a generic one. Seven of the
   // products in production are services marked NEVER.
@@ -160,7 +182,7 @@ export function directionsFor(ctx: DirectionContext): DirectionSet {
     }
   }
 
-  const onScreen = kind === 'SAAS' || kind === 'DIGITAL_PRODUCT'
+  const onScreen = kind === 'SAAS' || kind === 'DIGITAL_PRODUCT' || kind === 'APP'
   if (onScreen) {
     // ⚠️ A SCREEN CUE THAT NAMES NOTHING REAL IS THE SAME BUG IN A DIFFERENT
     // COSTUME. Without a section map, "show the dashboard" is a guess about a
@@ -218,7 +240,7 @@ export function renderDirectionGuidance(ctx: DirectionContext): string {
     `For every beat's action_posing, pick ONE id from this list and write ONLY the direction`,
     `in the creator's own words. NEVER write the id itself — "hold_up:" is a key for choosing,`,
     `not something a person can do. If none of them fits the sentence, use the plainest one`,
-    `rather than inventing a prop, a gesture or a screen that is not listed.`,
+    `rather than inventing a prop or a screen that is not listed.`,
     `set_down is a LAST RESORT: at most once per script and never the automatic last move —`,
     `close on something specific to this product instead (a detail, a use, or show_silent).`,
     `And "it" below is a BLANK, not a word to copy: name the actual thing in their hands`,
@@ -226,8 +248,35 @@ export function renderDirectionGuidance(ctx: DirectionContext): string {
     `a creator holding three objects nothing at all.`,
     ...lines,
     sections,
+    PRESENCE_RULES,
   ].filter(Boolean).join('\n')
 }
+
+/**
+ * ⚠️ AUDIT 2026-10-01 ("SHOWN SCRIPT"): every beat has a spoken half and a
+ * shown half, for every creator — a storytime or an opinion as much as a
+ * product demo. These rules apply to all of them. None of them may add a fact,
+ * a prop, a place or a sensory claim she did not give: they direct how to
+ * deliver and where to stand, never what is true.
+ */
+export const PRESENCE_RULES = [
+  `THE SHOWN HALF OF EVERY BEAT (every creator, product or not):`,
+  `  - GESTURE: when a beat's words carry a size, a distance, a comparison or a sequence, the`,
+  `    action_posing must PICTURE it (show_size, two_sides, mark_steps, fingertips) and say what`,
+  `    it pictures ("hands a foot apart for 'a tiny batch'"). Never "gesture naturally"; never`,
+  `    constant movement. Keep every gesture inside the frame.`,
+  `  - EYES: "direction" says how to deliver the beat. Name direct eye contact with the lens on`,
+  `    the hook, the strongest claim and the ask. A short look away (at the thing, or in a real`,
+  `    reaction) belongs on a transition beat — say so where it fits.`,
+  `  - POSTURE: open and upright by default; lean in on the strongest claim or a confession;`,
+  `    relax on a personal moment. Do not give every beat the same posture.`,
+  `  - WHERE: choose "location" by what the beat does, from places she has or can easily use —`,
+  `    a plain spot for a confession, the real workspace for a process or a demonstration, an`,
+  `    uncluttered spot for the ask. A beat that shows something happening must not share the`,
+  `    exact framing of a beat that only talks.`,
+  `  - DEMONSTRATION: if this video promotes a product she can show, at least one beat must SHOW`,
+  `    it in use (hands in frame, close, ideally from her point of view), not only hold it up.`,
+].join('\n')
 
 // ── THE MENU LEAKED ONTO THE CREATOR'S SCREEN ───────────────────────────────
 //
