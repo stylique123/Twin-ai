@@ -83,8 +83,26 @@ export function statedQuantities(text: string): Set<number> {
   return out
 }
 
+/** Each stated figure as "value|unit" (unit singular, '' when bare), so "six
+ *  months" is not backed by "6 years". */
+export function statedFigures(text: string): Set<string> {
+  const out = new Set<string>()
+  const re = /(\d[\d,]*(?:\.\d+)?)|\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b|\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\b/gi
+  for (const m of text.matchAll(re)) {
+    const v = m[1] !== undefined ? Number(m[1].replace(/,/g, ''))
+      : m[2] !== undefined ? TENS[m[2].toLowerCase()] + (m[3] ? SMALL[m[3].toLowerCase()] : 0)
+        : SMALL[String(m[4]).toLowerCase()]
+    if (!Number.isFinite(v)) continue
+    const after = text.slice((m.index ?? 0) + m[0].length)
+    const u = after.match(UNITS)
+    const unit = u ? u[0].replace(/^[\s-]+/, '').toLowerCase().replace(/(es|s)$/, '').replace(/^lb$/, 'pound').replace(/^ounce$/, 'oz') : ''
+    if (v >= 10 || unit) out.add(`${v}|${unit}`)
+  }
+  return out
+}
+
 export interface GuardBeat { line?: unknown; [k: string]: unknown }
-export interface GuardRemoval { beat: number; reason: 'private' | 'excluded'; sentence: string }
+export interface GuardRemoval { beat: number; reason: 'private' | 'excluded' | 'unbacked_figure'; sentence: string }
 
 /**
  * The final check. `allowedText` is everything she allowed for this video (the
@@ -93,13 +111,14 @@ export interface GuardRemoval { beat: number; reason: 'private' | 'excluded'; se
  */
 export function guardScript<T extends GuardBeat>(
   beats: readonly T[],
-  opts: { allowedText: string; excludedTexts: readonly string[] },
+  opts: { allowedText: string; excludedTexts: readonly string[]; figuresMustBeBacked?: boolean },
 ): { beats: T[]; removed: GuardRemoval[] } {
   const allowedNorm = ` ${norm(opts.allowedText)} `
   const allowedRuns = runs(opts.allowedText)
   const banned = new Set<string>()
   for (const t of opts.excludedTexts) for (const r of runs(t)) if (!allowedRuns.has(r)) banned.add(r)
   const allowedQty = statedQuantities(opts.allowedText)
+  const allowedFigures = statedFigures(opts.allowedText)
   const bannedQty = new Set<number>()
   for (const t of opts.excludedTexts) for (const q of statedQuantities(t)) if (!allowedQty.has(q)) bannedQty.add(q)
   const privateAllowed = (s: string) => {
@@ -115,6 +134,10 @@ export function guardScript<T extends GuardBeat>(
       if (isPrivate(s) && !privateAllowed(s)) { removed.push({ beat: i, reason: 'private', sentence: s }); continue }
       const hit = [...runs(s)].some((r) => banned.has(r)) || [...statedQuantities(s)].some((q) => bannedQty.has(q))
       if (hit) { removed.push({ beat: i, reason: 'excluded', sentence: s }); continue }
+      // A figure (10 or more, or any number with a unit) that nothing she gave states.
+      if (opts.figuresMustBeBacked && [...statedFigures(s)].some((f) => !allowedFigures.has(f) && !(f.endsWith('|') && allowedQty.has(Number(f.slice(0, -1)))))) {
+        removed.push({ beat: i, reason: 'unbacked_figure', sentence: s }); continue
+      }
       kept.push(s)
     }
     const next = kept.join(' ').trim()

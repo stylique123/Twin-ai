@@ -78,3 +78,22 @@ describe('audit 2026-10-01 (B1): the wider private list', () => {
     }
   })
 })
+
+describe('owner fabrication audit 2026-10-01: a figure nothing she gave states is removed', () => {
+  it('removes the invented cup score, batch size and shelf statistic; keeps her own figures and small counts', () => {
+    const allowed = 'We restock in small batches. I have roasted for 6 years. Signature Blend, 12oz bag.'
+    const { beats, removed } = guardScript([
+      { line: 'Our beans score above 82. We restock in small batches.' },
+      { line: 'We roast in two-pound batches.' },
+      { line: 'Most coffee sat on shelves for six months. I have roasted for 6 years.' },
+      { line: 'Here are three things to know. Grab the 12oz bag.' },
+    ], { allowedText: allowed, excludedTexts: [], figuresMustBeBacked: true })
+    expect(beats.map((b) => b.line)).toEqual([
+      'We restock in small batches.', '', 'I have roasted for 6 years.', 'Here are three things to know. Grab the 12oz bag.',
+    ])
+    expect(removed.every((r) => r.reason === 'unbacked_figure')).toBe(true)
+  })
+  it('is off unless asked for, so other callers keep their behaviour', () => {
+    expect(guardScript([{ line: 'It scores 82.' }], { allowedText: '', excludedTexts: [] }).removed).toEqual([])
+  })
+})
