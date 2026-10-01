@@ -80,7 +80,8 @@ const CLASSES: Record<string, { c: FailureClass, m?: string }> = {
   build_provenance_missing: { c: 'our_config' },
 
   // ── transient: retry is genuinely worth pressing ────────────────────────
-  retries_exhausted: { c: 'retry_helps' },
+  // A deterministic failure that exhausted retries would fail the same way again.
+  retries_exhausted: { c: 'retry_wont_help' },
   director_call_failed: { c: 'retry_helps' },
   asr_failed: { c: 'retry_helps' },
 
@@ -92,6 +93,12 @@ const CLASSES: Record<string, { c: FailureClass, m?: string }> = {
   manifest_mismatch: { c: 'retry_wont_help' },
   director_component_missing: { c: 'retry_wont_help' },
   edit_plan_invalid: { c: 'retry_wont_help' },
+  // ⚠️ AUDIT 2026-10-01 (E5): these fell through to "unknown" ("we are
+  // looking into it" — nobody was). Our editor's own contradiction, not her
+  // recording: say so plainly, and do not offer a retry that fails the same way.
+  edit_plan_divergent: { c: 'our_config', m: 'Our editor hit a bug on this recording. Your recording is safe and nothing you did caused it — we will fix it and you can try again then.' },
+  job_dead_lettered: { c: 'our_config', m: 'Our editor stopped before it finished. Your recording is safe — this is on our side, not yours.' },
+  lost_job: { c: 'retry_helps' },
   // The plan describes a render this build cannot construct — an unsupported
   // instruction, or a composed clip that is not what the plan says it is (wrong
   // owner, wrong kind, never measured). Deterministic on this plan: the same
@@ -130,7 +137,7 @@ const DEFAULT_MESSAGE: Record<FailureClass, string> = {
   our_config: OUR_CONFIG,
   refilm: 'This recording could not be used. Please film it again.',
   reupload: 'We could not find the original recording. Please upload it again.',
-  unknown: 'Something went wrong with this edit. Your recording is safe — we are looking into it.',
+  unknown: 'Something went wrong with this edit. Your recording itself is untouched.',
 }
 
 /**

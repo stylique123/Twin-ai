@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0254_her_jobs_first':
+    'Sets jobs.priority by type on insert (creator jobs 50, background -10) so creator work is claimed first; changes only claim ORDER, never what an editor job does.',
   '0253_she_left_it_out':
     'Adds creator_knowledge.creator_excluded_at and adds it to the creator_knowledge_writable view; read by generate-blueprint and the plan screen only. The editor never reads it.',
   '0252_private_facts_behind_a_view':

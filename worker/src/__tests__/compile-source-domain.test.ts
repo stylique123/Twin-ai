@@ -131,3 +131,18 @@ describe('a digest the plan identity cites is present or the stage refuses', () 
     expect(() => requireSha('', 'the pinned script snapshot')).toThrow(/the pinned script snapshot/)
   })
 })
+
+// ⚠️ AUDIT 2026-10-01 (E1): the manifest allows consecutive accepted scenes to
+// share a boundary instant (continuous recording). The compiler rejected that
+// as "overlap or touch", so every such take failed to edit.
+describe('accepted windows that touch are legal; only true overlap fails', () => {
+  const src = (w: Array<{ startMs: number; endMs: number }>) =>
+    ({ origin: 'teleprompter', durationMs: DURATION_MS, acceptedWindows: w }) as unknown as Parameters<typeof resolveAllowedDomain>[0]
+  it('keeps abutting windows separate', () => {
+    expect(resolveAllowedDomain(src([{ startMs: 0, endMs: 5000 }, { startMs: 5000, endMs: 9000 }])))
+      .toEqual([{ startMs: 0, endMs: 5000 }, { startMs: 5000, endMs: 9000 }])
+  })
+  it('still refuses a real overlap', () => {
+    expect(() => resolveAllowedDomain(src([{ startMs: 0, endMs: 5000 }, { startMs: 4000, endMs: 9000 }]))).toThrow(EditPlanError)
+  })
+})
