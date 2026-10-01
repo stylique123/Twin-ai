@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { guardScript, privateSqlPattern } from '../privacyGuard.js'
 
 const EDGE = readFileSync(new URL('../../../../../supabase/functions/generate-blueprint/index.ts', import.meta.url), 'utf8')
-const MIG = readFileSync(new URL('../../../../../supabase/migrations/0252_private_facts_behind_a_view.sql', import.meta.url), 'utf8')
+const MIG = readFileSync(new URL('../../../../../supabase/migrations/0255_private_by_model_or_word.sql', import.meta.url), 'utf8')
 
 const STORED = [
   'Her cups score above 80 at the roaster.',

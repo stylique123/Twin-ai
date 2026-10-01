@@ -289,6 +289,9 @@ const knowledgeSchema = obj(
           // manufacture a price for every errand the creator ran.
           cost: { type: 'STRING' },
           consensus: { type: 'STRING' },
+          // ⚠️ AUDIT 2026-10-01 (B1): the model marks private matter itself; a
+          // word list alone missed debt, IVF, "my ex", a child's school.
+          private: { type: 'STRING' },
         },
         ['kind', 'text', 'basis', 'times_seen', 'confidence', 'source_video'],
       ),
@@ -307,6 +310,7 @@ const KNOWLEDGE_SYSTEM = `You are TwinAI's Creator Knowledge engine. You are giv
 - BE HONEST WITH basis AND DO NOT ROUND IT UP. Only "stated" and "demonstrated" are ever put back into this creator's mouth; "inferred" is used to steer and is never spoken. Marking a guess as stated is how a script tells someone's audience that they said something they did not say.
 - times_seen is how many of the supplied videos carried it, as a digit.
 - confidence is how sure YOU are that this is really what they meant, as a decimal between 0 and 1. It is a different question from basis: basis is HOW you know, confidence is HOW WELL. A remark you heard clearly but only once is "stated" with a middling confidence. Do not round it up to 1 to look decisive.
+- private: "yes" when the item touches private matter — health, pregnancy or fertility, family and children, relationships and exes, money trouble or debt, legal or police matters, immigration, where they live, their salary. Otherwise leave it empty. Private items are still recorded; they are simply never used in a script unless the creator turns them on.
 - source_video is the number of the VIDEO this came from, as a digit matching the "--- VIDEO n ---" headings below. Where an item appears in several, give the first. A creator correcting an item needs to be able to go and watch the thing you read it out of.
 - TWO OPTIONAL FIELDS RECORD THE HALF OF A SENTENCE THIS EXTRACTOR HAS ALWAYS DROPPED. Both are usually empty, and an empty one is the normal, correct, unpenalised answer. Fill them only when the creator SAID the thing.
 - cost — fill ONLY on an item where they said what it COST THEM: money, months, a job, a client, a launch, a thing they had to undo. "$40,000 of inventory that never sold", "lost the client", "two years". A lesson with a price on it is the most useful thing a creator can hand a script, and dropping the price is how a lesson gets recorded as flat biography: "Currently works at Microsoft" is what gets written when nobody asked what anything cost. If they described doing something but never said what it cost, LEAVE cost EMPTY. Do not price it for them, do not restate the effort as a cost, and do not call an ordinary activity expensive so the field has something in it.
@@ -333,6 +337,9 @@ export interface RawKnowledgeItem {
   /** The belief they NAMED and argued against, when they named one. Absent is
    *  the normal case. */
   consensus?: string
+  /** "yes" when the item is private matter (health, family, money trouble,
+   *  relationships, legal, where they live). Audit 2026-10-01 B1. */
+  private?: string
 }
 
 /** Distil what a creator knows from what they said. Returns raw rows for the

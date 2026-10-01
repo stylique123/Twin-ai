@@ -126,6 +126,66 @@ export interface DirectionContext {
   readonly shape?: ObjectShape | null
   /** Named sections actually FOUND on the product's own pages. Never guessed. */
   readonly sections?: readonly string[] | null
+  /** The product's name and what she said about it — only read to tell a
+   *  consumable from a made-by-hand object (phase 3). Never quoted. */
+  readonly productText?: string | null
+}
+
+// ── PHASE 3 (owner spec 2026-10-01): WHAT KIND OF THING IS BEING SHOWN ─────
+//
+// The demonstration that sells a candle is not the one that sells a jacket or
+// an app. The category is read from what is already stored — the type, the
+// shape read from a photo, the words she used — never asked again.
+export type ProductCategory = 'consumable' | 'wearable_handled' | 'craft' | 'software' | 'service' | 'unknown'
+
+const CONSUMABLE_WORDS = /\b(food|drink|coffee|tea|bean|roast|sauce|snack|bread|cake|cookie|candle|wax|soap|skincare|serum|cream|lotion|balm|oil|scrub|spice|honey|jam|wine|beer|juice|supplement|vitamin|perfume|fragrance)\w*/i
+const CRAFT_WORDS = /\b(handmade|hand-made|hand made|handcrafted|made by hand|leather|ceramic|pottery|woodwork|knit|crochet|sewn|stitched|forged|carved|thrown|glaze)\w*/i
+
+export function productCategory(ctx: Pick<DirectionContext, 'kind' | 'shape' | 'productText'>): ProductCategory {
+  const kind = ctx.kind ?? null
+  if (kind === 'SAAS' || kind === 'APP' || kind === 'DIGITAL_PRODUCT') return 'software'
+  if (kind === 'SERVICE') return 'service'
+  const text = String(ctx.productText ?? '')
+  if (CRAFT_WORDS.test(text)) return 'craft'
+  const shape = ctx.shape ?? null
+  if (shape === 'food' || CONSUMABLE_WORDS.test(text)) return 'consumable'
+  if (shape === 'jar' || shape === 'bottle' || shape === 'tube') return 'consumable'
+  if (shape === 'garment' || shape === 'device' || shape === 'bag' || shape === 'vessel' || shape === 'box' || shape === 'flat') return 'wearable_handled'
+  return kind === 'PHYSICAL_PRODUCT' ? 'wearable_handled' : 'unknown'
+}
+
+/** The spec's catalogs 3.1 / 3.2: how each category is demonstrated. */
+export const CATEGORY_DEMO: Readonly<Record<ProductCategory, string | null>> = {
+  consumable: [
+    `HOW THIS PRODUCT IS DEMONSTRATED (a consumable):`,
+    `  - One close, hands-only beat of it actually being used — poured, applied, lit, tasted.`,
+    `  - One sensory beat held longer than a display shot (steam, the pour, a flame catching,`,
+    `    texture on skin) — but only a quality she gave you; never claim a taste or smell she did not.`,
+    `  - Show before, during or after, do not describe it.`,
+  ].join('\n'),
+  wearable_handled: [
+    `HOW THIS PRODUCT IS DEMONSTRATED (worn or handled):`,
+    `  - A close, point-of-view beat at the moment of contact — putting it on, picking it up.`,
+    `  - When size or weight matters, a beat with it against her hand for scale.`,
+    `  - When it is worn, show it moving, not standing still.`,
+  ].join('\n'),
+  craft: [
+    `HOW THIS PRODUCT IS DEMONSTRATED (made by hand):`,
+    `  - The making itself is the demonstration: her hands working on it in real time.`,
+    `  - Honest imperfection while making it is fine and reads as real; do not stage a flawless sequence.`,
+  ].join('\n'),
+  software: [
+    `HOW THIS PRODUCT IS DEMONSTRATED (an app or software):`,
+    `  - Show the first-use PAYOFF, never a feature tour: name the moment of need first, then the`,
+    `    one action and its result on screen (shown_job app_payoff), then a quick reaction.`,
+    `  - Keep it short — about 25 seconds — with tighter lines per beat.`,
+    `  - The ask removes the real reason not to try it (cost, sign-up, time) using only facts she`,
+    `    gave about it; never invent "free" or "no account needed".`,
+    `  - Film the phone or laptop screen to camera with her thumb or cursor visible; only ask for a`,
+    `    screen recording if she said she can record her screen.`,
+  ].join('\n'),
+  service: null,
+  unknown: null,
 }
 
 export interface DirectionSet {
@@ -248,6 +308,7 @@ export function renderDirectionGuidance(ctx: DirectionContext): string {
     `a creator holding three objects nothing at all.`,
     ...lines,
     sections,
+    ctx.kind ? CATEGORY_DEMO[productCategory(ctx)] ?? '' : '',
     PRESENCE_RULES,
   ].filter(Boolean).join('\n')
 }

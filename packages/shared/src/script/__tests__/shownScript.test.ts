@@ -26,3 +26,22 @@ describe('the shown half of a script', () => {
     expect(p).not.toMatch(/inventing a prop, a gesture/)
   })
 })
+
+import { productCategory, CATEGORY_DEMO } from '../performanceDirection'
+describe('phase 3: the demonstration matches what kind of thing it is', () => {
+  it('reads the category from type, shape and her words', () => {
+    expect(productCategory({ kind: 'APP' })).toBe('software')
+    expect(productCategory({ kind: 'PHYSICAL_PRODUCT', productText: 'Colombia washed medium roast beans' })).toBe('consumable')
+    expect(productCategory({ kind: 'PHYSICAL_PRODUCT', productText: 'handmade leather wallet' })).toBe('craft')
+    expect(productCategory({ kind: 'PHYSICAL_PRODUCT', shape: 'garment' })).toBe('wearable_handled')
+  })
+  it('the prompt carries that category\'s demonstration', () => {
+    const p = renderDirectionGuidance({ kind: 'PHYSICAL_PRODUCT', showability: 'ALWAYS', productText: 'scented soy candle' })
+    expect(p).toContain(CATEGORY_DEMO.consumable!)
+    expect(renderDirectionGuidance({ kind: null })).not.toContain('HOW THIS PRODUCT IS DEMONSTRATED')
+  })
+  it('an app never invents "free" and only asks for a screen recording when she can', () => {
+    expect(CATEGORY_DEMO.software).toMatch(/never invent "free"/)
+    expect(CATEGORY_DEMO.software).toMatch(/only ask for a\s+screen recording if she said she can/)
+  })
+})

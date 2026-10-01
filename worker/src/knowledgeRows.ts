@@ -47,6 +47,8 @@ export interface KnowledgeRow {
   last_observed_at: string
   cost: string | null
   consensus: string | null
+  /** Marked private by the extractor; the database ORs in its word list (0255). */
+  sensitive: boolean
   extractor_version: number
   evidence: string | null
   question_id: string | null
@@ -116,6 +118,7 @@ export function knowledgeRowsFrom(
       // null says the first. Capped at 240 like `text`, for the same reason.
       cost: shortOrNull(r.cost),
       consensus: shortOrNull(r.consensus),
+      sensitive: /^(yes|true|1)$/i.test(String((r as { private?: unknown }).private ?? '').trim()),
       // ⚖️ WHICH PROMPT SAID IT. Without this, an improvement to the extractor
       // only ever reaches creators who sign up after it — see
       // `extractorVersion.ts`. Stamped here, at the only place that knows the
