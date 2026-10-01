@@ -133,6 +133,7 @@ export function lessonsFromAudience(t: AudienceTestLike): CreatorLesson[] {
   const ISSUE: Record<string, string> = {
     unanswered_question: 'Answer every question the script raises before the close.',
     weak_ending: 'End on a direct, specific invitation, not a generic question.',
+    promise_not_kept: 'Pay off what the hook opened before the ask: every promised item, the answer, the result.',
     weak_hook: 'Lead with the highest-stakes line; no warm-up before the hook.',
     too_long: 'Cut any line that repeats a point already made.',
     unclear: 'Say the concrete thing plainly; no vague setup lines.',

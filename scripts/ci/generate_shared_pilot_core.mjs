@@ -133,6 +133,7 @@ const SOURCES = [
   ['packages/shared/src/script/scriptRules.ts', 'supabase/functions/_shared/scriptRules.ts'],
   // The shown half of each beat: the job, its default shot, and the audit (owner spec 2026-10-01).
   ['packages/shared/src/script/shownJob.ts', 'supabase/functions/_shared/shownJob.ts'],
+  ['packages/shared/src/script/scriptFamily.ts', 'supabase/functions/_shared/scriptFamily.ts'],
   ['packages/shared/src/script/ideaQuestions.ts', 'supabase/functions/_shared/ideaQuestions.ts'],
   ['packages/shared/src/script/scriptIntegrity.ts', 'supabase/functions/_shared/scriptIntegrity.ts'],
   // Goal fidelity: rebuttal framing, promotion gating, CTA-per-goal, shot-list
