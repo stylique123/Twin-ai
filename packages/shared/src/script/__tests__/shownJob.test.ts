@@ -29,3 +29,12 @@ describe('the shown job of each beat (owner spec 2026-10-01)', () => {
     expect(SHOWN_JOB_RULE).toMatch(/at least one demo/)
   })
 })
+
+import { referenceShownKept } from '../shownJob'
+describe('phase 4: a remix keeps where the reference showed things', () => {
+  it('counts the reference\'s non-talk beats the script kept in place', () => {
+    expect(referenceShownKept(['talk', 'demo', 'talk', 'cta'], ['talk', 'talk', 'process', 'talk', 'talk', 'cta'])).toEqual({ kept: 2, of: 2 })
+    expect(referenceShownKept(['talk', 'demo', 'talk', 'talk', 'talk', 'cta'], ['talk', 'talk', 'talk', 'talk', 'talk', 'cta'])).toEqual({ kept: 1, of: 2 })
+    expect(referenceShownKept([], ['talk'])).toBeNull()
+  })
+})

@@ -29,7 +29,7 @@ import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_
 import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
-import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript } from '../_shared/shownJob.ts'
+import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript, referenceShownKept } from '../_shared/shownJob.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
 import {
@@ -5452,6 +5452,10 @@ const blueprintSchema = obj(
         format_label: str,
         why_it_works: arr(str),
         retention_map: arr(obj({ beat: str, goal: str, tactic: str }, ['beat', 'goal', 'tactic'])),
+        // PHASE 4 (owner spec 2026-10-01): what the REFERENCE's camera did, beat
+        // by beat, so a remix keeps WHERE the demonstration, the gesture, the
+        // eye contact and the change of place happen — not only its words.
+        shown_structure: arr(obj({ shown_job: str, note: str }, ['shown_job', 'note'])),
         // THE MECHANISM, AS DATA — §5d.
         //
         // Everything else in `reference_read` is prose the writer is asked to
@@ -10629,6 +10633,7 @@ changes what you write — you are recording a decision you already made.`
         const referenceBlock =
       ref && (ref.structure || ref.text)
         ? `REFERENCE (REAL — analyzed from the actual video. Base reference_read.why_it_works and retention_map on THIS specific video below, not on a generic format pattern.)
+- reference_read.shown_structure: the REFERENCE video's beats in order, each with the shown_job its camera did (same list as the script's shown_job) and a short note on the gesture, eye contact and setting at that beat — from the analysis below only; leave it empty if the analysis does not show it. Then KEEP THE POSITIONS when adapting: put this creator's demonstration, process or sensory beat where the reference had one, and carry over where it leaned in, held the lens or changed place — adapted to what she can actually film, never copying the reference's room or props.
 - URL: ${reference_url}
 - Platform: ${ref.platform ?? 'unknown'}
 - Derived structure:
@@ -10838,6 +10843,12 @@ This is the video's position. Every field below must serve it. If the reference'
       // and `object_shape` would have been the next instance of it.
       shape: shapeFromKnowledge(ownedEntity),
       sections: sectionsFromKnowledge(ownedEntity),
+      // Phase 3: read only to tell a consumable from a made-by-hand object.
+      productText: [
+        String((ownedEntity as { name?: unknown } | null)?.name ?? ''),
+        String((ownedEntity as { creator_summary?: unknown } | null)?.creator_summary ?? ''),
+        String((ownedEntity as { offer?: unknown } | null)?.offer ?? ''),
+      ].join(' '),
     })
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
@@ -14095,10 +14106,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const sellsShowable = !!ownedEntity && (show === 'ALWAYS' || show === 'SOMETIMES')
           && (goal === 'sell' || goal === 'leads' || goal === '' )
         const audit = auditShownScript(beats, { sellsShowable })
+        const refShown = (blueprint as { reference_read?: { shown_structure?: unknown } }).reference_read?.shown_structure
+        audit.referenceKept = reference_url && Array.isArray(refShown)
+          ? referenceShownKept(refShown.map((r) => (r as { shown_job?: unknown })?.shown_job), audit.jobs)
+          : null
         bp.shown_audit = audit
         console.log(JSON.stringify({
           event: 'shown_script_audit', shows_in_use: audit.showsInUse, distinct_locations: audit.distinctLocations,
           showing_framed_like_talk: audit.showingFramedLikeTalk, generic_gestures: audit.genericGestures,
+          reference_kept: audit.referenceKept?.kept ?? null, reference_of: audit.referenceKept?.of ?? null,
         }))
       }
     } catch { /* measuring never fails a generation */ }

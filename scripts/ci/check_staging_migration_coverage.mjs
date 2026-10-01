@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0255_private_by_model_or_word':
+    'Widens the creator_knowledge sensitive word list and ORs in the extractor\'s own private flag; read by generate-blueprint and the plan screen only. The editor never reads it.',
   '0254_her_jobs_first':
     'Sets jobs.priority by type on insert (creator jobs 50, background -10) so creator work is claimed first; changes only claim ORDER, never what an editor job does.',
   '0253_she_left_it_out':

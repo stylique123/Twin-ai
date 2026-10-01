@@ -77,6 +77,29 @@ export interface ShownAudit {
   showingFramedLikeTalk: number
   /** Criterion 5: generic gesture direction ("gesture naturally"). */
   genericGestures: number
+  /** Criterion 8: of the reference's non-talk beats, how many the remix kept at the same place. */
+  referenceKept?: { kept: number; of: number } | null
+}
+
+/**
+ * Criterion 8 (phase 4): did the remix keep the reference's shown moments where
+ * they were? Positions are compared relatively (a 6-beat reference against an
+ * 8-beat script), with one beat of slack either side.
+ */
+export function referenceShownKept(refJobs: readonly unknown[], scriptJobs: readonly ShownJob[]): { kept: number; of: number } | null {
+  const ref = refJobs.map((j) => normalizeShownJob(j, ''))
+  if (!ref.length || !scriptJobs.length) return null
+  let kept = 0, of = 0
+  ref.forEach((job, i) => {
+    if (job === 'talk') return
+    of++
+    const at = Math.round((i / Math.max(1, ref.length - 1)) * (scriptJobs.length - 1))
+    for (let d = -1; d <= 1; d++) {
+      const j = scriptJobs[at + d]
+      if (j === job || (SHOWING_JOBS.has(job) && j && SHOWING_JOBS.has(j))) { kept++; return }
+    }
+  })
+  return of ? { kept, of } : null
 }
 
 const GENERIC_GESTURE = /\b(gesture|move|talk) (naturally|freely|casually)\b|\bnatural (gestures?|energy|movement)\b|\buse (your )?hands\b(?! to)/i

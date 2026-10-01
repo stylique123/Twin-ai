@@ -65,3 +65,16 @@ describe('every other door is scrubbed with the same rule', () => {
     expect([...statedQuantities('one or two lines')]).toEqual([])
   })
 })
+
+describe('audit 2026-10-01 (B1): the wider private list', () => {
+  it('catches what the old list missed', () => {
+    for (const t of ['We were in debt for two years.', 'Our IVF journey', 'my ex never paid', "my son's school called", 'I lost my job in March', 'my salary was cut', 'two years sober']) {
+      expect(isPrivate(t), t).toBe(true)
+    }
+  })
+  it('does not flag ordinary business talk', () => {
+    for (const t of ['I roast every batch by hand.', 'Our best seller is the medium roast.', 'Ship it to your address at checkout']) {
+      expect(isPrivate(t), t).toBe(false)
+    }
+  })
+})
