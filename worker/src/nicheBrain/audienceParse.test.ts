@@ -18,9 +18,9 @@ describe('hook scoring', () => {
 })
 
 describe('cleanNewHooks', () => {
-  it('drops duplicates of old hooks, empties and overlong lines, keeps at most 3', () => {
+  it('drops duplicates of old hooks, empties and overlong lines, keeps at most 2 (owner audit 2026-10-01: 4–16 hooks)', () => {
     const long = Array(20).fill('w').join(' ')
-    expect(cleanNewHooks({ hooks: ['A', ' new  one ', '', long, 'two', 'three', 'four'] }, ['a'])).toEqual(['new one', 'two', 'three'])
+    expect(cleanNewHooks({ hooks: ['A', ' new  one ', '', long, 'two', 'three', 'four'] }, ['a'])).toEqual(['new one', 'two'])
     expect(cleanNewHooks(null, [])).toEqual([])
   })
 })

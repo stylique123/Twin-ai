@@ -20,6 +20,11 @@ export interface Test {
   summary: string | null
   panel_voice_id: string | null
   /** What the viewers changed before she saw it (null on older tests). */
+  /** Owner audit 2026-10-01: what worked, what only she can answer, what her facts do not back. */
+  working?: Array<{ what: string; why: string; beat: number }>
+  needs_her?: Array<{ question: string; why: string; beat: number; answer?: string; applied_at?: string | null; applied?: boolean }>
+  unverified?: string[]
+  out_of_scope?: number
   improved?: {
     before: { best: number; watched: number }
     after: { best: number; watched: number }
@@ -49,7 +54,7 @@ export function sameIdea(a: string, b: string): boolean {
  *  three live runs while another option scored 4–6. Returns per-hook counts
  *  keyed by hook text, and which near-duplicates to hide. */
 /** Mirrors HOOKS_SHOWN in worker/src/nicheBrain/audienceParse.ts. */
-export const HOOKS_SHOWN = 4
+export const HOOKS_SHOWN = 5
 
 export function hookVerdicts(options: string[], test: Test | null) {
   if (!test || test.status !== 'done' || !test.viewers.length) return null
@@ -77,7 +82,7 @@ export function useAudienceTest(generationId: string) {
     let timer: ReturnType<typeof setTimeout> | undefined
     const load = () => {
       void supabase.from('audience_tests')
-        .select('status, panel_size, hooks, best_hook, viewers, fixes, summary, panel_voice_id, improved')
+        .select('status, panel_size, hooks, best_hook, viewers, fixes, summary, panel_voice_id, improved, working, needs_her, unverified, out_of_scope')
         .eq('generation_id', generationId).maybeSingle()
         .then(({ data }) => {
           if (!alive) return
@@ -92,11 +97,59 @@ export function useAudienceTest(generationId: string) {
   return { test, waiting }
 }
 
+const KIND_LABEL: Record<string, string> = {
+  loyal_fan: 'Loyal fan', buyer: 'Buyer', sceptic: 'Sceptic', cold_scroller: 'New viewer', learner: 'Learner', peer: 'Peer in your trade',
+}
+interface PanelPersona { who: string; about: string; kind?: string | null; watches?: string[] }
+
+/** Who the viewers are, in plain words (owner audit 2026-10-01: "who are the 10, actually?"). */
+function usePanel(voiceId: string | null) {
+  const [personas, setPersonas] = useState<PanelPersona[]>([])
+  useEffect(() => {
+    if (!voiceId) return
+    let alive = true
+    void supabase.from('audience_panels').select('personas').eq('voice_id', voiceId).maybeSingle()
+      .then(({ data }) => { if (alive && Array.isArray(data?.personas)) setPersonas(data.personas as PanelPersona[]) }, () => {})
+    return () => { alive = false }
+  }, [voiceId])
+  return personas
+}
+
+/** One question the viewers say only she can answer; her answer is written into the line. */
+function AnswerCard({ generationId, index, q }: { generationId: string; index: number; q: NonNullable<Test['needs_her']>[number] }) {
+  const [text, setText] = useState('')
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>(q.answer ? 'saved' : 'idle')
+  const save = async () => {
+    if (!text.trim()) return
+    setState('saving')
+    const { data, error } = await supabase.rpc('answer_panel_question', { p_generation: generationId, p_index: index, p_answer: text.trim() })
+    setState(!error && data === true ? 'saved' : 'error')
+  }
+  return (
+    <li className="rounded-lg border border-amber/30 p-2.5 text-xs" data-testid="panel-question">
+      <p className="font-semibold text-cream">{q.question}</p>
+      <p className="mt-0.5 text-[11px] text-stone">{q.why}{q.beat >= 0 ? ` (line ${q.beat + 1})` : ''}</p>
+      {state === 'saved'
+        ? <p className="mt-1.5 text-[11px] text-teal">{q.applied_at ? (q.applied ? 'Written into your script.' : 'Saved to what Twin knows about you.') : 'Saved. Twin is writing it into your script.'}</p>
+        : (
+          <div className="mt-1.5 flex gap-2">
+            <input value={text} onChange={(e) => setText(e.target.value)} maxLength={240} placeholder="Your answer, in your own words"
+              className="min-w-0 flex-1 rounded-md border border-white/10 bg-transparent px-2 py-1 text-xs text-cream" />
+            <button type="button" onClick={() => void save()} disabled={state === 'saving' || !text.trim()}
+              className="rounded-md bg-teal px-2.5 py-1 text-[11px] font-semibold text-black disabled:opacity-40">Save</button>
+          </div>
+        )}
+      {state === 'error' && <p className="mt-1 text-[11px] text-coral">That did not save. Try again.</p>}
+    </li>
+  )
+}
+
 /** The viewers' notes. Hook scores live on the hook picker itself now, so the
  *  audience informs the choice instead of following it. */
 export function TestViewers({ generationId }: { generationId: string }) {
   const { test, waiting } = useAudienceTest(generationId)
   const [open, setOpen] = useState(false)
+  const personas = usePanel(test?.panel_voice_id ?? null)
 
   if (!test) {
     return waiting
@@ -113,8 +166,20 @@ export function TestViewers({ generationId }: { generationId: string }) {
   const topFix = [...test.fixes].sort((a, b) => b.count - a.count)[0] ?? null
   const otherFixes = topFix ? test.fixes.filter((f) => f !== topFix) : test.fixes
 
+  const questions = test.needs_her ?? []
+  const working = test.working ?? []
+  const unverified = test.unverified ?? []
+
   return (
     <div className="space-y-5" data-testid="test-viewers">
+      {questions.length > 0 && (
+        <div className="space-y-2" data-testid="panel-questions">
+          <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-amber">Before you film: only you know this</h3>
+          <ul className="space-y-2">
+            {questions.map((q, i) => <AnswerCard key={i} generationId={generationId} index={i} q={q} />)}
+          </ul>
+        </div>
+      )}
       <div className="space-y-2" data-testid="test-viewers-lead">
         {test.hooks.length > 0 && (
           <p className="font-heading text-sm text-cream">
@@ -141,9 +206,45 @@ export function TestViewers({ generationId }: { generationId: string }) {
             test.improved.lines.length > 0 ? `${test.improved.lines.length} line${test.improved.lines.length === 1 ? '' : 's'}` : '',
           ].filter(Boolean).join(' and ')} and re-tested: best hook {test.improved.before.best} → {test.improved.after.best} of {n} stopped, {test.improved.before.watched} → {test.improved.after.watched} of {n} watched to the end.</>
         )}
+        {(test.out_of_scope ?? 0) > 0 && <>{' '}{test.out_of_scope} of your viewers only watch other kinds of your videos, so they were left out of this score.</>}
         {' '}Twin plays them, so treat it as a practice audience, not a promise. Their hook scores are on the hooks above. They judge whether people stay past the opening; numbers in the rest of the script are checked separately against what you gave Twin.
       </p>
       </details>
+
+      {personas.length > 0 && (
+        <details className="group" data-testid="panel-who">
+          <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-teal">Who your {personas.length} test viewers are</summary>
+          <ul className="mt-2 space-y-1.5">
+            {personas.map((p, i) => (
+              <li key={i} className="text-[11px] text-sand leading-relaxed">
+                <span className="font-semibold text-cream">{p.who}</span>
+                {p.kind && KIND_LABEL[p.kind] && <span className="text-stone"> · {KIND_LABEL[p.kind]}</span>}
+                {' '}— {p.about}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {working.length > 0 && (
+        <div className="space-y-2" data-testid="panel-working">
+          <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">What's working</h3>
+          <ul className="space-y-2">
+            {working.map((w, i) => (
+              <li key={i} className="text-xs text-sand leading-relaxed">
+                {w.beat >= 0 && <span className="text-stone">Line {w.beat + 1}: </span>}
+                <span className="text-cream">{w.what}</span> — {w.why}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {unverified.length > 0 && (
+        <p className="text-[11px] text-coral leading-relaxed" data-testid="panel-unverified">
+          Not backed by anything you told Twin, so the viewers gave it no credit: {unverified.map((u) => `“${u}”`).join(', ')}. Keep it only if it is true.
+        </p>
+      )}
 
       {otherFixes.length > 0 && (
         <div className="space-y-2">

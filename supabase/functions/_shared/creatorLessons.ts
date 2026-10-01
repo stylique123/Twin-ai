@@ -114,6 +114,8 @@ interface AudienceTestLike {
   hooks?: unknown
   fixes?: unknown
   panel_size?: unknown
+  /** What landed and why (owner audit 2026-10-01): the positive signal. */
+  working?: unknown
 }
 
 /** What her test viewers taught: the winning hook as an example, a repeated gap as a rule. */
@@ -137,6 +139,13 @@ export function lessonsFromAudience(t: AudienceTestLike): CreatorLesson[] {
     weak_hook: 'Lead with the highest-stakes line; no warm-up before the hook.',
     too_long: 'Cut any line that repeats a point already made.',
     unclear: 'Say the concrete thing plainly; no vague setup lines.',
+  }
+  // ⚠️ AUDIT 2026-10-01: Twin only ever learned complaints. What the viewers
+  // said WORKED, and why, is now a lesson too, so the next script repeats it.
+  const working = Array.isArray(t.working) ? t.working as Array<{ what?: unknown; why?: unknown }> : []
+  for (const w of working.slice(0, 2)) {
+    if (typeof w?.what !== 'string' || typeof w?.why !== 'string') continue
+    out.push({ kind: 'style', phrase: null, source: 'audience', weight: 1, text: `Worked with her test viewers: ${w.what.slice(0, 120)} — ${w.why.slice(0, 120)} Keep doing this.` })
   }
   for (const f of fixes) {
     const issue = String(f?.issue ?? '')

@@ -15,13 +15,25 @@ export const ISSUES = [
 ] as const
 export type Issue = typeof ISSUES[number]
 
+import { SCRIPT_FAMILIES } from '../generated/scriptFamily.js'
 // ── HER PANEL: the fixed viewers, built once per voice from her real posts ──
-export interface Persona { who: string; about: string; stops_for: string; scrolls_when: string; asks: string | null }
+export interface Persona { who: string; about: string; stops_for: string; scrolls_when: string; asks: string | null; kind?: string | null; watches?: string[] }
+
+/** ⚠️ AUDIT 2026-10-01 (persona brief): the panel had no visible make-up. Each
+ *  viewer now carries one of these kinds, shown on the page. */
+export const PERSONA_KINDS = ['loyal_fan', 'buyer', 'sceptic', 'cold_scroller', 'learner', 'peer'] as const
+/** The video families the writer uses (one shared list, generated from packages/shared). */
+export const VIDEO_FAMILIES = SCRIPT_FAMILIES
+/** v2: built from her posts AND her niche's real high-reach videos; bump to rebuild every panel. */
+export const PANEL_VERSION = 2
 
 export const PANEL_SYSTEM = [
   `Build the ${PANEL_SIZE} viewers who REALLY watch this creator, from her DNA and her real posts with their plays and likes.`,
   'Her best posts show what her audience rewards; her weakest show what makes them scroll. Every persona must be traceable to that evidence or her DNA — no generic marketing personas.',
-  'Mix: loyal fans, first-time or gift buyers, sceptics (price, quality, trust), and fast scrollers, in the proportions her numbers suggest.',
+  'Mix: loyal fans, first-time or gift buyers, sceptics (price, quality, trust), fast scrollers who do not know her yet, learners, and peers in her trade, in the proportions her numbers suggest.',
+  'NICHE EVIDENCE lists what real high-reach videos in her niche teach and the objections real viewers in it raise: use it so cold viewers and sceptics are real people of this niche, not stock types.',
+  `- kind: one of ${PERSONA_KINDS.join(', ')}.`,
+  `- watches: which kinds of HER videos this viewer actually watches, from: ${VIDEO_FAMILIES.join(', ')} (product = her selling a product, coach_expert = advice/business, educator = how-to, community = her story/life, entertainer = fun). Base it on which of her posts they would have engaged with.`,
   '- who: short label (e.g. "Gift buyer", "Price sceptic").',
   '- about: one line on who they are and why they follow her.',
   '- stops_for: what makes them stop scrolling, grounded in her best posts.',
@@ -36,8 +48,12 @@ export const PANEL_SCHEMA = {
       type: 'ARRAY',
       items: {
         type: 'OBJECT',
-        properties: { who: S0, about: S0, stops_for: S0, scrolls_when: S0, asks: { type: 'STRING', nullable: true } },
-        required: ['who', 'about', 'stops_for', 'scrolls_when'],
+        properties: {
+          who: S0, about: S0, stops_for: S0, scrolls_when: S0, asks: { type: 'STRING', nullable: true },
+          kind: { type: 'STRING', enum: [...PERSONA_KINDS] },
+          watches: { type: 'ARRAY', items: { type: 'STRING', enum: [...VIDEO_FAMILIES] } },
+        },
+        required: ['who', 'about', 'stops_for', 'scrolls_when', 'kind', 'watches'],
       },
     },
   },
@@ -51,7 +67,9 @@ export function normalizePanel(raw: unknown): Persona[] {
     const o = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>
     const who = t(o.who, 40), about = t(o.about, 200), stops = t(o.stops_for, 200), scrolls = t(o.scrolls_when, 200)
     if (!who || !about || !stops || !scrolls) return []
-    return [{ who, about, stops_for: stops, scrolls_when: scrolls, asks: t(o.asks, 140) }]
+    const kind = (PERSONA_KINDS as readonly string[]).includes(o.kind as string) ? (o.kind as string) : null
+    const watches = (Array.isArray(o.watches) ? o.watches : []).filter((w): w is string => (VIDEO_FAMILIES as readonly string[]).includes(w as string))
+    return [{ who, about, stops_for: stops, scrolls_when: scrolls, asks: t(o.asks, 140), kind, watches: [...new Set(watches)] }]
   }).slice(0, PANEL_SIZE)
 }
 
@@ -70,6 +88,11 @@ export const AUDIENCE_SYSTEM = [
   'NEVER suggest adding facts that are not already in the script or the product facts given (no invented prices, numbers, awards or claims). If a viewer asks for a missing fact, the fix is "say it if true", not a made-up value.',
   'Be tough but fair: a good script can have zero fixes.',
   'promise_kept: true if a script line BEFORE the call to action delivers what hook option 0 opens (every promised item, the answer to its question, the result it teased); false if the video never closes it. If false, include a promise_not_kept fix on the line that should deliver it.',
+  'fits: for each viewer, true if THIS KIND of video (see VIDEO TYPE) is one this viewer would actually be shown and watch from her; false if they only watch her other kinds of videos. A viewer who does not fit still answers, but their wish for another kind of video is not a fix for this one.',
+  'NEVER flag a fix that asks for content belonging to a different kind of video (e.g. business numbers on a craft-process video). Fixes serve THIS video\'s purpose and shape.',
+  'VERIFIED FACTS and PRODUCT FACTS are everything she has actually said. A specific detail in the script (a number, a measurement, a technique, a sensory claim, a result) that is not backed by them earns NO credit from any viewer — list it in unverified, word for word as short as possible. Never praise it.',
+  'working: up to 3 things that work in this script and WHY, each tied to a line (or -1 for the whole video): the positive signal she and Twin learn from. Only things backed by her facts.',
+  'needs_her: up to 2 questions to HER (the creator), in plain words, for a fact the script needs that only she can give and that is not in her facts — e.g. "What size batch do you actually roast — how many pounds at a time?". Each with the 0-based line it belongs in and why viewers need it. Never ask for something already in her facts. Empty if nothing is missing.',
   'Finally, closed_hooks: the 0-based indexes of hooks that ANSWER THEIR OWN QUESTION — the hook already states the conclusion, so nothing is left to stay for (e.g. "A belly band will not heal your core"). A hook that raises a question or tension and holds the answer back is open. Judge the wording, not the topic.',
 ].join('\n')
 
@@ -82,8 +105,8 @@ export const AUDIENCE_SCHEMA = {
       type: 'ARRAY',
       items: {
         type: 'OBJECT',
-        properties: { who: S, would_stop: { type: 'ARRAY', items: N }, stops_for: N, leaves_at: N, quote: S, question: { type: 'STRING', nullable: true } },
-        required: ['who', 'would_stop', 'stops_for', 'leaves_at', 'quote'],
+        properties: { who: S, would_stop: { type: 'ARRAY', items: N }, stops_for: N, leaves_at: N, quote: S, question: { type: 'STRING', nullable: true }, fits: { type: 'BOOLEAN' } },
+        required: ['who', 'would_stop', 'stops_for', 'leaves_at', 'quote', 'fits'],
       },
     },
     fixes: {
@@ -96,6 +119,9 @@ export const AUDIENCE_SCHEMA = {
     },
     summary: S,
     closed_hooks: { type: 'ARRAY', items: N },
+    working: { type: 'ARRAY', items: { type: 'OBJECT', properties: { what: S, why: S, beat: N }, required: ['what', 'why', 'beat'] } },
+    needs_her: { type: 'ARRAY', items: { type: 'OBJECT', properties: { question: S, why: S, beat: N }, required: ['question', 'why', 'beat'] } },
+    unverified: { type: 'ARRAY', items: S },
     promise_kept: { type: 'BOOLEAN' },
   },
   required: ['viewers', 'fixes', 'summary'],
@@ -135,12 +161,14 @@ export function scriptFromBlueprint(bp: unknown): ScriptForTest | null {
   return { hooks, lines, at, shots, concept: typeof c?.premise === 'string' ? c.premise : null }
 }
 
-export function audiencePrompt(s: ScriptForTest, ctx: { dna: unknown; product?: string | null; objections: string[]; lessons: unknown; panel?: Persona[] }): string {
+export function audiencePrompt(s: ScriptForTest, ctx: { dna: unknown; product?: string | null; objections: string[]; lessons: unknown; panel?: Persona[]; family?: string | null; shape?: string | null; facts?: string[] }): string {
   const j = (v: unknown, n: number) => JSON.stringify(v ?? null).slice(0, n)
   return [
     `CREATOR DNA: ${j(ctx.dna, 1200)}`,
-    ctx.panel?.length ? `HER PANEL (play these viewers):\n${ctx.panel.map((p, i) => `${i}. ${p.who} — ${p.about} Stops for: ${p.stops_for} Scrolls when: ${p.scrolls_when}${p.asks ? ` Asks: ${p.asks}` : ''}`).join('\n')}` : '',
+    ctx.panel?.length ? `HER PANEL (play these viewers):\n${ctx.panel.map((p, i) => `${i}. ${p.who}${p.kind ? ` [${p.kind}]` : ''} — ${p.about} Stops for: ${p.stops_for} Scrolls when: ${p.scrolls_when}${p.asks ? ` Asks: ${p.asks}` : ''}${p.watches?.length ? ` Watches her: ${p.watches.join(', ')}` : ''}`).join('\n')}` : '',
+    ctx.family ? `VIDEO TYPE: ${ctx.family}${ctx.shape ? `. Real high-reach videos of this type follow: ${ctx.shape}` : ''}` : '',
     ctx.product ? `PRODUCT FACTS (the only facts that exist): ${ctx.product.slice(0, 1200)}` : '',
+    ctx.facts?.length ? `VERIFIED FACTS (what she has actually said):\n${ctx.facts.slice(0, 40).map((f) => `- ${f}`).join('\n')}` : 'VERIFIED FACTS: none beyond the product facts.',
     ctx.objections.length ? `KNOWN QUESTIONS/OBJECTIONS IN HER NICHE: ${ctx.objections.slice(0, 8).join(' | ')}` : '',
     `WHAT PAST TEST PANELS KEPT FLAGGING FOR HER: ${j(ctx.lessons, 500)}`,
     s.concept ? `IDEA: ${s.concept}` : '',
@@ -149,7 +177,11 @@ export function audiencePrompt(s: ScriptForTest, ctx: { dna: unknown; product?: 
   ].filter(Boolean).join('\n\n')
 }
 
-export interface Viewer { who: string; quote: string; stops_for: number; leaves_at: number; question: string | null; would_stop: number[] }
+export interface Viewer { who: string; quote: string; stops_for: number; leaves_at: number; question: string | null; would_stop: number[]; fits?: boolean }
+export interface Working { what: string; why: string; beat: number }
+export interface NeedsHer { question: string; why: string; beat: number }
+/** Viewers who would not watch this kind of video are left out of the score while at least this many remain. */
+export const MIN_FITTING_VIEWERS = 6
 export interface Fix { issue: Issue; fix: string; beat: number; count: number }
 export interface AudienceResult {
   viewers: Viewer[]
@@ -159,6 +191,11 @@ export interface AudienceResult {
   summary: string | null
   /** Did a line before the ask close what hook 0 opened? Null when not judged. */
   promise_kept: boolean | null
+  working: Working[]
+  needs_her: NeedsHer[]
+  unverified: string[]
+  /** Viewers left out of the score because they would not watch this kind of video. */
+  out_of_scope: number
 }
 
 const txt = (v: unknown, n: number): string | null => {
@@ -190,9 +227,17 @@ export function normalizeAudience(raw: unknown, s: ScriptForTest): AudienceResul
         .filter((x): x is number => typeof x === 'number' && Number.isInteger(x) && x >= 0 && x < s.hooks.length))],
       leaves_at: int(o.leaves_at, -1, s.lines.length - 1, -1),
       question: txt(o.question, 140),
+      fits: o.fits !== false,
     }]
   })
   if (viewers.length < 3) return null
+  // ⚠️ AUDIT 2026-10-01: a craft video was scored by viewers who only watch her
+  // business posts ("give me margins"). Those who would not watch THIS kind of
+  // video are left out of the score while enough remain to mean something.
+  const fitting = viewers.filter((v) => v.fits !== false)
+  const scored = fitting.length >= MIN_FITTING_VIEWERS ? fitting : viewers
+  const out_of_scope = viewers.length - scored.length
+  viewers.splice(0, viewers.length, ...scored)
 
   // ⚠️ EACH VIEWER JUDGES EVERY HOOK. Counting only each viewer's single
   // favourite split ten votes across five hooks, so the best hook could never
@@ -219,7 +264,24 @@ export function normalizeAudience(raw: unknown, s: ScriptForTest): AudienceResul
     return [{ issue, fix, beat, count }]
   })
 
-  return { viewers, hooks, best_hook, fixes, summary: oneBased(txt(r.summary, 300)), promise_kept: typeof r.promise_kept === 'boolean' ? r.promise_kept : null }
+  const beatOf = (v: unknown) => int(v, -1, s.lines.length - 1, -1)
+  const working: Working[] = (Array.isArray(r.working) ? r.working : []).slice(0, 3).flatMap((w) => {
+    const o = (w && typeof w === 'object' ? w : {}) as Record<string, unknown>
+    const what = oneBased(txt(o.what, 160)), why = oneBased(txt(o.why, 200))
+    return what && why ? [{ what, why, beat: beatOf(o.beat) }] : []
+  })
+  const needs_her: NeedsHer[] = (Array.isArray(r.needs_her) ? r.needs_her : []).slice(0, 2).flatMap((q) => {
+    const o = (q && typeof q === 'object' ? q : {}) as Record<string, unknown>
+    const question = txt(o.question, 200), why = oneBased(txt(o.why, 200))
+    return question && why && question.endsWith('?') ? [{ question, why, beat: beatOf(o.beat) }] : []
+  })
+  const unverified = [...new Set((Array.isArray(r.unverified) ? r.unverified : [])
+    .map((u) => txt(u, 120)).filter((u): u is string => !!u))].slice(0, 6)
+  return {
+    viewers, hooks, best_hook, fixes, summary: oneBased(txt(r.summary, 300)),
+    promise_kept: typeof r.promise_kept === 'boolean' ? r.promise_kept : null,
+    working, needs_her, unverified, out_of_scope,
+  }
 }
 
 // ── MAKE THE HOOK BETTER, THEN SHOW IT (owner: the panel must change the
@@ -228,13 +290,15 @@ export function normalizeAudience(raw: unknown, s: ScriptForTest): AudienceResul
 export const HOOK_TARGET = 7
 export const HOOK_ROUNDS = 3
 /** Quality over quantity (owner, 2026-09-28: "why eleven hooks?"): she sees at most this many. */
-export const HOOKS_SHOWN = 4
+export const HOOKS_SHOWN = 5
+/** Never test more than this many hooks in total (5 written + 2 rewrite rounds of 2). Owner audit: 4–16 hooks, weakest at the high end. */
+export const MAX_TESTED_HOOKS = 9
 /** How many viewers a self-answering hook is treated as losing when ordering. */
 export const CLOSED_PENALTY = 2
 export const HOOK_REWRITE_SYSTEM = [
   'You rewrite the opening hook of a short-form video so more of her real viewers stop scrolling.',
   'You get the script, the hooks already tested with how many of 10 viewers each stopped, and what each viewer said.',
-  'Aim for a hook that stops at least 7 of 10 of these viewers. Write 3 NEW hooks: each a single spoken line under 15 words, in her voice, true to the script — the same topic and claims, no new facts, numbers, names or promises.',
+  'Aim for a hook that stops at least 7 of 10 of these viewers. Write 2 NEW hooks: each a single spoken line under 15 words, in her voice, true to the script — the same topic and claims, no new facts, numbers, names or promises.',
   'Fix what the viewers said was missing (curiosity, stakes, who it is for). Each hook must be a DIFFERENT idea, not a paraphrase of another or of an old hook.',
   'Each hook keeps its question OPEN: raise it and hold the answer back for the video. Never state the conclusion inside the hook.',
 ].join('\n')
@@ -259,7 +323,7 @@ export function cleanNewHooks(raw: unknown, existing: readonly string[]): string
     const t = typeof h === 'string' ? h.replace(/\s+/g, ' ').trim() : ''
     if (!t || t.split(' ').length > 18 || seen.has(t.toLowerCase())) continue
     seen.add(t.toLowerCase()); out.push(t)
-    if (out.length >= 3) break
+    if (out.length >= 2) break
   }
   return out
 }
@@ -299,16 +363,31 @@ export function scriptRewritePrompt(s: ScriptForTest, r: AudienceResult): string
   ].filter(Boolean).join('\n\n')
 }
 
+// ── HER ANSWER, WRITTEN IN (Option C): one or two lines change, using only her words.
+export const ANSWER_REWRITE_SYSTEM = [
+  'She answered a question her test viewers needed answered. Work her answer into the script line it belongs in.',
+  'Change only that line (or the one next to it if it fits better). Keep her voice, keep the line doing the same job, keep it about as long.',
+  'Use her answer as given: no number, name or detail beyond what she wrote and what the script already says.',
+  'Return only the lines you changed, by their 0-based index.',
+].join('\n')
+export function answerRewritePrompt(s: ScriptForTest, answers: Array<{ question: string; answer: string; beat: number }>): string {
+  return [
+    `SCRIPT:\n${s.lines.map((l, i) => `${i}. ${l}`).join('\n')}`,
+    `HER ANSWERS:\n${answers.map((a) => `line ${a.beat >= 0 ? a.beat : '(best fit)'} — Q: ${a.question}\nA: ${a.answer}`).join('\n')}`,
+  ].join('\n\n')
+}
+
 const numbersIn = (t: string) => (t.toLowerCase().match(/\d[\d.,]*|\b(?:hundred|thousand|million|billion|percent)\b/g) ?? []).map((x) => x.replace(/[.,]+$/, ''))
 const namesIn = (t: string) => (t.match(/(?<!^|[.!?]\s)\b[A-Z][a-z]{2,}\b/g) ?? [])
 
 /** Apply a rewrite, refusing any line that brings in a number or name the
  *  script did not already have, or grows much longer. Returns null if nothing
  *  usable changed. */
-export function applyLineRewrites(lines: readonly string[], raw: unknown): { lines: string[]; changed: number[] } | null {
+export function applyLineRewrites(lines: readonly string[], raw: unknown, herAnswers = ''): { lines: string[]; changed: number[] } | null {
   const list = (raw as { lines?: unknown } | null)?.lines
   if (!Array.isArray(list)) return null
-  const all = lines.join(' ')
+  // Her own answers to the panel's questions are facts she just gave: their numbers and names may enter.
+  const all = `${lines.join(' ')} ${herAnswers}`
   const known = new Set(numbersIn(all))
   const knownNames = new Set((all.match(/\b[A-Z][a-z]{2,}\b/g) ?? []).map((x) => x.toLowerCase()))
   const out = [...lines]
