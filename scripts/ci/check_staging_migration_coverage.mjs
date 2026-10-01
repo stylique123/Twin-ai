@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0263_comments_become_candidates':
+    'Adds comment_candidates / comment_reads, decide_comment and comments_due, and the \'comment\' knowledge source; read by My Twin, the worker and generate-blueprint only. The editor never reads them.',
   '0264_definer_functions_are_not_public':
     'Revokes EXECUTE from anon on four SECURITY DEFINER RPCs that no migration meant to expose '
     + '(panel_answers_pending, niche_research_due, merge_sub_niches, ensure_review_token); '

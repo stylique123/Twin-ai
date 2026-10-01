@@ -17,7 +17,8 @@ interface Note {
 }
 interface Moment { name?: string; when?: string | null; angle?: string | null }
 interface Topic { text: string; times_seen: number; covered: boolean }
-interface OpenQuestion { id: string; question: string }
+interface OpenQuestion { id: string; kind: string; text: string; times_asked: number; likes: number; post_url: string | null }
+interface MyProduct { id: string; name: string | null }
 interface Mention { id: string; kind: string; title: string; outlet: string; url: string }
 interface Shift { id: string; summary: string; earlier_text: string; later_text: string; earlier_at: string; later_at: string }
 
@@ -72,6 +73,8 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
   const [loaded, setLoaded] = useState(false)
   const [topics, setTopics] = useState<Topic[]>([])
   const [asked, setAsked] = useState<OpenQuestion[]>([])
+  const [products, setProducts] = useState<MyProduct[]>([])
+  const [drafts, setDrafts] = useState<Record<string, { answer: string; product: string }>>({})
   const [mentions, setMentions] = useState<Mention[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
 
@@ -95,8 +98,10 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
             : Promise.resolve({ data: [] as { moments: Moment[] }[] }),
           supabase.from('creator_knowledge').select('kind, text, times_seen')
             .in('kind', ['topic', 'covered']).order('times_seen', { ascending: false }).limit(200),
-          supabase.from('post_questions').select('id, question')
-            .is('her_reply', null).order('created_at', { ascending: false }).limit(8),
+          // ⚖️ OWNER BRIEF 2026-10-01: real comments under her posts, as CANDIDATES.
+          // Nothing here reaches a script until she says it is real.
+          supabase.from('comment_candidates').select('id, kind, text, times_asked, likes, post_url')
+            .eq('status', 'found').order('times_asked', { ascending: false }).order('likes', { ascending: false }).limit(12),
           supabase.from('creator_mentions').select('id, kind, title, outlet, url')
             .eq('status', 'found').order('created_at', { ascending: false }).limit(6),
           supabase.from('creator_shifts').select('id, summary, earlier_text, later_text, earlier_at, later_at')
@@ -121,6 +126,10 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
         setMoments(Array.isArray(m?.moments) ? m!.moments : [])
         setTopics(topicMap((know.data ?? []) as Array<{ kind: string; text: string; times_seen: number | null }>))
         setAsked((qs.data ?? []) as OpenQuestion[])
+        if ((qs.data ?? []).length) {
+          const { data: ps } = await supabase.from('product_entities').select('id, name').is('archived_at', null).limit(40)
+          if (alive) setProducts(((ps ?? []) as MyProduct[]).filter((p) => p.name))
+        }
         setMentions((men.data ?? []) as Mention[])
         setShifts((sh.data ?? []) as Shift[])
       } catch { /* an empty map is an honest answer */ }
@@ -138,6 +147,13 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
   const decide = async (id: string, isMe: boolean) => {
     setMentions((m) => m.filter((x) => x.id !== id))
     await supabase.rpc('decide_mention', { p_id: id, p_is_me: isMe })
+  }
+
+  // She decides; only a "use it" is ever filed, with her answer and product if given.
+  const decideComment = async (id: string, use: boolean) => {
+    const d = drafts[id] ?? { answer: '', product: '' }
+    setAsked((m) => m.filter((x) => x.id !== id))
+    await supabase.rpc('decide_comment', { p_id: id, p_use: use, p_product: d.product || null, p_answer: d.answer.trim() || null })
   }
 
   const decideShift = async (id: string, isReal: boolean) => {
@@ -233,10 +249,35 @@ export default function WhatTwinKnows({ view = 'you' }: { view?: 'you' | 'niche'
       )}
       {asked.length > 0 && (
         <section className="mt-8" data-testid="open-questions">
-          <h2 className="font-display text-2xl tracking-tight">Asked under your posts, not answered yet</h2>
-          <p className="mt-1 text-sm text-stone">Your next scripts will answer these where they fit.</p>
+          <h2 className="font-display text-2xl tracking-tight">What your audience asks</h2>
+          <p className="mt-1 text-sm text-stone">Real comments under your posts. Nothing here is used until you say it is worth answering. Add your answer and Twin can build a video around it.</p>
           <ul className="mt-3 space-y-2 text-sm">
-            {asked.map((q) => <li key={q.id} className="glass rounded-xl p-3">{q.question}</li>)}
+            {asked.map((q) => {
+              const d = drafts[q.id] ?? { answer: '', product: '' }
+              const set = (patch: Partial<typeof d>) => setDrafts((m) => ({ ...m, [q.id]: { ...d, ...patch } }))
+              return (
+                <li key={q.id} className="glass rounded-xl p-3">
+                  <p className="text-cream">“{q.text}”</p>
+                  <p className="mt-0.5 text-xs text-stone">
+                    {q.kind === 'request' ? 'A request' : 'A question'}{q.times_asked > 1 ? ` · asked ${q.times_asked} times` : ''}{q.likes > 0 ? ` · ${q.likes} likes` : ''}
+                    {q.post_url ? <> · <a href={q.post_url} target="_blank" rel="noreferrer" className="underline">see post</a></> : null}
+                  </p>
+                  <input value={d.answer} maxLength={240} onChange={(e) => set({ answer: e.target.value })}
+                    placeholder="Your answer (optional)" className="mt-2 w-full rounded-lg border border-white/10 bg-transparent px-3 py-1.5" />
+                  {products.length > 0 && (
+                    <select value={d.product} onChange={(e) => set({ product: e.target.value })} aria-label="Which product is this about?"
+                      className="mt-2 w-full rounded-lg border border-white/10 bg-transparent px-3 py-1.5">
+                      <option value="">Not about one product</option>
+                      {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )}
+                  <span className="mt-2 flex gap-2">
+                    <button onClick={() => void decideComment(q.id, true)} className="rounded border px-3 py-1">Use it</button>
+                    <button onClick={() => void decideComment(q.id, false)} className="rounded px-3 py-1 text-stone">Not useful</button>
+                  </span>
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}

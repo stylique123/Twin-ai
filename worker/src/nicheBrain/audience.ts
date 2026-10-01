@@ -7,7 +7,7 @@
 
 import { db } from '../db.js'
 import { syncShotListSpokenText } from '../generated/shotListSync.js'
-import { rewriteIsSafe, guardScript } from '../generated/privacyGuard.js'
+import { rewriteIsSafe, guardScript, isPrivate } from '../generated/privacyGuard.js'
 import { enforceScriptRules } from '../generated/scriptRules.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
@@ -15,6 +15,7 @@ import { noteKey } from './librarian.js'
 import { fileNote } from './sweep.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
 import { runMentionFinder, fileConfirmedMentions } from './mentions.js'
+import { runCommentMiner, fileConfirmedComments, postQuestionsToCandidates } from './commentMining.js'
 import { runShiftFinder, fileConfirmedShifts } from './shifts.js'
 import { runNicheQuestions } from './nicheQuestions.js'
 import {
@@ -38,8 +39,9 @@ export function kickAudienceTests(log: Log): void {
   if (inFlight || now - last < AUDIENCE_INTERVAL_MS) return
   last = now
   inFlight = true
-  void runPanelBuilder(log).then(() => runAudienceTests(log)).then(() => runPanelAnswers(log)).then(() => filePostQuestions(log)).then(() => fileHerReplies(log))
+  void runPanelBuilder(log).then(() => runAudienceTests(log)).then(() => runPanelAnswers(log)).then(() => postQuestionsToCandidates(log)).then(() => fileHerReplies(log))
     .then(() => runMentionFinder(log)).then(() => fileConfirmedMentions(log))
+    .then(() => runCommentMiner(log)).then(() => fileConfirmedComments(log))
     .then(() => runShiftFinder(log)).then(() => fileConfirmedShifts(log))
     .then(() => runNicheQuestions(log))
     .catch((err) => log('error', 'audience_threw', { error: err instanceof Error ? err.message : String(err) }))
@@ -280,30 +282,8 @@ export async function runAudienceTests(log: Log): Promise<void> {
   }
 }
 
-// ── HER REAL AUDIENCE'S QUESTIONS: the ones under her posts she never
-// answered (read by the social cron into `post_questions`) become private
-// objection notes, exactly like a test viewer's — so her next script answers
-// them. Only the question is filed; the commenter's words are never her facts.
-export async function filePostQuestions(log: Log): Promise<void> {
-  const { data } = await db.from('post_questions')
-    .select('id, owner_id, post_id, question').is('filed_at', null).is('her_reply', null).order('created_at').limit(10)
-  let filed = 0
-  for (const q of (data ?? []) as Array<{ id: string; owner_id: string; post_id: string; question: string }>) {
-    const key = noteKey(q.question)
-    if (key.length >= 3) {
-      const { data: voice } = await db.from('brand_voices').select('profile').eq('owner_id', q.owner_id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle()
-      const sn = (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche
-      const sub = typeof sn === 'string' ? sn.toLowerCase().slice(0, 60) : null
-      const id = await fileNote(
-        { kind: 'objection', bucket: null, sub_niche: sub, mode: null, goal: null, key, title: q.question, body: 'asked under her post, not yet answered' },
-        q.post_id, 0, q.owner_id,
-      ).catch(() => null)
-      if (id) filed += 1
-    }
-    await db.from('post_questions').update({ filed_at: new Date().toISOString() }).eq('id', q.id)
-  }
-  if (filed) log('info', 'post_questions_filed', { event: 'post_questions_filed', filed })
-}
+// ── HER REAL AUDIENCE'S QUESTIONS moved to commentMining.ts (owner brief
+// 2026-10-01): they become CANDIDATES she confirms, never notes filed unseen.
 
 // ── HER OWN REPLIES (24-ideas #9): when she answered a question under her post,
 // her reply is her own first-person words. Filed into `creator_knowledge` as a
@@ -322,6 +302,8 @@ export async function fileHerReplies(log: Log): Promise<void> {
       text: q.her_reply.slice(0, 240), basis: 'stated', source: 'reply', confidence: 0.9, times_seen: 1,
       evidence: `Asked under her post: ${q.question}`.slice(0, 240),
       source_ref: `post:${q.post_id}`, last_observed_at: new Date().toISOString(),
+      // Her own words, but the same sensitivity gate as every other fact.
+      sensitive: isPrivate(`${q.question} ${q.her_reply}`),
     }] as never)
     if (!error) filed += 1
     else log('error', 'her_reply_file_failed', { error: String(error.message ?? '').slice(0, 200) })

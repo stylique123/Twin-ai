@@ -25,13 +25,14 @@ describe('unanswered questions under her posts (#10)', () => {
     ])
     expect(out.map((q) => q.id)).toEqual(['1', '5'])
   })
-  it('is read by the social cron and filed into her brain by the worker', () => {
+  it('is read by the social cron and becomes a candidate she confirms (never filed unseen)', () => {
     const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
     const social = readFileSync(join(repo, 'supabase/functions/social/index.ts'), 'utf8')
     expect(social).toMatch(/await syncQuestions\(admin\)/)
     expect(social).toMatch(/instagram_manage_comments/)
     const worker = readFileSync(join(repo, 'worker/src/nicheBrain/audience.ts'), 'utf8')
-    expect(worker).toMatch(/then\(\(\) => filePostQuestions\(log\)\)/)
+    expect(worker).toMatch(/then\(\(\) => postQuestionsToCandidates\(log\)\)/)
+    expect(worker).not.toMatch(/filePostQuestions/)
   })
   it('#9: keeps her own substantive reply, in her words, with the question', () => {
     const out = herAnswers([

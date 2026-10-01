@@ -31,8 +31,8 @@ describe('the blueprint compiler reads one creator, not one account holder', () 
   })
 
   it('scopes the asked read too — an answer belongs to the voice it was typed for', () => {
-    const asked = BLUEPRINT.slice(BLUEPRINT.indexOf("eq('source', 'asked')") - 400)
-    expect(asked.slice(0, 500)).toMatch(/scopeToVoice/)
+    const asked = BLUEPRINT.slice(BLUEPRINT.indexOf("in('source', ['asked', 'comment'])") - 700)
+    expect(asked.slice(0, 800)).toMatch(/scopeToVoice/)
   })
 
   it("falls back to owner scope only when there is no voice at all", () => {

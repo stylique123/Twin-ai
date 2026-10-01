@@ -68,11 +68,13 @@ export function planUseItems(
     Number(MINE_SOURCES.has(String(y?.source ?? ''))) - Number(MINE_SOURCES.has(String(x?.source ?? ''))))
   for (const k of rows) {
     const id = String(k?.id ?? ''), kind = String(k?.kind ?? ''), text = String(k?.text ?? '').trim()
-    if (!id || !text || !USE_KINDS.has(kind)) continue
+    const fromComments = String(k?.source ?? '') === 'comment'
+    // A comment she confirmed is shown whatever its kind: the writer reads it too.
+    if (!id || !text || (!USE_KINDS.has(kind) && !fromComments)) continue
     const w = words(text)
     if (seen.some((s) => overlap(s, w) >= 0.6)) continue
     seen.push(w)
-    const mine = MINE_SOURCES.has(String(k?.source ?? '')) || !!k?.creator_confirmed_at
+    const mine = MINE_SOURCES.has(String(k?.source ?? '')) || !!k?.creator_confirmed_at || fromComments
     const sensitive = SENSITIVE.test(text) || LEGALISH.test(text)
     const risky = !mine && (HAS_NUMBER.test(text) || STRONG_CLAIM.test(text))
     const leftOut = !!k?.creator_excluded_at
@@ -85,6 +87,7 @@ export function planUseItems(
       reason: sensitive
         ? 'Private or legal, so it stays out unless you turn it on'
         : leftOut ? 'You left this out before, so it stays out unless you turn it on'
+        : fromComments ? 'From your comments, you confirmed it'
         : mine ? 'You wrote this' : 'From your videos, not confirmed',
     })
   }

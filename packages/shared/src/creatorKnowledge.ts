@@ -101,7 +101,7 @@
  * `TWO_SPELLINGS_OF_A_STATED_SOURCE`. Neither has a stored row, so whichever
  * survives, no data has to move.
  */
-export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'asked', 'previous_video', 'reply'] as const
+export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'asked', 'previous_video', 'reply', 'comment'] as const
 export type KnowledgeSource = (typeof KNOWLEDGE_SOURCES)[number]
 
 export const KNOWLEDGE_BASIS = ['stated', 'demonstrated', 'inferred'] as const
