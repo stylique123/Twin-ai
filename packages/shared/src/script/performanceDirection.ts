@@ -48,7 +48,7 @@ export interface DirectionOption {
 
 /** Physical handling. Only ever offered when the product can be shown. */
 export const PHYSICAL_ACTIONS: readonly DirectionOption[] = [
-  { id: 'hold_up', does: 'Hold it up to chest height, steady, label facing the lens', bestFor: 'The default. Almost any beat that names the product.' },
+  { id: 'hold_up', does: 'Hold it up to chest height, steady, its front facing the lens', bestFor: 'A first look or the beat that names it — once or twice, not every beat. Say "label" only if it has one.' },
   { id: 'rotate', does: 'Turn it slowly to show another side', bestFor: 'Printed information, a seam, a texture worth seeing.' },
   { id: 'twist_open', does: 'Twist the cap off / unzip it / flip the lid', bestFor: 'Anything with a closure — and only if it HAS one.' },
   { id: 'point_at', does: 'Point one finger at a specific spot on it', bestFor: 'A detail the viewer would otherwise miss.' },
@@ -333,6 +333,9 @@ export const PRESENCE_RULES = [
   `    exact framing of a beat that only talks.`,
   `  - DEMONSTRATION: if this video promotes a product she can show, at least one beat must SHOW`,
   `    it in use (hands in frame, close, ideally from her point of view), not only hold it up.`,
+  `  - NO REPEATS: never give two beats the same action_posing sentence. Holding it up is a`,
+  `    first look, not a default — the 2026-10 baseline had one script hold the bag up on 3 of 5`,
+  `    beats. Each beat's action must follow what that beat says.`,
 ].join('\n')
 
 // ── THE MENU LEAKED ONTO THE CREATOR'S SCREEN ───────────────────────────────
@@ -341,7 +344,7 @@ export const PRESENCE_RULES = [
 // whole run of three, all on 2026-09-20 — shipped `action_posing` values that
 // begin with the taxonomy's own key:
 //
-//   "hold_up: Hold it up to chest height, steady, label facing the lens."
+//   "hold_up: Hold it up to chest height, steady, its front facing the lens."
 //   "point_at: Point one finger at a specific spot on it to highlight..."
 //   "set_down: Put it down deliberately and look back at the lens."
 //

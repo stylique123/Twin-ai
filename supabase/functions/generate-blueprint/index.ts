@@ -14113,7 +14113,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         bp.shown_audit = audit
         console.log(JSON.stringify({
           event: 'shown_script_audit', shows_in_use: audit.showsInUse, distinct_locations: audit.distinctLocations,
-          showing_framed_like_talk: audit.showingFramedLikeTalk, generic_gestures: audit.genericGestures,
+          showing_framed_like_talk: audit.showingFramedLikeTalk, generic_gestures: audit.genericGestures, repeated_actions: audit.repeatedActions,
           reference_kept: audit.referenceKept?.kept ?? null, reference_of: audit.referenceKept?.of ?? null,
         }))
       }
