@@ -72,6 +72,12 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0262_sub_niches_merge':
+    'Adds corpus_reads.sub_niche_canonical + merge_sub_niches() and lets gallery_for_me match on it; read by the worker brain and the Gallery only. The editor never reads them.',
+  '0261_views_against_her_normal':
+    'Adds brain_notes.outcome_lift and ranks niche notes by views over the creator\'s median plays (brain_learn, brain_brief_scoped); read by generate-blueprint and the worker only. The editor never reads them.',
+  '0260_a_fact_knows_its_product':
+    'Adds creator_knowledge.product_entity_id (recreating creator_knowledge_writable) with a backfill; read by generate-blueprint only. The editor never reads it.',
   '0259_niches_research_themselves':
     'Adds niche_research + niche_research_due, widens the new-niche discovery trigger to thin niches (<12 videos), and leaves fabrication-tagged ratings out of brain_learn credit; read by the worker brain and generate-blueprint only. The editor never reads it.',
   '0258_gallery_reads_the_brain':
