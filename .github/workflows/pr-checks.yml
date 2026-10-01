@@ -815,6 +815,10 @@ jobs:
         run: |
           node scripts/ci/check_staging_migration_coverage.mjs --selftest
           node scripts/ci/check_staging_migration_coverage.mjs
+      - name: Definer functions are not public (anon cannot call a SECURITY DEFINER RPC)
+        run: |
+          node scripts/ci/check_definer_functions_not_public.mjs --selftest
+          node scripts/ci/check_definer_functions_not_public.mjs
       - name: Error matchers resolve (a matcher given undefined accepts anything)
         run: |
           node scripts/ci/check_error_matchers_resolve.mjs --selftest

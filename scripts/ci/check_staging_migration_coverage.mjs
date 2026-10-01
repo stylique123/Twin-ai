@@ -72,6 +72,10 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0264_definer_functions_are_not_public':
+    'Revokes EXECUTE from anon on four SECURITY DEFINER RPCs that no migration meant to expose '
+    + '(panel_answers_pending, niche_research_due, merge_sub_niches, ensure_review_token); '
+    + 'grants only, no schema change, and the editor calls none of them.',
   '0262_sub_niches_merge':
     'Adds corpus_reads.sub_niche_canonical + merge_sub_niches() and lets gallery_for_me match on it; read by the worker brain and the Gallery only. The editor never reads them.',
   '0261_views_against_her_normal':
