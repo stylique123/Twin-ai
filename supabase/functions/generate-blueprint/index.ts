@@ -10139,15 +10139,15 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     const formatsList = (vp?.formats ?? []) as string[]
     const formatsLine = formatsList.length
       ? formatsList.join(' | ')
-      : 'NONE STORED. Infer 2-3 video formats this creator plausibly makes from their niche and hooks, and adapt ONE of them to the reference.'
-    const titleStyleLine = (vp as { title_style?: string } | null)?.title_style || 'NONE STORED. Infer their likely title formula from their niche and hook style.'
-    const thumbStyleLine = (vp as { thumbnail_style?: string } | null)?.thumbnail_style || 'NONE STORED. Infer a thumbnail style that fits their niche and brand.'
+      : 'NONE STORED. Use the plain format of THIS VIDEO\'S FAMILY below; never present a format as one she already makes.'
+    const titleStyleLine = (vp as { title_style?: string } | null)?.title_style || 'NONE STORED. Write plain, specific titles; never present a title formula as her established style.'
+    const thumbStyleLine = (vp as { thumbnail_style?: string } | null)?.thumbnail_style || 'NONE STORED. Keep the thumbnail plain and general; never present a style as her established look.'
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
 - Specific angle (what their audience searches for): ${subNiche}` : ''}
 - Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
-- Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
-- Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
+- Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. ⚠️ Do NOT invent her audience\'s pain, a statistic about them, or a claim about what they feel (owner fabrication audit 2026-10-01). Speak only to the problem this video\'s own topic solves, in general words.'}
+- Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}
 - Tone and voice: ${tone}
@@ -13990,12 +13990,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       ].join('\n')
       const bp = blueprint as { script?: unknown; shot_list?: unknown; dropped_beats?: unknown; guardrail_report?: unknown }
       if (Array.isArray(bp.script)) {
-        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText, excludedTexts: guardExcludedTexts })
+        // ⚠️ OWNER FABRICATION AUDIT 2026-10-01: a figure nothing she gave contains
+        // ("cup score above 82", "two-pound batches", "six months on a shelf") was
+        // only LISTED as "check before you record". It is now removed, sentence by
+        // sentence, like a private term. Her DNA (her own scraped words) counts as given.
+        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText: `${allowedText}\n${creatorDna}`, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true })
         if (guarded.removed.length) {
           const emptied = guarded.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
           bp.script = guarded.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
           if (emptied.length) bp.dropped_beats = [...(Array.isArray(bp.dropped_beats) ? bp.dropped_beats : []), ...emptied]
-          bp.guardrail_report = guarded.removed
+          bp.guardrail_report = [...(Array.isArray(bp.guardrail_report) ? bp.guardrail_report : []), ...guarded.removed]
           if (Array.isArray(bp.shot_list)) {
             bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>).shots
           }
@@ -14004,6 +14008,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             removed: guarded.removed.length,
             private: guarded.removed.filter((r) => r.reason === 'private').length,
             excluded: guarded.removed.filter((r) => r.reason === 'excluded').length,
+            unbacked_figure: guarded.removed.filter((r) => r.reason === 'unbacked_figure').length,
             emptied: emptied.length,
           }))
         }

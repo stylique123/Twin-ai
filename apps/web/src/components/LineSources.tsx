@@ -17,7 +17,8 @@ export function LineSources({ blueprint }: { blueprint: unknown }) {
   if (!lines.length && !removed.length) return null
   const unsourced = lines.filter((l) => !l.from?.length).length
   const methodCut = removed.filter((r) => (r as { reason?: string }).reason === 'invented_method').length
-  const privateCut = removed.length - methodCut
+  const figureCut = removed.filter((r) => (r as { reason?: string }).reason === 'unbacked_figure').length
+  const privateCut = removed.length - methodCut - figureCut
   return (
     <details className="rounded-xl border border-white/10 bg-ink2/40 p-3 text-xs text-sand" data-testid="line-sources">
       <summary className="cursor-pointer font-semibold text-cream">
@@ -39,6 +40,11 @@ export function LineSources({ blueprint }: { blueprint: unknown }) {
       {privateCut > 0 && (
         <p className="mt-3 text-stone" data-testid="guard-removed">
           Twin removed {privateCut === 1 ? 'one sentence' : `${privateCut} sentences`} before showing you this script because {privateCut === 1 ? 'it' : 'they'} used something private or something you left out.
+        </p>
+      )}
+      {figureCut > 0 && (
+        <p className="mt-2 text-stone" data-testid="figure-removed">
+          Twin removed {figureCut === 1 ? 'one sentence' : `${figureCut} sentences`} with a number nothing you gave it states. Add the real number to your facts to use it.
         </p>
       )}
       {methodCut > 0 && (
