@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0257_panel_closes_the_loop':
+    'Adds audience_tests needs_her/working/unverified/out_of_scope, the answer_panel_question and panel_answers_pending RPCs, and a panel-version condition in panels_due; read by the worker audience test and the script page only. The editor never reads them.',
   '0256_corpus_hook_moves':
     'Adds nullable corpus_reads.hook_move and hook_gap (the finer hook labels from the creator-family research); written by the worker corpus sweep only. The editor never reads them.',
   '0255_private_by_model_or_word':

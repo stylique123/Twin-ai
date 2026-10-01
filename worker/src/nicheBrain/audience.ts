@@ -24,7 +24,9 @@ import {
   SCRIPT_TARGET, SCRIPT_ROUNDS, SCRIPT_REWRITE_SYSTEM, SCRIPT_REWRITE_SCHEMA, scriptRewritePrompt,
   applyLineRewrites, betterVersion, watchedToEnd,
   orderHooksBestFirst, defaultHookAfterTest,
+  MAX_TESTED_HOOKS, PANEL_VERSION, ANSWER_REWRITE_SYSTEM, answerRewritePrompt,
 } from './audienceParse.js'
+import { FAMILY_SHAPE } from '../generated/scriptFamily.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
 export const AUDIENCE_INTERVAL_MS = 15 * 1000
@@ -36,7 +38,7 @@ export function kickAudienceTests(log: Log): void {
   if (inFlight || now - last < AUDIENCE_INTERVAL_MS) return
   last = now
   inFlight = true
-  void runPanelBuilder(log).then(() => runAudienceTests(log)).then(() => filePostQuestions(log)).then(() => fileHerReplies(log))
+  void runPanelBuilder(log).then(() => runAudienceTests(log)).then(() => runPanelAnswers(log)).then(() => filePostQuestions(log)).then(() => fileHerReplies(log))
     .then(() => runMentionFinder(log)).then(() => fileConfirmedMentions(log))
     .then(() => runShiftFinder(log)).then(() => fileConfirmedShifts(log))
     .then(() => runNicheQuestions(log))
@@ -67,13 +69,22 @@ export async function runPanelBuilder(log: Log): Promise<void> {
     const p = v.profile ?? {}
     const { data: evidence } = await db.rpc('panel_evidence', { p_voice: v.voice_id })
     const dna = { niche: p.niche, sub_niche: p.sub_niche, audience: p.audience, tone: p.voice ?? p.tone, goal: p.goal }
-    const prompt = `CREATOR DNA: ${JSON.stringify(dna).slice(0, 1200)}\n\nHER REAL POSTS (plays, likes, what the reader learned): ${JSON.stringify(evidence ?? {}).slice(0, 5000)}`
+    // ⚠️ AUDIT 2026-10-01: personas came from her own posts only. Her niche's real
+    // high-reach videos and the objections real viewers raise there now inform
+    // the cold viewers and sceptics too (the same brain the writer reads).
+    const emb = await geminiEmbed([p.sub_niche, p.niche, p.audience].filter(Boolean).join(' | ')).catch(() => null)
+    const niche = emb
+      ? await db.rpc('brain_brief_scoped', { p_embedding: `[${emb.join(',')}]`, p_owner: v.owner_id, p_k: 20 }).then((r) => r.data, () => null)
+      : null
+    const nicheLines = (Array.isArray(niche) ? niche : []).slice(0, 20)
+      .map((n: { kind?: string; title?: string; body?: string }) => `${n.kind ?? 'note'}: ${n.title ?? ''}${n.body ? ` — ${String(n.body).slice(0, 120)}` : ''}`)
+    const prompt = `CREATOR DNA: ${JSON.stringify(dna).slice(0, 1200)}\n\nHER REAL POSTS (plays, likes, what the reader learned): ${JSON.stringify(evidence ?? {}).slice(0, 5000)}${nicheLines.length ? `\n\nNICHE EVIDENCE (real high-reach videos and viewer objections in her niche):\n${nicheLines.join('\n')}` : ''}`
     const model = modelForTask('read')
     const personas = normalizePanel(await geminiJson(PANEL_SYSTEM, prompt, PANEL_SCHEMA, 45_000, 0, model))
     if (personas.length < 5) { log('info', 'panel_build', { event: 'panel_build', voice: v.voice_id, personas: personas.length, kept: false }); return }
     await db.from('audience_panels').upsert({
       voice_id: v.voice_id, owner_id: v.owner_id, personas, model, posts_seen: v.posts,
-      built_from: { posts: (evidence as { n?: number } | null)?.n ?? 0, dna: true }, built_at: new Date().toISOString(),
+      built_from: { v: PANEL_VERSION, posts: (evidence as { n?: number } | null)?.n ?? 0, dna: true, niche_notes: nicheLines.length }, built_at: new Date().toISOString(),
     }, { onConflict: 'voice_id' })
     log('info', 'panel_build', { event: 'panel_build', voice: v.voice_id, personas: personas.length, kept: true })
   } catch (err) {
@@ -113,6 +124,16 @@ export async function runAudienceTests(log: Log): Promise<void> {
       // ⚠️ AUDIT 2026-10-01 (B3): facts she switched off are refused too, not only private ones.
       .eq('owner_id', g.user_id).or('sensitive.eq.true,creator_excluded_at.not.is.null').limit(200)
       .then((r) => (r.data ?? []).map((k: { text?: string | null; evidence?: string | null }) => `${k.text ?? ''}. ${k.evidence ?? ''}`), () => [])
+    // ⚠️ AUDIT 2026-10-01 (D): what she has actually said, so a viewer can never
+    // credit a confident detail that traces to nothing (an invented "scorching",
+    // invented gram weights). The same store the writer's fact guards read.
+    const facts: string[] = await db.from('creator_knowledge').select('text')
+      .eq('owner_id', g.user_id).eq('sensitive', false).is('creator_excluded_at', null)
+      .in('basis', ['stated', 'demonstrated']).order('times_seen', { ascending: false }).limit(40)
+      .then((r) => (r.data ?? []).map((k: { text?: string | null }) => String(k.text ?? '')).filter(Boolean), () => [])
+    const bpIn = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
+    const family = typeof bpIn.script_family === 'string' ? bpIn.script_family : null
+    const shape = family ? FAMILY_SHAPE[family as keyof typeof FAMILY_SHAPE] ?? null : null
     const allowedText = [...s.hooks, ...s.lines, product ?? ''].join('\n')
     // ⚠️ AUDIT 2026-10-01 (S1): this rewrite runs AFTER every guard in the
     // writer, so it is held to the writer's rules too: no unpicked product or
@@ -131,7 +152,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
         && (n.is_hers || (typeof p.sub_niche === 'string' && (n.sub_niche ?? '').toLowerCase() === p.sub_niche.toLowerCase())))
       .map((n: { title: string }) => n.title)
     const dna = { niche: p.niche, sub_niche: p.sub_niche, audience: p.audience, tone: p.voice ?? p.tone, goal: p.goal }
-    const raw = await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(s, { dna, product, objections, lessons, panel }), AUDIENCE_SCHEMA, 45_000, 0, model)
+    const raw = await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(s, { dna, product, objections, lessons, panel, family, shape, facts }), AUDIENCE_SCHEMA, 45_000, 0, model)
     let r = normalizeAudience(raw, s)
     if (!r) { await stamp({ status: 'failed', failure: 'panel too small' }); return }
     const hookBefore = { best: Math.max(0, ...r.hooks.map((h) => h.stopped)), watched: watchedToEnd(r.viewers) }
@@ -141,14 +162,14 @@ export async function runAudienceTests(log: Log): Promise<void> {
     let tested = s
     let rounds = 0
     const scoreOf = (x: NonNullable<typeof r>) => Math.round((Math.max(0, ...x.hooks.map((h) => h.stopped)) / Math.max(1, x.viewers.length)) * 10)
-    while (rounds < HOOK_ROUNDS && scoreOf(r) < HOOK_TARGET) {
+    while (rounds < HOOK_ROUNDS && scoreOf(r) < HOOK_TARGET && tested.hooks.length < MAX_TESTED_HOOKS) {
       rounds += 1
       const drafted = cleanNewHooks(await geminiJson(HOOK_REWRITE_SYSTEM, hookRewritePrompt(tested, r.hooks, r.viewers), HOOK_REWRITE_SCHEMA, 30_000, 0, model), tested.hooks)
-      const fresh = drafted.filter(safe)
+      const fresh = drafted.filter(safe).slice(0, MAX_TESTED_HOOKS - tested.hooks.length)
       refused += drafted.length - fresh.length
       if (fresh.length === 0) break
       const next = { ...tested, hooks: [...tested.hooks, ...fresh] }
-      const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
+      const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel, family, shape, facts }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
       if (!again) break
       tested = next; r = again
     }
@@ -168,7 +189,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       }
       if (!edit) break
       const next = { ...tested, lines: edit.lines }
-      const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
+      const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel, family, shape, facts }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
       if (!again || !betterVersion(r, again)) break
       edit.changed.forEach((i) => changedLines.add(i))
       tested = next; r = again
@@ -223,6 +244,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       status: 'done', panel_size: r.viewers.length, hooks: r.hooks, best_hook: r.best_hook,
       viewers: r.viewers, fixes: r.fixes, summary: r.summary,
       panel_voice_id: panel.length ? g.voice_id : null,
+      working: r.working, needs_her: r.needs_her, unverified: r.unverified, out_of_scope: r.out_of_scope,
       improved: {
         before: hookBefore,
         after: { best: Math.max(0, ...r.hooks.map((h) => h.stopped)), watched: watchedToEnd(r.viewers) },
@@ -248,7 +270,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       if (id) filed += 1
     }
     await db.from('audience_tests').update({ learned_at: new Date().toISOString() }).eq('generation_id', g.id)
-    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: changedLines.size, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length, promise_kept: r.promise_kept })
+    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: changedLines.size, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length, promise_kept: r.promise_kept, needs_her: r.needs_her.length, unverified: r.unverified.length, out_of_scope: r.out_of_scope, working: r.working.length })
   } catch (err) {
     const failure = err instanceof Error ? err.message.slice(0, 300) : 'unknown'
     // A quota wall says nothing about the script: leave it untested so the next tick retries.
@@ -306,4 +328,48 @@ export async function fileHerReplies(log: Log): Promise<void> {
     await db.from('post_questions').update({ reply_filed_at: new Date().toISOString() }).eq('id', q.id)
   }
   if (filed) log('info', 'her_replies_filed', { event: 'her_replies_filed', filed })
+}
+
+// ── HER ANSWERS GO INTO THE SCRIPT (owner audit 2026-10-01, Option C). The
+// panel names a fact only she can give; she answers it on the page
+// (answer_panel_question); this writes her answer into the line it belongs in.
+// ⚖️ Only her answer's words may enter: the rewrite is checked so no other new
+// number, name or private matter rides in with it.
+export async function runPanelAnswers(log: Log): Promise<void> {
+  const { data, error } = await db.rpc('panel_answers_pending', { p_limit: 1 })
+  if (error) { log('error', 'panel_answers_failed', { error: error.message }); return }
+  const t = (Array.isArray(data) ? data[0] : null) as { generation_id: string; owner_id: string; blueprint: unknown; needs_her: unknown } | null
+  if (!t) return
+  const qs = (Array.isArray(t.needs_her) ? t.needs_her : []) as Array<Record<string, unknown>>
+  const pending = qs.map((q, i) => ({ q, i })).filter(({ q }) => typeof q.answer === 'string' && !q.applied_at)
+  const now = new Date().toISOString()
+  const markAll = (applied: boolean) => qs.map((q, i) => (pending.some((p) => p.i === i) ? { ...q, applied_at: now, applied } : q))
+  const s = scriptFromBlueprint(t.blueprint)
+  if (!s || pending.length === 0) { await db.from('audience_tests').update({ needs_her: markAll(false) }).eq('generation_id', t.generation_id); return }
+  try {
+    const answers = pending.map(({ q }) => ({ question: String(q.question ?? ''), answer: String(q.answer), beat: Number(q.beat ?? -1) }))
+    const herWords = answers.map((a) => a.answer).join(' ')
+    const privateFacts: string[] = await db.from('creator_knowledge').select('text, evidence')
+      .eq('owner_id', t.owner_id).or('sensitive.eq.true,creator_excluded_at.not.is.null').limit(200)
+      .then((r) => (r.data ?? []).map((k: { text?: string | null; evidence?: string | null }) => `${k.text ?? ''}. ${k.evidence ?? ''}`), () => [])
+    const model = modelForTask('read')
+    const drafted = applyLineRewrites(s.lines, await geminiJson(ANSWER_REWRITE_SYSTEM, answerRewritePrompt(s, answers), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model), herWords)
+    const allowedText = [...s.hooks, ...s.lines, herWords].join('\n')
+    const ok = drafted ? drafted.changed.filter((i) => rewriteIsSafe(drafted.lines[i], { allowedText, excludedTexts: privateFacts })) : []
+    if (drafted && ok.length) {
+      const bp = { ...(t.blueprint as Record<string, unknown>) }
+      const script = [...(bp.script as Array<Record<string, unknown>>)]
+      for (const i of ok) { const at = s.at?.[i]; if (at !== undefined && script[at]) script[at] = { ...script[at], line: drafted.lines[i] } }
+      bp.script = script
+      if (Array.isArray(bp.shot_list)) bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<Record<string, unknown>>, script).shots
+      await db.from('generations').update({ blueprint: bp }).eq('id', t.generation_id)
+    }
+    await db.from('audience_tests').update({ needs_her: markAll(ok.length > 0) }).eq('generation_id', t.generation_id)
+    log('info', 'panel_answer_applied', { event: 'panel_answer_applied', generation: t.generation_id, answers: answers.length, lines: ok.length })
+  } catch (err) {
+    const failure = err instanceof Error ? err.message.slice(0, 200) : 'unknown'
+    if (/quota|429|API key|GEMINI_API_KEY/i.test(failure)) { log('error', 'panel_answers_stopped', { error: failure }); return }
+    await db.from('audience_tests').update({ needs_her: markAll(false) }).eq('generation_id', t.generation_id)
+    log('error', 'panel_answer_failed', { generation: t.generation_id, error: failure })
+  }
 }

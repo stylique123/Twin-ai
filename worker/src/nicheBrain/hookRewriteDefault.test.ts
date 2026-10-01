@@ -39,9 +39,9 @@ describe('the default hook is the best-scoring hook after the rewrite step', () 
 })
 
 describe('quality over quantity: at most four hooks (owner, 2026-09-28)', () => {
-  it('never offers more than four, best first', () => {
+  it('never offers more than five, best first (owner audit 2026-10-01)', () => {
     const many = Array.from({ length: 11 }, (_, i) => ({ hook: `h${i}`, stopped: i }))
     const o = orderHooksBestFirst(many)
-    expect(o).toEqual(['h10', 'h9', 'h8', 'h7'])
+    expect(o).toEqual(['h10', 'h9', 'h8', 'h7', 'h6'])
   })
 })
