@@ -77,6 +77,8 @@ export interface ShownAudit {
   showingFramedLikeTalk: number
   /** Criterion 5: generic gesture direction ("gesture naturally"). */
   genericGestures: number
+  /** Beats whose action_posing repeats an earlier beat's word for word. */
+  repeatedActions: number
   /** Criterion 8: of the reference's non-talk beats, how many the remix kept at the same place. */
   referenceKept?: { kept: number; of: number } | null
 }
@@ -114,7 +116,15 @@ export function auditShownScript(beats: readonly ShownBeat[], opts: { sellsShowa
   const talkFraming = new Set(beats.filter((_, i) => jobs[i] === 'talk').map((b) => `${norm(b.location)}|${norm(b.direction)}`))
   const showingFramedLikeTalk = beats.filter((b, i) => SHOWING_JOBS.has(jobs[i]!) && talkFraming.has(`${norm(b.location)}|${norm(b.direction)}`)).length
   const genericGestures = beats.filter((b) => GENERIC_GESTURE.test(String(b.action_posing ?? ''))).length
-  return { jobs, showsInUse, distinctLocations: locations.size, showingFramedLikeTalk, genericGestures }
+  const seen = new Set<string>()
+  let repeatedActions = 0
+  for (const b of beats) {
+    const a = norm(b.action_posing).replace(/[.!]+$/, '')
+    if (!a) continue
+    if (seen.has(a)) repeatedActions++
+    else seen.add(a)
+  }
+  return { jobs, showsInUse, distinctLocations: locations.size, showingFramedLikeTalk, genericGestures, repeatedActions }
 }
 
 /** The prompt rule that asks for the field. */

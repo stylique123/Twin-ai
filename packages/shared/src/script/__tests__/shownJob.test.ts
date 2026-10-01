@@ -38,3 +38,14 @@ describe('phase 4: a remix keeps where the reference showed things', () => {
     expect(referenceShownKept([], ['talk'])).toBeNull()
   })
 })
+
+describe('baseline 2026-10: the same hold-up on every beat', () => {
+  it('counts word-for-word repeated actions', () => {
+    const hold = 'Hold the coffee bag up to chest height, steady, label facing the lens.'
+    const a = auditShownScript([
+      { action_posing: hold }, { action_posing: 'Point one finger at the roast date.' },
+      { action_posing: hold }, { action_posing: hold.replace(/\.$/, '') },
+    ], { sellsShowable: true })
+    expect(a.repeatedActions).toBe(2)
+  })
+})
