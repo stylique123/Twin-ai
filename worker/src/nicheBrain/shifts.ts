@@ -56,7 +56,10 @@ export async function fileConfirmedShifts(log: Log): Promise<void> {
   let filed = 0
   for (const s of (data ?? []) as Array<{ id: string; owner_id: string; voice_id: string | null; earlier_text: string; later_text: string; summary: string }>) {
     const { error } = await insertKnowledge(db as never, [{
-      owner_id: s.owner_id, voice_id: s.voice_id, kind: 'experience', text: shiftKnowledge(s), basis: 'stated', source: 'user',
+      owner_id: s.owner_id, voice_id: s.voice_id, kind: 'experience', text: shiftKnowledge(s),
+      // ⚠️ AUDIT 2026-10-01 (B2): the summary is Twin's wording of two of her
+      // opinions, so it is inferred; her own words stay in the evidence.
+      basis: 'inferred', source: 'user',
       confidence: 1, times_seen: 1, source_ref: `shift:${s.id}`,
       evidence: `Earlier: ${s.earlier_text} | Later: ${s.later_text}`.slice(0, 240),
     }] as never)

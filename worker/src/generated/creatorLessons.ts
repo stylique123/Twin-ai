@@ -36,7 +36,10 @@ const TAG_LESSON: Record<string, { kind: LessonKind; text: string }> = {
   'Too salesy': { kind: 'style', text: 'Less selling: earn the product mention, keep the pitch to the close.' },
   'Hook is weak': { kind: 'style', text: 'Open on a concrete moment or a sharp claim, not a greeting or a general question.' },
   'Hard to film': { kind: 'style', text: 'Only ask for shots she can film alone at home or in her workspace.' },
-  'Wrong product facts': { kind: 'avoid', text: 'Never state a product detail she has not given; leave it out instead.' },
+  // ⚠️ AUDIT 2026-10-01 (B4): 'Wrong product facts' is NOT a lesson. "Never
+  // state a product detail she has not given" is Twin's own rule, enforced on
+  // every script; filing it as her preference only cluttered My Twin. The tag
+  // is a bug report about that script, and stays on the rating row as one.
   'Not my voice': { kind: 'style', text: 'Use her own phrasing and sentence length; no polished marketing lines.' },
   'Strong hook': { kind: 'prefer', text: 'Hooks that name a specific moment or mistake work for her; keep that shape.' },
   'Love it': { kind: 'prefer', text: 'This kind of script is what she wants; keep its structure and length.' },

@@ -50,7 +50,10 @@ export async function fileConfirmedMentions(log: Log): Promise<void> {
   for (const m of (data ?? []) as Array<{ id: string; owner_id: string; voice_id: string | null; kind: string; title: string; outlet: string; url: string }>) {
     const k = mentionKnowledge(m)
     const { error } = await insertKnowledge(db as never, [{
-      owner_id: m.owner_id, voice_id: m.voice_id, kind: k.kind, text: k.text, basis: 'stated', source: 'user',
+      owner_id: m.owner_id, voice_id: m.voice_id, kind: k.kind, text: k.text,
+      // ⚠️ AUDIT 2026-10-01 (B2): someone else wrote this about her. Her
+      // confirming it proves it is accurate, not that she said it.
+      basis: 'demonstrated', source: 'user',
       confidence: 1, times_seen: 1, source_url: m.url, source_ref: `mention:${m.id}`,
     }] as never)
     if (!error) filed += 1
