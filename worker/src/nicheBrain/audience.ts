@@ -8,6 +8,7 @@
 import { db } from '../db.js'
 import { syncShotListSpokenText } from '../generated/shotListSync.js'
 import { rewriteIsSafe, guardScript } from '../generated/privacyGuard.js'
+import { enforceScriptRules } from '../generated/scriptRules.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { noteKey } from './librarian.js'
@@ -109,10 +110,20 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // only say what the checked script and its product already say: no private
     // term, no private fact's wording, no quantity that was not there.
     const privateFacts: string[] = await db.from('creator_knowledge').select('text, evidence')
-      .eq('owner_id', g.user_id).eq('sensitive', true).limit(200)
+      // ⚠️ AUDIT 2026-10-01 (B3): facts she switched off are refused too, not only private ones.
+      .eq('owner_id', g.user_id).or('sensitive.eq.true,creator_excluded_at.not.is.null').limit(200)
       .then((r) => (r.data ?? []).map((k: { text?: string | null; evidence?: string | null }) => `${k.text ?? ''}. ${k.evidence ?? ''}`), () => [])
     const allowedText = [...s.hooks, ...s.lines, product ?? ''].join('\n')
+    // ⚠️ AUDIT 2026-10-01 (S1): this rewrite runs AFTER every guard in the
+    // writer, so it is held to the writer's rules too: no unpicked product or
+    // brand, no follow ask she did not choose. The writer left the context.
+    const rc = ((g.blueprint as { rule_context?: { unpicked?: unknown; follow_allowed?: unknown } } | null)?.rule_context) ?? {}
+    const ruleOpts = {
+      unpicked: Array.isArray(rc.unpicked) ? rc.unpicked.filter((x): x is string => typeof x === 'string') : [],
+      followAllowed: rc.follow_allowed === true,
+    }
     const safe = (t: string) => rewriteIsSafe(t, { allowedText, excludedTexts: privateFacts })
+      && enforceScriptRules([{ line: t }], ruleOpts).removed.length === 0
     let refused = 0
     const objections = (Array.isArray(notes) ? notes : [])
       // Only her own questions or her exact sub-niche's: other accounts' objections are not her viewers'.

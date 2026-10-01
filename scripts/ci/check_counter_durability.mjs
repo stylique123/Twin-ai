@@ -717,6 +717,7 @@ const EVENTS = {
   audience_rewrite_refused: { kind: 'counter_ephemeral', why: 'Test-viewer hook/line rewrites refused because they added a private term, a private fact or a number the checked script did not have (audit 2026-09-29 #1); the kept script is the proof.' },
   lessons_broken: { kind: 'incident', why: 'A script still contains a "never write" phrase she taught Twin in a rating (0250); recorded on the blueprint as lessons_broken.' },
   script_guard_removed: { kind: 'incident', why: 'The final privacy guard removed sentences carrying a private term or a tapped-out fact from a finished script (0252); recorded on the blueprint as guardrail_report.' },
+  published_text_ruled: { kind: 'counter_ephemeral', why: 'Sentences in captions, titles, thumbnail text, visual hook or shot notes that were private, excluded, named an unpicked product or asked for a follow were removed (audit 2026-10-01 S2).' },
   script_rule_removed: { kind: 'counter_ephemeral', why: 'Sentences naming an unpicked product/brand or asking for a follow she did not choose were removed (audit 2026-09-30); recorded on the blueprint as guardrail_report.' },
   hook_options_ruled_out: { kind: 'counter_ephemeral', why: 'Hook options that were private, excluded, named an unpicked product or asked for a follow were not offered (audit 2026-09-30).' },
   knowledge_held_back_unpicked: { kind: 'counter_ephemeral', why: 'With nothing picked, facts naming her products or brand were held back from the writer (audit 2026-09-30).' },

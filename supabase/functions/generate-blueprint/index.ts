@@ -14009,11 +14009,57 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const safeOpts = opts.filter((h) =>
             !guardScript([{ line: h }], { allowedText: '', excludedTexts: guardExcludedTexts }).removed.some((r) => r.reason === 'private' || r.reason === 'excluded')
             && enforceScriptRules([{ line: h }], { unpicked: namesNotPicked, followAllowed: String(body.outcome ?? '') === 'follow' }).removed.length === 0)
-          if (safeOpts.length && safeOpts.length !== opts.length) {
+          // ⚠️ AUDIT 2026-10-01 (S3): when EVERY option failed, all of them
+          // used to be kept. An empty list is the honest answer.
+          if (safeOpts.length !== opts.length) {
             bh.hook_options = safeOpts
             console.warn(JSON.stringify({ event: 'hook_options_ruled_out', removed: opts.length - safeOpts.length }))
           }
         }
+        // ⚠️ AUDIT 2026-10-01 (S2): captions posted under her name, titles,
+        // thumbnail text, the visual hook and shot notes were never checked —
+        // a "Follow for Part 2" title or an unpicked brand on the thumbnail
+        // shipped. Every published string is held to the same rules: a failing
+        // sentence is dropped, never rewritten.
+        const followOk = String(body.outcome ?? '') === 'follow'
+        const textCuts: Array<{ field: string; reason: string; sentence: string }> = []
+        const clean = (field: string, t: unknown): unknown => {
+          if (typeof t !== 'string' || !t.trim()) return t
+          const kept: string[] = []
+          for (const sent of t.split(/(?<=[.!?])\s+/)) {
+            const priv = guardScript([{ line: sent }], { allowedText: '', excludedTexts: guardExcludedTexts }).removed
+              .find((r) => r.reason === 'private' || r.reason === 'excluded')
+            const rule = enforceScriptRules([{ line: sent }], { unpicked: namesNotPicked, followAllowed: followOk }).removed[0]
+            if (priv || rule) { textCuts.push({ field, reason: String(priv?.reason ?? rule?.reason), sentence: sent }); continue }
+            kept.push(sent)
+          }
+          return kept.join(' ').trim()
+        }
+        const deep = (field: string, v: unknown): unknown => {
+          if (typeof v === 'string') return clean(field, v)
+          if (Array.isArray(v)) return v.map((x, i) => deep(`${field}[${i}]`, x))
+          if (v && typeof v === 'object') {
+            return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, deep(`${field}.${k}`, x)]))
+          }
+          return v
+        }
+        const bt = blueprint as Record<string, unknown>
+        for (const key of ['packaging', 'visual_hook', 'captions']) if (key in bt) bt[key] = deep(key, bt[key])
+        if (Array.isArray(bt.publish_plan)) {
+          bt.publish_plan = (bt.publish_plan as Array<Record<string, unknown>>).map((pp, i) => ({ ...pp, caption: clean(`publish_plan[${i}].caption`, pp.caption) }))
+        }
+        if (Array.isArray(bt.shot_list)) {
+          bt.shot_list = (bt.shot_list as Array<Record<string, unknown>>).map((sh, i) => ({
+            ...sh, notes: clean(`shot_list[${i}].notes`, sh.notes), b_roll_visual: clean(`shot_list[${i}].b_roll_visual`, sh.b_roll_visual),
+          }))
+        }
+        if (textCuts.length) {
+          bp.guardrail_report = [...(Array.isArray(bp.guardrail_report) ? bp.guardrail_report : []), ...textCuts]
+          console.warn(JSON.stringify({ event: 'published_text_ruled', removed: textCuts.length }))
+        }
+        // The worker's test-viewer rewrite runs after this function; it reads
+        // these so it holds its rewrites to the same rules (S1).
+        bt.rule_context = { unpicked: namesNotPicked, follow_allowed: followOk }
         if (ruled.removed.length) {
           const emptied = ruled.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
           bp.script = ruled.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
