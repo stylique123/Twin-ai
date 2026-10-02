@@ -580,7 +580,9 @@ async function runVariant(mode) {
   const started = Date.now()
   const body = mode === 'reference'
     ? { reference_url: REFERENCE_URL, ...ASSESS_OPTIONS }
-    : { idea: IDEA_SENTENCE, ...ASSESS_OPTIONS }
+    // ⚠️ AUDIT 2026-10-02: the writer reads `reference_note`; `idea` was never a
+    // field it accepts, so every idea beat was a 400 "describe your idea".
+    : { reference_note: IDEA_SENTENCE, ...ASSESS_OPTIONS }
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-blueprint`, {
       method: 'POST',
@@ -596,6 +598,10 @@ async function runVariant(mode) {
     })
     const durationMs = Date.now() - started
     if (!res.ok) {
+      // The writer's own reason (a code like READINESS_INCOMPLETE, a question it
+      // needs answered) — without it a 409 is undiagnosable from the log.
+      const why = await res.text().then((t) => t.replace(/\s+/g, ' ').slice(0, 300), () => '')
+      console.log(`${mode} rejected ${res.status}: ${why}`)
       return { run: { at: Date.now(), mode, failed: `non-2xx from generate-blueprint: ${res.status}`, durationMs }, script: '', voiceId: null }
     }
     const json = await res.json()
