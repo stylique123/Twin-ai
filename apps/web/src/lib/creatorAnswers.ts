@@ -435,7 +435,7 @@ export async function loadExtractedKnowledge(
  * outage. The caller shows no plan at all on null.
  */
 export async function loadKnowledgeForPlan(): Promise<
-  Array<{ id: string; kind: string; text: string; source: string | null; creator_excluded_at: string | null }> | null
+  Array<{ id: string; kind: string; text: string; source: string | null; creator_excluded_at: string | null; serves: string[] | null }> | null
 > {
   try {
     const { data: auth } = await supabase.auth.getUser()
@@ -444,12 +444,12 @@ export async function loadKnowledgeForPlan(): Promise<
 
     const [top, asked] = await Promise.all([
       supabase.from('creator_knowledge')
-        .select('id, kind, text, source, creator_excluded_at')
+        .select('id, kind, text, source, creator_excluded_at, serves')
         .eq('owner_id', ownerId)
         .order('times_seen', { ascending: false })
         .limit(40),
       supabase.from('creator_knowledge')
-        .select('id, kind, text, source, creator_excluded_at')
+        .select('id, kind, text, source, creator_excluded_at, serves')
         .eq('owner_id', ownerId)
         // Her confirmed comment questions ride the same second read as her answers,
         // exactly as the writer reads them (generate-blueprint `askedRead`).
@@ -470,6 +470,8 @@ export async function loadKnowledgeForPlan(): Promise<
       source: ((r as { source?: unknown }).source ?? null) as string | null,
       // 0253: she left it out of an earlier video. Shown, switched off.
       creator_excluded_at: ((r as { creator_excluded_at?: unknown }).creator_excluded_at ?? null) as string | null,
+      // 0268: what the fact is for; the screen holds back exactly what the writer does.
+      serves: (Array.isArray((r as { serves?: unknown }).serves) ? (r as { serves: unknown[] }).serves.map(String) : null),
     }))
     // The two queries overlap; the writer sees each row once and so must this.
     const seen = new Set<string>()

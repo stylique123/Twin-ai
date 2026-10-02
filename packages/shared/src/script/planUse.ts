@@ -48,10 +48,16 @@ function overlap(a: Set<string>, b: Set<string>): number {
   return n / Math.min(a.size, b.size)
 }
 
+import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from './factPurpose'
+
 export function planUseItems(
-  knowledge: readonly { id?: unknown; kind?: unknown; text?: unknown; source?: unknown; creator_confirmed_at?: unknown; creator_excluded_at?: unknown }[] | null | undefined,
+  knowledge: readonly { id?: unknown; kind?: unknown; text?: unknown; source?: unknown; creator_confirmed_at?: unknown; creator_excluded_at?: unknown; serves?: unknown }[] | null | undefined,
   about: string,
+  /** This video's objective: a fact not for it starts OFF, exactly as the writer holds it back (0268). */
+  goal?: string | null,
 ): PlanUseItem[] {
+  const purpose = purposeOfGoal(goal)
+  const noOverrides: ReadonlySet<string> = new Set()
   // ⚠️ ROUND 4, 3.3/3.4: "roasting" stemmed to "roasti" and never met "roast",
   // so her own origin story did not "fit" an idea about why she started roasting,
   // while a sticker-company line fit on the niche's commonest word. Stems are now
@@ -78,15 +84,17 @@ export function planUseItems(
     const sensitive = SENSITIVE.test(text) || LEGALISH.test(text)
     const risky = !mine && (HAS_NUMBER.test(text) || STRONG_CLAIM.test(text))
     const leftOut = !!k?.creator_excluded_at
+    const offPurpose = !!purpose && !servesObjective(k as never, purpose, noOverrides)
     out.push({
       id, text, kind, mine,
       fits: overlap(aboutWords, w) > 0 || [...w].some((x) => aboutWords.has(x)),
-      defaultOff: sensitive || risky || leftOut,
+      defaultOff: sensitive || risky || leftOut || offPurpose,
       sensitive,
       leftOut,
       reason: sensitive
         ? 'Private or legal, so it stays out unless you turn it on'
         : leftOut ? 'You left this out before, so it stays out unless you turn it on'
+        : offPurpose ? `Not material for ${PURPOSE_LABEL[purpose!]}, so it stays out unless you turn it on`
         : fromComments ? 'From your comments, you confirmed it'
         : mine ? 'You wrote this' : 'From your videos, not confirmed',
     })

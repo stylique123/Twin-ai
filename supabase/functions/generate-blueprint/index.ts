@@ -33,6 +33,7 @@ import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript, referenceShownKept
 import { scriptFamily, renderFamilyHookRule, normalizeHookMoves, auditHookSet } from '../_shared/scriptFamily.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract } from '../_shared/ideaQuestions.ts'
+import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -6340,7 +6341,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string; exclude_knowledge_ids?: string[]; use_knowledge_ids?: string[]; excluded_by_her_ids?: string[] }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string; exclude_knowledge_ids?: string[]; use_knowledge_ids?: string[]; excluded_by_her_ids?: string[]; on_by_her_ids?: string[] }
   try {
     body = await req.json()
   } catch {
@@ -6637,7 +6638,7 @@ const KNOWLEDGE_COLS_BASE = 'id, kind, text, basis, times_seen, confidence, sour
 // ⚠️ `creator_confirmed_at` (0219) JOINS THE WIDE LIST, NOT THE BASE ONE, so an
 // unapplied migration costs the marker and never the knowledge — the narrow
 // retry below already exists for exactly this and needs no new branch.
-const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence, creator_confirmed_at, product_entity_id, fact_scope, brand_id`
+const KNOWLEDGE_COLS_FULL = `${KNOWLEDGE_COLS_BASE}, used_count, last_used_at, evidence, creator_confirmed_at, product_entity_id, fact_scope, brand_id, serves`
 
 /** Read creator knowledge with the rotation columns, or without them if 0215 has
  *  not been applied. `narrow` is reported so the degraded state is visible rather
@@ -6798,6 +6799,20 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     herOn.length ? admin.from('creator_knowledge').update({ creator_excluded_at: null })
       .eq('owner_id', ownerId).in('id', herOn).not('creator_excluded_at', 'is', null) : null,
   ].map((q) => (q ? Promise.resolve(q).then(() => {}, () => {}) : null)))
+  // ⚖️ HER CHOICES TEACH WHAT A FACT IS FOR (0268): a fact she switched off
+  // for a video with this objective is a vote against that objective; one she
+  // switched ON although it was not labeled for it is a vote for. The worker
+  // learns from them; a failure costs only the vote.
+  {
+    const g = purposeOfGoal(body.goal)
+    const onByHer = uuidList((body as { on_by_her_ids?: unknown }).on_by_her_ids)
+    const votes = g ? [...herOff.map((id) => ({ id, vote: -1 })), ...onByHer.map((id) => ({ id, vote: 1 }))] : []
+    if (votes.length) {
+      await admin.from('fact_purpose_votes').upsert(votes.map((v) => ({
+        owner_id: ownerId, knowledge_id: v.id, goal: g, vote: v.vote, generation_key: String(body.idempotency_key ?? '').slice(0, 120) || null,
+      })), { onConflict: 'knowledge_id,goal,generation_key', ignoreDuplicates: true }).then(() => {}, () => {})
+    }
+  }
   // ⚖️ FACT-SCOPING (0252): the writer reads the view that holds no private
   // row. A private fact reaches a script only when she switched it on for this
   // video (the opt-in read below), never by default.
@@ -6939,12 +6954,22 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // can legitimately appear in both reads and must not be supplied twice —
   // duplicate supply inflates every count downstream that reasons about it.
   const seenKnowledge = new Set<string>()
+  // ⚖️ WHAT EACH FACT IS FOR (0268, owner 2026-10-02) — THE HARD RULE. Every
+  // read above merges here, and nothing downstream reads facts any other way,
+  // so a fact whose label does not serve this video's objective is not in the
+  // writer's hands at all. The only exception is a fact she switched on herself
+  // for this video. Unlabeled and unplaceable = ineligible.
+  const purposeGoal = purposeOfGoal(body.goal)
+  const herOnIds = new Set(uuidList((body as { on_by_her_ids?: unknown }).on_by_her_ids))
+  let offPurpose = 0
   const knowledgeRows = [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) => {
     const k = `${r?.kind}|${String(r?.text ?? '').trim().toLowerCase()}`
     if (seenKnowledge.has(k)) return false
     seenKnowledge.add(k)
+    if (!servesObjective(r as never, purposeGoal, herOnIds)) { offPurpose++; return false }
     return true
   })
+  if (offPurpose) console.log(JSON.stringify({ event: 'knowledge_off_purpose', goal: purposeGoal, held_back: offPurpose }))
   // ⚠️ WHAT THIS CREATOR'S LAST FEW SCRIPTS WERE ALREADY BUILT OUT OF. One
   // stored story reached 8 consecutive scripts (measured, used_count = 8) because
   // rotation only broke ties. The insert-only ledger (0215) says exactly which
@@ -7801,6 +7826,21 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   const readyKnows = Array.isArray(knowledgeRows) && knowledgeRows.length > 0
   if (!readyPresent(answers.audience ?? brief.audience ?? (dna.audience as string | undefined)) && !readyKnows) {
     readyMissing.push({ field: 'audience', question: 'Who is this video for?' })
+  }
+  // ⚖️ NOTHING FITS THIS OBJECTIVE → ASK, NEVER FILL (owner 2026-10-02). With
+  // no stored fact that serves this objective and too few of her own words for
+  // this video, the writer would have only an off-purpose story to reach for —
+  // and it can't (filter above). So it asks her the objective's one question
+  // instead, before anything is charged.
+  if (purposeGoal && !readyMissing.some((m) => m.field === 'claims')) {
+    const fitting = knowledgeRows.filter((k) => SUBSTANCE_KINDS.has(String((k as { kind?: unknown }).kind ?? ''))).length
+    const herWords = [reference_note, ...Object.values(answers ?? {}), ...Object.values(body.readiness_answers ?? {})]
+      .filter((v): v is string => typeof v === 'string').join(' ').split(/\s+/).filter(Boolean).length
+    // Any answer she gave to this question counts — it is never asked twice.
+    if (fitting === 0 && herWords < 25 && !String(answers.claims ?? '').trim()) {
+      readyMissing.push({ field: 'claims', question: READY_OBJECTIVE_QUESTIONS[purposeGoal] ?? `Nothing Twin knows about you fits ${PURPOSE_LABEL[purposeGoal]} yet. What is one real thing this video should say?` })
+      console.log(JSON.stringify({ event: 'objective_has_no_fitting_fact', goal: purposeGoal }))
+    }
   }
   if (readyMissing.length) {
     // ⚖️ ORDERED BY WHAT UNBLOCKS THE MOST, capped at three. A creator asked

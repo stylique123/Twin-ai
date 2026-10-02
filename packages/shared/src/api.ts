@@ -268,6 +268,8 @@ import type { EntryDoor } from './entryDoor'
 export interface GenerateInput {
   /** The angle she picked on the card, and the kinds she was offered (owner brief 2026-10-01). */
   angle?: { kind: string; gist: string; offered: string[] }
+  /** Facts she switched on although they start off (off-purpose etc.): the writer lets exactly these through (0268). */
+  on_by_her_ids?: string[]
   /** Stories/numbers she left out on the plan screen, never used in this script. */
   exclude_knowledge_ids?: string[]
   /** The exact facts the plan card showed switched on; the server uses only these. */

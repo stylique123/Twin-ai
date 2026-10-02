@@ -80,6 +80,26 @@ const EVENTS = {
   // legacy key" means the migration is unfinished; "found no credential at
   // all" means the function cannot work. Pooling them would hide an outage
   // inside a migration signal.
+  knowledge_off_purpose: {
+    kind: 'counter_ephemeral',
+    why: 'Per generation: facts held back because their purpose label does not serve this objective. Recomputable from creator_knowledge.serves and the generation goal.',
+  },
+  objective_has_no_fitting_fact: {
+    kind: 'counter_ephemeral',
+    why: 'Per generation: no stored fact served the objective and she gave too few words, so one question was asked instead of writing. Visible as the READINESS_INCOMPLETE refusal.',
+  },
+  fact_purpose_model_failed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker sweep: the model pass for facts the rules could not place failed; those rows stay unlabeled (ineligible) and are retried next sweep. Durable as creator_knowledge.serves_at IS NULL.',
+  },
+  fact_purposes_labeled: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker sweep: facts labeled by rule, model or none. Durable as creator_knowledge.serves_basis / serves_at.',
+  },
+  fact_purposes_learned: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker sweep: labels changed by her plan-screen votes. Durable as fact_purpose_votes.learned_at and serves_basis = her.',
+  },
   lesson_not_applied: {
     kind: 'incident',
     why: 'A creator corrected something a lesson she already had (active before the rated script was written) was meant to prevent: the writer had the rule and broke it. Durable as a `lesson_misses` row, shown on that lesson in "What Twin learned from you".',

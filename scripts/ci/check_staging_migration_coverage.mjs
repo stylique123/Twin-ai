@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0268_every_fact_knows_what_it_is_for':
+    'Adds creator_knowledge.serves / serves_basis / serves_at, fact_purpose_votes, and appends serves to creator_knowledge_writable; read by generate-blueprint, the plan screen and the worker. The editor never reads them.',
   '0267_angle_picks_are_lessons':
     'Adds the angle_pick lesson source and generations.angle_lesson_at; written and read by the worker\'s lesson learner only. The editor never reads them.',
   '0266_a_second_correction_is_an_alarm':
