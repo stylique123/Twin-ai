@@ -90,6 +90,19 @@ function scenarios(products, brandId, brandName) {
   for (const a of ADVERSARIAL) out.push({ group: 'adversarial', label: a.label, body: { reference_note: a.note, goal: a.goal, door: 'idea' } })
   // G. The same input twice: is the result stable?
   for (const idea of IDEAS.slice(0, 5)) for (let r = 0; r < 2; r++) out.push({ group: 'repeat', label: `repeat ${r}`, body: { reference_note: idea, goal: 'educate', door: 'idea' } })
+  // H. Every choice on the build screen: what it is about, what the viewer
+  // should do, the energy, and (on a reference) how closely to follow it.
+  const OPT_IDEA = 'how I pick which green beans to buy'
+  for (const focus of ['expertise', 'product', 'experience', 'opinion', 'review', 'story']) out.push({ group: 'options', label: `focus ${focus}`, body: { reference_note: OPT_IDEA, goal: 'educate', focus, door: 'idea' } })
+  for (const outcome of ['learn', 'change_mind', 'feel_inspired', 'comment', 'share', 'follow', 'check_out_offer']) out.push({ group: 'options', label: `outcome ${outcome}`, body: { reference_note: OPT_IDEA, goal: 'authority', outcome, door: 'idea' } })
+  for (const tone of ['punchy', 'balanced', 'understated']) out.push({ group: 'options', label: `tone ${tone}`, body: { reference_note: OPT_IDEA, goal: 'followers', tone, door: 'idea' } })
+  if (REF) for (const reference_use of ['structure', 'pacing', 'idea_structure', 'stay_close']) out.push({ group: 'options', label: `reference ${reference_use}`, body: { reference_url: REF, reference_use, goal: 'educate', door: 'reference', reference_note: '' } })
+  // I. Freshness: the same ask four times, as a creator would over a month.
+  // Each one should be a new video, not the last one reworded.
+  const firstNamed = named.find((p) => p.relationship === 'OWN_PRODUCT') ?? named[0]
+  for (let r = 0; r < 4; r++) out.push({ group: 'fresh', label: `idea again ${r}`, body: { reference_note: 'my morning routine at the roastery', goal: 'personal_brand', door: 'idea' } })
+  if (firstNamed) for (let r = 0; r < 4; r++) out.push({ group: 'fresh', label: `product again ${r}`, product: firstNamed.name, body: { selected_product_id: firstNamed.id, goal: 'sell', door: 'product', reference_note: firstNamed.name } })
+  for (let r = 0; r < 3; r++) out.push({ group: 'fresh', label: `brand again ${r}`, body: { selected_product_id: `brand:${brandId}`, goal: 'followers', door: 'product', reference_note: brandName } })
   // Lengths rotate the way creators pick them.
   return out.map((s, n) => ({ ...s, n, body: { ...s.body, target_seconds: [30, 45, 60][n % 3] } }))
 }
@@ -241,11 +254,16 @@ async function main() {
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
   }
-  const list = scenarios(products ?? [], brands?.[0]?.id ?? '', brands?.[0]?.name ?? '').slice(0, LIMIT)
+  // --group=product,idea runs only those groups (the batch is run in themed parts).
+  const only = (process.argv.find((a) => a.startsWith('--group=')) ?? '').slice(8).split(',').map((x) => x.trim()).filter(Boolean)
+  const list = scenarios(products ?? [], brands?.[0]?.id ?? '', brands?.[0]?.name ?? '')
+    .filter((sc) => !only.length || only.includes(sc.group)).slice(0, LIMIT)
   console.log(`batch ${BATCH}: ${list.length} scenarios`)
 
   let next = 0
   const tally = {}
+  const seen = new Map()
+  const shingles = (t) => { const w = t.toLowerCase().replace(/^\d+\.\s*/gm, '').split(/[^a-z0-9']+/).filter(Boolean); const out = new Set(); for (let i = 0; i + 5 <= w.length; i++) out.add(w.slice(i, i + 5).join(' ')); return out }
   async function worker() {
     while (next < list.length) {
       const sc = list[next++]
@@ -283,6 +301,16 @@ async function main() {
       }
       const bp = r.json?.blueprint ?? null
       const a = bp ? audit(bp, { ...sc, body }, ctx) : { findings: [{ k: `no_script_${r.status}`, d: String(r.json?.code ?? r.json?.error ?? r.text).slice(0, 200) }], text: null, hooks: null }
+      if (a.text) {
+        const ask = `${sc.group}|${body.selected_product_id ?? ''}|${String(body.reference_note ?? '').slice(0, 80)}|${body.reference_url ?? ''}`
+        const mine = shingles(a.text)
+        for (const prev of seen.get(ask) ?? []) {
+          const shared = [...mine].filter((x) => prev.sh.has(x)).length / Math.max(1, Math.min(mine.size, prev.sh.size))
+          if (shared > 0.3) { a.findings.push({ k: 'repeats_earlier_script', d: `${Math.round(shared * 100)}% shared with #${prev.n}` }); break }
+          if (a.hooks?.[0] && prev.hook && a.hooks[0].toLowerCase() === prev.hook.toLowerCase()) { a.findings.push({ k: 'same_hook_as_earlier', d: `#${prev.n}` }); break }
+        }
+        seen.set(ask, [...(seen.get(ask) ?? []), { n: sc.n, sh: mine, hook: a.hooks?.[0] ?? '' }])
+      }
       if (asked) a.findings.push({ k: 'asked_first', d: asked.join(' | ').slice(0, 300) })
       if (sc.expectRefusal && r.status === 400) a.findings = [{ k: 'refused_as_expected', d: String(r.json?.error ?? '').slice(0, 200) }]
       for (const x of a.findings) tally[x.k] = (tally[x.k] ?? 0) + 1

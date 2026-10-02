@@ -14,6 +14,10 @@ on:
         description: 'Run only the first N scenarios (0 = all)'
         required: false
         default: '0'
+      group:
+        description: 'Only these groups, comma-separated (product, business, idea, reference, adversarial, repeat, options, fresh); empty = all'
+        required: false
+        default: ''
       intake:
         description: 'Also add products from URL / photo / name and test intake'
         type: boolean
@@ -36,8 +40,11 @@ jobs:
       - name: Run the batch
         run: |
           npx esbuild packages/shared/src/script/privacyGuard.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.privacyGuard.bundle.mjs
-          node scripts/ops/scriptBatch.mjs "${{ inputs.label }}" "${{ inputs.limit }}" ${{ inputs.intake && ' ' || '--no-intake' }}
+          node scripts/ops/scriptBatch.mjs "$BATCH_LABEL" "$BATCH_LIMIT" ${{ inputs.intake && ' ' || '--no-intake' }} "--group=$BATCH_GROUP"
         env:
+          BATCH_GROUP: ${{ inputs.group }}
+          BATCH_LABEL: ${{ inputs.label }}
+          BATCH_LIMIT: ${{ inputs.limit }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
