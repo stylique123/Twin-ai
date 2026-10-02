@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0270_script_batch_results':
+    'Adds script_batch_results, written by the manual script-batch workflow with the service key and read by the audit only. The editor never reads it.',
   '0269_gallery_matches_on_her_words':
     'Replaces gallery_for_me with core-word matching (her head noun and distinctive words, generic words ignored, bucket-only dropped); read by the Gallery only. The editor never reads it.',
   '0268_every_fact_knows_what_it_is_for':

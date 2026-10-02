@@ -1,0 +1,44 @@
+name: script-batch
+
+# THE SCRIPT TEST BATCH (owner 2026-10-02). Manual only: ~200 real generations
+# on the test account (the heartbeat secrets), each checked by code and stored
+# in script_batch_results for the audit. Costs one credit per script.
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: 'Batch label (results are grouped by it)'
+        required: true
+        default: 'batch-1'
+      limit:
+        description: 'Run only the first N scenarios (0 = all)'
+        required: false
+        default: '0'
+      intake:
+        description: 'Also add products from URL / photo / name and test intake'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run the batch
+        run: node --experimental-strip-types scripts/ops/scriptBatch.mjs "${{ inputs.label }}" "${{ inputs.limit }}" ${{ inputs.intake && ' ' || '--no-intake' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HEARTBEAT_USER_EMAIL: ${{ secrets.HEARTBEAT_USER_EMAIL }}
+          HEARTBEAT_USER_PASSWORD: ${{ secrets.HEARTBEAT_USER_PASSWORD }}
+          HEARTBEAT_REFERENCE_URL: ${{ secrets.HEARTBEAT_REFERENCE_URL }}
