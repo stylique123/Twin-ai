@@ -135,6 +135,7 @@ const SOURCES = [
   ['packages/shared/src/script/shownJob.ts', 'supabase/functions/_shared/shownJob.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'supabase/functions/_shared/scriptFamily.ts'],
   ['packages/shared/src/script/ideaQuestions.ts', 'supabase/functions/_shared/ideaQuestions.ts'],
+  ['packages/shared/src/script/factPurpose.ts', 'supabase/functions/_shared/factPurpose.ts'],
   ['packages/shared/src/script/scriptIntegrity.ts', 'supabase/functions/_shared/scriptIntegrity.ts'],
   // Goal fidelity: rebuttal framing, promotion gating, CTA-per-goal, shot-list
   // claim diff. Generated for the same reason as scriptIntegrity just above.
@@ -166,6 +167,7 @@ const SOURCES = [
   ['packages/shared/src/script/scriptRules.ts', 'worker/src/generated/scriptRules.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'worker/src/generated/scriptFamily.ts'],
   ['packages/shared/src/script/ideaQuestions.ts', 'worker/src/generated/ideaQuestions.ts'],
+  ['packages/shared/src/script/factPurpose.ts', 'worker/src/generated/factPurpose.ts'],
   ['packages/shared/src/script/creatorLessons.ts', 'supabase/functions/_shared/creatorLessons.ts'],
   ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
 ]

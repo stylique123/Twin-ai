@@ -1495,7 +1495,7 @@ export default function V2Building() {
               const items = await loadKnowledgeForPlan()
               if (!alive) return
               const facts = libraryFacts(libraryProducts, str(vBrief.offer))
-              const nothingToSay = items !== null && planUseItems(items as never, state.reference_note || '').length === 0
+              const nothingToSay = items !== null && planUseItems(items as never, state.reference_note || '', askAnswers.video_goal ?? answersRef.current.video_goal ?? null).length === 0
                 && buildVideoPlan({ angle: null, knowledge: items, readyFacts: facts }).gaps.length === 0
               if (items && !nothingToSay) {
                 markPlanShown(key)
@@ -1848,6 +1848,7 @@ export default function V2Building() {
           ...(excludedKnowledge.size > 0 ? { exclude_knowledge_ids: [...excludedKnowledge] } : {}),
           ...((ids) => (ids ? { use_knowledge_ids: ids } : {}))(usedKnowledgeIds ?? idsAtWrite.current),
           ...((ids) => (ids?.length ? { excluded_by_her_ids: ids } : {}))(excludedByHer ?? herExclusionsAtWrite.current),
+          ...((ids) => (ids?.length ? { on_by_her_ids: ids } : {}))(onByHer),
           ...(transcript_id ? { transcript_id } : {}),
           // ⚖️ ONLY WHEN THEY ANSWERED. An absent field means "not asked or not
           // answered" and leaves the server's stopgap exactly as it was;
@@ -2261,7 +2262,7 @@ export default function V2Building() {
   useEffect(() => {
     const src = askPlan ?? plan
     if (!src) return
-    const items = planUseItems(src.knowledge as never, state.reference_note || '')
+    const items = planUseItems(src.knowledge as never, state.reference_note || '', askAnswers.video_goal ?? answersRef.current.video_goal ?? null)
     const sig = items.map((i) => i.id).join('|')
     if (seededFor.current === sig) return
     seededFor.current = sig
@@ -2321,13 +2322,23 @@ export default function V2Building() {
   const excludedByHer = useMemo(() => {
     const src = askPlan ?? plan
     if (!src) return null
-    const defaults = new Set(defaultExcluded(planUseItems(src.knowledge as never, state.reference_note || '')))
+    const defaults = new Set(defaultExcluded(planUseItems(src.knowledge as never, state.reference_note || '', askAnswers.video_goal ?? answersRef.current.video_goal ?? null)))
     return [...excludedKnowledge].filter((id) => !defaults.has(id))
   }, [askPlan, plan, state.reference_note, excludedKnowledge])
+  // Facts she switched ON although they start off (off-purpose, private, left
+  // out before): her own choice, sent so the writer lets exactly these through
+  // and the learner counts them as votes (0268).
+  const onByHer = useMemo(() => {
+    const src = askPlan ?? plan
+    if (!src) return null
+    const items = planUseItems(src.knowledge as never, state.reference_note || '', askAnswers.video_goal ?? answersRef.current.video_goal ?? null)
+    const defaults = new Set(defaultExcluded(items))
+    return items.filter((i) => defaults.has(i.id) && !excludedKnowledge.has(i.id)).map((i) => i.id)
+  }, [askPlan, plan, state.reference_note, excludedKnowledge, askAnswers.video_goal])
   const usedKnowledgeIds = useMemo(() => {
     const src = askPlan ?? plan
     if (!src) return null
-    return planUseItems(src.knowledge as never, state.reference_note || '')
+    return planUseItems(src.knowledge as never, state.reference_note || '', askAnswers.video_goal ?? answersRef.current.video_goal ?? null)
       .filter((i) => !excludedKnowledge.has(i.id)).map((i) => i.id)
   }, [askPlan, plan, state.reference_note, excludedKnowledge])
 
@@ -2955,6 +2966,7 @@ export default function V2Building() {
             onAddProduct={openAddProduct}
             excluded={excludedKnowledge}
             onToggle={toggleLeftOut}
+            goal={askAnswers.video_goal ?? answersRef.current.video_goal ?? null}
             busy={false}
             onWrite={() => {
               // ⚠️ STUCK AT 12% (owner, 2026-09-28): the build effect returns
@@ -3144,6 +3156,7 @@ export default function V2Building() {
                   onAddProduct={openAddProduct}
                   excluded={excludedKnowledge}
                   onToggle={toggleLeftOut}
+                  goal={askAnswers.video_goal ?? answersRef.current.video_goal ?? null}
                 />
               </div>
             )}

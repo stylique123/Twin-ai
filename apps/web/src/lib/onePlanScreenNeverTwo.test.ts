@@ -88,7 +88,7 @@ describe('the third line cannot be a guess', () => {
   // loaded — stating as fact the very guess `videoPlan.ts` warns against.
   it('reads kind, text AND source in BOTH queries — not kind alone', () => {
     expect(ANSWERS).toMatch(/loadKnowledgeForPlan/)
-    const full = ANSWERS.match(/\.select\('id, kind, text, source, creator_excluded_at'\)/g) ?? []
+    const full = ANSWERS.match(/\.select\('id, kind, text, source, creator_excluded_at(, serves)?'\)/g) ?? []
     expect(full.length, 'the plan read is a union of TWO queries; both must select text').toBe(2)
     // And neither of them may be the counts-shaped read.
     const planBody = ANSWERS.slice(ANSWERS.indexOf('loadKnowledgeForPlan'))

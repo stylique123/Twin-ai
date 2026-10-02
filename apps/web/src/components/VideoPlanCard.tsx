@@ -15,7 +15,7 @@ import { buildVideoPlan, planUseItems, PLAN_USE_MAX, type VideoPlanInput } from 
 import { cn } from '../lib/cn'
 
 export function VideoPlanCard({
-  input, about, excluded, onToggle, onWrite, needsProduct = false, onAddProduct, busy = false,
+  input, about, excluded, onToggle, onWrite, needsProduct = false, onAddProduct, busy = false, goal = null,
 }: {
   input: VideoPlanInput
   /** Her paragraph and answers: what "fits this idea" is measured against. */
@@ -28,9 +28,11 @@ export function VideoPlanCard({
   needsProduct?: boolean
   onAddProduct?: () => void
   busy?: boolean
+  /** This video's objective: the same purpose rule the writer applies (0268). */
+  goal?: string | null
 }) {
   const plan = buildVideoPlan(input)
-  const items = useMemo(() => planUseItems(input.knowledge as never, about), [input.knowledge, about])
+  const items = useMemo(() => planUseItems(input.knowledge as never, about, goal), [input.knowledge, about, goal])
   const [open, setOpen] = useState(false)
   const [all, setAll] = useState(false)
   const on = items.filter((i) => !excluded.has(i.id))

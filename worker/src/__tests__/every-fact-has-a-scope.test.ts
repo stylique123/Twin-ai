@@ -20,6 +20,6 @@ describe('every fact carries its scope (owner 2026-10-01)', () => {
     expect(EDGE).toMatch(/if \(scope === 'account'\) return true/)
     expect(EDGE).toMatch(/scopedRows\.has\(k\) \|\| !namedIn/)
     expect(EDGE).toMatch(/if \(scopedRows\.has\(k\)\) return true/)
-    expect(EDGE).toMatch(/product_entity_id, fact_scope, brand_id`/)
+    expect(EDGE).toMatch(/product_entity_id, fact_scope, brand_id(, serves)?`/)
   })
 })

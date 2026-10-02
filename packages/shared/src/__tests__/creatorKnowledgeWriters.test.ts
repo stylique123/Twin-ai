@@ -89,6 +89,13 @@ const ALLOWED: Record<string, { ops: string[]; sources: string[]; why: string }>
     sources: ['asked'],
     why: 'The creator\'s typed answer to the rotating objective question (objectiveAnswer.text).',
   },
+  // 2026-10-02 (0268): labels what each fact is FOR; writes serves /
+  // serves_basis / serves_at only, never text.
+  'worker/src/nicheBrain/factPurposeLabeler.ts': {
+    ops: ['update'],
+    sources: [],
+    why: 'The purpose labeler: stamps serves / serves_basis / serves_at on existing rows; writes no text.',
+  },
   'worker/src/knowledgeInsert.ts': {
     ops: ['rpc:merge_creator_knowledge', 'insert', 'update'],
     sources: ['caption', 'transcript'],
