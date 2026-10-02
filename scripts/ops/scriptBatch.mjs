@@ -62,7 +62,7 @@ const RICH_ANSWER = {
   goal: 'sell',
 }
 
-function scenarios(products, brandId) {
+function scenarios(products, brandId, brandName) {
   const out = []
   const named = products.filter((p) => p.name)
   const ghost = products.find((p) => !p.name)
@@ -71,12 +71,12 @@ function scenarios(products, brandId) {
     const goals = p.relationship === 'REVIEW_ONLY' ? ['educate', 'conversations', 'authority']
       : p.relationship === 'SPONSOR' ? ['sell', 'educate', 'followers']
       : ['sell', 'educate', 'leads', 'conversations', 'personal_brand']
-    for (const goal of goals) out.push({ group: 'product', label: `${p.type}/${p.relationship}`, product: p.name, body: { selected_product_id: p.id, goal, door: 'product', reference_note: '' } })
+    for (const goal of goals) out.push({ group: 'product', label: `${p.type}/${p.relationship}`, product: p.name, body: { selected_product_id: p.id, goal, door: 'product', reference_note: p.name } })
   }
   // B. The unnamed product.
-  if (ghost) for (const goal of ['sell', 'educate']) out.push({ group: 'product', label: 'ghost product', body: { selected_product_id: ghost.id, goal, door: 'product', reference_note: '' } })
+  if (ghost) for (const goal of ['sell', 'educate']) out.push({ group: 'product', label: 'ghost product', body: { selected_product_id: ghost.id, goal, door: 'product', reference_note: '' }, expectRefusal: true })
   // C. The whole business.
-  for (const goal of GOALS) out.push({ group: 'business', label: 'brand', body: { selected_product_id: `brand:${brandId}`, goal, door: 'product', reference_note: '' } })
+  for (const goal of GOALS) out.push({ group: 'business', label: 'brand', body: { selected_product_id: `brand:${brandId}`, goal, door: 'product', reference_note: brandName } })
   // D. Ideas × objectives (each idea under 4 objectives), angle picked from the real read.
   IDEAS.forEach((idea, i) => {
     for (let k = 0; k < 4; k++) {
@@ -94,7 +94,22 @@ function scenarios(products, brandId) {
   return out.map((s, n) => ({ ...s, n, body: { ...s.body, target_seconds: [30, 45, 60][n % 3] } }))
 }
 
-async function call(token, body) {
+// The writer allows 12 builds a minute per account: every call (including the
+// angle read) waits its turn, ~7s apart, and a 'too many in a row' is retried.
+let lastStart = 0
+async function call(token, body, tries = 0) {
+  const wait = lastStart + 7_000 - Date.now()
+  lastStart = Math.max(Date.now(), lastStart + 7_000)
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+  const r = await callOnce(token, body)
+  if (r.status === 429 && /too many in a row/i.test(r.text) && tries < 5) {
+    await new Promise((res) => setTimeout(res, 30_000))
+    return call(token, body, tries + 1)
+  }
+  return r
+}
+
+async function callOnce(token, body) {
   const started = Date.now()
   const res = await fetch(`${URL_}/functions/v1/generate-blueprint`, {
     method: 'POST',
@@ -104,7 +119,7 @@ async function call(token, body) {
   const text = await res.text()
   let json = null
   try { json = JSON.parse(text) } catch { /* not JSON */ }
-  return { status: res.status, json, text, ms: Date.now() - started }
+  return { status: res.status, ok: res.ok, json, text, ms: Date.now() - started }
 }
 
 
@@ -226,7 +241,7 @@ async function main() {
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
   }
-  const list = scenarios(products ?? [], brands?.[0]?.id ?? '').slice(0, LIMIT)
+  const list = scenarios(products ?? [], brands?.[0]?.id ?? '', brands?.[0]?.name ?? '').slice(0, LIMIT)
   console.log(`batch ${BATCH}: ${list.length} scenarios`)
 
   let next = 0
@@ -245,20 +260,31 @@ async function main() {
       let r = await call(token, body)
       let asked = null
       // She answers the writer's questions, once, the way a creator would.
-      if (r.status === 409 && r.json?.code === 'READINESS_INCOMPLETE' && Array.isArray(r.json.questions)) {
-        asked = r.json.questions.map((q) => q.question)
+      for (let round = 0; round < 3 && r.status === 409 && r.json?.code === 'READINESS_INCOMPLETE' && Array.isArray(r.json.questions); round++) {
+        asked = [...(asked ?? []), ...r.json.questions.map((q) => q.question)]
         // Three kinds of creator: a full answer, two words, or "nothing specific".
         const style = ['rich', 'short', 'none'][sc.n % 3]
         const answerFor = (f) => style === 'rich' ? (RICH_ANSWER[f] ?? RICH_ANSWER.claims)
           : style === 'short' ? (f === 'offer' ? 'Signature Blend' : 'Fresh beans.')
           : 'Nothing specific, keep it general.'
-        body.readiness_answers = Object.fromEntries(r.json.questions.map((q) => [q.field, answerFor(q.field)]))
+        // "Which one is this video about?" is answered the way the app does: the
+        // pick rides selected_product_id. Each kind of creator picks differently
+        // (a product, the whole brand, or none of these).
+        const qs = r.json.questions.filter((q) => {
+          if (q.field !== 'selected_product' || !Array.isArray(q.options) || !q.options.length) return true
+          const opts = q.options.map((o) => String(o.value))
+          body.selected_product_id = style === 'rich' ? (opts.find((o) => !o.startsWith('brand:') && !/none/i.test(o)) ?? opts[0])
+            : style === 'short' ? (opts.find((o) => o.startsWith('brand:')) ?? opts[0]) : opts[opts.length - 1]
+          return false
+        })
+        body.readiness_answers = { ...(body.readiness_answers ?? {}), ...Object.fromEntries(qs.map((q) => [q.field, answerFor(q.field)])) }
         sc.answerStyle = style
         r = await call(token, body)
       }
       const bp = r.json?.blueprint ?? null
       const a = bp ? audit(bp, { ...sc, body }, ctx) : { findings: [{ k: `no_script_${r.status}`, d: String(r.json?.code ?? r.json?.error ?? r.text).slice(0, 200) }], text: null, hooks: null }
       if (asked) a.findings.push({ k: 'asked_first', d: asked.join(' | ').slice(0, 300) })
+      if (sc.expectRefusal && r.status === 400) a.findings = [{ k: 'refused_as_expected', d: String(r.json?.error ?? '').slice(0, 200) }]
       for (const x of a.findings) tally[x.k] = (tally[x.k] ?? 0) + 1
       await admin.from('script_batch_results').insert({
         batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, body },
