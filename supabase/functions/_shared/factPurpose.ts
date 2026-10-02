@@ -127,6 +127,8 @@ export function purposeOfGoal(goal: unknown): PurposeGoal | null {
  * The stored label wins; a row the worker has not labeled yet gets the rules'
  * answer now, so a fresh fact is not starved.
  */
+const HER_OWN: ReadonlySet<string> = new Set(['asked', 'reply', 'comment'])
+
 export function servesObjective(
   f: { id?: unknown; kind?: unknown; text?: unknown; source?: unknown; serves?: unknown },
   goal: PurposeGoal | null,
@@ -135,6 +137,11 @@ export function servesObjective(
   if (!goal) return true
   if (herOn.has(String(f.id ?? ''))) return true
   const stored = Array.isArray(f.serves) ? f.serves.map(String) : null
+  // ⚠️ AUDIT 2026-10-02: an answer she typed minutes ago has no label until the
+  // worker's next sweep, and the rules may not place it — so her own words
+  // would vanish from the very script she typed them for. Her own unlabeled
+  // words (asked / reply / comment) are eligible until labeled.
+  if (stored === null && HER_OWN.has(String(f.source ?? ''))) return true
   const serves = stored ?? purposeByRules(f).serves
   return serves.includes(goal)
 }

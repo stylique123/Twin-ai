@@ -7926,6 +7926,8 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       question_id: objectiveAnswer.questionId,
       // 0260: the answer belongs to the product it was asked about.
       product_entity_id: objectiveProductIdInline(objectiveAnswer.sourceRef, String((ownedEntity as { id?: unknown } | null)?.id ?? '')),
+      // 0268: she answered this objective's question, so it serves this objective.
+      ...(purposeOfGoal(body.goal) ? { serves: [purposeOfGoal(body.goal)], serves_basis: 'her', serves_at: new Date().toISOString() } : {}),
       last_observed_at: new Date().toISOString(),
     })
     // ⚖️ BEST EFFORT: a failed store costs rotation, never the script. A

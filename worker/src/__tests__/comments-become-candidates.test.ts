@@ -47,3 +47,24 @@ describe('comments under her posts become candidates, never facts she did not co
     expect(web).toMatch(/\.in\('source', \['asked', 'comment'\]\)/)
   })
 })
+
+describe('audit 2026-10-02: junk is not a candidate', () => {
+  it('drops exclamations, first-person asides, other people\'s stories and other languages', async () => {
+    const { candidateIn } = await import('../nicheBrain/commentMiningParse.js')
+    for (const junk of ['What a great man?', 'Did I try, this is my first?',
+      'have her new mechanic go to you and have him pick it up with no wheels on?',
+      'dónde compraste la impresora de etiquetas ????', 'Onde posso achar estes frascos de vidro ?']) {
+      expect(candidateIn(junk), junk).toBeNull()
+    }
+    expect(candidateIn('Where can I get the tripod you use?')?.kind).toBe('question')
+    expect(candidateIn('What glaze did you use for the light blue mug?')?.kind).toBe('question')
+  })
+})
+describe('audit 2026-10-02: a lead-in does not hide a real question', () => {
+  it('keeps the question after "Love", "But", "side note,"', async () => {
+    const { candidateIn } = await import('../nicheBrain/commentMiningParse.js')
+    expect(candidateIn('Love 💕 What steps did you take behind the scenes to start?')?.text).toBe('What steps did you take behind the scenes to start?')
+    expect(candidateIn('side note, what tripod do you use?')?.kind).toBe('question')
+    expect(candidateIn('But how do u cut the clips u were changing angles?')?.kind).toBe('question')
+  })
+})
