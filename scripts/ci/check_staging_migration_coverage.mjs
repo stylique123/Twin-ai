@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0269_gallery_matches_on_her_words':
+    'Replaces gallery_for_me with core-word matching (her head noun and distinctive words, generic words ignored, bucket-only dropped); read by the Gallery only. The editor never reads it.',
   '0268_every_fact_knows_what_it_is_for':
     'Adds creator_knowledge.serves / serves_basis / serves_at, fact_purpose_votes, and appends serves to creator_knowledge_writable; read by generate-blueprint, the plan screen and the worker. The editor never reads them.',
   '0267_angle_picks_are_lessons':
