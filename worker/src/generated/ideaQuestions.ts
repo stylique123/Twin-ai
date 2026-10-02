@@ -1,7 +1,6 @@
 // GENERATED FROM packages/shared/src/script/ideaQuestions.ts — DO NOT EDIT.
 // Run: node scripts/ci/generate_shared_pilot_core.mjs
 // Edit the source instead. CI regenerates this file and fails on a diff.
-// @ts-nocheck
 // IDEA MODE ASKS ABOUT HER PARAGRAPH, OR NOT AT ALL (owner, coffee report 2.1, 2.2).
 //
 // ⚠️ MEASURED ON FOUR IDEAS: "What specific moment or tension is at the center

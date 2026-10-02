@@ -32,7 +32,7 @@ import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_sha
 import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript, referenceShownKept } from '../_shared/shownJob.ts'
 import { scriptFamily, renderFamilyHookRule, normalizeHookMoves, auditHookSet } from '../_shared/scriptFamily.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
-import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead } from '../_shared/ideaQuestions.ts'
+import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract } from '../_shared/ideaQuestions.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -6218,7 +6218,7 @@ function cleanCatalogueText(v: unknown): string | null {
 // A light mode on this function, answered before any credit, rate-limit or
 // build work: one short model call, 8s budget, and ANY failure returns no
 // questions so the build goes ahead (fail open).
-async function ideaQuestionsMode(apiKey: string, paragraph: string): Promise<Response> {
+async function ideaQuestionsMode(apiKey: string, paragraph: string, voice: { niche?: unknown; hook_patterns?: unknown; hook_style?: unknown } | null = null): Promise<Response> {
   const text = paragraph.trim().slice(0, 2000)
   if (text.length < 12) return json({ questions: [], purpose: null })
   const ctrl = new AbortController()
@@ -6230,9 +6230,15 @@ async function ideaQuestionsMode(apiKey: string, paragraph: string): Promise<Res
         method: 'POST', signal: ctrl.signal,
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: IDEA_Q_SYSTEM }] },
+          // ⚖️ THE ANGLES RIDE THIS SAME CALL (owner brief 2026-10-01): her niche's
+          // measured winners and her own hook patterns order them, so it costs
+          // what the purpose guess already cost.
+          systemInstruction: { parts: [{ text: `${IDEA_Q_SYSTEM}\n${angleBrief(nicheBucketInline(voice?.niche), [
+            ...(Array.isArray(voice?.hook_patterns) ? (voice!.hook_patterns as unknown[]).map(String) : []),
+            ...(typeof voice?.hook_style === 'string' ? [voice.hook_style] : []),
+          ].slice(0, 12))}` }] },
           contents: [{ role: 'user', parts: [{ text: `HER PARAGRAPH:\n<<<UNTRUSTED_DATA idea\n${text}\nEND_UNTRUSTED_DATA>>>` }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 600, responseMimeType: 'application/json', responseSchema: IDEA_Q_SCHEMA },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: 'application/json', responseSchema: IDEA_Q_SCHEMA },
         }),
       },
     )
@@ -6240,7 +6246,7 @@ async function ideaQuestionsMode(apiKey: string, paragraph: string): Promise<Res
     const out = await res.json()
     const raw = out?.candidates?.[0]?.content?.parts?.[0]?.text
     const read = cleanIdeaRead(typeof raw === 'string' ? JSON.parse(raw) : null, text)
-    console.log(JSON.stringify({ event: 'idea_questions', asked: read.questions.length, purpose: read.purpose?.value ?? null }))
+    console.log(JSON.stringify({ event: 'idea_questions', asked: read.questions.length, purpose: read.purpose?.value ?? null, angles: (read.angles ?? []).map((a) => a.kind) }))
     return json(read)
   } catch {
     return json({ questions: [], purpose: null })
@@ -6279,7 +6285,9 @@ Deno.serve(async (req: Request) => {
       p_user: user.id, p_action: 'idea_questions', p_max: 20, p_window_secs: 60,
     })
     if (ok === false) return json({ questions: [], purpose: null })
-    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '')
+    const { data: v } = await createClient(supabaseUrl, serviceKey).from('brand_voices').select('profile')
+      .eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle()
+    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', (v?.profile ?? null) as never)
   }
 
   // Team seats: if this user is a member of a workspace, they create IN that
@@ -8306,6 +8314,9 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // the close, and says what to do when a beat has no fact.
     const subjectPicked = (body.mentioned_product_id ?? '').trim() !== '' || (body.selected_product_id ?? '').trim() !== ''
     const objectiveContract = subjectPicked ? OBJECTIVE_CONTRACT_INLINE[String(body.goal ?? '').trim()] ?? '' : ''
+    // ⚖️ THE ANGLE SHE PICKED BEFORE ANY EXPENSIVE WORK (owner brief 2026-10-01).
+    const pickedAngle = (body.angle && typeof body.angle === 'object') ? body.angle as { kind?: unknown; gist?: unknown; offered?: unknown } : null
+    const pickedAngleLine = angleContract(pickedAngle ? { kind: String(pickedAngle.kind ?? ''), gist: String(pickedAngle.gist ?? '') } : null)
     const goal = intent.goalDirective
       ?? standingGoalDirectiveInline(briefListInline(briefRaw, 'contentGoals'))
       ?? (vp?.goal ?? dna.goal ?? 'turn attention into trust')
@@ -10216,7 +10227,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. ⚠️ Do NOT invent her audience\'s pain, a statistic about them, or a claim about what they feel (owner fabrication audit 2026-10-01). Speak only to the problem this video\'s own topic solves, in general words.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
-- Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}
+- Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
@@ -14216,6 +14227,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // repaired: a missing demonstration is disclosed on the page, never faked.
     try {
       const bp = blueprint as { script?: unknown; shown_audit?: unknown }
+      // The angle she picked, and the ones she was offered: her pick becomes a
+      // lesson (worker), and the retest checks the script kept to it.
+      if (body.angle && typeof body.angle === 'object') {
+        const a = body.angle as { kind?: unknown; gist?: unknown; offered?: unknown }
+        ;(blueprint as Record<string, unknown>).angle_choice = {
+          kind: String(a.kind ?? '').slice(0, 40), gist: String(a.gist ?? '').slice(0, 200),
+          offered: Array.isArray(a.offered) ? a.offered.map((x) => String(x).slice(0, 40)).slice(0, 3) : [],
+        }
+      }
       if (Array.isArray(bp.script)) {
         const beats = bp.script as Array<Record<string, unknown>>
         for (const b of beats) b.shown_job = normalizeShownJob(b.shown_job, b.section)

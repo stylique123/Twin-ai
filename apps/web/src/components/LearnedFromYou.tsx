@@ -12,11 +12,14 @@ interface Lesson {
 }
 
 const FROM: Record<string, string> = {
-  rating: 'your rating note', rating_tag: 'your rating tags', audience: 'your test viewers', hook_pick: 'a hook you picked',
+  rating: 'your rating note', rating_tag: 'your rating tags', audience: 'your test viewers', hook_pick: 'a hook you picked', angle_pick: 'a direction you picked',
 }
 
 export function LearnedFromYou() {
   const [rows, setRows] = useState<Lesson[] | null>(null)
+  // Lessons she had to correct AGAIN on a later script (0266): the writer had
+  // the rule and did not follow it. Shown on the lesson, not buried.
+  const [misses, setMisses] = useState<Record<string, number>>({})
 
   useEffect(() => {
     let alive = true
@@ -24,6 +27,13 @@ export function LearnedFromYou() {
       .select('id, kind, text, phrase, source, weight, heard, times_used, active')
       .order('weight', { ascending: false }).limit(60)
       .then(({ data }) => { if (alive) setRows((data ?? []) as Lesson[]) }, () => { if (alive) setRows([]) })
+    void supabase.from('lesson_misses').select('lesson_id').limit(500)
+      .then(({ data }) => {
+        if (!alive) return
+        const m: Record<string, number> = {}
+        for (const r of (data ?? []) as Array<{ lesson_id: string }>) m[r.lesson_id] = (m[r.lesson_id] ?? 0) + 1
+        setMisses(m)
+      }, () => {})
     return () => { alive = false }
   }, [])
 
@@ -56,6 +66,11 @@ export function LearnedFromYou() {
                         {l.active ? 'Turn off' : 'Turn on'}
                       </button>
                     </div>
+                    {(misses[l.id] ?? 0) > 0 && (
+                      <span className="mt-1 block text-[12px] text-coral" data-testid="lesson-missed">
+                        You had to correct this again {misses[l.id] === 1 ? 'once' : `${misses[l.id]} times`} after Twin learned it, so it now counts for more in every script, and the miss is flagged for review.
+                      </span>
+                    )}
                     <span className="mt-0.5 block text-[11px] text-stone">
                       From {FROM[l.source] ?? 'you'}{l.heard > 1 ? ` · heard ${l.heard}×` : ''}{l.times_used > 0 ? ` · used in ${l.times_used} script${l.times_used === 1 ? '' : 's'}` : ''}
                     </span>

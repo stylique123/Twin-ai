@@ -72,6 +72,10 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0267_angle_picks_are_lessons':
+    'Adds the angle_pick lesson source and generations.angle_lesson_at; written and read by the worker\'s lesson learner only. The editor never reads them.',
+  '0266_a_second_correction_is_an_alarm':
+    'Adds lesson_misses and record_lesson_miss(); written by the worker\'s lesson learner and read by My Twin only. The editor never reads them.',
   '0265_every_fact_has_a_scope':
     'Adds creator_knowledge.fact_scope / brand_id, scope_fact() and a before-insert trigger, backfills every row, and appends both columns to creator_knowledge_writable; read by generate-blueprint only. The editor never reads them.',
   '0263_comments_become_candidates':

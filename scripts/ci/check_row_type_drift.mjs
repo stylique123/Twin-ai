@@ -133,6 +133,8 @@ const MODELS = [
       // The lesson learner's marker (0250): her hook pick on this script has
       // been turned into a lesson. Worker bookkeeping, read only by the learner.
       'hook_lesson_at',
+      // Same marker for her angle pick (0267). Worker bookkeeping only.
+      'angle_lesson_at',
       // Billing bookkeeping for one creation. The client shows a BALANCE, read
       // from the profile; a per-row charge is an accounting detail, and a UI
       // that summed these would disagree with the ledger the moment a refund

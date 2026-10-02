@@ -16,7 +16,7 @@
 // and the edge function run a generated copy (scripts/ci/generate_shared_pilot_core.mjs).
 
 export type LessonKind = 'avoid' | 'prefer' | 'style' | 'hook'
-export type LessonSource = 'rating' | 'rating_tag' | 'audience' | 'hook_pick'
+export type LessonSource = 'rating' | 'rating_tag' | 'audience' | 'hook_pick' | 'angle_pick'
 
 export interface CreatorLesson {
   kind: LessonKind

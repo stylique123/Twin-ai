@@ -21,6 +21,6 @@ describe('Idea Mode questions (coffee report 2.1)', () => {
   it('never infers a commercial purpose without her words behind it, or at low confidence', () => {
     expect(cleanIdeaRead({ enough: true, questions: [], purpose: 'sell', confidence: 0.9, signal: 'buy now' }, para).purpose).toBeNull()
     expect(cleanIdeaRead({ enough: true, questions: [], purpose: 'educate', confidence: 0.3 }, para).purpose).toBeNull()
-    expect(cleanIdeaRead(null, para)).toEqual({ questions: [], purpose: null })
+    expect(cleanIdeaRead(null, para)).toEqual({ questions: [], purpose: null, angles: [] })
   })
 })

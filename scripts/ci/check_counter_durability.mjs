@@ -80,6 +80,10 @@ const EVENTS = {
   // legacy key" means the migration is unfinished; "found no credential at
   // all" means the function cannot work. Pooling them would hide an outage
   // inside a migration signal.
+  lesson_not_applied: {
+    kind: 'incident',
+    why: 'A creator corrected something a lesson she already had (active before the rated script was written) was meant to prevent: the writer had the rule and broke it. Durable as a `lesson_misses` row, shown on that lesson in "What Twin learned from you".',
+  },
   service_key_absent: {
     kind: 'incident',
     why: 'A creator-facing edge function found neither a usable sb_secret_ in the '

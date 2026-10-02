@@ -266,6 +266,8 @@ import type { VideoGoal, ContentFocus, ViewerOutcome, ReferenceUse } from './vid
 import type { EntryDoor } from './entryDoor'
 
 export interface GenerateInput {
+  /** The angle she picked on the card, and the kinds she was offered (owner brief 2026-10-01). */
+  angle?: { kind: string; gist: string; offered: string[] }
   /** Stories/numbers she left out on the plan screen, never used in this script. */
   exclude_knowledge_ids?: string[]
   /** The exact facts the plan card showed switched on; the server uses only these. */
@@ -527,7 +529,7 @@ export async function readIdeaParagraph(paragraph: string): Promise<IdeaRead> {
     const res = await Promise.race([call, timeout])
     if (!res || res.error || !res.data) return none
     const d = res.data as Partial<IdeaRead>
-    return { questions: Array.isArray(d.questions) ? d.questions : [], purpose: d.purpose ?? null }
+    return { questions: Array.isArray(d.questions) ? d.questions : [], purpose: d.purpose ?? null, angles: Array.isArray(d.angles) ? d.angles : [] }
   } catch { return none }
 }
 
