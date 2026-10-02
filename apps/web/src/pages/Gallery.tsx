@@ -676,7 +676,13 @@ export default function Gallery() {
     // The read corpus when it answered; the old search label only as a fallback.
     const rank = (c: Card) => brainMatch.size > 0 ? brainRank(c)
       : c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
-    if (isForYou) {
+    if (isForYou && brainMatch.size > 0) {
+      // ⚠️ OWNER 2026-10-02: a candle creator was shown kids' crafts and optical
+      // illusions to "fill" the page. When the read corpus has answered, "For
+      // you" is ONLY what matched her words (0269) — a short honest page beats a
+      // long irrelevant one. "All" is one tap away.
+      out = out.filter((c) => rank(c) < 2)
+    } else if (isForYou) {
       const w = widenForYou(out.filter((c) => rank(c) < 3), out)
       out = [...w.cards]
       widened = w.widened
@@ -847,7 +853,7 @@ export default function Gallery() {
         {brainMatch.size > 0 && closeCount < 12 && (
           <div className="glass mt-6 p-4 text-sm text-sand" data-testid="gallery-thin-niche-notice">
             Twin has found {closeCount === 0 ? 'no videos' : closeCount === 1 ? 'one video' : `${closeCount} videos`} close to your niche so far.
-            More are added as Twin reads new videos; the rest below are from your wider category.
+            More are added as Twin reads new videos. Tap All to browse every niche.
           </div>
         )}
         {widened && (
