@@ -1421,7 +1421,9 @@ export default function V2Building() {
             const purposeQuestion: AskItem[] = []
             ideaPurposeLabel.current = guess?.label ?? null
             setIdeaAngles(ideaRead?.angles ?? [])
-            setPickedAngle((p) => p ?? ideaRead?.angles?.[0]?.kind ?? null)
+            // Her earlier pick survives only if it is still one of the options for
+            // THIS reading; an edited idea otherwise starts on the new first one.
+            setPickedAngle((p) => ((ideaRead?.angles ?? []).some((a) => a.kind === p) ? p : ideaRead?.angles?.[0]?.kind ?? null))
             if (isIdea) {
               // The paragraph outranks the standing onboarding goal for THIS video;
               // an earlier pick she made on this card (a reclaimed tab) is kept.

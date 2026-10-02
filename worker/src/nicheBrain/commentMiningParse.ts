@@ -20,13 +20,38 @@ export interface CommentCandidate {
 
 const REQUEST = /\b(please|pls|plz)\b.{0,60}\b(make|restock|bring|do|show|add|ship|sell|post|drop)\b|\b(restock|bring (it|them|this) back|need (this|these|one) in|wish (it|this|you) (came|had|made)|do (a|one) (video|tutorial) on|can you (make|do|show))\b/i
 
+// ⚠️ AUDIT 2026-10-02: the first 124 candidates held "What a great man?", "Did
+// I try, this is my first?" and a story about someone else's mechanic. A real
+// question opens with a question word, has a few words to it, is not an
+// exclamation dressed as a question, and is in the language her scripts are in.
+const OPENS = /^(who|what|whats|what's|where|when|why|how|which|is|are|do|does|did|can|could|would|will|should|have|has|any|anyone)\b/i
+const EXCLAIM = /^(what an?|how (cute|cool|nice|beautiful|amazing|pretty|lovely|sweet)|is(n'?t)? (this|that|it) (so|just)|did i|am i|was i|have i|ha(ve|s) (her|him|them|my|his))\b/i
+const NOT_ENGLISH = /[áéíóúñãõçàèìòùâêôü¿¡]|\b(dónde|donde|onde|qué|que|cómo|como|cuánto|quanto|posso|puedo|para|est[aá]|esto|isso|vous|quel|wie|wo)\b/i
+/** The question itself, without a lead-in: "Love 💕 What steps…", "side note, what tripod…". */
+export function questionCore(q: string): string | null {
+  const words = q.trim().split(/\s+/)
+  for (let i = 0; i < Math.min(words.length, 8); i++) {
+    const rest = words.slice(i).join(' ').replace(/^[^a-z]+/i, '')
+    if (OPENS.test(rest)) return rest
+  }
+  return null
+}
+export function realQuestion(q: string): boolean {
+  if (NOT_ENGLISH.test(q)) return false
+  const t = questionCore(q)
+  if (!t) return false
+  if (t.split(/\s+/).length < 4) return false
+  if (EXCLAIM.test(t)) return false
+  return true
+}
+
 /** Either shape, or null. Handles and links are stripped first. */
 export function candidateIn(text: string): { kind: 'question' | 'request'; text: string } | null {
   const clean = String(text ?? '').replace(/https?:\/\/\S+/g, ' ').replace(/@\S+/g, ' ').replace(/\s+/g, ' ').trim()
   if (clean.length < 12 || isPrivate(clean)) return null
   const q = questionIn(clean)
-  if (q && !isPrivate(q)) return { kind: 'question', text: q.slice(0, 240) }
-  if (REQUEST.test(clean) && clean.length <= 240) return { kind: 'request', text: clean }
+  if (q && !isPrivate(q) && realQuestion(q)) return { kind: 'question', text: (questionCore(q) ?? q).slice(0, 240) }
+  if (REQUEST.test(clean) && clean.length <= 240 && !NOT_ENGLISH.test(clean)) return { kind: 'request', text: clean }
   return null
 }
 

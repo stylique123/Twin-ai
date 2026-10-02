@@ -36,3 +36,10 @@ describe('every fact knows what it is for (owner 2026-10-02)', () => {
     expect(edge).toMatch(/!String\(answers\.claims \?\? ''\)\.trim\(\)/)
   })
 })
+
+describe('audit 2026-10-02: her own fresh words are never dropped', () => {
+  it('an unlabeled answer she typed is eligible until the labeler reaches it', () => {
+    expect(servesObjective({ id: 'x', kind: 'experience', text: 'Saturday was a good day.', source: 'asked' }, 'sell', new Set())).toBe(true)
+    expect(servesObjective({ id: 'x', kind: 'experience', text: 'Saturday was a good day.', source: 'asked', serves: ['entertain'] }, 'sell', new Set())).toBe(false)
+  })
+})
