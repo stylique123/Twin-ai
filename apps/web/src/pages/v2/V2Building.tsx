@@ -749,6 +749,10 @@ export default function V2Building() {
   // Stories/numbers she tapped to leave out of THIS script; sent to the writer.
   const [excludedKnowledge, setExcludedKnowledge] = useState<Set<string>>(new Set())
   const ideaPurposeLabel = useRef<string | null>(null)
+  // ⚖️ THE ANGLE (owner brief 2026-10-01): three directions from the same cheap
+  // read, shown before any script is written. Her pick rides the request.
+  const [ideaAngles, setIdeaAngles] = useState<Array<{ kind: string; label: string; gist: string }>>([])
+  const [pickedAngle, setPickedAngle] = useState<string | null>(null)
   // She said she has no concrete detail for the objective's question.
   const [noDetail, setNoDetail] = useState(false)
   const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
@@ -1416,6 +1420,8 @@ export default function V2Building() {
             ideaQuestionText.current = Object.fromEntries((ideaRead?.questions ?? []).slice(0, 1).map((q, i) => [`${FOLLOWUP_PREFIX}idea_q${i}`, q.question]))
             const purposeQuestion: AskItem[] = []
             ideaPurposeLabel.current = guess?.label ?? null
+            setIdeaAngles(ideaRead?.angles ?? [])
+            setPickedAngle((p) => p ?? ideaRead?.angles?.[0]?.kind ?? null)
             if (isIdea) {
               // The paragraph outranks the standing onboarding goal for THIS video;
               // an earlier pick she made on this card (a reclaimed tab) is kept.
@@ -1832,6 +1838,9 @@ export default function V2Building() {
           // build it was. Sent only when she said; an absent door reaches the
           // server as absent and is stored as null, never as a default.
           ...(state.door ? { door: state.door } : {}),
+          // The angle she picked on the card, with what she was offered (her pick
+          // over the first becomes a lesson).
+          ...((a) => (a ? { angle: { kind: a.kind, gist: a.gist, offered: ideaAngles.map((x) => x.kind) } } : {}))(ideaAngles.find((x) => x.kind === pickedAngle)),
           ...(Object.keys(readinessAnswers).length ? { readiness_answers: readinessAnswers } : {}),
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
@@ -2533,6 +2542,21 @@ export default function V2Building() {
               ))}
             </div>
           </>
+        )}
+        {ideaAngles.length >= 2 && (
+          <div className="mt-4" data-testid="idea-angles">
+            <span className="text-sm text-cream">Which way should this video go?</span>
+            <div className="mt-2 space-y-2">
+              {ideaAngles.map((a) => (
+                <button key={a.kind} type="button" aria-pressed={pickedAngle === a.kind} onClick={() => setPickedAngle(a.kind)}
+                  className={cn('block w-full rounded-xl border px-3 py-2 text-left transition-colors',
+                    pickedAngle === a.kind ? 'border-coral/50 bg-coral/[0.08]' : 'border-white/12 hover:border-white/25')}>
+                  <span className="block text-[12px] text-stone">{a.label}</span>
+                  <span className="block text-[13px] text-cream">{a.gist}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     )

@@ -165,6 +165,7 @@ const SOURCES = [
   // The test-viewer rewrite is held to the same unpicked-product / follow-ask rules (audit 2026-10-01 S1).
   ['packages/shared/src/script/scriptRules.ts', 'worker/src/generated/scriptRules.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'worker/src/generated/scriptFamily.ts'],
+  ['packages/shared/src/script/ideaQuestions.ts', 'worker/src/generated/ideaQuestions.ts'],
   ['packages/shared/src/script/creatorLessons.ts', 'supabase/functions/_shared/creatorLessons.ts'],
   ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
 ]

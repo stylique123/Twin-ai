@@ -12,6 +12,7 @@ import {
   RATING_LESSON_SCHEMA, RATING_LESSON_SYSTEM, cleanRatingLessons, lessonFromHookPick, lessonsFromAudience,
   lessonsFromTags, sameLesson, type CreatorLesson,
 } from '../generated/creatorLessons.js'
+import { lessonFromAnglePick } from '../generated/ideaQuestions.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
 
@@ -32,6 +33,14 @@ async function file(owner: string, l: CreatorLesson, sourceId: string): Promise<
   const twin = l.kind === 'hook' ? have.find((t) => t === l.text) : have.find((t) => sameLesson(t, l.text))
   const text = twin ?? l.text
   if (!twin) have.push(l.text)
+  // ⚠️ OWNER 2026-10-01: SHE CORRECTED THIS ONCE ALREADY. A rating that carries
+  // a lesson she already had — active before the rated script was written —
+  // means the writer had the rule and broke it. That is an alarm, not a count:
+  // recorded (lesson_misses), shown in red on the lesson, logged as an incident.
+  if (twin && (l.source === 'rating' || l.source === 'rating_tag')) {
+    const { data: missed } = await db.rpc('record_lesson_miss', { p_owner: owner, p_text: twin, p_generation: sourceId, p_source: l.source })
+    if (missed === true) console.error(JSON.stringify({ event: 'lesson_not_applied', owner, generation: sourceId, lesson: twin.slice(0, 120) }))
+  }
   const { error } = await db.rpc('learn_lesson', {
     p_owner: owner, p_kind: l.kind, p_text: text, p_phrase: l.phrase, p_source: l.source,
     p_source_id: sourceId, p_weight: l.weight,
@@ -90,6 +99,18 @@ export async function runLessonLearner(log: Log): Promise<void> {
     const first = Array.isArray(opts) && typeof opts[0] === 'string' ? opts[0] : null
     const l = lessonFromHookPick(String(g.selected_hook ?? ''), first)
     if (l && await file(g.user_id, l, g.id)) filed++
+  }
+
+  // 4. The angle she picked on the card over the one Twin put first (owner
+  // brief 2026-10-01) — the hook-pick mechanism, one level up.
+  const { data: angles } = await db.from('generations')
+    .select('id, user_id, blueprint')
+    .not('blueprint->angle_choice', 'is', null).is('angle_lesson_at', null)
+    .order('created_at', { ascending: false }).limit(20)
+  for (const g of angles ?? []) {
+    await db.from('generations').update({ angle_lesson_at: new Date().toISOString() }).eq('id', g.id)
+    const l = lessonFromAnglePick((g.blueprint as { angle_choice?: unknown } | null)?.angle_choice)
+    if (l && await file(g.user_id, l as CreatorLesson, g.id)) filed++
   }
 
   if (filed) log('info', 'lessons_learned', { event: 'lessons_learned', filed })
