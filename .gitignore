@@ -21,3 +21,4 @@ __pycache__/
 .twinai-labels/
 .twinai-d1/
 *.tsbuildinfo
+scripts/ops/.privacyGuard.bundle.mjs

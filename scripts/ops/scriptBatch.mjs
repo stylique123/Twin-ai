@@ -8,10 +8,10 @@
 // app sends, and when the writer asks a question first (READINESS_INCOMPLETE) it
 // answers the way she would — in a short, plain sentence — and builds again.
 //
-// Run: node --experimental-strip-types scripts/ops/scriptBatch.mjs [label] [limit]
+// Run: npx esbuild packages/shared/src/script/privacyGuard.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.privacyGuard.bundle.mjs && node scripts/ops/scriptBatch.mjs [label] [limit]
 
 import { createClient } from '@supabase/supabase-js'
-import { isPrivate, statedFigures, unbackedRole } from '../../packages/shared/src/script/privacyGuard.ts'
+import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.mjs'
 
 const URL_ = process.env.SUPABASE_URL
 const ANON = process.env.SUPABASE_ANON_KEY

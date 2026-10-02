@@ -34,7 +34,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run the batch
-        run: node --experimental-strip-types scripts/ops/scriptBatch.mjs "${{ inputs.label }}" "${{ inputs.limit }}" ${{ inputs.intake && ' ' || '--no-intake' }}
+        run: |
+          npx esbuild packages/shared/src/script/privacyGuard.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.privacyGuard.bundle.mjs
+          node scripts/ops/scriptBatch.mjs "${{ inputs.label }}" "${{ inputs.limit }}" ${{ inputs.intake && ' ' || '--no-intake' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
