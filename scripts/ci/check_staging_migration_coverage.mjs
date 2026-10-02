@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0265_every_fact_has_a_scope':
+    'Adds creator_knowledge.fact_scope / brand_id, scope_fact() and a before-insert trigger, backfills every row, and appends both columns to creator_knowledge_writable; read by generate-blueprint only. The editor never reads them.',
   '0263_comments_become_candidates':
     'Adds comment_candidates / comment_reads, decide_comment and comments_due, and the \'comment\' knowledge source; read by My Twin, the worker and generate-blueprint only. The editor never reads them.',
   '0264_definer_functions_are_not_public':
