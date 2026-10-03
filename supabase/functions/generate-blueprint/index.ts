@@ -11148,6 +11148,19 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // ⚖️ BEFORE the link sanitiser, because a templated hook is not worth
     // sanitising and the two are independent failures.
     const templated = dropSpokenPlaceholders(normalizeHookLine(stripDashes(JSON.parse(raw))))
+
+    // ⚖️ SCRIPT BATCH 2026-10-03: a third of product scripts shipped with two or
+    // three beats while their captions still carried the full draft. Every stage
+    // that can remove a beat records the count, so a short script names its cause.
+    const beatTrace: Array<{ stage: string; beats: number; words: number }> = []
+    const traceBeats = (stage: string, script: unknown) => {
+      try {
+        const arr = Array.isArray(script) ? script as Array<{ line?: unknown }> : []
+        const words = arr.reduce((n, b) => n + (typeof b?.line === 'string' ? b.line.trim().split(/\s+/).filter(Boolean).length : 0), 0)
+        beatTrace.push({ stage, beats: arr.length, words })
+      } catch { /* tracing never fails a build */ }
+    }
+    traceBeats('writer', (templated.bp as { script?: unknown })?.script)
     if (templated.hooksDropped || templated.linesAffected) {
       // Loud for the same reason the link removals below are: a creator reading
       // "[gadget name]" aloud is the failure, and it must be findable in logs
@@ -12373,6 +12386,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     if (entFails.length) {
       console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
     }
+    traceBeats('claim_checks', declared)
 
     // ── THE BEATS THAT CAN ALWAYS BE WRITTEN, AND THEREFORE MUST BE ─────────
     //
@@ -13070,6 +13084,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         console.log(JSON.stringify({ event: 'ask_beats_dropped', dropped: droppedBeats.length }))
       }
     }
+    traceBeats('unanswered_asks', declared)
     const totalBeats = Array.isArray(declared) ? declared.length : 0
     const asked = Array.isArray(declared)
       ? declared.filter((b) => (b as { substance?: string })?.substance === 'needs_user').length
@@ -13170,6 +13185,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             : null,
         }
         const integrity = repairScriptIntegrity(bpAny.script as IntegrityBeat[], integrityOpts)
+        traceBeats('integrity', integrity.beats)
         bpAny.script = integrity.beats
         // ⚠️ ITEM 38: A SCRIPT UNDER 80% OF ITS BUDGET GETS ONE EXTENSION PASS.
         // The writer lengthens the middle beats from the facts ALREADY in the
@@ -13242,6 +13258,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             invented,
           }))
         }
+        traceBeats('extension', bpAny.script)
         // ⚖️ THE PLAN IS PARALLEL TO THE SCRIPT; a dropped beat drops its plan row.
         if (integrity.report.droppedIndices.length && Array.isArray(bpAny.beat_plan)
           && bpAny.beat_plan.length === originalLen) {
@@ -14514,6 +14531,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // saved, shown and charged as a success. A script the checks have left with
     // fewer than two spoken lines is not a script: it fails like any other
     // failed build — refunded, recorded, and answered with what to add.
+    traceBeats('shipped', (blueprint as { script?: unknown })?.script)
+    ;(blueprint as Record<string, unknown>).beat_trace = beatTrace
     {
       const spoken = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
         .filter((b) => typeof b?.line === 'string' && b.line.trim().split(/\s+/).length >= 3)
