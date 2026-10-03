@@ -71,7 +71,7 @@ function scenarios(products, brandId, brandName) {
   for (const p of named) {
     const goals = p.relationship === 'REVIEW_ONLY' ? ['educate', 'conversations', 'authority']
       : p.relationship === 'SPONSOR' ? ['sell', 'educate', 'followers']
-      : ['sell', 'educate', 'leads', 'conversations', 'personal_brand']
+      : ['sell', 'educate', 'leads', 'conversations', 'personal_brand', 'entertain']
     for (const goal of goals) out.push({ group: 'product', label: `${p.type}/${p.relationship}`, product: p.name, body: { selected_product_id: p.id, goal, door: 'product', reference_note: p.name } })
   }
   // B. The unnamed product.
@@ -215,7 +215,8 @@ const JUDGE_SYSTEM = [
   'value: a viewer learns, feels or gets something real.',
   'conversion: for a product/sell/leads goal, does it make a viewer want to buy or try it, with a clear next step that fits the relationship (affiliate disclosure, review-only never sells)? For other goals score whether the close fits the goal.',
   'sounds_like_her: matches her DNA voice and audience.',
-  'scenes: the shot list is filmable by her alone and SHOWS the product/process where the words need it.',
+  'scenes: mostly her talking to camera; the product (or its screen, on a back-camera scene) shown in the one or two scenes whose lines are about it; each scene labelled front or back camera, no mid-take camera switch; filmable by her alone.',
+  'arc: does the story-before-product match the EXPECTED SHAPE given (sell = short lean-in then the product is the point; entertain = long lean-in, product light or absent; story = the product arrives as the result; teach = product is the tool; answer = product only if the question is about it)?',
   'Return JSON only.',
 ].join('\n')
 const JUDGE_SCHEMA = {
@@ -223,11 +224,11 @@ const JUDGE_SCHEMA = {
   properties: {
     hook: { type: 'NUMBER' }, structure: { type: 'NUMBER' }, angle: { type: 'NUMBER' }, her_info: { type: 'NUMBER' },
     outside_info: { type: 'NUMBER' }, invention: { type: 'NUMBER' }, value: { type: 'NUMBER' }, conversion: { type: 'NUMBER' },
-    sounds_like_her: { type: 'NUMBER' }, scenes: { type: 'NUMBER' }, overall: { type: 'NUMBER' },
+    sounds_like_her: { type: 'NUMBER' }, scenes: { type: 'NUMBER' }, arc: { type: 'NUMBER' }, overall: { type: 'NUMBER' },
     would_post_as_is: { type: 'BOOLEAN' }, invented_claims: { type: 'ARRAY', items: { type: 'STRING' } },
     best_part: { type: 'STRING' }, biggest_fix: { type: 'STRING' },
   },
-  required: ['hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
+  required: ['hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
 }
 async function judge(bp, sc, ctx) {
   if (!GEMINI || !JUDGE_MODEL || !bp) return null
@@ -237,8 +238,9 @@ async function judge(bp, sc, ctx) {
     `HER FACTS (what she has actually given Twin):\n${ctx.allowedText.slice(0, 6000)}`,
     product ? `PRODUCT: ${JSON.stringify({ name: product.name, type: product.type, relationship: product.relationship, offer: product.offer, summary: product.creator_summary }).slice(0, 1200)}` : 'PRODUCT: none',
     `ASK: mode=${sc.body.door ?? '?'} goal=${sc.body.goal ?? '?'} seconds=${sc.body.target_seconds} input=${JSON.stringify(sc.body.reference_note ?? '').slice(0, 400)} focus=${sc.body.focus ?? '-'} outcome=${sc.body.outcome ?? '-'} tone=${sc.body.tone ?? '-'} angle=${JSON.stringify(sc.body.angle ?? null)} answers=${JSON.stringify(sc.body.readiness_answers ?? {}).slice(0, 400)}`,
+    `EXPECTED SHAPE: ${JSON.stringify(bp.arc ?? null)}`,
     `HOOK OPTIONS: ${JSON.stringify(bp.hook_options ?? []).slice(0, 800)}`,
-    `SCRIPT:\n${(Array.isArray(bp.script) ? bp.script : []).map((b) => `[${b.section ?? ''}] ${b.line ?? ''}`).join('\n')}`,
+    `SCRIPT:\n${(Array.isArray(bp.script) ? bp.script : []).map((b) => `[${b.section ?? ''}${b.camera ? ` · ${b.camera} camera` : ''}] ${b.line ?? ''}${b.action_posing ? `  (does: ${String(b.action_posing).slice(0, 120)})` : ''}`).join('\n')}`,
     `SHOTS:\n${(Array.isArray(bp.shot_list) ? bp.shot_list : []).map((s) => `- ${s.kind ?? s.shot_type ?? ''}: ${String(s.notes ?? s.b_roll_visual ?? '').slice(0, 140)} | says: ${String(s.spoken_text ?? '').slice(0, 80)}`).join('\n')}`,
     `CAPTION: ${JSON.stringify(bp.captions ?? bp.caption_packet ?? '').slice(0, 500)}`,
   ].join('\n\n')
@@ -296,6 +298,7 @@ function audit(bp, sc, ctx) {
   if (sc.body.goal === 'entertain' && /\b(link in (my )?bio|order now|buy (it|now)|shop now|use code)\b/i.test(text)) f.push({ k: 'hard_sell_in_entertain' })
   if (sc.body.goal === 'conversations' && !/\?/.test(text)) f.push({ k: 'conversations_without_question' })
   if (Array.isArray(bp?.unsourced_figures) && bp.unsourced_figures.length) f.push({ k: 'writer_flagged_unsourced', d: bp.unsourced_figures.length })
+  if (bp?.arc && bp.arc.fits === false) f.push({ k: 'arc_mismatch', d: `${bp.arc.row}: ${bp.arc.reason}` })
   if (Array.isArray(bp?.guardrail_report) && bp.guardrail_report.length) f.push({ k: 'guard_removed', d: bp.guardrail_report.map((r) => r.reason).join(',') })
   return { findings: f, text: lines.map((l, i) => `${i + 1}. ${l}`).join('\n'), hooks }
 }

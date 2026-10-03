@@ -34,6 +34,7 @@ import { scriptFamily, renderFamilyHookRule, normalizeHookMoves, auditHookSet } 
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract } from '../_shared/ideaQuestions.ts'
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
+import { arcFor, arcPrompt, arcCheck } from '../_shared/arcShape.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -5085,7 +5086,7 @@ function carryBeatActions(shots: Array<Record<string, unknown>>, script: Array<R
     return {
       ...sh,
       camera: cam,
-      framing: cam === 'back' ? `Back camera, close-up${typeof sh.framing === 'string' && sh.framing ? ` (${sh.framing})` : ''}` : sh.framing,
+      framing: cam === 'back' ? `Back camera${typeof sh.framing === 'string' && sh.framing ? ` · ${sh.framing}` : ''}` : sh.framing,
       notes: act || sh.notes,
     }
   })
@@ -5788,13 +5789,14 @@ SCRIPT & HOOK INTEGRATION:
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
 - action_posing: the creator's physical action, gesture, body language and positioning for this beat. NAME THE THING IN THEIR HANDS, never "it", "the product" or "the item" — a creator holding three objects cannot act on "point at a specific spot on it". Say which object and which part. Good: "Hold the cracked tin up to chest height, thumb over the split seam." "Rest the finished candle flat on an open palm so the window light catches the surface." Bad: "Hold product at eye level." "Point one finger at a specific spot on it." If no product is attached to this video, direct the body and face instead and name nothing you were not told exists.
-- SCENES: TALKING TO CAMERA, WITH THE PRODUCT SHOWN (owner 2026-10-03). The video is HER TALKING TO THE CAMERA — most beats are her face, speaking. Twin plans no uploaded footage, so whatever the viewer sees, she shows in the take while she keeps talking, the way a UGC creator does:
-  * A PHYSICAL PRODUCT: in one or two beats (the reveal, and where a line is about the product itself) she holds it up, opens it, turns it to the part the line is about — still talking to the lens. Every other beat is her talking.
-  * A SCREEN PRODUCT (app, community, course, digital download, website): in one or two beats she flips to the back camera and points it at her phone or laptop while she keeps talking, naming the screen ("this is the log screen, here's my last roast") — only screens and features the product facts name — then flips back to her face.
-  * camera: "front" for her face (the default, most beats); "back" only for those one or two showing beats. Say the flip in action_posing ("flip to the back camera on the phone screen", "flip back to camera").
-  * A PROCESS VIDEO (cooking, making, roasting): face first for the hook, then her hands on the steps as she talks through them, back to her face for the close.
-  * Every other beat: talking to camera with a real gesture timed to a key word, a lean-in at the re-hook. Never the same gesture twice in a row.
-  * The action must match the line said while doing it — the product is shown on the line that talks about it, not at random.
+- SCENES: TALKING TO CAMERA, WITH THE PRODUCT SHOWN (owner blueprint 2026-10-03). The video is HER TALKING TO THE CAMERA — most beats are her face, speaking. Twin plans no uploaded footage: whatever the viewer sees, she shows in the scene while she keeps talking, the way a UGC creator does. Every beat is its own scene, recorded separately; NEVER ask her to switch cameras in the middle of a take.
+  * camera (one label per scene, decided before she records it): "front" for talking, hook and close scenes (the default, most scenes); "back" for a scene that is a close demonstration of a physical product (hands, texture, a step in motion) or a screen (the back camera pointed at her laptop or phone).
+  * A PHYSICAL PRODUCT: in one or two scenes (the reveal, and where a line is about the product itself) she holds it up, opens it, turns it to the part the line is about, still talking to the lens; a close detail scene may be a back-camera scene.
+  * A SCREEN PRODUCT (app, software, community, course, digital download, website): one or two back-camera scenes pointed at her laptop or phone showing a screen THE PRODUCT FACTS NAME (its pricing page, dashboard, a lesson list), while she talks about it. Never describe what a screen shows beyond those facts; if no screen is known, keep it on her face.
+  * A PROCESS VIDEO (cooking, making, roasting): front for the hook, back-camera scenes for the steps as she talks them through, front for the close.
+  * Every other scene: talking to camera with a real gesture timed to a key word, a lean-in at the re-hook. Never the same gesture twice in a row.
+  * The scene must match its line — the product is shown in the scene whose line talks about it.
+  * The scenes follow THE SHAPE OF THIS VIDEO given with the request: how many scenes are story versus product is that shape, not a fixed template.
 ${SHOWN_JOB_RULE}
 - SUBSTANCE BEFORE PROSE. Before writing any line, decide WHAT GOES IN IT, then declare where that came from. Two fields on every beat:
   * "substance": exactly one of creator_knowledge | product_dna | general | needs_user | none.
@@ -8412,6 +8414,11 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // ⚖️ THE ANGLE SHE PICKED BEFORE ANY EXPENSIVE WORK (owner brief 2026-10-01).
     const pickedAngle = (body.angle && typeof body.angle === 'object') ? body.angle as { kind?: unknown; gist?: unknown; offered?: unknown } : null
     const pickedAngleLine = angleContract(pickedAngle ? { kind: String(pickedAngle.kind ?? ''), gist: String(pickedAngle.gist ?? '') } : null)
+    // ⚠️ OWNER MASTER BLUEPRINT 2026-10-03, PART 1: the objective and the angle
+    // she picked set ONE arc — how much story before the product, how it enters,
+    // and how the shots are weighted. The writer is told it; the finished script
+    // is checked against it (blueprint.arc).
+    const videoArc = arcFor(intent.goal ?? body.goal, pickedAngle?.kind)
     const goal = intent.goalDirective
       ?? standingGoalDirectiveInline(briefListInline(briefRaw, 'contentGoals'))
       ?? (vp?.goal ?? dna.goal ?? 'turn attention into trust')
@@ -10323,6 +10330,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
+- ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
@@ -14456,6 +14464,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       void admin.rpc('lessons_used', { p_ids: lessonsInPrompt.map((l) => l.id) }).then(() => {}, () => {})
       console.log(JSON.stringify({ event: 'lessons_supplied', count: lessonsInPrompt.length }))
     }
+    // ⚖️ THE ARC, CHECKED: where the product first appears, against the row.
+    try {
+      const lines = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
+        .map((b) => (typeof b?.line === 'string' ? b.line : ''))
+      const name = String((ownedEntity as { name?: unknown } | null)?.name ?? '')
+      const words = name.replace(/\(.*?\)/g, ' ').split(/[^A-Za-z]+/).filter((w) => w.length >= 4 && !/^(the|and|with|from|your|this)$/i.test(w))
+      const check = ownedEntity ? arcCheck(lines, words, videoArc) : { firstAt: null, fits: true, reason: null }
+      ;(blueprint as Record<string, unknown>).arc = { row: videoArc.row, lean_in: videoArc.leanIn, product_first_at: check.firstAt, fits: check.fits, reason: check.reason }
+    } catch { /* the arc record never fails a build */ }
     // ⚠️ SCRIPT BATCH 2026-10-02: the guards removed every line of a product
     // script (three unbacked figures and a follow ask) and the empty script was
     // saved, shown and charged as a success. A script the checks have left with
