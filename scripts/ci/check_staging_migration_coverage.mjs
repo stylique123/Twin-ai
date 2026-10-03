@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0273_her_corrections_reach_storage':
+    'Adds script_ratings.corrections_at and clears it in the relearn trigger; written and read by the worker correction pass only. The editor never reads it.',
   '0272_batch_results_judge':
     'Adds script_batch_results.judge, written by the manual script-batch workflow and read by the audit only. The editor never reads it.',
   '0271_batch_scripts_get_the_persona_test':

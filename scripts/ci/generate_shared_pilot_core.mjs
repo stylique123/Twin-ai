@@ -171,6 +171,11 @@ const SOURCES = [
   ['packages/shared/src/script/factPurpose.ts', 'worker/src/generated/factPurpose.ts'],
   ['packages/shared/src/script/creatorLessons.ts', 'supabase/functions/_shared/creatorLessons.ts'],
   ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
+  // Her corrections reach storage (worker) and are enforced on the script (edge) — batch audit 2026-10-03.
+  ['packages/shared/src/script/corrections.ts', 'worker/src/generated/corrections.ts'],
+  ['packages/shared/src/script/corrections.ts', 'supabase/functions/_shared/corrections.ts'],
+  // Another product's price or size never reaches this product's script (batch audit 2026-10-03).
+  ['packages/shared/src/script/offerScope.ts', 'supabase/functions/_shared/offerScope.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
