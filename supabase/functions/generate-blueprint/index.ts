@@ -5070,6 +5070,8 @@ const REPAIR_SCHEMA = {
   required: ['rewrites'],
 }
 
+const SCRIPT_EMPTIED = 'SCRIPT_EMPTIED_BY_CHECKS'
+
 const EXTENSION_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -14417,6 +14419,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       void admin.rpc('lessons_used', { p_ids: lessonsInPrompt.map((l) => l.id) }).then(() => {}, () => {})
       console.log(JSON.stringify({ event: 'lessons_supplied', count: lessonsInPrompt.length }))
     }
+    // ⚠️ SCRIPT BATCH 2026-10-02: the guards removed every line of a product
+    // script (three unbacked figures and a follow ask) and the empty script was
+    // saved, shown and charged as a success. A script the checks have left with
+    // fewer than two spoken lines is not a script: it fails like any other
+    // failed build — refunded, recorded, and answered with what to add.
+    {
+      const spoken = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
+        .filter((b) => typeof b?.line === 'string' && b.line.trim().split(/\s+/).length >= 3)
+      if (spoken.length < 2) throw new Error(`${SCRIPT_EMPTIED}: ${spoken.length} spoken lines left after the checks`)
+    }
     const { data: gen, error: insErr } = await admin
       .from('generations')
       .insert({
@@ -14763,10 +14775,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // polling for a script that does not exist (see GENERATION_FAILED_CODE).
     // A provider refusal (bad key, quota, outage) gets its own honest sentence.
     const providerDown = /Gemini (4\d\d|5\d\d)|API key|quota|RESOURCE_EXHAUSTED|UNAVAILABLE/i.test(failDetail)
+    const emptied = failDetail.startsWith(SCRIPT_EMPTIED)
     return json({
       error: providerDown
         ? "Twin's script writer is unavailable right now. You weren't charged — please try again in a few minutes."
-        : 'Generation failed. Your credits were not charged.',
+        : emptied
+          ? "Twin couldn't write this one honestly: every line needed a number or detail you haven't given it. Add a detail or two about what you're making this video about and try again. You weren't charged."
+          : 'Generation failed. Your credits were not charged.',
       code: 'GENERATION_FAILED',
     }, providerDown ? 503 : 500)
   }
