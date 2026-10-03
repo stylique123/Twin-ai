@@ -5070,6 +5070,24 @@ const REPAIR_SCHEMA = {
   required: ['rewrites'],
 }
 
+const SCRIPT_EMPTIED = 'SCRIPT_EMPTIED_BY_CHECKS'
+
+const EXTENSION_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    rewrites: REPAIR_SCHEMA.properties.rewrites,
+    inserts: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { section: { type: 'STRING' }, line: { type: 'STRING' } },
+        required: ['section', 'line'],
+      },
+    },
+  },
+  required: ['rewrites'],
+}
+
 interface EntitlementFail { index: number; line: string; repair: string; ask: string | null }
 
 /** Every beat whose claim outruns the evidence. Empty for an honest script. */
@@ -13066,6 +13084,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               ))
               .map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
           ].join('\n'),
+          // ⚠️ SCRIPT BATCH 2026-10-02: her product's and brand's names are said
+          // in every beat of a product video; they never make two beats one story.
+          commonTerms: [
+            String((ownedEntity as { name?: unknown } | null)?.name ?? ''),
+            String((confirmedBrand as { name?: unknown } | null)?.name ?? ''),
+          ].join(' '),
           // ⚠️ ITEM 37: an unanswered ask beat reserves its planned seconds.
           beatSeconds: Array.isArray(bpAny.beat_plan) && bpAny.beat_plan.length === originalLen
             ? (bpAny.beat_plan as Array<{ target_sec?: unknown }>).map((p) => Number(p?.target_sec))
@@ -13079,7 +13103,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // this whole integrity pass on the result. Any failure keeps the
         // original — a short video beats a padded, invented one. The pass never
         // drops a beat (a drop is a rejection), so `beat_plan` stays aligned.
-        const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords)
+        const plannedSections = Array.isArray(bpAny.beat_plan)
+          ? (bpAny.beat_plan as Array<{ beat?: unknown }>).map((p) => String(p?.beat ?? '')) : []
+        const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords, plannedSections)
         if (extendDecision.extend) {
           let extensionReason = 'call_failed'
           let wordsAfter = extendDecision.words
@@ -13090,10 +13116,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               'You lengthen single script lines using only facts you are given.'
               + ' You never invent a new fact, product, number, name or experience. You return JSON only.',
               buildExtensionPrompt(integrity.beats, extendDecision, knownText),
-              REPAIR_SCHEMA,
+              EXTENSION_SCHEMA,
             )
-            const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }> }
-            const ext = acceptExtension(integrity.beats, parsed?.rewrites, extendDecision, integrityOpts)
+            const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }>; inserts?: Array<{ section?: unknown; line?: unknown }> }
+            const ext = acceptExtension(integrity.beats, parsed?.rewrites, extendDecision, integrityOpts, parsed?.inserts)
             extensionReason = ext.reason
             invented = ext.invented
             if (ext.accepted) {
@@ -13105,7 +13131,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               try {
                 const before = integrity.beats as Array<{ line?: unknown }>
                 const after = ext.beats as Array<{ line?: unknown }>
-                if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) {
+                if (Array.isArray(before) && Array.isArray(after) && before.length !== after.length) {
+                  // A restored section that claims more than she is entitled to is not kept.
+                  const beforeLines = new Set(before.map((b) => b?.line))
+                  const bad = new Set(entitlementFailures(after, suppliedForCheck).map((f) => f.index).filter((i) => !beforeLines.has(after[i]?.line)))
+                  if (bad.size) {
+                    ext.beats = (after as typeof ext.beats).filter((_, i) => !bad.has(i))
+                    console.warn(JSON.stringify({ event: 'extension_claim_reverted', lines: bad.size }))
+                  }
+                } else if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) {
                   const wasBad = new Set(entitlementFailures(before, suppliedForCheck).map((f) => f.index))
                   const nowBad = entitlementFailures(after, suppliedForCheck)
                     .filter((f) => !wasBad.has(f.index) && after[f.index]?.line !== before[f.index]?.line)
@@ -13130,6 +13164,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             target_words: extendDecision.target,
             reserved_words: integrity.report.reservedWords,
             beats_offered: extendDecision.indices.length,
+            sections_missing: extendDecision.missing.length,
             invented,
           }))
         }
@@ -13138,6 +13173,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           && bpAny.beat_plan.length === originalLen) {
           const gone = new Set(integrity.report.droppedIndices)
           bpAny.beat_plan = (bpAny.beat_plan as unknown[]).filter((_, i) => !gone.has(i))
+        }
+        // A restored section takes its own planned row back; the plan is re-read
+        // by section so it matches the script beat for beat.
+        if (Array.isArray(bpAny.beat_plan) && Array.isArray(bpAny.script)
+          && (bpAny.beat_plan as unknown[]).length !== (bpAny.script as unknown[]).length) {
+          const rows = [...(bpAny.beat_plan as Array<{ beat?: unknown }>)]
+          bpAny.beat_plan = (bpAny.script as Array<{ section?: unknown }>).map((b) => {
+            const at = rows.findIndex((r) => String(r?.beat ?? '').toLowerCase() === String(b?.section ?? '').toLowerCase())
+            return at >= 0 ? rows.splice(at, 1)[0] : { beat: String(b?.section ?? ''), proof: 'Straight to camera' }
+          })
         }
         const r = integrity.report
         if (r.fragmentsDropped || r.headersFilled || r.namesStripped || r.duplicatesDropped
@@ -14374,6 +14419,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       void admin.rpc('lessons_used', { p_ids: lessonsInPrompt.map((l) => l.id) }).then(() => {}, () => {})
       console.log(JSON.stringify({ event: 'lessons_supplied', count: lessonsInPrompt.length }))
     }
+    // ⚠️ SCRIPT BATCH 2026-10-02: the guards removed every line of a product
+    // script (three unbacked figures and a follow ask) and the empty script was
+    // saved, shown and charged as a success. A script the checks have left with
+    // fewer than two spoken lines is not a script: it fails like any other
+    // failed build — refunded, recorded, and answered with what to add.
+    {
+      const spoken = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
+        .filter((b) => typeof b?.line === 'string' && b.line.trim().split(/\s+/).length >= 3)
+      if (spoken.length < 2) throw new Error(`${SCRIPT_EMPTIED}: ${spoken.length} spoken lines left after the checks`)
+    }
     const { data: gen, error: insErr } = await admin
       .from('generations')
       .insert({
@@ -14720,10 +14775,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // polling for a script that does not exist (see GENERATION_FAILED_CODE).
     // A provider refusal (bad key, quota, outage) gets its own honest sentence.
     const providerDown = /Gemini (4\d\d|5\d\d)|API key|quota|RESOURCE_EXHAUSTED|UNAVAILABLE/i.test(failDetail)
+    const emptied = failDetail.startsWith(SCRIPT_EMPTIED)
     return json({
       error: providerDown
         ? "Twin's script writer is unavailable right now. You weren't charged — please try again in a few minutes."
-        : 'Generation failed. Your credits were not charged.',
+        : emptied
+          ? "Twin couldn't write this one honestly: every line needed a number or detail you haven't given it. Add a detail or two about what you're making this video about and try again. You weren't charged."
+          : 'Generation failed. Your credits were not charged.',
       code: 'GENERATION_FAILED',
     }, providerDown ? 503 : 500)
   }

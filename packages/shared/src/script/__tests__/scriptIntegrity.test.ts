@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   repairScriptIntegrity, wordBudget, splitSentences, productLineNames, quantities,
-  tagStorySources, distinctiveContent, stem, shouldExtendScript, buildExtensionPrompt, acceptExtension,
+  tagStorySources, distinctiveContent, stem, shouldExtendScript, buildExtensionPrompt, acceptExtension, inventedByExtension,
 } from '../scriptIntegrity'
 
 describe('item 35: every scene has a header and whole text', () => {
@@ -227,5 +227,41 @@ describe('item 38: one grounded extension pass for a short script', () => {
     const d = shouldExtendScript(short, 30)
     const r = acceptExtension(short, [{ index: 0, line: 'A much longer hook line that should never be applied here.' }], d, { knownText: facts })
     expect(r.reason).toBe('no_rewrites')
+  })
+})
+
+describe('script batch 2026-10-02: product scripts lost their middle', () => {
+  const product = [
+    { section: 'Hook', line: 'Fresh House Espresso Beans changed how my morning espresso tastes at home.' },
+    { section: 'Setup', line: 'Our House Espresso Beans are roasted to order so the espresso tastes sweet at home.' },
+    { section: 'Re-hook', line: 'The House Espresso Beans taste different because the espresso roast stays fresh at home.' },
+    { section: 'CTA', line: 'Order the House Espresso Beans at the link in my bio.' },
+  ]
+  it('the product name alone does not make two beats one story', () => {
+    const kept = repairScriptIntegrity(product, { commonTerms: 'House Espresso Beans' })
+    const without = repairScriptIntegrity(product, {})
+    expect(kept.beats.length).toBeGreaterThan(without.beats.length)
+  })
+  it('planned sections the script lost are offered back, never the hook or close', () => {
+    const d = shouldExtendScript([{ section: 'Hook', line: 'Fresh beans changed my espresso.' }, { section: 'CTA', line: 'Link in bio.' }], 30, null, 0, ['Hook', 'Setup', 'Re-hook', 'CTA'])
+    expect(d.extend).toBe(true)
+    expect(d.indices).toEqual([])
+    expect(d.missing).toEqual(['Setup', 'Re-hook'])
+    expect(buildExtensionPrompt([], d, 'facts')).toContain('MISSING SECTIONS')
+  })
+  it('restored sections go before the close, and an invented name rejects them', () => {
+    const beats = [{ section: 'Hook', line: 'Fresh beans changed my espresso.' }, { section: 'CTA', line: 'Order from the link in my bio.' }]
+    const d = shouldExtendScript(beats, 30, null, 0, ['Hook', 'Setup', 'CTA'])
+    const ok = acceptExtension(beats, [], d, { knownText: 'we roast to order every week so beans ship within two days', targetSec: 30 },
+      [{ section: 'Setup', line: 'We roast to order every week, so the beans ship within two days of roasting.' }])
+    expect(ok.accepted).toBe(true)
+    expect(ok.beats.map((b) => b.section)).toEqual(['Hook', 'Setup', 'CTA'])
+    const bad = acceptExtension(beats, [], d, { knownText: 'we roast to order', targetSec: 30 },
+      [{ section: 'Setup', line: 'We roast to order like Starbucks does.' }])
+    expect(bad.accepted).toBe(false)
+  })
+  it('a state she wrote as its code may be said in full', () => {
+    expect(inventedByExtension('', 'We roast here in Farmington, New Mexico.', 'Small roastery in Farmington, NM')).toEqual([])
+    expect(inventedByExtension('', 'We roast here in Austin, Texas.', 'Small roastery in Farmington, NM')).not.toEqual([])
   })
 })
