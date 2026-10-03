@@ -75,3 +75,24 @@ describe('viewer notes use the numbers she sees (1.5)', () => {
     expect(oneBased(null)).toBeNull()
   })
 })
+
+describe('owner 2026-10-03: what the viewers point out is actually done', () => {
+  it('an added line may use her facts but nothing beyond them, and never lands before the hook or after the close', async () => {
+    const { cleanAddedLines } = await import('./audienceParse')
+    const lines = ['Hook line here.', 'Here is the trick that changes everything.', 'Order from the link in my bio.']
+    const raw = { add: [
+      { after: 1, text: 'Pour slowly in small circles so the grounds bloom evenly.', action: 'Flip to the back camera on the kettle spout', camera: 'back' },
+      { after: 1, text: 'Use 18 grams every single time for the best cup.', action: '', camera: 'front' },
+      { after: 2, text: 'And one more thing after the close.', action: '', camera: 'front' },
+    ] }
+    const out = cleanAddedLines(lines, raw, 'pour slowly in small circles so the grounds bloom')
+    expect(out.map((a) => a.text)).toEqual(['Pour slowly in small circles so the grounds bloom evenly.'])
+    expect(out[0].camera).toBe('back')
+  })
+  it('as many watching with fewer open fixes is a better version', () => {
+    const v = (w: number, fixes: number) => ({ hooks: [{ stopped: 5 }], viewers: Array.from({ length: 10 }, (_, i) => ({ leaves_at: i < w ? -1 : 1 })), fixes: Array.from({ length: fixes }, () => ({})), promise_kept: true })
+    expect(betterVersion(v(4, 3) as never, v(4, 1) as never)).toBe(true)
+    expect(betterVersion(v(4, 1) as never, v(4, 1) as never)).toBe(false)
+    expect(betterVersion(v(4, 1) as never, v(3, 0) as never)).toBe(false)
+  })
+})

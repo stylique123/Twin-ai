@@ -5072,6 +5072,25 @@ const REPAIR_SCHEMA = {
 
 const SCRIPT_EMPTIED = 'SCRIPT_EMPTIED_BY_CHECKS'
 
+/** Each spoken shot takes its beat's action and camera (matched on the spoken
+ *  line, which the resync has just made identical to the beat's). */
+function carryBeatActions(shots: Array<Record<string, unknown>>, script: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const byLine = new Map<string, Record<string, unknown>>()
+  for (const b of script) if (typeof b?.line === 'string' && b.line.trim()) byLine.set(b.line.trim(), b)
+  return shots.map((sh) => {
+    const beat = typeof sh?.spoken_text === 'string' ? byLine.get(sh.spoken_text.trim()) : undefined
+    if (!beat) return sh
+    const cam = String(beat.camera ?? '').toLowerCase() === 'back' ? 'back' : 'front'
+    const act = typeof beat.action_posing === 'string' ? beat.action_posing.trim() : ''
+    return {
+      ...sh,
+      camera: cam,
+      framing: cam === 'back' ? `Back camera, close-up${typeof sh.framing === 'string' && sh.framing ? ` (${sh.framing})` : ''}` : sh.framing,
+      notes: act || sh.notes,
+    }
+  })
+}
+
 const EXTENSION_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -5627,6 +5646,10 @@ const blueprintSchema = obj(
           wardrobe: str,
           cuts_info: str,
           action_posing: str,
+          // ⚠️ OWNER 2026-10-03: which camera films this beat — 'front' (her
+          // face) or 'back' (she flips to the rear camera for a close-up of her
+          // hands, the product, the process or a screen).
+          camera: str,
           // THE SHOWN HALF (owner spec 2026-10-01): what the camera does for this beat.
           shown_job: str,
           // SUBSTANCE, DECLARED PER BEAT (§5e). Structure was never the defect:
@@ -5638,7 +5661,7 @@ const blueprintSchema = obj(
           substance: str,
           substance_evidence: str,
         },
-        ['section', 'line', 'direction', 'background', 'location', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'shown_job', 'substance', 'substance_evidence'],
+        ['section', 'line', 'direction', 'background', 'location', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'camera', 'shown_job', 'substance', 'substance_evidence'],
       ),
     ),
     shot_list: arr(
@@ -5765,6 +5788,13 @@ SCRIPT & HOOK INTEGRATION:
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
 - action_posing: the creator's physical action, gesture, body language and positioning for this beat. NAME THE THING IN THEIR HANDS, never "it", "the product" or "the item" — a creator holding three objects cannot act on "point at a specific spot on it". Say which object and which part. Good: "Hold the cracked tin up to chest height, thumb over the split seam." "Rest the finished candle flat on an open palm so the window light catches the surface." Bad: "Hold product at eye level." "Point one finger at a specific spot on it." If no product is attached to this video, direct the body and face instead and name nothing you were not told exists.
+- SCENES: TALKING TO CAMERA, WITH THE PRODUCT SHOWN (owner 2026-10-03). The video is HER TALKING TO THE CAMERA — most beats are her face, speaking. Twin plans no uploaded footage, so whatever the viewer sees, she shows in the take while she keeps talking, the way a UGC creator does:
+  * A PHYSICAL PRODUCT: in one or two beats (the reveal, and where a line is about the product itself) she holds it up, opens it, turns it to the part the line is about — still talking to the lens. Every other beat is her talking.
+  * A SCREEN PRODUCT (app, community, course, digital download, website): in one or two beats she flips to the back camera and points it at her phone or laptop while she keeps talking, naming the screen ("this is the log screen, here's my last roast") — only screens and features the product facts name — then flips back to her face.
+  * camera: "front" for her face (the default, most beats); "back" only for those one or two showing beats. Say the flip in action_posing ("flip to the back camera on the phone screen", "flip back to camera").
+  * A PROCESS VIDEO (cooking, making, roasting): face first for the hook, then her hands on the steps as she talks through them, back to her face for the close.
+  * Every other beat: talking to camera with a real gesture timed to a key word, a lean-in at the re-hook. Never the same gesture twice in a row.
+  * The action must match the line said while doing it — the product is shown on the line that talks about it, not at random.
 ${SHOWN_JOB_RULE}
 - SUBSTANCE BEFORE PROSE. Before writing any line, decide WHAT GOES IN IT, then declare where that came from. Two fields on every beat:
   * "substance": exactly one of creator_knowledge | product_dna | general | needs_user | none.
@@ -13431,6 +13461,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         )
         ;(blueprint as { shot_list?: unknown }).shot_list = synced.shots
         shotListResync = { resynced: synced.resynced, orphaned: synced.orphaned }
+        // ⚠️ OWNER 2026-10-03: the shot card said "steady framing" while the
+        // script beat said "flip to the back camera, close on the grounds". The
+        // card a creator films from now carries the beat's own action and camera.
+        if (Array.isArray(script)) {
+          ;(blueprint as { shot_list?: unknown }).shot_list = carryBeatActions(
+            synced.shots as Array<Record<string, unknown>>, script as Array<Record<string, unknown>>)
+        }
         if (synced.resynced > 0 || synced.orphaned > 0) {
           console.warn(JSON.stringify({
             event: 'shot_list_resync',

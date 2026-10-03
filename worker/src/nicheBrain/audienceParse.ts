@@ -334,8 +334,10 @@ export function cleanNewHooks(raw: unknown, existing: readonly string[]): string
 // watch to the end, Twin rewrites ONLY the lines the viewers left at or flagged,
 // tests the new version on the same viewers, and keeps it only if more stay.
 export const SCRIPT_TARGET = 6
-export const SCRIPT_ROUNDS = 2
-export const MAX_LINE_CHANGES = 4
+export const SCRIPT_ROUNDS = 3
+export const MAX_LINE_CHANGES = 6
+/** Lines the panel may ADD when viewers said something is missing (owner 2026-10-03). */
+export const MAX_LINE_ADDS = 2
 export const watchedToEnd = (viewers: readonly { leaves_at: number }[]) => viewers.filter((v) => v.leaves_at === -1).length
 
 export const SCRIPT_REWRITE_SYSTEM = [
@@ -343,19 +345,22 @@ export const SCRIPT_REWRITE_SYSTEM = [
   'You get the script line by line (with the scene on screen), where each viewer scrolled away, what they said, and the fixes they pointed to.',
   `Rewrite at most ${MAX_LINE_CHANGES} lines — the ones viewers left at or flagged. Tighten, reorder the idea within the line, sharpen the words, make the scene\'s payoff land sooner.`,
   'Keep her voice. Keep every line doing the same job (hook stays a hook, the close stays the close). Keep each line about as long or shorter.',
-  'NEVER add a fact that is not already in the script: no new numbers, prices, names, places, awards, results or promises. If a viewer wanted a missing fact, leave that line alone.',
-  'Return only the lines you changed, by their 0-based index. Return an empty list if the script is already right.',
+  'You MAY use anything under HER FACTS: that is what she has actually said. NEVER add a fact that is in neither the script nor HER FACTS: no new numbers, prices, names, places, awards, results or promises.',
+  `When viewers said something is MISSING (the promised trick, the step, the recap, the product never named), you may ADD up to ${MAX_LINE_ADDS} new lines that deliver it from HER FACTS — each placed after the line it follows, with the physical action she does while saying it and the camera: front (talking to the lens, the default) or back (only for a moment that shows the product or a screen while she keeps talking). Never add a hook or a second close.`,
+  'Return only the lines you changed, by their 0-based index, and any lines you added. Return empty lists if the script is already right.',
 ].join('\n')
 export const SCRIPT_REWRITE_SCHEMA = {
   type: 'OBJECT',
   properties: {
     lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { index: N, text: S }, required: ['index', 'text'] } },
+    add: { type: 'ARRAY', items: { type: 'OBJECT', properties: { after: N, text: S, action: S, camera: S }, required: ['after', 'text', 'action', 'camera'] } },
   },
   required: ['lines'],
 }
-export function scriptRewritePrompt(s: ScriptForTest, r: AudienceResult): string {
+export function scriptRewritePrompt(s: ScriptForTest, r: AudienceResult, facts: readonly string[] = []): string {
   const left = (i: number) => r.viewers.filter((v) => v.leaves_at === i).map((v) => v.who)
   return [
+    facts.length ? `HER FACTS (you may use these):\n${facts.slice(0, 40).map((f) => `- ${f}`).join('\n')}` : '',
     `SCRIPT:\n${s.lines.map((l, i) => `${i}. ${l}${s.shots?.[i] ? ` [scene: ${s.shots[i]}]` : ''}${left(i).length ? `  ← ${left(i).length} left here (${left(i).join(', ')})` : ''}`).join('\n')}`,
     `WATCHED TO THE END: ${watchedToEnd(r.viewers)} of ${r.viewers.length}`,
     `WHAT THE VIEWERS SAID:\n${r.viewers.map((v) => `${v.who}: ${v.quote}`).join('\n')}`,
@@ -397,7 +402,7 @@ export function applyLineRewrites(lines: readonly string[], raw: unknown, herAns
     const i = typeof o.index === 'number' && Number.isInteger(o.index) ? o.index : -1
     const t = typeof o.text === 'string' ? o.text.replace(/\s+/g, ' ').trim() : ''
     if (i < 0 || i >= lines.length || !t || changed.includes(i) || t === lines[i]) continue
-    if (t.split(' ').length > lines[i].split(' ').length * 1.3 + 4) continue
+    if (t.split(' ').length > lines[i].split(' ').length * 1.8 + 8) continue
     if (numbersIn(t).some((n) => !known.has(n))) continue
     if (namesIn(t).some((n) => !knownNames.has(n.toLowerCase()))) continue
     out[i] = t; changed.push(i)
@@ -406,14 +411,42 @@ export function applyLineRewrites(lines: readonly string[], raw: unknown, herAns
   return changed.length ? { lines: out, changed } : null
 }
 
-/** A new version wins only if more viewers watch to the end and the best
- *  hook did not get worse. */
+/** Lines the panel added, kept only when every number and name in them is
+ *  already in the script or her facts. `after` is an index into `lines`. */
+export function cleanAddedLines(lines: readonly string[], raw: unknown, known = ''): Array<{ after: number; text: string; action: string; camera: 'front' | 'back' }> {
+  const list = (raw as { add?: unknown } | null)?.add
+  if (!Array.isArray(list)) return []
+  const all = `${lines.join(' ')} ${known}`
+  const nums = new Set(numbersIn(all))
+  const names = new Set((all.match(/\b[A-Z][a-z]{2,}\b/g) ?? []).map((x) => x.toLowerCase()))
+  const out: Array<{ after: number; text: string; action: string; camera: 'front' | 'back' }> = []
+  for (const item of list) {
+    const o = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
+    const after = typeof o.after === 'number' && Number.isInteger(o.after) ? o.after : -1
+    const text = typeof o.text === 'string' ? o.text.replace(/\s+/g, ' ').trim() : ''
+    // Never before the hook, never after the close.
+    if (after < 0 || after >= lines.length - 1 || text.split(' ').length < 4 || text.split(' ').length > 60) continue
+    if (numbersIn(text).some((n) => !nums.has(n))) continue
+    if (namesIn(text).some((n) => !names.has(n.toLowerCase()))) continue
+    if (lines.some((l) => l.toLowerCase() === text.toLowerCase())) continue
+    out.push({ after, text, action: typeof o.action === 'string' ? o.action.trim().slice(0, 240) : '', camera: String(o.camera ?? '').toLowerCase() === 'back' ? 'back' : 'front' })
+    if (out.length >= MAX_LINE_ADDS) break
+  }
+  return out
+}
+
+/** A new version wins when more viewers watch to the end, or — owner
+ *  2026-10-03, "anything they improve should actually be improved" — when as
+ *  many watch and fewer of their fixes are still open. The best hook may never
+ *  get worse. */
 export function betterVersion(before: AudienceResult, after: AudienceResult): boolean {
   const best = (x: AudienceResult) => Math.max(0, ...x.hooks.map((h) => h.stopped))
   if (best(after) < best(before)) return false
   // Closing a hook the video left open counts, as long as nobody more leaves.
   if (before.promise_kept === false && after.promise_kept === true) return watchedToEnd(after.viewers) >= watchedToEnd(before.viewers)
-  return watchedToEnd(after.viewers) > watchedToEnd(before.viewers) && after.promise_kept !== false
+  if (after.promise_kept === false) return false
+  if (watchedToEnd(after.viewers) > watchedToEnd(before.viewers)) return true
+  return watchedToEnd(after.viewers) === watchedToEnd(before.viewers) && after.fixes.length < before.fixes.length
 }
 
 /**
