@@ -9902,7 +9902,18 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     const stanceProductName = String(
       (ownedEntity as { name?: unknown } | null)?.name ?? '',
     ).trim() || mentionedProductName
-    const productStanceLine = stanceProductName === ''
+    // ⚠️ SCRIPT BATCH 2026-10-03: the creator's-eye review read "the coffee",
+    // "the roast", "the little home roastery" for HER OWN product — the identity
+    // rule ("speak in first person only about work she confirmed") was applied to
+    // the one thing she had confirmed. Her own product and her confirmed brand are
+    // said as hers.
+    const ownRel = String((ownedEntity as { relationship?: unknown } | null)?.relationship ?? '').toUpperCase()
+    const ownName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+    const brandName = String((confirmedBrand as { name?: unknown } | null)?.name ?? '').trim()
+    const ownershipLine = (ownRel === 'OWN_PRODUCT' || ownRel === 'OWN_SERVICE') && ownName
+      ? `\n- "${ownName}" IS HERS${brandName ? `, and so is ${brandName}` : ''}: say "my" and "our" about it naturally ("my beans", "our roast", "I roast these"). Never "the coffee" or "the roastery" for her own. Brand facts (who owns it, where it is) are said once, in her words, only where they matter to the line — never as a stacked description.`
+      : brandName ? `\n- ${brandName} IS HER BRAND: say "my" and "our" about it naturally; brand facts are said once, only where they matter, never stacked into one sentence.` : ''
+    const productStanceLine = ownershipLine + (stanceProductName === ''
       ? ''
       : '\n- YOU MAY NOT ARGUE AGAINST "' + stanceProductName + '". '
         + 'This creator chose it for this video. Do NOT write a hook, a line or a '
@@ -9914,7 +9925,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         + 'saying nothing about it at all are all fine.'
         + ' A limit THE CREATOR STATED in their own words about it may still be said, '
         + 'in their words — that is their honesty about their own product, not an '
-        + 'argument against it.'
+        + 'argument against it.')
 
     // ⚠️ A COMMUNITY IS THE ONE TYPE WHERE "SHOW THE PRODUCT" IS UNDER-SPECIFIED,
     // so it gets facts the other types do not need. `communityBlockInline`
