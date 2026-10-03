@@ -57,6 +57,24 @@ export function scrubPrivate<T>(v: T): T {
   return walk(v) as T
 }
 
+/**
+ * The private half of a value: every private list item and private sentence
+ * `scrubPrivate` would cut. Handed to `guardScript` as excluded text, so a
+ * paraphrase of a private hook in her voice profile (audit 2026-10-03, part 2:
+ * "the city inspector walks through our doors") is caught by its wording too,
+ * not only by the word list.
+ */
+export function privateParts(v: unknown): string[] {
+  const out: string[] = []
+  const walk = (x: unknown): void => {
+    if (typeof x === 'string') { if (isPrivate(x)) out.push(...x.split(SENTENCES).filter((s) => isPrivate(s))); return }
+    if (Array.isArray(x)) { for (const i of x) walk(i); return }
+    if (x && typeof x === 'object') for (const i of Object.values(x as Record<string, unknown>)) walk(i)
+  }
+  walk(v)
+  return out
+}
+
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
 const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'my', 'i', 'it', 'is', 'was', 'for', 'with', 'that', 'this', 'at', 'her', 'she', 'you', 'your', 'from', 'by', 'be', 'are'])
 

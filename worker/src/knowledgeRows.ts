@@ -1,4 +1,5 @@
 import type { RawKnowledgeItem } from './voice.js'
+import { isPrivate } from './generated/privacyGuard.js'
 
 /** What one extracted item is, plus which pipeline produced it.
  *
@@ -118,7 +119,11 @@ export function knowledgeRowsFrom(
       // null says the first. Capped at 240 like `text`, for the same reason.
       cost: shortOrNull(r.cost),
       consensus: shortOrNull(r.consensus),
-      sensitive: /^(yes|true|1)$/i.test(String((r as { private?: unknown }).private ?? '').trim()),
+      // ⚠️ AUDIT 2026-10-03 (part 2): decided HERE, at storage, by the model OR
+      // the shared word list — "The visiting officer joked…" was stored
+      // unflagged and every later reader trusted the flag.
+      sensitive: /^(yes|true|1)$/i.test(String((r as { private?: unknown }).private ?? '').trim())
+        || isPrivate(r.text) || isPrivate(r.evidence),
       // ⚖️ WHICH PROMPT SAID IT. Without this, an improvement to the extractor
       // only ever reaches creators who sign up after it — see
       // `extractorVersion.ts`. Stamped here, at the only place that knows the
