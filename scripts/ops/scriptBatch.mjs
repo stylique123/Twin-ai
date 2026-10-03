@@ -223,8 +223,22 @@ const JUDGE_SYSTEM = [
   'sounds_like_her: matches her DNA voice and audience.',
   'scenes: mostly her talking to camera; the product (or its screen, on a back-camera scene) shown in the one or two scenes whose lines are about it; each scene labelled front or back camera, no mid-take camera switch; filmable by her alone.',
   'arc: does the story-before-product match the EXPECTED SHAPE given (sell = short lean-in then the product is the point; entertain = long lean-in, product light or absent; story = the product arrives as the result; teach = product is the tool; answer = product only if the question is about it)?',
+  // Owner 2026-10-03: sharper, blueprint-based, and through real viewers' eyes.
+  'BLUEPRINT CHECK (answer each true/false from the script, not from intent): hook_paid_off (the body delivers exactly what the hook promised), lean_in_fits_row (the lean-in before the product is as long as the EXPECTED SHAPE row says), product_entry_fits_row (the product enters the way that row says), product_shown_once_or_twice (the product or its screen is SHOWN in one or two scenes whose lines are about it; true when no product), camera_labelled (every scene says front or back, no switch inside a take), close_fits_goal (the last beat is a next step that fits the goal and the relationship), full_length (enough spoken words for the seconds chosen, about 2.5 words a second).',
+  'Any false in the blueprint check caps structure and arc at 6. A script missing its middle, never naming a product it must sell, or ending without a close caps overall at 4.',
+  'VIEWER PANEL: imagine three REAL people from HER audience (read the DNA audience; make them different: a loyal follower, a new viewer scrolling past, a skeptic who has seen ten videos like this). For each, react honestly in their own words as they would feel while watching: stops (would they stop scrolling in the first 2 seconds), watches_to_end, likes, comments (and what they would type), acts (buys, tries, follows, saves or clicks the next step), learned (one thing they take away, or nothing). Do not be kind: most videos lose most viewers.',
+  'Score every dimension with evidence: quote the line that earns or costs the score in your notes. Base overall on what the panel actually did, not on effort.',
   'Return JSON only.',
 ].join('\n')
+const VIEWER = {
+  type: 'OBJECT',
+  properties: {
+    who: { type: 'STRING' }, reaction: { type: 'STRING' }, stops: { type: 'BOOLEAN' }, watches_to_end: { type: 'BOOLEAN' },
+    likes: { type: 'BOOLEAN' }, comments: { type: 'STRING' }, acts: { type: 'BOOLEAN' }, action: { type: 'STRING' }, learned: { type: 'STRING' },
+  },
+  required: ['who', 'reaction', 'stops', 'watches_to_end', 'likes', 'comments', 'acts', 'action', 'learned'],
+}
+const BLUEPRINT_KEYS = ['hook_paid_off', 'lean_in_fits_row', 'product_entry_fits_row', 'product_shown_once_or_twice', 'camera_labelled', 'close_fits_goal', 'full_length']
 const JUDGE_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -233,8 +247,10 @@ const JUDGE_SCHEMA = {
     sounds_like_her: { type: 'NUMBER' }, scenes: { type: 'NUMBER' }, arc: { type: 'NUMBER' }, overall: { type: 'NUMBER' },
     would_post_as_is: { type: 'BOOLEAN' }, invented_claims: { type: 'ARRAY', items: { type: 'STRING' } },
     best_part: { type: 'STRING' }, biggest_fix: { type: 'STRING' },
+    blueprint: { type: 'OBJECT', properties: Object.fromEntries(BLUEPRINT_KEYS.map((k) => [k, { type: 'BOOLEAN' }])), required: BLUEPRINT_KEYS },
+    viewers: { type: 'ARRAY', items: VIEWER }, evidence: { type: 'STRING' },
   },
-  required: ['hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
+  required: ['blueprint', 'viewers', 'evidence', 'hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
 }
 async function judge(bp, sc, ctx) {
   if (!GEMINI || !JUDGE_MODEL || !bp) return null
