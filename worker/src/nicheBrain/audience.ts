@@ -24,7 +24,7 @@ import {
   audiencePrompt, normalizeAudience, normalizePanel, scriptFromBlueprint, type Persona,
   HOOK_TARGET, HOOK_ROUNDS, HOOK_REWRITE_SYSTEM, HOOK_REWRITE_SCHEMA, hookRewritePrompt, cleanNewHooks,
   SCRIPT_TARGET, SCRIPT_ROUNDS, SCRIPT_REWRITE_SYSTEM, SCRIPT_REWRITE_SCHEMA, scriptRewritePrompt,
-  applyLineRewrites, betterVersion, watchedToEnd,
+  applyLineRewrites, betterVersion, watchedToEnd, cleanAddedLines,
   orderHooksBestFirst, defaultHookAfterTest,
   MAX_TESTED_HOOKS, PANEL_VERSION, ANSWER_REWRITE_SYSTEM, answerRewritePrompt,
 } from './audienceParse.js'
@@ -138,7 +138,10 @@ export async function runAudienceTests(log: Log): Promise<void> {
     const bpIn = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
     const family = typeof bpIn.script_family === 'string' ? bpIn.script_family : null
     const shape = family ? FAMILY_SHAPE[family as keyof typeof FAMILY_SHAPE] ?? null : null
-    const allowedText = [...s.hooks, ...s.lines, product ?? ''].join('\n')
+    // ⚠️ OWNER 2026-10-03: "anything they improve should actually be improved".
+    // Her own stated facts were shown to the rewriter but refused by this check,
+    // so a fix that needed one of her real details never landed.
+    const allowedText = [...s.hooks, ...s.lines, product ?? '', ...facts].join('\n')
     // ⚠️ AUDIT 2026-10-01 (S1): this rewrite runs AFTER every guard in the
     // writer, so it is held to the writer's rules too: no unpicked product or
     // brand, no follow ask she did not choose. The writer left the context.
@@ -178,28 +181,49 @@ export async function runAudienceTests(log: Log): Promise<void> {
       tested = next; r = again
     }
     // Then the body: lines and scenes. A rewrite is kept only if more viewers
-    // stay to the end on the same panel; otherwise the tested version stands.
+    // stay to the end on the same panel (or as many stay and fewer of their
+    // fixes remain); otherwise the tested version stands. ⚠️ OWNER 2026-10-03:
+    // it also runs while the viewers still name fixes, and may ADD a missing
+    // line from her facts. `origin[i]` is where tested line i came from in the
+    // writer's script (null = added by the panel).
     let lineRounds = 0
-    const changedLines = new Set<number>()
-    while (lineRounds < SCRIPT_ROUNDS && (watchedToEnd(r.viewers) < SCRIPT_TARGET || r.promise_kept === false)) {
+    let origin: Array<number | null> = s.lines.map((_, i) => i)
+    let added = new Map<number, { action: string; camera: 'front' | 'back' }>()
+    let addsLeft = 2
+    const knownForRewrite = facts.join('\n')
+    while (lineRounds < SCRIPT_ROUNDS && (watchedToEnd(r.viewers) < SCRIPT_TARGET || r.promise_kept === false || r.fixes.length > 0)) {
       lineRounds += 1
-      const drafted = applyLineRewrites(tested.lines, await geminiJson(SCRIPT_REWRITE_SYSTEM, scriptRewritePrompt(tested, r), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model))
-      if (!drafted) break
-      const unsafe = drafted.changed.filter((i) => !safe(drafted.lines[i]))
+      const raw = await geminiJson(SCRIPT_REWRITE_SYSTEM, scriptRewritePrompt(tested, r, facts), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model)
+      const drafted = applyLineRewrites(tested.lines, raw, knownForRewrite)
+      const unsafe = drafted ? drafted.changed.filter((i) => !safe(drafted.lines[i])) : []
       refused += unsafe.length
-      const edit = unsafe.length === drafted.changed.length ? null : {
-        lines: drafted.lines.map((l, i) => (unsafe.includes(i) ? tested.lines[i] : l)),
-        changed: drafted.changed.filter((i) => !unsafe.includes(i)),
+      const lines = drafted ? drafted.lines.map((l, i) => (unsafe.includes(i) ? tested.lines[i] : l)) : [...tested.lines]
+      const adds = cleanAddedLines(tested.lines, raw, knownForRewrite).filter((a) => safe(a.text)).slice(0, addsLeft)
+      if (lines.every((l, i) => l === tested.lines[i]) && adds.length === 0) break
+      let nextLines = [...lines]
+      let nextOrigin = [...origin]
+      let nextAdded = new Map(added)
+      for (const a of [...adds].sort((x, y) => y.after - x.after)) {
+        nextLines.splice(a.after + 1, 0, a.text)
+        nextOrigin.splice(a.after + 1, 0, null)
+        const shifted = new Map<number, { action: string; camera: 'front' | 'back' }>()
+        for (const [k, v] of nextAdded) shifted.set(k > a.after ? k + 1 : k, v)
+        shifted.set(a.after + 1, { action: a.action, camera: a.camera })
+        nextAdded = shifted
       }
-      if (!edit) break
-      const next = { ...tested, lines: edit.lines }
+      const next = { ...tested, lines: nextLines }
       const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel, family, shape, facts }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
       if (!again || !betterVersion(r, again)) break
-      edit.changed.forEach((i) => changedLines.add(i))
-      tested = next; r = again
+      tested = next; r = again; origin = nextOrigin; added = nextAdded; addsLeft -= adds.length
     }
     if (refused) log('warn', 'audience_rewrite_refused', { event: 'audience_rewrite_refused', generation_id: g.id, refused })
-    const lineChanges = [...changedLines].sort((a, b) => a - b).map((i) => ({ line: i, before: s.lines[i], after: tested.lines[i] }))
+    const lineChanges = origin.flatMap((o, i) => (o !== null && tested.lines[i] !== s.lines[o] ? [{ line: o, before: s.lines[o], after: tested.lines[i] }] : []))
+    const lineAdds = origin.flatMap((o, i) => {
+      if (o !== null) return []
+      let prev = -1
+      for (let k = i - 1; k >= 0; k--) if (origin[k] !== null) { prev = origin[k] as number; break }
+      return [{ after: prev, line: tested.lines[i], ...(added.get(i) ?? { action: '', camera: 'front' as const }) }]
+    })
     // ⚠️ THE SCRIPT'S HOOK WAS NOT THE AUDIENCE'S BEST HOOK (7 of 9 coffee
     // runs): the list said "recommended" over option 1 and the script was built
     // on it, while the viewers starred another. Options are now always ordered
@@ -212,14 +236,14 @@ export async function runAudienceTests(log: Log): Promise<void> {
     const reordered = ordered.length > 0 && ordered.join('\u0000') !== oldOrder
     const shown = (bp.shown_audit && typeof bp.shown_audit === 'object' ? bp.shown_audit : null) as Record<string, unknown> | null
     const promiseChanged = r.promise_kept !== null && (shown?.promiseKept ?? null) !== r.promise_kept
-    if (reordered || lineChanges.length > 0 || promiseChanged) {
+    if (reordered || lineChanges.length > 0 || lineAdds.length > 0 || promiseChanged) {
       // Only the version that tested best is what she sees: better lines
       // replace the old ones on the teleprompter AND on the shot card.
       const next: Record<string, unknown> = { ...bp }
       if (reordered) next.hook_options = ordered
       // Owner brief 2026-10-01 (1.6): did the video close what its hook opened?
       if (r.promise_kept !== null) next.shown_audit = { ...(shown ?? {}), promiseKept: r.promise_kept }
-      if (lineChanges.length > 0 && Array.isArray(bp.script)) {
+      if ((lineChanges.length > 0 || lineAdds.length > 0) && Array.isArray(bp.script)) {
         const script = [...(bp.script as Array<Record<string, unknown>>)]
         const shots = Array.isArray(bp.shot_list) ? [...(bp.shot_list as Array<Record<string, unknown>>)] : null
         for (const c of lineChanges) {
@@ -227,12 +251,40 @@ export async function runAudienceTests(log: Log): Promise<void> {
           if (at === undefined || !script[at]) continue
           script[at] = { ...script[at], line: c.after }
         }
-        next.script = script
-        // ⚠️ ROUND 3, 2.2: the old exact-text patch missed any shot whose line had
-        // drifted, so the two documents could say the same wrong thing two ways.
-        // The shot list is re-derived from the script, position by position —
-        // the same rule the writer applies (shotListSync).
-        if (shots) next.shot_list = syncShotListSpokenText(shots, script).shots
+        if (lineAdds.length === 0) {
+          next.script = script
+          // ⚠️ ROUND 3, 2.2: the old exact-text patch missed any shot whose line had
+          // drifted, so the two documents could say the same wrong thing two ways.
+          // The shot list is re-derived from the script, position by position —
+          // the same rule the writer applies (shotListSync).
+          if (shots) next.shot_list = syncShotListSpokenText(shots, script).shots
+        } else {
+          // A line the panel added goes in after the beat it follows, with its own
+          // action and camera, and its own shot right after that beat's shot.
+          const out: Array<Record<string, unknown>> = []
+          const shotOut = shots ? [] as Array<Record<string, unknown>> : null
+          const synced = shots ? syncShotListSpokenText(shots, script).shots as Array<Record<string, unknown>> : null
+          const originOfText = new Map<string, number>()
+          origin.forEach((o, i) => { if (o !== null) originOfText.set(tested.lines[i].trim(), o) })
+          script.forEach((beat, i) => {
+            out.push(beat)
+            const o = s.at?.indexOf(i) ?? -1
+            for (const a of lineAdds.filter((x) => x.after === o && o >= 0)) {
+              out.push({ section: 'Body', line: a.line, action_posing: a.action, camera: a.camera, direction: '', shown_job: a.camera === 'back' ? 'demonstrate' : 'talk', substance: 'creator_knowledge', added_by: 'test_viewers' })
+            }
+          })
+          next.script = out
+          if (synced && shotOut) {
+            for (const sh of synced) {
+              shotOut.push(sh)
+              const o = originOfText.get(String(sh.spoken_text ?? '').trim()) ?? -1
+              for (const a of lineAdds.filter((x) => x.after === o && o >= 0)) {
+                shotOut.push({ shot: 'Added', shot_type: 'talking_head', camera: a.camera, framing: a.camera === 'back' ? 'Back camera, close-up' : 'Talking to camera', notes: a.action, spoken_text: a.line })
+              }
+            }
+            next.shot_list = shotOut
+          }
+        }
       }
       await db.from('generations').update({ blueprint: next }).eq('id', g.id)
     }
@@ -252,7 +304,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       improved: {
         before: hookBefore,
         after: { best: Math.max(0, ...r.hooks.map((h) => h.stopped)), watched: watchedToEnd(r.viewers) },
-        hooks_added: tested.hooks.length - s.hooks.length, lines: lineChanges,
+        hooks_added: tested.hooks.length - s.hooks.length, lines: lineChanges, lines_added: lineAdds,
       },
     })
 
@@ -274,7 +326,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       if (id) filed += 1
     }
     await db.from('audience_tests').update({ learned_at: new Date().toISOString() }).eq('generation_id', g.id)
-    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: changedLines.size, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length, promise_kept: r.promise_kept, needs_her: r.needs_her.length, unverified: r.unverified.length, out_of_scope: r.out_of_scope, working: r.working.length })
+    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: lineChanges.length, lines_added: lineAdds.length, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length, promise_kept: r.promise_kept, needs_her: r.needs_her.length, unverified: r.unverified.length, out_of_scope: r.out_of_scope, working: r.working.length })
   } catch (err) {
     const failure = err instanceof Error ? err.message.slice(0, 300) : 'unknown'
     // A quota wall says nothing about the script: leave it untested so the next tick retries.
