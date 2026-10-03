@@ -265,3 +265,18 @@ describe('script batch 2026-10-02: product scripts lost their middle', () => {
     expect(inventedByExtension('', 'We roast here in Austin, Texas.', 'Small roastery in Farmington, NM')).not.toEqual([])
   })
 })
+
+describe('part-1d: a restored section goes back in its planned place', () => {
+  it('Setup lands after the hook and before the payoff, not before the close', () => {
+    const beats = [
+      { section: 'Hook', line: 'Fresh beans changed my morning espresso.' },
+      { section: 'Payoff', line: 'Roasting weekly keeps every cup sweet and bright.' },
+      { section: 'CTA', line: 'Order from the link in my bio.' },
+    ]
+    const d = shouldExtendScript(beats, 45, null, 0, ['Hook', 'Setup', 'Payoff', 'CTA'])
+    const r = acceptExtension(beats, [], d, { knownText: 'we roast to order every week so beans ship within two days', targetSec: 45 },
+      [{ section: 'Setup', line: 'We roast to order every week, so the beans ship within two days of roasting.' }])
+    expect(r.accepted).toBe(true)
+    expect(r.beats.map((b) => b.section)).toEqual(['Hook', 'Setup', 'Payoff', 'CTA'])
+  })
+})

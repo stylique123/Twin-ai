@@ -5798,6 +5798,7 @@ SCRIPT & HOOK INTEGRATION:
   * Every other scene: talking to camera with a real gesture timed to a key word, a lean-in at the re-hook. Never the same gesture twice in a row.
   * The scene must match its line — the product is shown in the scene whose line talks about it.
   * The scenes follow THE SHAPE OF THIS VIDEO given with the request: how many scenes are story versus product is that shape, not a fixed template.
+  * HER VISUAL STYLE (Editing style, Tone and voice in CREATOR DNA) decides what the showing scenes look like. If it names process or prep shots, close-ups, ASMR-style cuts or a vlog pace, at least two scenes are back-camera close-ups of her hands doing that process (pouring, grinding, packing, plating — only things her facts say she does), each tied to the line said over it. A creator whose style is process-led must never get a script that is all front camera.
 ${SHOWN_JOB_RULE}
 - SUBSTANCE BEFORE PROSE. Before writing any line, decide WHAT GOES IN IT, then declare where that came from. Two fields on every beat:
   * "substance": exactly one of creator_knowledge | product_dna | general | needs_user | none.

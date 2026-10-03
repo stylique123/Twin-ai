@@ -89,6 +89,10 @@ export function arcPrompt(arc: Arc, hasProduct: boolean): string {
   return [
     `THE SHAPE OF THIS VIDEO (${arc.row}, ${arc.leanIn} lean-in) — earn the hook first, then lean into what makes it worth watching before anything is sold.`,
     hasProduct ? arc.entry : 'No product is attached: lean into the story, opinion or value for the whole video.',
+    // part-1d: the product was named in the hook of every entertain and teach script.
+    hasProduct && arc.leanIn !== 'short'
+      ? `The hook and the next beat do NOT name the product; it first appears in the back ${arc.leanIn === 'long' ? 'half' : 'two thirds'} of the video.`
+      : '',
     hasProduct ? `Shots: ${arc.shots}` : '',
   ].filter(Boolean).join('\n')
 }

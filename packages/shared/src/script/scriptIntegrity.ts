@@ -560,6 +560,9 @@ export interface ExtensionDecision {
    *  hook + CTA alone, with nothing for the pass to lengthen. These are
    *  written back from the supplied facts, in plan order, before the close. */
   missing: string[]
+  /** The planned sections in order, so a restored section goes back IN ITS
+   *  PLACE (part-1d: a restored Setup landed after the Payoff). */
+  plan?: string[]
 }
 
 /** The middle, spoken, non-ask, non-protected beats — the only ones a pass may touch. */
@@ -598,6 +601,7 @@ export function shouldExtendScript(
   return {
     extend, words, target, wordsWanted: extend ? target - words - reserved : 0,
     indices: extend ? indices : [], missing: extend ? missing : [],
+    plan: (plannedSections ?? []).map((x) => str(x).trim()).filter((x) => x !== ''),
   }
 }
 
@@ -727,15 +731,29 @@ export function acceptExtension(
   }
   if (applied === 0 && added.length === 0) return keep('no_rewrites')
   if (invented.length) return keep('invented', [...new Set(invented)])
-  const closeAt = next.length > 1 && PROTECTED_SECTION.test(str(next[next.length - 1]?.section)) && !/hook/i.test(str(next[next.length - 1]?.section))
-    ? next.length - 1 : next.length
-  const firstAdded = closeAt
-  next.splice(closeAt, 0, ...added)
+  // Each restored section goes back in its planned place: after the last beat
+  // whose section comes before it in the plan (never before the hook, never
+  // after the close).
+  const plan = (decision.plan ?? []).map((x) => x.toLowerCase())
+  const rank = (sec: string) => plan.indexOf(sec.toLowerCase())
+  const addedAt = new Set<number>()
+  for (const beat of added) {
+    const want = rank(str(beat.section))
+    let at = 1
+    next.forEach((b, i) => { const r = rank(str(b.section)); if (r >= 0 && want >= 0 && r < want) at = i + 1 })
+    const last = next.length - 1
+    if (next.length > 1 && PROTECTED_SECTION.test(str(next[last]?.section)) && !/hook/i.test(str(next[last]?.section)) && at > last) at = last
+    next.splice(Math.min(at, next.length), 0, beat)
+    const shifted = new Set<number>()
+    for (const i of addedAt) shifted.add(i >= at ? i + 1 : i)
+    shifted.add(at)
+    addedAt.clear(); for (const i of shifted) addedAt.add(i)
+  }
   const again = repairScriptIntegrity(next, opts)
   const r = again.report
   // A restored section the re-check finds is a retelling is simply not kept;
   // anything else the re-check would remove or correct rejects the whole pass.
-  const onlyAddedDropped = r.droppedIndices.every((i) => i >= firstAdded && i < firstAdded + added.length)
+  const onlyAddedDropped = r.droppedIndices.every((i) => addedAt.has(i))
   if ((r.droppedIndices.length && !onlyAddedDropped) || r.inventedNames.length || r.numberConflicts.length || r.numbersRestored) {
     return keep('integrity_removed')
   }
