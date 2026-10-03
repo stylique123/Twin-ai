@@ -26,7 +26,7 @@ import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
-import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe } from '../_shared/privacyGuard.ts'
+import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
 import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript, referenceShownKept } from '../_shared/shownJob.ts'
@@ -6340,7 +6340,8 @@ Deno.serve(async (req: Request) => {
     if (ok === false) return json({ questions: [], purpose: null })
     const { data: v } = await createClient(supabaseUrl, serviceKey).from('brand_voices').select('profile')
       .eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle()
-    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', (v?.profile ?? null) as never)
+    // Her hook patterns feed this prompt too: scrubbed like every other reader.
+    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', scrubPrivate(v?.profile ?? null) as never)
   }
 
   // Team seats: if this user is a member of a workspace, they create IN that
@@ -7385,7 +7386,10 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     entitySay.set(id, { text: facts.join('. '), attribution: name })
   }
 
-  const dna = profile?.dna ?? {}
+  // ⚠️ AUDIT 2026-10-03 (part 2): the DNA is the voice profile's fallback for
+  // voice samples, niche and audience, and was the one profile read NOT
+  // scrubbed. Same rule as `vp` below.
+  const dna = scrubPrivate(profile?.dna ?? {})
   // ⚠️ ROUND 4, 1.1: HER VOICE PROFILE CARRIED THE PRIVATE MATERIAL TOO. Its
   // hook samples and formats were read from her videos, including "I just got
   // off the phone with the Police Department code enforcement" — and it reached
@@ -7393,6 +7397,11 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // rule the plan screen uses) is removed before the writer sees the profile:
   // a list entry is dropped, a sentence in a text field is cut.
   const vp = scrubPrivate(voice?.profile ?? null) as (typeof voice)['profile'] | null
+  // ⚠️ AUDIT 2026-10-03 (part 2): the police story sat in her sample hooks AND
+  // came back reworded ("the city inspector walks through our doors"). What
+  // the scrub cut is also excluded text for the final guard, so its wording is
+  // caught even where no listed word survives the paraphrase.
+  guardExcludedTexts.push(...privateParts(voice?.profile ?? null), ...privateParts(profile?.dna ?? null))
   // §8a.1's BRIEF — what the creator TYPED, as opposed to what the scan read.
   //
   // Read here rather than through @twinai/shared because Deno cannot import the
@@ -8619,7 +8628,9 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         const [notes, trends, record, moments, research] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP])
         brainNotesUsed = notes.length
         brainNoteIds = notes.map((n) => n.id).filter((id): id is string => typeof id === 'string')
-        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(trends) + renderMomentsInline(moments) + renderNicheResearchInline(research) + renderTrackRecordInline(record)
+        // Her past captions (track record) and the web's items pass the same
+        // private rule as every other reader before the writer sees them.
+        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(scrubPrivate(trends)) + renderMomentsInline(scrubPrivate(moments)) + renderNicheResearchInline(scrubPrivate(research)) + renderTrackRecordInline(scrubPrivate(record))
         console.log(JSON.stringify({
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
           record: record !== null, moments: moments.length, research: research.length, rendered: brainBlock !== '',
