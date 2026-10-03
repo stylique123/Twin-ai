@@ -115,7 +115,13 @@ async function call(token, body, tries = 0) {
   const wait = lastStart + 5_500 - Date.now()
   lastStart = Math.max(Date.now(), lastStart + 5_500)
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
-  const r = await callOnce(token, body)
+  // A dropped connection (ECONNRESET, a socket hang-up) is retried, never fatal:
+  // part-1d died after 9 scripts on one reset.
+  let r
+  try { r = await callOnce(token, body) } catch (e) {
+    if (tries < 3) { await new Promise((res) => setTimeout(res, 10_000)); return call(token, body, tries + 1) }
+    return { status: 0, ok: false, json: null, text: `network: ${String(e?.cause?.code ?? e?.message ?? e).slice(0, 120)}`, ms: 0 }
+  }
   if (r.status === 429 && /too many in a row/i.test(r.text) && tries < 5) {
     await new Promise((res) => setTimeout(res, 30_000))
     return call(token, body, tries + 1)
@@ -348,9 +354,18 @@ async function main() {
   const tally = {}
   const seen = new Map()
   const shingles = (t) => { const w = t.toLowerCase().replace(/^\d+\.\s*/gm, '').split(/[^a-z0-9']+/).filter(Boolean); const out = new Set(); for (let i = 0; i + 5 <= w.length; i++) out.add(w.slice(i, i + 5).join(' ')); return out }
+  // Resume: a re-run of the same label skips scenarios that already have a script.
+  const { data: doneRows } = await admin.from('script_batch_results').select('n').eq('batch', BATCH).eq('status', 200)
+  const done = new Set((doneRows ?? []).map((x) => x.n))
   async function worker() {
     while (next < list.length) {
       const sc = list[next++]
+      if (done.has(sc.n)) continue
+      try { await runOne(sc) } catch (e) { console.error(`#${sc.n} failed: ${String(e?.message ?? e).slice(0, 200)}`) }
+    }
+  }
+  async function runOne(sc) {
+    {
       const body = { ...sc.body, idempotency_key: `${BATCH}-${sc.n}` }
       // The angle, picked from the same read the card shows.
       if (sc.anglePick !== undefined && body.reference_note) {
