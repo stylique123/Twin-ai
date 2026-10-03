@@ -26,7 +26,7 @@ describe('the hook filter reuses the claim rule instead of restating it', () => 
     // ⚠️ THREE COPIES OF THE CTA RULE AGREEING WITH EACH OTHER let 16 purchase
     // CTAs ship. A hook-specific reimplementation of claim strength would be a
     // fourth copy of the same mistake.
-    expect(EDGE).toMatch(/entitlementFailures\(hooks\.map\(\(line\) => \(\{ line \}\)\), suppliedForCheck\)/)
+    expect(EDGE).toMatch(/entitlementFailures\(hooks\.map\(\(line\) => \(\{ line \}\)\), entitlementEvidence\)/)
     expect(EDGE).toMatch(/event: 'hooks_unentitled'/)
   })
 
