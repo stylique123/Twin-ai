@@ -6390,11 +6390,11 @@ Deno.serve(async (req: Request) => {
   const { data: dailyOk } = await admin.rpc('check_rate_limit', {
     p_user: user.id,
     p_action: 'blueprint_daily',
-    // The heartbeat/test-batch account runs ~200 audited scripts in a day; its
-    // cap is its own (identity-derived above, never a request flag). Credits
-    // still bound it.
+    // The heartbeat/test-batch account runs full audited batches several times a
+    // day (owner, 2026-10-03: "test to its limit"); its cap is its own
+    // (identity-derived above, never a request flag). Credits still bound it.
     p_max: isHeartbeat
-      ? Number(Deno.env.get('HEARTBEAT_DAILY_CAP') ?? '400')
+      ? Number(Deno.env.get('HEARTBEAT_DAILY_CAP') ?? '2000')
       : Number(Deno.env.get('BLUEPRINT_DAILY_CAP') ?? '40'),
     p_window_secs: 86400,
   })
