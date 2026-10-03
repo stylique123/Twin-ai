@@ -5232,7 +5232,8 @@ function sectionsFromKnowledge(ownedEntity: unknown): string[] {
   const byLower = new Map<string, string>()
   for (const f of knowledgeFacts(ownedEntity)) {
     if (f.field !== 'page_section') continue
-    const v = f.value.slice(0, 60)
+    // Screens now carry what they show ("pricing page: three plans…"), not only a name.
+    const v = f.value.slice(0, 160)
     if (!byLower.has(v.toLowerCase())) byLower.set(v.toLowerCase(), v)
   }
   return [...byLower.values()].slice(0, 12)
@@ -7897,10 +7898,31 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       console.log(JSON.stringify({ event: 'objective_has_no_fitting_fact', goal: purposeGoal }))
     }
   }
+  // ⚠️ OWNER MASTER BLUEPRINT 2026-10-03, PART 2: a screen product's scenes
+  // point the back camera at a REAL screen. When the page read found none (no
+  // pricing page, dashboard or lesson list), ask her which one she can show —
+  // never let the writer describe a screen nobody saw. Her answer is kept on
+  // the product, so it is asked once.
+  const SCREEN_KINDS = new Set(['APP', 'SAAS', 'DIGITAL_PRODUCT', 'COURSE', 'COMMUNITY'])
+  const screenKind = SCREEN_KINDS.has(String((ownedEntity as { type?: unknown } | null)?.type ?? '').toUpperCase())
+  const screenAnswer = String(answers.screen ?? '').trim()
+  if (screenKind && ownedEntity && screenAnswer && !/^(none|no|nothing|n\/a|skip)\b/i.test(screenAnswer)) {
+    const k = Array.isArray((ownedEntity as { knowledge?: unknown }).knowledge) ? (ownedEntity as { knowledge: unknown[] }).knowledge : []
+    if (!k.some((f) => (f as { field?: unknown; value?: unknown })?.field === 'page_section' && String((f as { value?: unknown }).value) === screenAnswer.slice(0, 160))) {
+      const next = [...k, { field: 'page_section', value: screenAnswer.slice(0, 160), source: 'creator', trust: 'usable' }]
+      ;(ownedEntity as { knowledge?: unknown }).knowledge = next
+      void admin.from('product_entities').update({ knowledge: next }).eq('id', (ownedEntity as { id?: unknown }).id as string).eq('owner_id', ownerId).then(() => {}, () => {})
+    }
+  }
+  if (screenKind && ownedEntity && !screenAnswer && sectionsFromKnowledge(ownedEntity).length === 0
+    && ['sell', 'educate', 'leads', 'authority', 'launch'].includes(readyObjective)) {
+    const nm = String((ownedEntity as { name?: unknown }).name ?? 'it').trim() || 'it'
+    readyMissing.push({ field: 'screen', question: `I couldn't find a screen or page of ${nm} to show (like a pricing page, the dashboard or a lesson list). Which one can you show on camera, and what's on it? Say "none" and the video stays on your face.` })
+  }
   if (readyMissing.length) {
     // ⚖️ ORDERED BY WHAT UNBLOCKS THE MOST, capped at three. A creator asked
     // eight questions abandons; a creator asked two answers them.
-    const ORDER = ['goal', 'offer', 'angle', 'relationship', 'cta', 'claims', 'audience']
+    const ORDER = ['goal', 'offer', 'angle', 'relationship', 'cta', 'claims', 'audience', 'screen']
     const ask = readyMissing
       .slice()
       .sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field))
@@ -10342,7 +10364,8 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
-- ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}
+- ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}${reference_url ? `
+  REFERENCE MODE (owner blueprint 2026-10-03, Part 3.1): the reference's own shape comes first. Measure how much of it leans into story, opinion or value before its subject or product appears, and keep THAT ratio in her version; the shape above is used only where the reference gives no signal.` : ''}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
