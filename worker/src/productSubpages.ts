@@ -7,9 +7,12 @@
 // LINKS to by those names. Never guessed URLs, never another site.
 //
 // Pure: finding the links. The job does the fetching.
-const WANTED = /\/(?:pricing|prices|plans?|features?|how-it-works|product|demo|tour)(?:[/?#]|$)/i
+// OWNER BLUEPRINT 2026-10-03 (Part 2): an app's dashboard and screenshots, a
+// course's curriculum, a community's join/members page are the screens a
+// creator points the camera at — read them too when the page links to them.
+const WANTED = /\/(?:pricing|prices|plans?|features?|how-it-works|product|demo|tour|app|dashboard|screenshots?|gallery|curriculum|courses?|lessons?|modules?|syllabus|members?|community|join|membership)(?:[/?#]|$)/i
 
-export function subpageLinks(html: string, pageUrl: string, max = 2): string[] {
+export function subpageLinks(html: string, pageUrl: string, max = 3): string[] {
   let base: URL
   try { base = new URL(pageUrl) } catch { return [] }
   const seen = new Set<string>([base.origin + base.pathname.replace(/\/$/, '')])
@@ -31,5 +34,5 @@ export function subpageLinks(html: string, pageUrl: string, max = 2): string[] {
 
 /** Only for things that live on a screen or are sold as a plan. */
 export function wantsSubpages(type: string | null | undefined): boolean {
-  return ['DIGITAL_PRODUCT', 'SAAS', 'SERVICE'].includes(String(type ?? '').toUpperCase())
+  return ['DIGITAL_PRODUCT', 'SAAS', 'APP', 'COURSE', 'COMMUNITY', 'SERVICE'].includes(String(type ?? '').toUpperCase())
 }

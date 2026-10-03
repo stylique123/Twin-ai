@@ -279,6 +279,12 @@ const SYSTEM = [
   'name here, so name only what you SAW. Never report a section because a product',
   'of this kind usually has one: an invented "dashboard" sends someone to film a',
   'screen that does not exist.',
+  'For an app, software, course, community or digital product, report EACH distinct',
+  'page or screen you saw as its own `page_section`, in the form "name: what it',
+  'shows" using the page\'s own words — "pricing page: three plans, from $9 a',
+  'month", "lesson list: 12 lessons on home roasting", "dashboard screenshot: a',
+  'roast log with temperature graph". Pages under "ALSO FROM THE SAME SITE" count.',
+  'If you saw no pricing page, no screenshot and no lesson list, report none.',
 ].join('\n')
 
 /**
