@@ -87,7 +87,7 @@ describe('the edge copy and the shared copy agree', () => {
 
 describe('the wiring, asserted against the shipped source', () => {
   it('comparative failures are merged into entFails, not run as a parallel mechanism', () => {
-    expect(edge).toMatch(/\.\.\.entitlementFailures\(declared, suppliedForCheck\),\s*\n\s*\.\.\.comparativeFailures\(/)
+    expect(edge).toMatch(/\.\.\.entitlementFailures\(declared, entitlementEvidence\),\s*\n\s*\.\.\.comparativeFailures\(/)
   })
 
   // ⚠️ A REPAIR NOBODY RE-CHECKED IS THE TRUST WE JUST WITHDREW. The re-check

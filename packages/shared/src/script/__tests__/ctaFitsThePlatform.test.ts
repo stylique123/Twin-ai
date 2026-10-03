@@ -119,7 +119,7 @@ describe('the edge copy is wired and agrees', () => {
   })
 
   it('is merged into entFails at BOTH sites, and counted', () => {
-    expect(EDGE.split('...platformCtaFailuresInline(declared, voice?.platform),').length - 1).toBe(2)
+    expect(EDGE.split('...platformCtaFailuresInline(declared, voice?.platform),').length - 1).toBe(3) // draft, repair re-check, safe-rewrite re-check
     expect(EDGE).toContain('platform_cta_gaps: platformCtaFailuresInline(declared, voice?.platform).length,')
   })
 })

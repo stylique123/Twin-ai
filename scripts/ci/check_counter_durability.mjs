@@ -789,6 +789,7 @@ const EVENTS = {
   entitlement_blocked: { kind: 'incident', why: 'A claim the creator is not entitled to make.' },
   entitlement_repair: { kind: 'incident', why: 'What the entitlement repair rewrote.' },
   entitlement_unrepaired: { kind: 'incident', why: 'A repair that did not take.' },
+  entitlement_safe_rewrite: { kind: 'incident', why: 'Batch part-3-product: claim checks would have left under half the drafted words, so the failing beats got one rewrite as safe non-personal lines; words, surviving, applied, still failing.' },
   hooks_unentitled: { kind: 'incident', why: 'Hooks resting on an unentitled claim.' },
   cta_fallback: {
     kind: 'counter',

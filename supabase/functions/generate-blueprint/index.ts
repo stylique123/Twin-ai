@@ -5126,7 +5126,11 @@ function entitlementFailures(
     const line = typeof (raw as { line?: unknown })?.line === 'string' ? (raw as { line: string }).line : ''
     if (!line) return
     const strength = claimStrength(line)
-    const entitled = available !== null && LEVEL_RANK[available] >= NEED[strength]
+    // ⚖️ NAMING A SUBJECT NEEDS NO EVIDENCE — `discussion` is entitled even
+    // with nothing supplied (batch part-3-product, 2026-10-03: an entertain
+    // script lost 6 of 6 beats to this). Positions and histories still need it.
+    const entitled = NEED[strength] === 0
+      || (available !== null && LEVEL_RANK[available] >= NEED[strength])
     if (entitled) return
     out.push({
       index, line, repair: repairFor(strength, available),
@@ -7043,10 +7047,23 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   const purposeGoal = purposeOfGoal(body.goal)
   const herOnIds = new Set(uuidList((body as { on_by_her_ids?: unknown }).on_by_her_ids))
   let offPurpose = 0
+  // ⚠️ OFF-PURPOSE IS NOT UNTRUE (batch part-3-product, 2026-10-03). The
+  // purpose rule decides what the WRITER is handed, and the claim checks used to
+  // read the same reduced list — so on an entertain video, where most of her
+  // facts are labeled for other objectives, the entitlement check saw NOTHING
+  // and blocked 6 of 6 beats (128 words drafted, 21 shipped). This keeps every
+  // usable fact — deduped, not excluded, not sensitive, not a correction she
+  // rejected (already spliced out above) — as EVIDENCE only. It never reaches
+  // the prompt; it only stops a true line about her reading as unsupported.
+  const excludedIds = new Set([...herOff, ...uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids)])
+  const entitlementPool: typeof rankedRows = []
   const knowledgeRows = [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) => {
     const k = `${r?.kind}|${String(r?.text ?? '').trim().toLowerCase()}`
     if (seenKnowledge.has(k)) return false
     seenKnowledge.add(k)
+    const row = r as { id?: unknown; sensitive?: unknown; creator_excluded_at?: unknown; basis?: unknown }
+    if (row.sensitive !== true && !row.creator_excluded_at && !excludedIds.has(String(row.id ?? ''))
+      && row.basis !== 'inferred') entitlementPool.push(r)
     if (!servesObjective(r as never, purposeGoal, herOnIds)) { offPurpose++; return false }
     return true
   })
@@ -11432,6 +11449,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // does; making it the caller means there is a single place in this function
     // where untrusted knowledge becomes a typed `SubstanceItem`.
     const suppliedForCheck = asSubstance(speakable)
+    // ⚖️ EXCEPT ENTITLEMENT, which asks a different question: is this line TRUE
+    // OF HER, at this strength? A fact held back from the writer as off-purpose
+    // for this goal is still true, so it still licenses a line that matches it.
+    // What the writer was shown comes first; the rest of her usable store
+    // follows (see `entitlementPool`). Traceability, depth, the particular and
+    // regulatory floors stay on `suppliedForCheck` — those DO ask what the
+    // writer had.
+    const entitlementEvidence = asSubstance([...speakable, ...entitlementPool])
     // THE PRODUCT FACTS THE PROMPT CARRIED — derived from the block that was
     // actually built above, never from the brief. `evidenceBlock` is the whole
     // of what the writer was told about the product; if a fact is not in it,
@@ -11474,7 +11499,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         ? (bpH.hook_options as unknown[]).filter((h): h is string => typeof h === 'string')
         : []
       if (hooks.length > 1) {
-        const bad = new Set(entitlementFailures(hooks.map((line) => ({ line })), suppliedForCheck)
+        const bad = new Set(entitlementFailures(hooks.map((line) => ({ line })), entitlementEvidence)
           .map((f) => f.index))
         const kept = hooks.filter((_, i) => !bad.has(i))
         // An empty hook list is a worse outcome than an overreaching one, and
@@ -12338,7 +12363,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // spoken as written" path below. A second parallel mechanism would be a
     // second thing to get subtly wrong, and this one already has the shape.
     let entFails = [
-      ...entitlementFailures(declared, suppliedForCheck),
+      ...entitlementFailures(declared, entitlementEvidence),
       ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
       // ⚠️ MERGED HERE FOR THE REASON THE COMMENT ABOVE GIVES: one repair call,
       // one re-check, and the ask-beat path for whatever survives. A regulatory
@@ -12357,7 +12382,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         event: 'entitlement_blocked',
         beats: entFails.length,
         of: Array.isArray(declared) ? declared.length : 0,
-        available_evidence: bestAvailableLevel(suppliedForCheck),
+        available_evidence: bestAvailableLevel(entitlementEvidence),
         strengths: entFails.map((f) => claimStrength(f.line)),
       }))
       try {
@@ -12398,7 +12423,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // RE-CHECK. A repair nobody verified is the same trust we just withdrew
         // from the first draft.
         entFails = [
-          ...entitlementFailures(declared, suppliedForCheck),
+          ...entitlementFailures(declared, entitlementEvidence),
           ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
           ...regulatoryFailuresInline(declared, suppliedForCheck),
           ...firstPersonFailuresInline(declared, suppliedForCheck.length),
@@ -12409,6 +12434,59 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
       } catch (e) {
         console.error('entitlement repair failed', String((e as Error)?.message ?? e))
+      }
+    }
+    // ⚠️ A CLAIM CHECK MUST NOT HOLLOW OUT THE SCRIPT (batch part-3-product,
+    // 2026-10-03: 128 drafted words, 21 shipped). If blanking what still fails
+    // would leave under half the writer's words, those beats get ONE more
+    // rewrite — as safe, non-personal lines: the subject, its general value,
+    // the product's own facts. No "I did", no number, no role. Re-checked like
+    // every repair; whatever still fails falls through to the ask path below.
+    // ⚖️ THIS DOES NOT WEAKEN THE BLOCK. An invented history is still never
+    // spoken as written — it is replaced by a line that claims nothing about
+    // her, which is the honest version of the beat rather than a hole in it.
+    {
+      const wordsOf = (t: unknown) => String(t ?? '').split(/\s+/).filter((w) => w !== '').length
+      const lines = Array.isArray(declared) ? (declared as Array<{ line?: unknown }>) : []
+      const total = lines.reduce((n, b) => n + wordsOf(b?.line), 0)
+      const failing = new Set(entFails.map((f) => f.index))
+      const surviving = lines.reduce((n, b, i) => n + (failing.has(i) ? 0 : wordsOf(b?.line)), 0)
+      if (entFails.length && total > 0 && surviving < total * 0.5) {
+        try {
+          const safePrompt = 'Most of this script cannot be spoken as written: it claims things about the creator nobody has on record.'
+            + ' Rewrite ONLY the indexed lines as SAFE, NON-PERSONAL lines: what is true of the subject, why it matters to the viewer, or the product\'s own facts listed below.'
+            + ' No first-person history ("I did", "I bought", "I used to"), no personal opinion stated as hers, no number, no role, no event. Keep each line\'s purpose and position, and keep it speakable.'
+            + ' Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n'
+            + (productFactsForCheck.length ? `\nPRODUCT FACTS (the only facts you may state):\n${productFactsForCheck.map((f) => `- ${f}`).join('\n')}\n` : '')
+            + '\nFULL SCRIPT (context only):\n'
+            + lines.map((b, i) => `[${i}] ${String((b as { section?: unknown })?.section ?? '')}: ${String(b?.line ?? '')}`).join('\n')
+            + '\n\nLINES TO REWRITE:\n' + entFails.map((f) => `index ${f.index}\nLINE: ${f.line}`).join('\n\n')
+          const safe = await callModel(
+            apiKey,
+            'You rewrite script lines so they make no claim about the speaker. You never invent a fact, number or experience. You return JSON only.',
+            safePrompt,
+            REPAIR_SCHEMA,
+          )
+          const parsed = JSON.parse(safe) as { rewrites?: Array<{ index?: unknown; line?: unknown }> }
+          let applied = 0
+          for (const r of parsed?.rewrites ?? []) {
+            const i = Number(r?.index)
+            const line = typeof r?.line === 'string' ? r.line.trim() : ''
+            if (!Number.isInteger(i) || !line || !failing.has(i) || !lines[i]) continue
+            ;(lines[i] as { line?: string }).line = line
+            applied++
+          }
+          entFails = [
+            ...entitlementFailures(declared, entitlementEvidence),
+            ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
+            ...regulatoryFailuresInline(declared, suppliedForCheck),
+            ...askAsLineFailuresInline(declared),
+            ...platformCtaFailuresInline(declared, voice?.platform),
+          ]
+          console.warn(JSON.stringify({ event: 'entitlement_safe_rewrite', words: total, surviving, applied, still_failing: entFails.length }))
+        } catch (e) {
+          console.error('entitlement safe rewrite failed', String((e as Error)?.message ?? e))
+        }
       }
     }
     // ⚖️ WHAT SURVIVES THE REPAIR IS NEVER SPOKEN AS WRITTEN. The beat is not
@@ -13302,14 +13380,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
                 if (Array.isArray(before) && Array.isArray(after) && before.length !== after.length) {
                   // A restored section that claims more than she is entitled to is not kept.
                   const beforeLines = new Set(before.map((b) => b?.line))
-                  const bad = new Set(entitlementFailures(after, suppliedForCheck).map((f) => f.index).filter((i) => !beforeLines.has(after[i]?.line)))
+                  const bad = new Set(entitlementFailures(after, entitlementEvidence).map((f) => f.index).filter((i) => !beforeLines.has(after[i]?.line)))
                   if (bad.size) {
                     ext.beats = (after as typeof ext.beats).filter((_, i) => !bad.has(i))
                     console.warn(JSON.stringify({ event: 'extension_claim_reverted', lines: bad.size }))
                   }
                 } else if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) {
-                  const wasBad = new Set(entitlementFailures(before, suppliedForCheck).map((f) => f.index))
-                  const nowBad = entitlementFailures(after, suppliedForCheck)
+                  const wasBad = new Set(entitlementFailures(before, entitlementEvidence).map((f) => f.index))
+                  const nowBad = entitlementFailures(after, entitlementEvidence)
                     .filter((f) => !wasBad.has(f.index) && after[f.index]?.line !== before[f.index]?.line)
                   for (const f of nowBad) after[f.index] = before[f.index]
                   if (nowBad.length) console.warn(JSON.stringify({ event: 'extension_claim_reverted', lines: nowBad.length }))

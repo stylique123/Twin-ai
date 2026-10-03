@@ -123,7 +123,13 @@ export function checkEntitlement(
   const strength = claimStrength(line)
   const requires = REQUIRED_FOR[strength]
   const available = bestAvailableLevel(supplied)
-  const entitled = available !== null && RANK[available] >= RANK[requires]
+  // ⚖️ NAMING A SUBJECT NEEDS NO EVIDENCE (batch part-3-product, 2026-10-03).
+  // `discussion` is the rung "anyone may do this", so it is entitled even when
+  // nothing is supplied. Requiring coverage for it blocked every beat of an
+  // entertain script whose facts were all held back as off-purpose: 128 words
+  // drafted, 21 shipped. A position or a history still needs its evidence.
+  const entitled = requires === 'coverage'
+    || (available !== null && RANK[available] >= RANK[requires])
 
   if (entitled) return { strength, requires, available, entitled, repair: null, ask: null }
 

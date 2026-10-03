@@ -78,7 +78,9 @@ describe('the list is one definition, not a private re-spelling', () => {
 
   it('the edge refusal is merged into entFails at BOTH sites, not just the first', () => {
     const wired = EDGE.split('...askAsLineFailuresInline(declared),').length - 1
-    expect(wired).toBe(2)
+    // ⚖️ THREE since batch part-3-product: the draft check, the repair re-check,
+    // and the safe-rewrite re-check (`entitlement_safe_rewrite`).
+    expect(wired).toBe(3)
   })
 
   it('and the counter is emitted so zero and absent stay distinguishable', () => {
