@@ -207,8 +207,12 @@ async function intakeProducts(token, admin, owner, voiceId, brandId) {
 // her information, outside information, invention, value, whether it moves a
 // viewer to buy or try, whether it sounds like her, and the scenes.
 const GEMINI = process.env.GEMINI_API_KEY ?? ''
-const JUDGE_MODEL = (() => { try { return JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses.profile.model } catch { return null } })()
-const JUDGE_FALLBACK = process.env.JUDGE_FALLBACK_MODEL || (() => { try { return JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses.search.model } catch { return null } })()
+// Owner 2026-10-03: Flash is the primary reviewer (rubric-following, cheap, and
+// not bound by the Pro preview's Tier 1 daily cap); Pro is the fallback. Pro
+// calls are kept for the voice/DNA profile, where nuance needs it.
+const ROUTING = (() => { try { return JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses } catch { return null } })()
+const JUDGE_MODEL = process.env.JUDGE_MODEL || ROUTING?.search?.model || null
+const JUDGE_FALLBACK = process.env.JUDGE_FALLBACK_MODEL || ROUTING?.profile?.model || null
 const JUDGE_SYSTEM = [
   'You are the best short-form content creator, script writer, scene director and editor alive, reviewing a script an AI wrote FOR a specific creator.',
   'Judge it the way that creator would before posting: is this a better version of me than I could write myself?',
