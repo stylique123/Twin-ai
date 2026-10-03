@@ -55,6 +55,7 @@ import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPO
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
+import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
@@ -13563,6 +13564,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         ;(blueprint as { unsourced_figures?: unknown }).unsourced_figures = unsourcedFigures(
           (script as Array<{ line?: unknown }>).map((b) => (typeof b?.line === 'string' ? b.line : '')), writerMaterial)
       }
+      // ⚠️ AUDIT 2026-10-03 (Part 12): the writer's camera label was `front` on
+      // 88% of demonstration beats and missing on 55% of spoken beats. Each
+      // beat's one camera is now decided from what it does (beatCamera), before
+      // the shot list carries it.
+      if (Array.isArray(script)) {
+        const cams = decideBeatCameras(script as Array<Record<string, unknown>>)
+        ;(blueprint as { script?: unknown }).script = cams.script
+        console.log(JSON.stringify({ event: 'beat_camera_decided', beats: cams.front + cams.back, back: cams.back, changed: cams.changed, missing: cams.missing }))
+      }
+      const scriptNow = (blueprint as { script?: unknown })?.script
       if (Array.isArray(shots) && shots.length > 0) {
         // ⚠️ ITEM 1: THE SHOT LIST IS DERIVED FROM THE TELEPROMPTER, NEVER A
         // SECOND AUTHOR. Diff first — every spoken row that asserts something the
@@ -13587,9 +13598,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // ⚠️ OWNER 2026-10-03: the shot card said "steady framing" while the
         // script beat said "flip to the back camera, close on the grounds". The
         // card a creator films from now carries the beat's own action and camera.
-        if (Array.isArray(script)) {
+        if (Array.isArray(scriptNow)) {
           ;(blueprint as { shot_list?: unknown }).shot_list = carryBeatActions(
-            synced.shots as Array<Record<string, unknown>>, script as Array<Record<string, unknown>>)
+            synced.shots as Array<Record<string, unknown>>, scriptNow as Array<Record<string, unknown>>)
         }
         if (synced.resynced > 0 || synced.orphaned > 0) {
           console.warn(JSON.stringify({
