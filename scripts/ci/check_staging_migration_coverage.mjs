@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0271_batch_scripts_get_the_persona_test':
+    'Replaces audience_untested so heartbeat generations recorded in script_batch_results are persona-tested; read by the worker only. The editor never reads it.',
   '0270_script_batch_results':
     'Adds script_batch_results, written by the manual script-batch workflow with the service key and read by the audit only. The editor never reads it.',
   '0269_gallery_matches_on_her_words':
