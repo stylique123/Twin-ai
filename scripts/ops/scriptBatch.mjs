@@ -207,7 +207,12 @@ async function intakeProducts(token, admin, owner, voiceId, brandId) {
 // her information, outside information, invention, value, whether it moves a
 // viewer to buy or try, whether it sounds like her, and the scenes.
 const GEMINI = process.env.GEMINI_API_KEY ?? ''
-const JUDGE_MODEL = (() => { try { return JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses.profile.model } catch { return null } })()
+// Owner 2026-10-03: Flash is the primary reviewer (rubric-following, cheap, and
+// not bound by the Pro preview's Tier 1 daily cap); Pro is the fallback. Pro
+// calls are kept for the voice/DNA profile, where nuance needs it.
+const ROUTING = (() => { try { return JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses } catch { return null } })()
+const JUDGE_MODEL = process.env.JUDGE_MODEL || ROUTING?.search?.model || null
+const JUDGE_FALLBACK = process.env.JUDGE_FALLBACK_MODEL || ROUTING?.profile?.model || null
 const JUDGE_SYSTEM = [
   'You are the best short-form content creator, script writer, scene director and editor alive, reviewing a script an AI wrote FOR a specific creator.',
   'Judge it the way that creator would before posting: is this a better version of me than I could write myself?',
@@ -266,19 +271,30 @@ async function judge(bp, sc, ctx) {
     `SHOTS:\n${(Array.isArray(bp.shot_list) ? bp.shot_list : []).map((s) => `- ${s.kind ?? s.shot_type ?? ''}: ${String(s.notes ?? s.b_roll_visual ?? '').slice(0, 140)} | says: ${String(s.spoken_text ?? '').slice(0, 80)}`).join('\n')}`,
     `CAPTION: ${JSON.stringify(bp.captions ?? bp.caption_packet ?? '').slice(0, 500)}`,
   ].join('\n\n')
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${JUDGE_MODEL}:generateContent?key=${GEMINI}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: JUDGE_SYSTEM }] },
-        contents: [{ role: 'user', parts: [{ text: input }] }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: JUDGE_SCHEMA, temperature: 0 },
-      }),
-    })
-    const j = await res.json()
-    const t = j?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
-    return t ? JSON.parse(t) : { error: `${res.status} ${JSON.stringify(j).slice(0, 200)}` }
-  } catch (e) { return { error: String(e).slice(0, 200) } }
+  // part-1f: the Pro preview model's daily quota on Tier 1 ran out after two
+  // reviews (429). Retry once, then fall back to the writer-class Flash model;
+  // the model that judged is recorded so scores are compared like for like.
+  let last = null
+  for (const [model, wait] of [[JUDGE_MODEL, 0], [JUDGE_MODEL, 20000], [JUDGE_FALLBACK, 0], [JUDGE_FALLBACK, 30000]]) {
+    if (!model) continue
+    if (wait) await new Promise((r) => setTimeout(r, wait))
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: JUDGE_SYSTEM }] },
+          contents: [{ role: 'user', parts: [{ text: input }] }],
+          generationConfig: { responseMimeType: 'application/json', responseSchema: JUDGE_SCHEMA, temperature: 0 },
+        }),
+      })
+      const j = await res.json()
+      const t = j?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
+      if (t) return { ...JSON.parse(t), judge_model: model }
+      last = { error: `${res.status} ${JSON.stringify(j).slice(0, 200)}`, judge_model: model }
+      if (res.status !== 429 && res.status < 500) return last
+    } catch (e) { last = { error: String(e).slice(0, 200), judge_model: model } }
+  }
+  return last
 }
 
 // ── THE CHECKS ─────────────────────────────────────────────────────────────
