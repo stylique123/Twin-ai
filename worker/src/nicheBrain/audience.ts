@@ -24,11 +24,13 @@ import {
   audiencePrompt, normalizeAudience, normalizePanel, scriptFromBlueprint, type Persona,
   HOOK_TARGET, HOOK_ROUNDS, HOOK_REWRITE_SYSTEM, HOOK_REWRITE_SCHEMA, hookRewritePrompt, cleanNewHooks,
   SCRIPT_TARGET, SCRIPT_ROUNDS, SCRIPT_REWRITE_SYSTEM, SCRIPT_REWRITE_SCHEMA, scriptRewritePrompt,
-  applyLineRewrites, betterVersion, watchedToEnd, cleanAddedLines,
+  applyLineRewrites, watchedToEnd, cleanAddedLines,
   orderHooksBestFirst, defaultHookAfterTest,
+  keepRewrite, rewriteFixTags, resolveGaps, openingWithHook, type Gap, type NeedsHer,
   MAX_TESTED_HOOKS, PANEL_VERSION, ANSWER_REWRITE_SYSTEM, answerRewritePrompt,
 } from './audienceParse.js'
 import { FAMILY_SHAPE } from '../generated/scriptFamily.js'
+import { decideBeatCameras } from '../generated/beatCamera.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
 export const AUDIENCE_INTERVAL_MS = 15 * 1000
@@ -191,15 +193,44 @@ export async function runAudienceTests(log: Log): Promise<void> {
     let added = new Map<number, { action: string; camera: 'front' | 'back' }>()
     let addsLeft = 2
     const knownForRewrite = facts.join('\n')
-    while (lineRounds < SCRIPT_ROUNDS && (watchedToEnd(r.viewers) < SCRIPT_TARGET || r.promise_kept === false || r.fixes.length > 0)) {
+    // ⚠️ AUDIT 2026-10-03 (Part 6): 78 of 516 named gaps were fixed. Every gap
+    // the viewers name is now carried by id until it is fixed in the delivered
+    // script or recorded with the reason it could not be.
+    const gaps: Gap[] = []
+    const gapKey = (issue: string, beat: number) => `${issue}|${beat}`
+    const noteGaps = (fixes: ReadonlyArray<{ issue: Gap['issue']; fix: string; beat: number }>) => {
+      for (const f of fixes) {
+        const beat = f.beat >= 0 ? (origin[f.beat] ?? -1) : -1
+        if (!gaps.some((g) => gapKey(g.issue, g.beat) === gapKey(f.issue, beat))) gaps.push({ id: gaps.length, issue: f.issue, fix: f.fix, beat })
+      }
+    }
+    noteGaps(r.fixes)
+    const fixedBy = new Set<number>()
+    const attempts = new Map<number, 'refused' | 'tested_worse'>()
+    const cannot = new Map<number, { reason: string; question: string | null }>()
+    while (lineRounds < SCRIPT_ROUNDS && (watchedToEnd(r.viewers) < SCRIPT_TARGET || r.promise_kept === false || gaps.some((g) => !fixedBy.has(g.id) && !cannot.has(g.id)))) {
       lineRounds += 1
-      const raw = await geminiJson(SCRIPT_REWRITE_SYSTEM, scriptRewritePrompt(tested, r, facts), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model)
+      const open = gaps.filter((g) => !fixedBy.has(g.id) && !cannot.has(g.id))
+        .map((g) => ({ ...g, beat: g.beat >= 0 ? origin.indexOf(g.beat) : -1 }))
+      const raw = await geminiJson(SCRIPT_REWRITE_SYSTEM, scriptRewritePrompt(tested, r, facts, open), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model)
+      const tags = rewriteFixTags(raw)
+      for (const c of tags.cannot) if (open.some((g) => g.id === c.fix)) cannot.set(c.fix, { reason: c.reason, question: c.question })
       const drafted = applyLineRewrites(tested.lines, raw, knownForRewrite)
       const unsafe = drafted ? drafted.changed.filter((i) => !safe(drafted.lines[i])) : []
       refused += unsafe.length
       const lines = drafted ? drafted.lines.map((l, i) => (unsafe.includes(i) ? tested.lines[i] : l)) : [...tested.lines]
-      const adds = cleanAddedLines(tested.lines, raw, knownForRewrite).filter((a) => safe(a.text)).slice(0, addsLeft)
-      if (lines.every((l, i) => l === tested.lines[i]) && adds.length === 0) break
+      const addsAll = cleanAddedLines(tested.lines, raw, knownForRewrite)
+      const adds = addsAll.filter((a) => safe(a.text)).slice(0, addsLeft)
+      // A line claimed for a fix that did not land (a new number, name or
+      // private detail) is a refused attempt — that gap becomes her question.
+      const landed = new Set<number>()
+      for (const [i, f] of tags.lines) if (lines[i] !== undefined && lines[i] !== tested.lines[i]) landed.add(f)
+      for (const a of adds) if (typeof a.fix === 'number') landed.add(a.fix)
+      for (const f of [...tags.lines.values(), ...tags.adds.values()]) if (!landed.has(f) && !fixedBy.has(f)) attempts.set(f, 'refused')
+      if (lines.every((l, i) => l === tested.lines[i]) && adds.length === 0) {
+        if (open.every((g) => cannot.has(g.id) || attempts.has(g.id))) break
+        continue
+      }
       let nextLines = [...lines]
       let nextOrigin = [...origin]
       let nextAdded = new Map(added)
@@ -213,8 +244,15 @@ export async function runAudienceTests(log: Log): Promise<void> {
       }
       const next = { ...tested, lines: nextLines }
       const again = normalizeAudience(await geminiJson(AUDIENCE_SYSTEM, audiencePrompt(next, { dna, product, objections, lessons, panel, family, shape, facts }), AUDIENCE_SCHEMA, 45_000, 0, model), next)
-      if (!again || !betterVersion(r, again)) break
+      const closes = [...landed].some((f) => gaps.some((g) => g.id === f))
+        || lines.some((l, i) => l !== tested.lines[i]) || adds.length > 0
+      if (!again || !keepRewrite(r, again, closes && open.length > 0)) {
+        for (const f of landed) if (!fixedBy.has(f)) attempts.set(f, 'tested_worse')
+        break
+      }
+      for (const f of landed) { fixedBy.add(f); attempts.delete(f) }
       tested = next; r = again; origin = nextOrigin; added = nextAdded; addsLeft -= adds.length
+      noteGaps(r.fixes)
     }
     if (refused) log('warn', 'audience_rewrite_refused', { event: 'audience_rewrite_refused', generation_id: g.id, refused })
     const lineChanges = origin.flatMap((o, i) => (o !== null && tested.lines[i] !== s.lines[o] ? [{ line: o, before: s.lines[o], after: tested.lines[i] }] : []))
@@ -224,6 +262,20 @@ export async function runAudienceTests(log: Log): Promise<void> {
       for (let k = i - 1; k >= 0; k--) if (origin[k] !== null) { prev = origin[k] as number; break }
       return [{ after: prev, line: tested.lines[i], ...(added.get(i) ?? { action: '', camera: 'front' as const }) }]
     })
+    const gapOutcomes = resolveGaps(gaps,
+      { fixedBy, changedLines: lineChanges.map((c) => c.line), addedAfter: lineAdds.map((a) => a.after) },
+      attempts, cannot)
+    // A gap that needs a fact she has not given becomes her question on the
+    // page; her answer is written into the line by runPanelAnswers.
+    const needsHer: NeedsHer[] = [...r.needs_her]
+    for (const o of gapOutcomes) {
+      if (o.status !== 'needs_her' || !o.question || needsHer.some((q) => q.question === o.question)) continue
+      if (guardScript([{ line: o.question }], { allowedText: '', excludedTexts: privateFacts }).removed.length) continue
+      needsHer.push({ question: o.question, why: `A test viewer gap (${o.issue}): ${o.fix}`.slice(0, 200), beat: o.beat >= 0 ? Math.max(-1, origin.indexOf(o.beat)) : -1 })
+    }
+    log('info', 'audience_gaps', { event: 'audience_gaps', generation_id: g.id, gaps: gapOutcomes.length,
+      fixed: gapOutcomes.filter((x) => x.status === 'fixed').length, needs_her: gapOutcomes.filter((x) => x.status === 'needs_her').length,
+      tested_worse: gapOutcomes.filter((x) => x.status === 'tested_worse').length, not_fixed: gapOutcomes.filter((x) => x.status === 'not_fixed').length })
     // ⚠️ THE SCRIPT'S HOOK WAS NOT THE AUDIENCE'S BEST HOOK (7 of 9 coffee
     // runs): the list said "recommended" over option 1 and the script was built
     // on it, while the viewers starred another. Options are now always ordered
@@ -236,7 +288,12 @@ export async function runAudienceTests(log: Log): Promise<void> {
     const reordered = ordered.length > 0 && ordered.join('\u0000') !== oldOrder
     const shown = (bp.shown_audit && typeof bp.shown_audit === 'object' ? bp.shown_audit : null) as Record<string, unknown> | null
     const promiseChanged = r.promise_kept !== null && (shown?.promiseKept ?? null) !== r.promise_kept
-    if (reordered || lineChanges.length > 0 || lineAdds.length > 0 || promiseChanged) {
+    // Whose hook opens the video: hers if she picked one, else the panel's top hook.
+    const { data: cur } = await db.from('generations').select('selected_hook, hook_choice').eq('id', g.id).maybeSingle()
+    const picked = (cur?.hook_choice as { source?: string } | null)?.source === 'creator'
+    const want = ordered[0] ? defaultHookAfterTest(ordered, picked ? String(cur?.selected_hook ?? '') : null) : null
+    let openingSwapped = false
+    if (reordered || lineChanges.length > 0 || lineAdds.length > 0 || promiseChanged || gapOutcomes.length > 0 || (want && !picked)) {
       // Only the version that tested best is what she sees: better lines
       // replace the old ones on the teleprompter AND on the shot card.
       const next: Record<string, unknown> = { ...bp }
@@ -270,7 +327,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
             out.push(beat)
             const o = s.at?.indexOf(i) ?? -1
             for (const a of lineAdds.filter((x) => x.after === o && o >= 0)) {
-              out.push({ section: 'Body', line: a.line, action_posing: a.action, camera: a.camera, direction: '', shown_job: a.camera === 'back' ? 'demonstrate' : 'talk', substance: 'creator_knowledge', added_by: 'test_viewers' })
+              out.push({ section: 'Body', line: a.line, action_posing: a.action, camera: a.camera, direction: '', shown_job: a.camera === 'back' ? 'demo' : 'talk', substance: 'creator_knowledge', added_by: 'test_viewers' })
             }
           })
           next.script = out
@@ -286,12 +343,45 @@ export async function runAudienceTests(log: Log): Promise<void> {
           }
         }
       }
-      await db.from('generations').update({ blueprint: next }).eq('id', g.id)
+      // ⚠️ AUDIT 2026-10-03 (Part 5): the opening line was the top-scored hook
+      // in 43.5% of scripts and never tested in 78. Unless she picked her own,
+      // the shipped opening line IS the panel's top hook — same beat, same
+      // action and camera — on the teleprompter and the shot card alike.
+      if (want && !picked && Array.isArray(next.script)) {
+        const script = [...(next.script as Array<Record<string, unknown>>)]
+        const first = script.findIndex((b) => typeof b?.line === 'string' && b.line.trim() !== '')
+        if (first >= 0) {
+          const line = String(script[first].line)
+          const swapped = openingWithHook(line, tested.hooks, want)
+          if (swapped !== line) {
+            script[first] = { ...script[first], line: swapped }
+            next.script = script
+            next.opening_hook = { hook: want, source: 'audience_top', replaced: line.slice(0, 300) }
+            openingSwapped = true
+          }
+        }
+      }
+      // ⚠️ AUDIT 2026-10-03 (Part 12): one camera per scene, decided from what
+      // the beat does — also for lines the panel rewrote or added.
+      if (Array.isArray(next.script)) {
+        const script = decideBeatCameras(next.script as Array<Record<string, unknown>>).script
+        next.script = script
+        if (Array.isArray(next.shot_list)) {
+          const byLine = new Map<string, string>()
+          for (const b of script) if (typeof b?.line === 'string' && b.line.trim()) byLine.set(b.line.trim(), String(b.camera))
+          next.shot_list = (syncShotListSpokenText(next.shot_list as Array<Record<string, unknown>>, script).shots as Array<Record<string, unknown>>)
+            .map((sh) => {
+              const cam = typeof sh?.spoken_text === 'string' ? byLine.get(sh.spoken_text.trim()) : undefined
+              return cam && sh.camera !== cam ? { ...sh, camera: cam } : sh
+            })
+        }
+      }
+      // Every named gap and what became of it, on the generation itself.
+      if (gapOutcomes.length > 0) next.panel_gaps = gapOutcomes
+      if (JSON.stringify(next) !== JSON.stringify(bp)) await db.from('generations').update({ blueprint: next }).eq('id', g.id)
     }
-    if (ordered[0]) {
-      const { data: cur } = await db.from('generations').select('selected_hook, hook_choice').eq('id', g.id).maybeSingle()
-      const picked = (cur?.hook_choice as { source?: string } | null)?.source === 'creator'
-      const want = defaultHookAfterTest(ordered, picked ? String(cur?.selected_hook ?? '') : null)
+    log('info', 'audience_opening_hook', { event: 'audience_opening_hook', generation_id: g.id, swapped: openingSwapped, creator_picked: picked, has_top: !!ordered[0] })
+    if (ordered[0] && want) {
       if (!picked && cur?.selected_hook !== want) {
         await db.from('generations').update({ selected_hook: want, hook_choice: { source: 'default', index: 0 } }).eq('id', g.id)
       }
@@ -300,11 +390,12 @@ export async function runAudienceTests(log: Log): Promise<void> {
       status: 'done', panel_size: r.viewers.length, hooks: r.hooks, best_hook: r.best_hook,
       viewers: r.viewers, fixes: r.fixes, summary: r.summary,
       panel_voice_id: panel.length ? g.voice_id : null,
-      working: r.working, needs_her: r.needs_her, unverified: r.unverified, out_of_scope: r.out_of_scope,
+      working: r.working, needs_her: needsHer, unverified: r.unverified, out_of_scope: r.out_of_scope,
       improved: {
         before: hookBefore,
         after: { best: Math.max(0, ...r.hooks.map((h) => h.stopped)), watched: watchedToEnd(r.viewers) },
         hooks_added: tested.hooks.length - s.hooks.length, lines: lineChanges, lines_added: lineAdds,
+        gaps: gapOutcomes, opening_hook: openingSwapped ? want : null,
       },
     })
 
@@ -326,7 +417,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       if (id) filed += 1
     }
     await db.from('audience_tests').update({ learned_at: new Date().toISOString() }).eq('generation_id', g.id)
-    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: lineChanges.length, lines_added: lineAdds.length, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length, promise_kept: r.promise_kept, needs_her: r.needs_her.length, unverified: r.unverified.length, out_of_scope: r.out_of_scope, working: r.working.length })
+    log('info', 'audience_test', { event: 'audience_test', generation: g.id, panel: r.viewers.length, of: PANEL_SIZE, best_hook: r.best_hook, rounds, line_rounds: lineRounds, lines_changed: lineChanges.length, lines_added: lineAdds.length, fixes: r.fixes.length, filed, her_panel: panel.length > 0, closed_hooks: r.hooks.filter((h) => h.closed).length, promise_kept: r.promise_kept, needs_her: needsHer.length, unverified: r.unverified.length, out_of_scope: r.out_of_scope, working: r.working.length })
   } catch (err) {
     const failure = err instanceof Error ? err.message.slice(0, 300) : 'unknown'
     // A quota wall says nothing about the script: leave it untested so the next tick retries.

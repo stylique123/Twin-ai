@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { guardScript, privateSqlPattern } from '../privacyGuard.js'
 
 const EDGE = readFileSync(new URL('../../../../../supabase/functions/generate-blueprint/index.ts', import.meta.url), 'utf8')
-const MIG = readFileSync(new URL('../../../../../supabase/migrations/0255_private_by_model_or_word.sql', import.meta.url), 'utf8')
+const MIG = readFileSync(new URL('../../../../../supabase/migrations/0273_private_is_decided_when_stored.sql', import.meta.url), 'utf8')
 
 const STORED = [
   'Her cups score above 80 at the roaster.',
@@ -43,7 +43,7 @@ describe('every door reads through the rule', () => {
     expect(EDGE.indexOf('guardScript(bp.script')).toBeLessThan(EDGE.indexOf(".from('generations')\n      .insert({"))
   })
   it('profile, lessons, phrases and history are scrubbed', () => {
-    expect(EDGE).toMatch(/const vp = scrubPrivate\(/)
+    expect(EDGE).toMatch(/scrubRejected\(scrubPrivate\(voice/)
     expect(EDGE).toMatch(/lessonRows\.filter\(\(l\) => !isPrivate\(l\.text\)\)/)
     expect(EDGE).toMatch(/cleanCatalogueText/)
   })

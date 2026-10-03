@@ -91,6 +91,8 @@ const SOURCES = [
   // resync reuses `isSilentBeat` rather than a second marker check.
   ['packages/shared/src/script/silentBeat.ts', 'supabase/functions/_shared/silentBeat.ts'],
   ['packages/shared/src/script/shotListSync.ts', 'supabase/functions/_shared/shotListSync.ts'],
+  // One camera per beat, decided from what the beat does (audit 2026-10-03 Part 12).
+  ['packages/shared/src/script/beatCamera.ts', 'supabase/functions/_shared/beatCamera.ts'],
   // Master fix doc Fix A: the hard personal-use gate, one tested copy.
   ['packages/shared/src/script/personalUseGate.ts', 'supabase/functions/_shared/personalUseGate.ts'],
   // Owner's grain addendum: never smooth her own words.
@@ -162,6 +164,7 @@ const SOURCES = [
   // The shot list is re-derived from the script after the viewers' line rewrite too (round 3, 2.2).
   ['packages/shared/src/script/silentBeat.ts', 'worker/src/generated/silentBeat.ts'],
   ['packages/shared/src/script/shotListSync.ts', 'worker/src/generated/shotListSync.ts'],
+  ['packages/shared/src/script/beatCamera.ts', 'worker/src/generated/beatCamera.ts'],
   ['packages/shared/src/script/storyRotation.ts', 'worker/src/generated/storyRotation.ts'],
   ['packages/shared/src/script/privacyGuard.ts', 'worker/src/generated/privacyGuard.ts'],
   // The test-viewer rewrite is held to the same unpicked-product / follow-ask rules (audit 2026-10-01 S1).
@@ -171,6 +174,11 @@ const SOURCES = [
   ['packages/shared/src/script/factPurpose.ts', 'worker/src/generated/factPurpose.ts'],
   ['packages/shared/src/script/creatorLessons.ts', 'supabase/functions/_shared/creatorLessons.ts'],
   ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
+  // Her corrections reach storage (worker) and are enforced on the script (edge) — batch audit 2026-10-03.
+  ['packages/shared/src/script/corrections.ts', 'worker/src/generated/corrections.ts'],
+  ['packages/shared/src/script/corrections.ts', 'supabase/functions/_shared/corrections.ts'],
+  // Another product's price or size never reaches this product's script (batch audit 2026-10-03).
+  ['packages/shared/src/script/offerScope.ts', 'supabase/functions/_shared/offerScope.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

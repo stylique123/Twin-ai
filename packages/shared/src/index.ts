@@ -282,6 +282,7 @@ export * from './script/semanticRepetition'
 // repair has already run, so the shot card and the teleprompter never
 // disagree about what a beat says.
 export * from './script/shotListSync'
+export * from './script/beatCamera'
 export * from './script/personalUseGate'
 export * from './script/grainRule'
 export * from './script/goalFidelity'

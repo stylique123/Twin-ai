@@ -26,12 +26,14 @@ import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
-import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe } from '../_shared/privacyGuard.ts'
+import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
 import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript, referenceShownKept } from '../_shared/shownJob.ts'
 import { scriptFamily, renderFamilyHookRule, normalizeHookMoves, auditHookSet } from '../_shared/scriptFamily.ts'
 import { lessonsPromptBlock, orderLessons, brokenLessons } from '../_shared/creatorLessons.ts'
+import { rejectedTerms, saysRejected, scrubRejected, enforceCorrections } from '../_shared/corrections.ts'
+import { foreignOfferFigures, scrubForeignOffer, stripForeignOffer } from '../_shared/offerScope.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract } from '../_shared/ideaQuestions.ts'
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
 import { arcFor, arcPrompt, arcCheck } from '../_shared/arcShape.ts'
@@ -55,6 +57,7 @@ import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPO
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
+import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
@@ -6340,7 +6343,8 @@ Deno.serve(async (req: Request) => {
     if (ok === false) return json({ questions: [], purpose: null })
     const { data: v } = await createClient(supabaseUrl, serviceKey).from('brand_voices').select('profile')
       .eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle()
-    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', (v?.profile ?? null) as never)
+    // Her hook patterns feed this prompt too: scrubbed like every other reader.
+    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', scrubPrivate(v?.profile ?? null) as never)
   }
 
   // Team seats: if this user is a member of a workspace, they create IN that
@@ -6936,6 +6940,25 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // the move, say) is a door like any other; the same rule closes it.
   const lessonsInPrompt = orderLessons(lessonRows.filter((l) => !isPrivate(l.text)))
   const lessonsBlock = lessonsPromptBlock(lessonsInPrompt)
+  // ⚠️ HER CORRECTIONS, BINDING (script batch audit 2026-10-03, parts 3 and 11).
+  // Every active avoid phrase is something she rejected in her own words. A
+  // fact that still says it — the worker excludes them, but a correction filed
+  // minutes ago has not been swept yet — is not handed to the writer unless she
+  // switched it on for this video, her voice profile is scrubbed of it below,
+  // and the finished script is held to it (`enforceCorrections`).
+  const herRejected = rejectedTerms(lessonRows)
+  if (herRejected.length) {
+    const keepIds = new Set(Array.isArray(body.use_knowledge_ids) ? body.use_knowledge_ids.map(String) : [])
+    let held = 0
+    for (const rows of [rankedRows, askedRows]) {
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const k = rows[i] as { id?: unknown; text?: unknown; evidence?: unknown }
+        if (keepIds.has(String(k.id ?? ''))) continue
+        if (herRejected.some((t) => saysRejected(`${String(k.text ?? '')} ${String(k.evidence ?? '')}`, t))) { rows.splice(i, 1); held++ }
+      }
+    }
+    if (held) console.log(JSON.stringify({ event: 'knowledge_held_back_rejected', held_back: held }))
+  }
   // ── A READY VOICE WITH NO KNOWLEDGE REPAIRS ITSELF ──────────────────────
   //
   // ⚠️ MEASURED: a brand voice sat at `ready` with ZERO knowledge rows and no
@@ -7297,7 +7320,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // four would mean inventing the other two.
   const { data: libraryRows, error: libraryErr } = await admin
     .from('product_entities')
-    .select('id, name, type, relationship, knowledge, voice_id')
+    .select('id, name, type, relationship, knowledge, voice_id, offer')
     .eq('owner_id', ownerId)
     // Grounding must not resolve a claim against a product the creator retired.
     .is('archived_at', null)
@@ -7308,6 +7331,25 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // A nameless entity cannot match anything, and `namesSameThing` refuses an
     // empty string anyway — dropping them here keeps the logged count honest.
     .filter((e) => e.name.trim() !== '')
+  // ⚠️ ONE PRODUCT'S OFFER STAYS IN ITS OWN SCRIPTS (script batch audit
+  // 2026-10-03, parts 9 and 10). Signature Blend's "12oz / $18 / 5lb / $65"
+  // reached House Espresso, Bella Donovan and Cold Brew scripts — products with
+  // no stored offer — and an idea video with nothing chosen, through the
+  // account-level offer fallbacks. A price or size that belongs to another
+  // product, and not to the chosen one or to her words for this video, is cut
+  // from those fallbacks below and from the finished script.
+  const foreignOffer = (() => {
+    const mine = new Set([String((ownedEntity as { id?: unknown } | null)?.id ?? ''), String(body.mentioned_product_id ?? '')].filter(Boolean))
+    const others = (libraryRows ?? []).filter((r) => !mine.has(String((r as { id?: unknown }).id ?? '')))
+      .map((r) => `${String((r as { offer?: unknown }).offer ?? '')}\n${JSON.stringify((r as { knowledge?: unknown }).knowledge ?? '')}`)
+    const own = [
+      JSON.stringify(ownedEntity ?? ''),
+      ...(libraryRows ?? []).filter((r) => mine.has(String((r as { id?: unknown }).id ?? ''))).map((r) => JSON.stringify(r)),
+      reference_note,
+      ...Object.values((body.readiness_answers ?? {}) as Record<string, unknown>).filter((v): v is string => typeof v === 'string'),
+    ]
+    return foreignOfferFigures(others, own)
+  })()
 
   // ⚠️ THE WRITER MAY ONLY NAME WHAT IT WAS GIVEN, AND THIS IS WHERE IT WAS NOT.
   //
@@ -7385,21 +7427,47 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     entitySay.set(id, { text: facts.join('. '), attribution: name })
   }
 
-  const dna = profile?.dna ?? {}
+  // ⚠️ AUDIT 2026-10-03 (part 2): the DNA is the voice profile's fallback for
+  // voice samples, niche and audience, and was the one profile read NOT
+  // scrubbed. Same rule as `vp` below.
+  // ⚖️ The scanned account-level product line is a fallback, never another
+  // product's price (batch audit 2026-10-03, part 10).
+  const dna = (() => {
+    const d = scrubPrivate(profile?.dna ?? {}) as Record<string, unknown>
+    return typeof (d as { product?: unknown }).product === 'string'
+      ? { ...d, product: scrubForeignOffer((d as { product: string }).product, foreignOffer) }
+      : d
+  })()
   // ⚠️ ROUND 4, 1.1: HER VOICE PROFILE CARRIED THE PRIVATE MATERIAL TOO. Its
   // hook samples and formats were read from her videos, including "I just got
   // off the phone with the Police Department code enforcement" — and it reached
   // every script whatever she excluded. Anything sensitive (the same SENSITIVE
   // rule the plan screen uses) is removed before the writer sees the profile:
   // a list entry is dropped, a sentence in a text field is cut.
-  const vp = scrubPrivate(voice?.profile ?? null) as (typeof voice)['profile'] | null
+  // ⚠️ AND OF WHAT SHE REJECTED (batch audit 2026-10-03): a hook sample that
+  // opens "Hello, I'm Savannah" after she said never to is dropped the same way,
+  // and the account-level offer line loses another product's price or size.
+  const vp = (() => {
+    const p = scrubRejected(scrubPrivate(voice?.profile ?? null), herRejected) as Record<string, unknown> | null
+    if (p && typeof p.offer === 'string') return { ...p, offer: scrubForeignOffer(p.offer, foreignOffer) }
+    return p
+  })() as (typeof voice)['profile'] | null
+  // ⚠️ AUDIT 2026-10-03 (part 2): the police story sat in her sample hooks AND
+  // came back reworded ("the city inspector walks through our doors"). What
+  // the scrub cut is also excluded text for the final guard, so its wording is
+  // caught even where no listed word survives the paraphrase.
+  guardExcludedTexts.push(...privateParts(voice?.profile ?? null), ...privateParts(profile?.dna ?? null))
   // §8a.1's BRIEF — what the creator TYPED, as opposed to what the scan read.
   //
   // Read here rather than through @twinai/shared because Deno cannot import the
   // shared package at deploy time (the same constraint source-asset lives
   // under). The shape is 0109's CHECK, which refuses an empty string, so a
   // present key is a real answer and no trimming or truthiness test is needed.
-  const brief = (voice?.pre_script_brief ?? {}) as Record<string, string | undefined>
+  const brief = { ...((voice?.pre_script_brief ?? {}) as Record<string, string | undefined>) }
+  // A stored offer typed for another video keeps its own product's price there
+  // (batch audit 2026-10-03). Local only: what is persisted comes from `answers`.
+  if (typeof brief.offer === 'string') brief.offer = scrubForeignOffer(brief.offer, foreignOffer)
+  if (typeof brief.productFacts === 'string') brief.productFacts = scrubForeignOffer(brief.productFacts, foreignOffer)
   // ⚠️ ASKED SINCE §5 AND READ BY NOBODY UNTIL NOW. The consumer registry carried
   // the reason verbatim: the captured product never reached the prompt, so
   // "[SHOW: the product]" had nothing to point at and the model was free to
@@ -8619,7 +8687,9 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         const [notes, trends, record, moments, research] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP])
         brainNotesUsed = notes.length
         brainNoteIds = notes.map((n) => n.id).filter((id): id is string => typeof id === 'string')
-        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(trends) + renderMomentsInline(moments) + renderNicheResearchInline(research) + renderTrackRecordInline(record)
+        // Her past captions (track record) and the web's items pass the same
+        // private rule as every other reader before the writer sees them.
+        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(scrubPrivate(trends)) + renderMomentsInline(scrubPrivate(moments)) + renderNicheResearchInline(scrubPrivate(research)) + renderTrackRecordInline(scrubPrivate(record))
         console.log(JSON.stringify({
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
           record: record !== null, moments: moments.length, research: research.length, rendered: brainBlock !== '',
@@ -13552,6 +13622,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         ;(blueprint as { unsourced_figures?: unknown }).unsourced_figures = unsourcedFigures(
           (script as Array<{ line?: unknown }>).map((b) => (typeof b?.line === 'string' ? b.line : '')), writerMaterial)
       }
+      // ⚠️ AUDIT 2026-10-03 (Part 12): the writer's camera label was `front` on
+      // 88% of demonstration beats and missing on 55% of spoken beats. Each
+      // beat's one camera is now decided from what it does (beatCamera), before
+      // the shot list carries it.
+      if (Array.isArray(script)) {
+        const cams = decideBeatCameras(script as Array<Record<string, unknown>>)
+        ;(blueprint as { script?: unknown }).script = cams.script
+        console.log(JSON.stringify({ event: 'beat_camera_decided', beats: cams.front + cams.back, back: cams.back, changed: cams.changed, missing: cams.missing }))
+      }
+      const scriptNow = (blueprint as { script?: unknown })?.script
       if (Array.isArray(shots) && shots.length > 0) {
         // ⚠️ ITEM 1: THE SHOT LIST IS DERIVED FROM THE TELEPROMPTER, NEVER A
         // SECOND AUTHOR. Diff first — every spoken row that asserts something the
@@ -13576,9 +13656,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // ⚠️ OWNER 2026-10-03: the shot card said "steady framing" while the
         // script beat said "flip to the back camera, close on the grounds". The
         // card a creator films from now carries the beat's own action and camera.
-        if (Array.isArray(script)) {
+        if (Array.isArray(scriptNow)) {
           ;(blueprint as { shot_list?: unknown }).shot_list = carryBeatActions(
-            synced.shots as Array<Record<string, unknown>>, script as Array<Record<string, unknown>>)
+            synced.shots as Array<Record<string, unknown>>, scriptNow as Array<Record<string, unknown>>)
         }
         if (synced.resynced > 0 || synced.orphaned > 0) {
           console.warn(JSON.stringify({
@@ -14559,6 +14639,39 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
 
     // ⚖️ CHECKED AGAINST WHAT SHE TAUGHT: a "never write" phrase still in the
     // script is recorded on the blueprint and logged, never silently shipped.
+    // ⚠️ ENFORCED, NOT SUGGESTED (batch audit 2026-10-03, parts 10 and 11). A
+    // sentence still saying something she rejected, or quoting another
+    // product's price or size, is removed; hook options that do are dropped.
+    try {
+      const bp = blueprint as { script?: unknown; shot_list?: unknown; dropped_beats?: unknown; guardrail_report?: unknown; hook_options?: unknown }
+      const herWords = [reference_note, ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string')].join('\n')
+      if (Array.isArray(bp.script)) {
+        const corrected = enforceCorrections(bp.script as Array<{ line?: unknown }>, herRejected, herWords)
+        const scoped = stripForeignOffer(corrected.beats, foreignOffer)
+        const removed = [...corrected.removed, ...scoped.removed]
+        if (removed.length) {
+          const emptied = scoped.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
+          bp.script = scoped.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
+          if (emptied.length) bp.dropped_beats = [...(Array.isArray(bp.dropped_beats) ? bp.dropped_beats : []), ...emptied]
+          bp.guardrail_report = [...(Array.isArray(bp.guardrail_report) ? bp.guardrail_report : []), ...removed]
+          if (Array.isArray(bp.shot_list)) {
+            bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>).shots
+          }
+          console.warn(JSON.stringify({
+            event: 'script_corrections_enforced',
+            rejected_by_her: corrected.removed.length,
+            other_product_offer: scoped.removed.length,
+            emptied: emptied.length,
+          }))
+        }
+      }
+      if (Array.isArray(bp.hook_options)) {
+        const keep = (bp.hook_options as unknown[]).filter((h) => typeof h !== 'string'
+          || (enforceCorrections([{ line: h }], herRejected, herWords).removed.length === 0
+            && stripForeignOffer([{ line: h }], foreignOffer).removed.length === 0))
+        if (keep.length && keep.length !== bp.hook_options.length) bp.hook_options = keep
+      }
+    } catch { /* enforcement never fails a generation */ }
     const lessonsBroken = brokenLessons(JSON.stringify((blueprint as { script?: unknown })?.script ?? ''), lessonsInPrompt)
     if (lessonsBroken.length) {
       console.warn(JSON.stringify({ event: 'lessons_broken', count: lessonsBroken.length }))

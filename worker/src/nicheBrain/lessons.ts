@@ -13,6 +13,9 @@ import {
   lessonsFromTags, sameLesson, type CreatorLesson,
 } from '../generated/creatorLessons.js'
 import { lessonFromAnglePick } from '../generated/ideaQuestions.js'
+import {
+  CORRECTION_SCHEMA, CORRECTION_SYSTEM, cleanCorrections, correctionLessonText, factsRejected, rejectedTerms,
+} from '../generated/corrections.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
 
@@ -114,4 +117,63 @@ export async function runLessonLearner(log: Log): Promise<void> {
   }
 
   if (filed) log('info', 'lessons_learned', { event: 'lessons_learned', filed })
+}
+
+// ⚠️ HER CORRECTIONS REACH STORAGE (script batch audit 2026-10-03, parts 3 and
+// 11). "The two-pound batches and cup-score claims I've excluded multiple times
+// now" became an avoid lesson while the facts saying it stayed live — and the
+// writer was handed them as usable, which outweighed the advice (67 scripts).
+// Each note is now read for what she REJECTS, in her words; each term is filed
+// as an avoid lesson whose phrase is the term (enforced on the finished script
+// by the edge function), and every stored fact that says it is excluded with
+// the same flag her "leave this out" tap sets — so she can switch it back on.
+// corrections_at (0273) starts null on every past rating: this pass IS the
+// backfill. Every failure is logged and swallowed; a rating whose note cannot
+// be read is retried next sweep.
+export async function runCorrectionApplier(log: Log): Promise<void> {
+  const { data: ratings, error } = await db.from('script_ratings')
+    .select('generation_id, owner_id, change_note')
+    .is('corrections_at', null)
+    .order('updated_at', { ascending: true }).limit(10)
+  if (error) { log('warn', 'corrections_read_failed', { event: 'corrections_read_failed', error: error.message }); return }
+  const owners = new Set<string>()
+  for (const r of ratings ?? []) {
+    const note = String(r.change_note ?? '').trim()
+    let ok = true
+    if (note.length >= 6) {
+      try {
+        const raw = await geminiJson(CORRECTION_SYSTEM, `Her note: ${note}`, CORRECTION_SCHEMA, 45_000, 0, modelForTask('read'))
+        for (const term of cleanCorrections(raw, note)) {
+          const { error: e } = await db.rpc('learn_lesson', {
+            p_owner: r.owner_id, p_kind: 'avoid', p_text: correctionLessonText(term), p_phrase: term, p_source: 'rating',
+            p_source_id: r.generation_id, p_weight: 2,
+          })
+          if (e) ok = false
+        }
+      } catch (err) {
+        ok = false
+        log('warn', 'corrections_read_note_failed', { event: 'corrections_read_note_failed', error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+    owners.add(r.owner_id)
+    if (ok) await db.from('script_ratings').update({ corrections_at: new Date().toISOString() }).eq('generation_id', r.generation_id)
+  }
+  // Every active avoid phrase she has (old lessons included) is applied to her store.
+  let excluded = 0
+  for (const owner of owners) {
+    const { data: lessons } = await db.from('creator_lessons').select('kind, phrase, active')
+      .eq('owner_id', owner).eq('kind', 'avoid').eq('active', true).not('phrase', 'is', null).limit(200)
+    const terms = rejectedTerms(lessons ?? [])
+    if (!terms.length) continue
+    const { data: facts } = await db.from('creator_knowledge').select('id, text, evidence, creator_excluded_at')
+      .eq('owner_id', owner).is('creator_excluded_at', null).limit(1000)
+    const hits = factsRejected(facts ?? [], terms)
+    if (!hits.length) continue
+    const { error: e } = await db.from('creator_knowledge').update({ creator_excluded_at: new Date().toISOString() })
+      .eq('owner_id', owner).in('id', hits.map((h) => h.id)).is('creator_excluded_at', null)
+    if (e) { log('warn', 'corrections_exclude_failed', { event: 'corrections_exclude_failed', error: e.message }); continue }
+    excluded += hits.length
+    console.log(JSON.stringify({ event: 'correction_excluded_facts', owner, facts: hits.length, terms: [...new Set(hits.map((h) => h.term))].slice(0, 10) }))
+  }
+  if (excluded) log('info', 'corrections_applied', { event: 'corrections_applied', excluded })
 }

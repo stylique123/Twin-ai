@@ -245,3 +245,21 @@ describe('Track B cannot run on a guess', () => {
     expect(GATE).toMatch(/const OWNED = \['OWN_PRODUCT', 'OWN_SERVICE'\] as const/)
   })
 })
+
+describe('audit 2026-10-03 (part 2): private is decided when the row is stored', () => {
+  const row = (text: string, extra: Record<string, unknown> = {}) => knowledgeRowsFrom({
+    items: [{ kind: 'experience', text, basis: 'stated', times_seen: '1', confidence: '0.9', source_video: '1', __source: 'transcript' as const, ...extra }],
+    ownerId: 'o', voiceId: 'v', urls: ['u'], cap: 5, version: EXTRACTOR_VERSION,
+  })[0]
+  it('the officer story is flagged even when the extractor did not mark it', () => {
+    expect(row('The visiting officer joked she would come back just for the coffee.').sensitive).toBe(true)
+    expect(row('Had to move the roastery or face fines and a court date.').sensitive).toBe(true)
+    expect(row('Moved the roastery out of the house.', { evidence: 'I had $11 in my bank account' }).sensitive).toBe(true)
+  })
+  it('ordinary coffee facts stay usable', () => {
+    expect(row('Roasts every bag to order in small batches.').sensitive).toBe(false)
+  })
+  it('the extractor is told what legal and money trouble looks like', () => {
+    expect(VOICE).toMatch(/a court date[\s\S]*officer or inspector[\s\S]*\$11 in my bank account/)
+  })
+})
