@@ -97,8 +97,8 @@ describe('the stored flag (0273) is the same list', () => {
 describe('every door into the writer prompt passes the same check', () => {
   const SRC = readFileSync(new URL('../../../../../supabase/functions/generate-blueprint/index.ts', import.meta.url), 'utf8')
   it('voice profile, DNA, idea mode, past captions and web items are scrubbed', () => {
-    expect(SRC).toContain('const vp = scrubPrivate(voice?.profile ?? null)')
-    expect(SRC).toContain('const dna = scrubPrivate(profile?.dna ?? {})')
+    expect(SRC).toContain('scrubRejected(scrubPrivate(voice?.profile ?? null), herRejected)')
+    expect(SRC).toContain('const d = scrubPrivate(profile?.dna ?? {})')
     expect(SRC).toContain('scrubPrivate(v?.profile ?? null) as never)')
     expect(SRC).toContain('renderTrackRecordInline(scrubPrivate(record))')
     expect(SRC).toContain('renderNicheResearchInline(scrubPrivate(research))')

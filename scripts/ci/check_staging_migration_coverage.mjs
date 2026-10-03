@@ -74,6 +74,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
 export const EXCLUDED = {
   '0273_private_is_decided_when_stored':
     'Widens the creator_knowledge sensitive word list, moves private brand_voices.profile list entries to private_items on write, and re-classifies existing rows of both; read by generate-blueprint and the plan screen only. The editor never reads it.',
+  '0274_her_corrections_reach_storage':
+    'Adds script_ratings.corrections_at and clears it in the relearn trigger; written and read by the worker correction pass only. The editor never reads it.',
   '0272_batch_results_judge':
     'Adds script_batch_results.judge, written by the manual script-batch workflow and read by the audit only. The editor never reads it.',
   '0271_batch_scripts_get_the_persona_test':

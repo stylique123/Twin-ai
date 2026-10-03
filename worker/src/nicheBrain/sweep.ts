@@ -16,7 +16,7 @@ import { runMomentWatcher } from './moments.js'
 import { runNicheResearch } from './nicheResearch.js'
 import { isPrivate } from '../generated/privacyGuard.js'
 import { runIdeaWriter } from './ideas.js'
-import { runLessonLearner } from './lessons.js'
+import { runCorrectionApplier, runLessonLearner } from './lessons.js'
 import { runAvailabilitySweep } from './availabilitySweep.js'
 import { runShapeSweep } from './shapeSweep.js'
 import { MAX_SOURCES, embedText, notesFromRead, place, relationFor, type NoteDraft } from './librarian.js'
@@ -145,6 +145,7 @@ export function kickBrainSweep(log: Log): void {
     await runOwnPostSweep(log)
     await runLearner(log)
     await runLessonLearner(log)
+    await runCorrectionApplier(log)
     await runMomentWatcher(log)
     await runNicheResearch(log)
     await runIdeaWriter(log)

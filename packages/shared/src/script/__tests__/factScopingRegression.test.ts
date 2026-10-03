@@ -43,7 +43,7 @@ describe('every door reads through the rule', () => {
     expect(EDGE.indexOf('guardScript(bp.script')).toBeLessThan(EDGE.indexOf(".from('generations')\n      .insert({"))
   })
   it('profile, lessons, phrases and history are scrubbed', () => {
-    expect(EDGE).toMatch(/const vp = scrubPrivate\(/)
+    expect(EDGE).toMatch(/scrubRejected\(scrubPrivate\(voice/)
     expect(EDGE).toMatch(/lessonRows\.filter\(\(l\) => !isPrivate\(l\.text\)\)/)
     expect(EDGE).toMatch(/cleanCatalogueText/)
   })

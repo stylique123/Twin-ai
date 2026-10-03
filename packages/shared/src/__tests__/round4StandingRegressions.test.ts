@@ -23,7 +23,7 @@ describe('1.1 / 1.2: nothing reaches a script the writer was not given', () => {
     expect(EDGE).toMatch(/buildExtensionPrompt\(integrity\.beats, extendDecision, knownText\)/)
   })
   it('her voice profile is scrubbed of private and legal material before the writer sees it', () => {
-    expect(EDGE).toMatch(/const vp = scrubPrivate\(voice\?\.profile \?\? null\)/)
+    expect(EDGE).toMatch(/scrubRejected\(scrubPrivate\(voice\?\.profile \?\? null\)/)
   })
 })
 
