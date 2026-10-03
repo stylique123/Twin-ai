@@ -20,7 +20,7 @@ describe('the product is shown in one or two beats about it (part-3-product: 16%
     expect(r.reason).toBe('added')
     expect(r.added).toBe(2)
     expect(String(r.script[2].action_posing)).toMatch(/Hold the Signature Blend.*pour/)
-    expect(r.script[2].camera).toBe('back')
+    expect((r.script[2] as { camera?: unknown }).camera).toBe('back')
     expect(r.script[3]).toBe(script[3])
   })
   it('an app is the back camera on a screen the extractor saw, never an invented one', () => {
@@ -28,7 +28,7 @@ describe('the product is shown in one or two beats about it (part-3-product: 16%
     const r = ensureProductShown(app, { productName: 'Brewlog', productWords: ['Brewlog'], mode: showModeOf('APP', 'ALWAYS', ['roast calendar: every batch by day']), screens: ['roast calendar: every batch by day'] })
     expect(r.reason).toBe('added')
     expect(String(r.script[2].action_posing)).toBe('Flip to the back camera on the roast calendar of Brewlog; scroll it slowly while she talks.')
-    expect(r.script[2].camera).toBe('back')
+    expect((r.script[2] as { camera?: unknown }).camera).toBe('back')
     expect(showModeOf('SAAS', 'ALWAYS', [])).toBe('none')
     expect(ensureProductShown(app, { productName: 'Brewlog', productWords: ['Brewlog'], mode: 'none' }).reason).toBe('not_showable')
   })
@@ -37,7 +37,7 @@ describe('the product is shown in one or two beats about it (part-3-product: 16%
     const r = ensureProductShown(shown, { productName: 'Signature Blend', productWords: words, mode: 'physical' })
     expect(r.reason).toBe('already_shown')
     expect(r.trimmed).toBe(1)
-    expect(r.script[3].camera).toBe('front')
+    expect((r.script[3] as { camera?: unknown }).camera).toBe('front')
     expect(ensureProductShown(shown, { productName: 'Signature Blend', productWords: words, mode: 'physical', row: 'teach' }).trimmed).toBe(0)
   })
   it('a product never named is not forced in', () => {
