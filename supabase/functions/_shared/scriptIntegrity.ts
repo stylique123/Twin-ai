@@ -55,6 +55,11 @@ export interface IntegrityOptions {
    *  aligned with the input. An unanswered ask beat is spoken by the creator
    *  later, so its planned time is RESERVED rather than counted as zero. */
   beatSeconds?: ReadonlyArray<number | null | undefined> | null
+  /** ⚠️ SCRIPT BATCH 2026-10-02: the product's and brand's own names. Every
+   *  beat of a product video says them, so they are not evidence that two
+   *  beats tell one story; without this, product scripts lost 1-3 middle beats
+   *  as "duplicates" and shipped as hook + CTA. */
+  commonTerms?: string | null
 }
 
 export interface IntegrityReport {
@@ -192,9 +197,10 @@ function sharedCount(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
 }
 
 /** Two lines retell one story when enough distinctive content is shared. */
-export function sharesDistinctiveContent(a: string, b: string): boolean {
+export function sharesDistinctiveContent(a: string, b: string, common?: ReadonlySet<string>): boolean {
   const da = distinctiveContent(a)
   const db = distinctiveContent(b)
+  if (common) for (const w of common) { da.delete(w); db.delete(w) }
   const shared = sharedCount(da, db)
   const smaller = Math.min(da.size, db.size)
   const numberShared = [...da].some((w) => w.startsWith('#') && db.has(w))
@@ -437,11 +443,14 @@ export function repairScriptIntegrity(
 
   // ── 4. ONE STORY, ONE TELLING; ONE FACT, ONE NUMBER ───────────────────────
   const drop = new Set<number>()
+  const commonT = terms(str(opts.commonTerms))
+  const commonD = distinctiveContent(str(opts.commonTerms))
+  const minus = <T,>(set: Set<T>, out: Set<T>): Set<T> => { for (const w of out) set.delete(w); return set }
   const info = beats.map((b) => ({
-    t: terms(str(b.line)),
+    t: minus(terms(str(b.line)), commonT),
     q: quantities(str(b.line)),
     ev: norm(str(b.substance_evidence)),
-    d: distinctiveContent(str(b.line)),
+    d: minus(distinctiveContent(str(b.line)), commonD),
     stories: storyIds(b),
     spoken: isSpoken(b) && !isAsk(b),
     protectedBeat: PROTECTED_SECTION.test(str(b.section)),
@@ -461,7 +470,7 @@ export function repairScriptIntegrity(
       let sameStory = false
       for (const id of a.stories) if (b.stories.has(id)) { sameStory = true; break }
       sameStory = sameStory && sharedCount(a.d, b.d) >= 1
-      const paraphrased = sharesDistinctiveContent(str(beats[i]!.line), str(beats[j]!.line))
+      const paraphrased = sharesDistinctiveContent(str(beats[i]!.line), str(beats[j]!.line), commonD)
       const retold = sameEvidence || sameStory || paraphrased
         || (shared >= 4 && smaller > 0 && shared / smaller >= 0.6)
       const conflicts: string[] = []
@@ -550,6 +559,11 @@ export interface ExtensionDecision {
   wordsWanted: number
   /** Indices of the beats the writer may lengthen. */
   indices: number[]
+  /** ⚠️ SCRIPT BATCH 2026-10-02: planned middle sections (Setup, Re-hook…)
+   *  the finished script no longer has. 22 of 78 product scripts shipped as
+   *  hook + CTA alone, with nothing for the pass to lengthen. These are
+   *  written back from the supplied facts, in plan order, before the close. */
+  missing: string[]
 }
 
 /** The middle, spoken, non-ask, non-protected beats — the only ones a pass may touch. */
@@ -570,17 +584,25 @@ export function shouldExtendScript(
   wpm?: number | null,
   /** Words reserved for unanswered ask beats (`report.reservedWords`). */
   reservedWords: number = 0,
+  /** The planned sections, in order (`beat_plan[].beat`). */
+  plannedSections: ReadonlyArray<string | null | undefined> = [],
 ): ExtensionDecision {
   const list = Array.isArray(beats) ? beats.filter((b) => b && typeof b === 'object') : []
   const words = list.reduce((n, b) => n + wordsOf(str(b.line)), 0)
   if (typeof targetSec !== 'number' || !Number.isFinite(targetSec) || targetSec <= 0) {
-    return { extend: false, words, target: 0, wordsWanted: 0, indices: [] }
+    return { extend: false, words, target: 0, wordsWanted: 0, indices: [], missing: [] }
   }
   const target = wordBudget(targetSec, wpm).target
   const indices = extendableIndices(list)
+  const have = new Set(list.map((b) => str(b.section).trim().toLowerCase()))
+  const missing = [...new Set((plannedSections ?? []).map((x) => str(x).trim()).filter((x) => x !== ''
+    && !/^(hook|cta|call to action|outro|sign.?off)$/i.test(x) && !have.has(x.toLowerCase())))]
   const reserved = Number.isFinite(reservedWords) && reservedWords > 0 ? reservedWords : 0
-  const extend = words > 0 && words + reserved < target * EXTEND_BELOW_SHARE && indices.length > 0
-  return { extend, words, target, wordsWanted: extend ? target - words - reserved : 0, indices: extend ? indices : [] }
+  const extend = words > 0 && words + reserved < target * EXTEND_BELOW_SHARE && (indices.length > 0 || missing.length > 0)
+  return {
+    extend, words, target, wordsWanted: extend ? target - words - reserved : 0,
+    indices: extend ? indices : [], missing: extend ? missing : [],
+  }
 }
 
 /** The instruction for the writer. Facts are exactly what the prompt already supplied. */
@@ -595,9 +617,16 @@ export function buildExtensionPrompt(
     + ' spread across them. Use ONLY the facts in SUPPLIED FACTS: say more about what is already'
     + ' there — how, why, what it looked like, what it meant. NEVER add a new number, name, product,'
     + ' customer, result or claim. Keep each beat\'s purpose, voice and position; do not repeat'
-    + ' another beat\'s story. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
+    + ' another beat\'s story. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}],'
+    + ' "inserts":[{"section":"<missing section>","line":"<new line>"}]}\n\n'
     + `SUPPLIED FACTS:\n${facts.slice(0, 6000)}\n\nBEATS:\n`
     + decision.indices.map((i) => `index ${i}\nSECTION: ${str(beats[i]?.section)}\nLINE: ${str(beats[i]?.line)}`).join('\n\n')
+    + (decision.missing.length
+      ? '\n\nMISSING SECTIONS — the plan has these but the script lost them. Write ONE new spoken line for'
+        + ' each, in this order, that does the section\'s job and says something no other beat says,'
+        + ' using only the supplied facts:\n' + decision.missing.map((m) => `- ${m}`).join('\n')
+        + '\n\nTHE WHOLE SCRIPT, for context:\n' + beats.map((b) => `${str(b.section)}: ${str(b.line)}`).join('\n')
+      : '')
 }
 
 const NUM_TOKEN = /\$?\d+(?:[.,]\d+)?%?|\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred)\b/gi
@@ -623,9 +652,28 @@ function namedWords(s: string): Set<string> {
 }
 
 /** What a rewrite introduced that neither its original beat nor the facts contain. */
+// ⚠️ SCRIPT BATCH 2026-10-02: "Farmington, NM" was her fact; a lengthened line
+// saying "New Mexico" was rejected as an invented name. A state she wrote as
+// its postal code may be said in full.
+const US_STATES: Record<string, string> = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut',
+  DE: 'Delaware', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+  KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan',
+  MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire',
+  NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio',
+  OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota',
+  TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia',
+  WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia',
+}
+export function withStateNames(text: string): string {
+  const extra = [...new Set([...String(text ?? '').matchAll(/,\s*([A-Z]{2})\b/g)].map((m) => m[1]!))]
+    .map((c) => US_STATES[c]).filter(Boolean)
+  return extra.length ? `${text}\n${extra.join('\n')}` : text
+}
+
 export function inventedByExtension(original: string, rewrite: string, facts: string): string[] {
   const allowedNums = new Set([...numberTokens(original), ...numberTokens(facts)])
-  const known = ` ${norm(facts)} ${norm(original)} `
+  const known = ` ${norm(withStateNames(facts))} ${norm(original)} `
   const out: string[] = []
   for (const n of numberTokens(rewrite)) if (!allowedNums.has(n)) out.push(n)
   for (const w of namedWords(rewrite)) if (!known.includes(` ${norm(w)} `)) out.push(w)
@@ -652,6 +700,7 @@ export function acceptExtension(
   rewrites: ReadonlyArray<{ index?: unknown; line?: unknown }> | null | undefined,
   decision: ExtensionDecision,
   opts: IntegrityOptions,
+  inserts?: ReadonlyArray<{ section?: unknown; line?: unknown }> | null,
 ): ExtensionResult {
   const before = original.reduce((n, b) => n + wordsOf(str(b?.line)), 0)
   const keep = (reason: ExtensionResult['reason'], invented: string[] = []): ExtensionResult =>
@@ -669,11 +718,29 @@ export function acceptExtension(
     next[i] = { ...next[i]!, line }
     applied++
   }
-  if (applied === 0) return keep('no_rewrites')
+  // Missing sections go back in plan order, before the closing beat.
+  const wanted = new Set(decision.missing.map((m) => m.toLowerCase()))
+  const added: IntegrityBeat[] = []
+  for (const ins of Array.isArray(inserts) ? inserts : []) {
+    const section = typeof ins?.section === 'string' ? ins.section.trim() : ''
+    const line = typeof ins?.line === 'string' ? ins.line.trim() : ''
+    if (!line || !wanted.has(section.toLowerCase())) continue
+    wanted.delete(section.toLowerCase())
+    invented.push(...inventedByExtension('', line, `${facts}\n${original.map((b) => str(b?.line)).join('\n')}`))
+    added.push({ section, line } as IntegrityBeat)
+  }
+  if (applied === 0 && added.length === 0) return keep('no_rewrites')
   if (invented.length) return keep('invented', [...new Set(invented)])
+  const closeAt = next.length > 1 && PROTECTED_SECTION.test(str(next[next.length - 1]?.section)) && !/hook/i.test(str(next[next.length - 1]?.section))
+    ? next.length - 1 : next.length
+  const firstAdded = closeAt
+  next.splice(closeAt, 0, ...added)
   const again = repairScriptIntegrity(next, opts)
   const r = again.report
-  if (r.droppedIndices.length || r.inventedNames.length || r.numberConflicts.length || r.numbersRestored) {
+  // A restored section the re-check finds is a retelling is simply not kept;
+  // anything else the re-check would remove or correct rejects the whole pass.
+  const onlyAddedDropped = r.droppedIndices.every((i) => i >= firstAdded && i < firstAdded + added.length)
+  if ((r.droppedIndices.length && !onlyAddedDropped) || r.inventedNames.length || r.numberConflicts.length || r.numbersRestored) {
     return keep('integrity_removed')
   }
   if (r.words <= before) return keep('not_longer')

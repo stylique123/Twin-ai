@@ -5070,6 +5070,22 @@ const REPAIR_SCHEMA = {
   required: ['rewrites'],
 }
 
+const EXTENSION_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    rewrites: REPAIR_SCHEMA.properties.rewrites,
+    inserts: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { section: { type: 'STRING' }, line: { type: 'STRING' } },
+        required: ['section', 'line'],
+      },
+    },
+  },
+  required: ['rewrites'],
+}
+
 interface EntitlementFail { index: number; line: string; repair: string; ask: string | null }
 
 /** Every beat whose claim outruns the evidence. Empty for an honest script. */
@@ -13066,6 +13082,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               ))
               .map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
           ].join('\n'),
+          // ⚠️ SCRIPT BATCH 2026-10-02: her product's and brand's names are said
+          // in every beat of a product video; they never make two beats one story.
+          commonTerms: [
+            String((ownedEntity as { name?: unknown } | null)?.name ?? ''),
+            String((confirmedBrand as { name?: unknown } | null)?.name ?? ''),
+          ].join(' '),
           // ⚠️ ITEM 37: an unanswered ask beat reserves its planned seconds.
           beatSeconds: Array.isArray(bpAny.beat_plan) && bpAny.beat_plan.length === originalLen
             ? (bpAny.beat_plan as Array<{ target_sec?: unknown }>).map((p) => Number(p?.target_sec))
@@ -13079,7 +13101,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // this whole integrity pass on the result. Any failure keeps the
         // original — a short video beats a padded, invented one. The pass never
         // drops a beat (a drop is a rejection), so `beat_plan` stays aligned.
-        const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords)
+        const plannedSections = Array.isArray(bpAny.beat_plan)
+          ? (bpAny.beat_plan as Array<{ beat?: unknown }>).map((p) => String(p?.beat ?? '')) : []
+        const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords, plannedSections)
         if (extendDecision.extend) {
           let extensionReason = 'call_failed'
           let wordsAfter = extendDecision.words
@@ -13090,10 +13114,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               'You lengthen single script lines using only facts you are given.'
               + ' You never invent a new fact, product, number, name or experience. You return JSON only.',
               buildExtensionPrompt(integrity.beats, extendDecision, knownText),
-              REPAIR_SCHEMA,
+              EXTENSION_SCHEMA,
             )
-            const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }> }
-            const ext = acceptExtension(integrity.beats, parsed?.rewrites, extendDecision, integrityOpts)
+            const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }>; inserts?: Array<{ section?: unknown; line?: unknown }> }
+            const ext = acceptExtension(integrity.beats, parsed?.rewrites, extendDecision, integrityOpts, parsed?.inserts)
             extensionReason = ext.reason
             invented = ext.invented
             if (ext.accepted) {
@@ -13105,7 +13129,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               try {
                 const before = integrity.beats as Array<{ line?: unknown }>
                 const after = ext.beats as Array<{ line?: unknown }>
-                if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) {
+                if (Array.isArray(before) && Array.isArray(after) && before.length !== after.length) {
+                  // A restored section that claims more than she is entitled to is not kept.
+                  const beforeLines = new Set(before.map((b) => b?.line))
+                  const bad = new Set(entitlementFailures(after, suppliedForCheck).map((f) => f.index).filter((i) => !beforeLines.has(after[i]?.line)))
+                  if (bad.size) {
+                    ext.beats = (after as typeof ext.beats).filter((_, i) => !bad.has(i))
+                    console.warn(JSON.stringify({ event: 'extension_claim_reverted', lines: bad.size }))
+                  }
+                } else if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) {
                   const wasBad = new Set(entitlementFailures(before, suppliedForCheck).map((f) => f.index))
                   const nowBad = entitlementFailures(after, suppliedForCheck)
                     .filter((f) => !wasBad.has(f.index) && after[f.index]?.line !== before[f.index]?.line)
@@ -13130,6 +13162,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             target_words: extendDecision.target,
             reserved_words: integrity.report.reservedWords,
             beats_offered: extendDecision.indices.length,
+            sections_missing: extendDecision.missing.length,
             invented,
           }))
         }
@@ -13138,6 +13171,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           && bpAny.beat_plan.length === originalLen) {
           const gone = new Set(integrity.report.droppedIndices)
           bpAny.beat_plan = (bpAny.beat_plan as unknown[]).filter((_, i) => !gone.has(i))
+        }
+        // A restored section takes its own planned row back; the plan is re-read
+        // by section so it matches the script beat for beat.
+        if (Array.isArray(bpAny.beat_plan) && Array.isArray(bpAny.script)
+          && (bpAny.beat_plan as unknown[]).length !== (bpAny.script as unknown[]).length) {
+          const rows = [...(bpAny.beat_plan as Array<{ beat?: unknown }>)]
+          bpAny.beat_plan = (bpAny.script as Array<{ section?: unknown }>).map((b) => {
+            const at = rows.findIndex((r) => String(r?.beat ?? '').toLowerCase() === String(b?.section ?? '').toLowerCase())
+            return at >= 0 ? rows.splice(at, 1)[0] : { beat: String(b?.section ?? ''), proof: 'Straight to camera' }
+          })
         }
         const r = integrity.report
         if (r.fragmentsDropped || r.headersFilled || r.namesStripped || r.duplicatesDropped
