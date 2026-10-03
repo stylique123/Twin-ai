@@ -16,6 +16,7 @@ export const ISSUES = [
 export type Issue = typeof ISSUES[number]
 
 import { SCRIPT_FAMILIES } from '../generated/scriptFamily.js'
+import { cameraForBeat } from '../generated/beatCamera.js'
 // ── HER PANEL: the fixed viewers, built once per voice from her real posts ──
 export interface Persona { who: string; about: string; stops_for: string; scrolls_when: string; asks: string | null; kind?: string | null; watches?: string[] }
 
@@ -347,24 +348,29 @@ export const SCRIPT_REWRITE_SYSTEM = [
   'Keep her voice. Keep every line doing the same job (hook stays a hook, the close stays the close). Keep each line about as long or shorter.',
   'You MAY use anything under HER FACTS: that is what she has actually said. NEVER add a fact that is in neither the script nor HER FACTS: no new numbers, prices, names, places, awards, results or promises.',
   `When viewers said something is MISSING (the promised trick, the step, the recap, the product never named), you may ADD up to ${MAX_LINE_ADDS} new lines that deliver it from HER FACTS — each placed after the line it follows, with the physical action she does while saying it and the camera: front (talking to the lens, the default) or back (only for a moment that shows the product or a screen while she keeps talking). Never add a hook or a second close.`,
+  // ⚠️ AUDIT 2026-10-03 (Part 6): only 78 of 516 gaps the viewers named were
+  // fixed. Every FIX is now owed an answer: a line that fixes it, or a reason.
+  'EVERY numbered FIX must be answered. Either change or add the line that fixes it and put the FIX number on that line (`fix`), or list it under `cannot` with the reason. When the fix needs a fact that is in neither the script nor HER FACTS (a price, where to buy, the real step), do NOT invent it: list it under `cannot` with reason "needs_fact" and the one short question to ask her, ending in "?".',
   'Return only the lines you changed, by their 0-based index, and any lines you added. Return empty lists if the script is already right.',
 ].join('\n')
 export const SCRIPT_REWRITE_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { index: N, text: S }, required: ['index', 'text'] } },
-    add: { type: 'ARRAY', items: { type: 'OBJECT', properties: { after: N, text: S, action: S, camera: S }, required: ['after', 'text', 'action', 'camera'] } },
+    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { index: N, text: S, fix: N }, required: ['index', 'text'] } },
+    add: { type: 'ARRAY', items: { type: 'OBJECT', properties: { after: N, text: S, action: S, camera: S, fix: N }, required: ['after', 'text', 'action', 'camera'] } },
+    cannot: { type: 'ARRAY', items: { type: 'OBJECT', properties: { fix: N, reason: S, question: S }, required: ['fix', 'reason'] } },
   },
   required: ['lines'],
 }
-export function scriptRewritePrompt(s: ScriptForTest, r: AudienceResult, facts: readonly string[] = []): string {
+export function scriptRewritePrompt(s: ScriptForTest, r: AudienceResult, facts: readonly string[] = [], gaps?: ReadonlyArray<{ id: number; issue: string; fix: string; beat: number }>): string {
+  const fixes = gaps ?? r.fixes.map((f, id) => ({ id, issue: f.issue, fix: f.fix, beat: f.beat }))
   const left = (i: number) => r.viewers.filter((v) => v.leaves_at === i).map((v) => v.who)
   return [
     facts.length ? `HER FACTS (you may use these):\n${facts.slice(0, 40).map((f) => `- ${f}`).join('\n')}` : '',
     `SCRIPT:\n${s.lines.map((l, i) => `${i}. ${l}${s.shots?.[i] ? ` [scene: ${s.shots[i]}]` : ''}${left(i).length ? `  ← ${left(i).length} left here (${left(i).join(', ')})` : ''}`).join('\n')}`,
     `WATCHED TO THE END: ${watchedToEnd(r.viewers)} of ${r.viewers.length}`,
     `WHAT THE VIEWERS SAID:\n${r.viewers.map((v) => `${v.who}: ${v.quote}`).join('\n')}`,
-    r.fixes.length ? `FIXES THEY POINTED TO:\n${r.fixes.map((f) => `${f.beat >= 0 ? `line ${f.beat}` : 'whole video'} — ${f.issue}: ${f.fix}`).join('\n')}` : '',
+    fixes.length ? `FIXES THEY POINTED TO (answer every one):\n${fixes.map((f) => `FIX ${f.id} (${f.beat >= 0 ? `line ${f.beat}` : 'whole video'}) — ${f.issue}: ${f.fix}`).join('\n')}` : '',
   ].filter(Boolean).join('\n\n')
 }
 
@@ -413,13 +419,13 @@ export function applyLineRewrites(lines: readonly string[], raw: unknown, herAns
 
 /** Lines the panel added, kept only when every number and name in them is
  *  already in the script or her facts. `after` is an index into `lines`. */
-export function cleanAddedLines(lines: readonly string[], raw: unknown, known = ''): Array<{ after: number; text: string; action: string; camera: 'front' | 'back' }> {
+export function cleanAddedLines(lines: readonly string[], raw: unknown, known = ''): Array<{ after: number; text: string; action: string; camera: 'front' | 'back'; fix?: number }> {
   const list = (raw as { add?: unknown } | null)?.add
   if (!Array.isArray(list)) return []
   const all = `${lines.join(' ')} ${known}`
   const nums = new Set(numbersIn(all))
   const names = new Set((all.match(/\b[A-Z][a-z]{2,}\b/g) ?? []).map((x) => x.toLowerCase()))
-  const out: Array<{ after: number; text: string; action: string; camera: 'front' | 'back' }> = []
+  const out: Array<{ after: number; text: string; action: string; camera: 'front' | 'back'; fix?: number }> = []
   for (const item of list) {
     const o = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
     const after = typeof o.after === 'number' && Number.isInteger(o.after) ? o.after : -1
@@ -429,7 +435,10 @@ export function cleanAddedLines(lines: readonly string[], raw: unknown, known = 
     if (numbersIn(text).some((n) => !nums.has(n))) continue
     if (namesIn(text).some((n) => !names.has(n.toLowerCase()))) continue
     if (lines.some((l) => l.toLowerCase() === text.toLowerCase())) continue
-    out.push({ after, text, action: typeof o.action === 'string' ? o.action.trim().slice(0, 240) : '', camera: String(o.camera ?? '').toLowerCase() === 'back' ? 'back' : 'front' })
+    const action = typeof o.action === 'string' ? o.action.trim().slice(0, 240) : ''
+    // ⚖️ The camera is decided from the action, not taken from the model (audit Part 12).
+    const camera = cameraForBeat({ section: 'Body', line: text, action_posing: action })
+    out.push({ after, text, action, camera, ...(typeof o.fix === 'number' && Number.isInteger(o.fix) ? { fix: o.fix } : {}) })
     if (out.length >= MAX_LINE_ADDS) break
   }
   return out
@@ -467,4 +476,105 @@ export function orderHooksBestFirst(hooks: ReadonlyArray<{ hook: string; stopped
 /** The script's default hook after the rewrite step: the best one, unless she picked her own. */
 export function defaultHookAfterTest(ordered: readonly string[], creatorPick: string | null): string | null {
   return creatorPick ?? ordered[0] ?? null
+}
+
+/** ⚠️ AUDIT 2026-10-03 (Part 6): a rewrite that closes a named gap is kept
+ *  when it tests NO WORSE — not only when it tests better. "Your own viewers
+ *  told you… you knew that was missing and sent it anyway." */
+export function notWorseVersion(before: AudienceResult, after: AudienceResult): boolean {
+  const best = (x: AudienceResult) => Math.max(0, ...x.hooks.map((h) => h.stopped))
+  if (best(after) < best(before)) return false
+  if (after.promise_kept === false && before.promise_kept !== false) return false
+  return watchedToEnd(after.viewers) >= watchedToEnd(before.viewers)
+}
+export function keepRewrite(before: AudienceResult, after: AudienceResult, closesGap: boolean): boolean {
+  return betterVersion(before, after) || (closesGap && notWorseVersion(before, after))
+}
+
+// ── EVERY GAP, ACCOUNTED FOR (audit 2026-10-03 Part 6) ─────────────────────
+/** A gap the viewers named. `beat` is the line in the WRITER's script (origin), -1 for the whole video. */
+export interface Gap { id: number; issue: Issue; fix: string; beat: number }
+export type GapStatus = 'fixed' | 'needs_her' | 'refused' | 'tested_worse' | 'not_fixed'
+export interface GapOutcome extends Gap { status: GapStatus; reason: string | null; question: string | null }
+
+/** Which FIX number each proposed line / added line claims, and the fixes the model said it cannot do. */
+export function rewriteFixTags(raw: unknown): { lines: Map<number, number>; adds: Map<string, number>; cannot: Array<{ fix: number; reason: string; question: string | null }> } {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : null)
+  const lines = new Map<number, number>()
+  for (const x of Array.isArray(o.lines) ? o.lines : []) {
+    const i = int((x as Record<string, unknown>)?.index), f = int((x as Record<string, unknown>)?.fix)
+    if (i !== null && f !== null) lines.set(i, f)
+  }
+  const adds = new Map<string, number>()
+  for (const x of Array.isArray(o.add) ? o.add : []) {
+    const t = (x as Record<string, unknown>)?.text, f = int((x as Record<string, unknown>)?.fix)
+    if (typeof t === 'string' && f !== null) adds.set(t.replace(/\s+/g, ' ').trim(), f)
+  }
+  const cannot = (Array.isArray(o.cannot) ? o.cannot : []).flatMap((x) => {
+    const c = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>
+    const fix = int(c.fix)
+    if (fix === null) return []
+    const q = typeof c.question === 'string' ? c.question.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+    return [{ fix, reason: typeof c.reason === 'string' && c.reason.trim() ? c.reason.trim().slice(0, 160) : 'other', question: q.endsWith('?') && q.length > 5 ? q : null }]
+  })
+  return { lines, adds, cannot }
+}
+
+/** The question a gap becomes when the fix needs something only she knows. */
+export function gapQuestion(g: Pick<Gap, 'fix'>): string {
+  return `Viewers said: "${g.fix.replace(/"/g, "'").slice(0, 160)}" What should you say here?`
+}
+
+/**
+ * Resolve every gap to fixed, or to the reason it could not be.
+ * `kept.fixedBy` — gaps a kept round tagged; `changedLines`/`addedAfter` —
+ * origin indexes of the kept changes (the audit's own measure: a change at the
+ * gap's line ±1, or for a whole-video gap any change); `attempts` — what
+ * happened to an attempt that did not land; `cannot` — what the rewriter said
+ * it could not do.
+ */
+export function resolveGaps(
+  gaps: readonly Gap[],
+  kept: { fixedBy: ReadonlySet<number>; changedLines: readonly number[]; addedAfter: readonly number[] },
+  attempts: ReadonlyMap<number, 'refused' | 'tested_worse'>,
+  cannot: ReadonlyMap<number, { reason: string; question: string | null }>,
+): GapOutcome[] {
+  return gaps.map((g): GapOutcome => {
+    const near = (i: number) => g.beat >= 0 && Math.abs(i - g.beat) <= 1
+    const touched = kept.fixedBy.has(g.id)
+      || kept.changedLines.some(near) || kept.addedAfter.some(near)
+      || (g.beat < 0 && (kept.changedLines.length + kept.addedAfter.length) > 0)
+    if (touched) return { ...g, status: 'fixed', reason: null, question: null }
+    const c = cannot.get(g.id)
+    if (c && (c.question || /fact|price|know|detail/i.test(c.reason))) {
+      return { ...g, status: 'needs_her', reason: 'needs a fact she has not given', question: c.question ?? gapQuestion(g) }
+    }
+    const a = attempts.get(g.id)
+    // A fix refused because it would add a detail she never gave becomes her question too.
+    if (a === 'refused') return { ...g, status: 'needs_her', reason: 'the fix needed a detail she has not given', question: gapQuestion(g) }
+    if (a === 'tested_worse') return { ...g, status: 'tested_worse', reason: 'the rewrite made more viewers leave', question: null }
+    if (c) return { ...g, status: 'not_fixed', reason: c.reason, question: null }
+    return { ...g, status: 'not_fixed', reason: 'raised on the last retest, no rounds left', question: null }
+  })
+}
+
+// ── THE OPENING LINE IS THE PANEL'S TOP HOOK (audit 2026-10-03 Part 5) ────
+// The first line was the top-scored hook in 43.5% of scripts; 78 opened with a
+// line never tested. The hook beat keeps its action and camera; only the
+// opening words change: a tested hook inside the line is swapped for the top
+// one, and an untested opening sentence is replaced by it.
+export function openingWithHook(line: string, tested: readonly string[], want: string): string {
+  const w = want.replace(/\s+/g, ' ').trim()
+  const l = line.replace(/\s+/g, ' ').trim()
+  if (!w) return line
+  if (!l) return w
+  const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  if (norm(l).startsWith(norm(w))) return line
+  for (const h of tested.map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean).sort((a, b) => b.length - a.length)) {
+    const at = l.toLowerCase().indexOf(h.toLowerCase())
+    if (at >= 0) return [w, l.slice(at + h.length).trim()].filter(Boolean).join(' ')
+  }
+  const rest = l.split(/(?<=[.!?])\s+/).slice(1).join(' ').trim()
+  return [w, rest].filter(Boolean).join(' ')
 }
