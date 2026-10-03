@@ -37,6 +37,7 @@ import { foreignOfferFigures, scrubForeignOffer, stripForeignOffer } from '../_s
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract } from '../_shared/ideaQuestions.ts'
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
 import { arcFor, arcPrompt, arcCheck } from '../_shared/arcShape.ts'
+import { ensureProductShown, showModeOf, hookPayoff, payoffRepairPrompt, newNumbers, ensureGoalClose } from '../_shared/blueprintFinish.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -13184,6 +13185,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // so the shot list, retention map and "why it works" read the repaired
     // script. It only removes or restores — it never writes a new claim — so a
     // short script is reported short, not padded.
+    // ⚖️ KEPT FOR THE LATE LENGTH CHECK (part-3-product): the guards that run
+    // after integrity can shorten the script, so the same grounded facts and
+    // options are read again at the end.
+    let lateKnownText = ''
+    let lateIntegrityOpts: Parameters<typeof acceptExtension>[3] | null = null
     try {
       const bpAny = templated.bp as { script?: unknown; beat_plan?: unknown }
       if (Array.isArray(bpAny.script)) {
@@ -13254,6 +13260,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             ? (bpAny.beat_plan as Array<{ target_sec?: unknown }>).map((p) => Number(p?.target_sec))
             : null,
         }
+        lateKnownText = knownText
+        lateIntegrityOpts = integrityOpts
         const integrity = repairScriptIntegrity(bpAny.script as IntegrityBeat[], integrityOpts)
         traceBeats('integrity', integrity.beats)
         bpAny.script = integrity.beats
@@ -13379,6 +13387,40 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             console.warn(JSON.stringify({ event: 'close_added_from_her_cta' }))
           }
         } catch { /* the close never fails a build */ }
+        // ⚖️ THE BODY PAYS OFF THE HOOK (part-3-product: 46%). A hook that sets
+        // up a count, a question or a claim is checked against the body; when no
+        // later beat delivers it, ONE repair call rewrites the payoff beat from
+        // the supplied facts. A rewrite that brings a new number, or still does
+        // not deliver, is not kept.
+        try {
+          const beatsNow = Array.isArray(bpAny.script) ? bpAny.script as Array<{ line?: unknown; section?: unknown }> : []
+          const check = hookPayoff(beatsNow)
+          if (!check.paid && check.payoffIndex !== null) {
+            const at = check.payoffIndex
+            const original = String(beatsNow[at]?.line ?? '')
+            let kept = false
+            let reason = 'no_rewrite'
+            const raw = await callModel(
+              apiKey,
+              'You rewrite one script line so it delivers what the hook promised. You never add a fact, number, name or experience. You return JSON only.',
+              payoffRepairPrompt(beatsNow, check, knownText),
+              REPAIR_SCHEMA,
+            )
+            for (const r of parseRepairRewrites(raw)) {
+              const line = typeof r?.line === 'string' ? r.line.trim() : ''
+              if (Number(r?.index) !== at || line.split(/\s+/).length < 4) continue
+              if (newNumbers(line, original, knownText).length) { reason = 'new_number'; continue }
+              const next = beatsNow.map((b) => ({ ...b }))
+              next[at].line = line
+              if (!hookPayoff(next).paid) { reason = 'still_unpaid'; continue }
+              bpAny.script = next
+              kept = true
+              reason = 'accepted'
+              break
+            }
+            console.warn(JSON.stringify({ event: 'hook_payoff_repaired', kept, reason, promise: check.promise.kind, beat: at }))
+          }
+        } catch (e) { console.warn('hook payoff failed', String((e as Error)?.message ?? e).slice(0, 120)) }
         traceBeats('extension', bpAny.script)
         // ⚖️ THE PLAN IS PARALLEL TO THE SCRIPT; a dropped beat drops its plan row.
         if (integrity.report.droppedIndices.length && Array.isArray(bpAny.beat_plan)
@@ -14681,6 +14723,96 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       void admin.rpc('lessons_used', { p_ids: lessonsInPrompt.map((l) => l.id) }).then(() => {}, () => {})
       console.log(JSON.stringify({ event: 'lessons_supplied', count: lessonsInPrompt.length }))
     }
+    // ── THE FINISH: LENGTH, THE PRODUCT SHOWN, A CLOSE THAT FITS ─────────────
+    //
+    // ⚠️ SCRIPT BATCH part-3-product (2026-10-03): 44% full length, 16% showed
+    // the product, 56% closed on a next step fitting the goal. Everything above
+    // can shorten the script (privacy, corrections, offer scope, the rules), so
+    // these run HERE, after the last guard, and the shot list is re-derived once.
+    try {
+      const bp = blueprint as { script?: unknown; shot_list?: unknown }
+      const herWords = [reference_note, ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string')].join('\n')
+      const followOk = String(body.outcome ?? '') === 'follow'
+      // The same guards that ran above, re-run on anything written here.
+      const reguard = (beats: Array<Record<string, unknown>>): { beats: Array<Record<string, unknown>>; removed: number } => {
+        const g = guardScript(beats as Array<{ line?: unknown }>, { allowedText: lateKnownText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true, identityText: lateKnownText })
+        const c = enforceCorrections(g.beats, herRejected, herWords)
+        const o = stripForeignOffer(c.beats, foreignOffer)
+        const r = enforceScriptRules(o.beats, { unpicked: namesNotPicked, followAllowed: followOk })
+        const out = (r.beats as Array<Record<string, unknown>>).filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
+        return { beats: out, removed: g.removed.length + c.removed.length + o.removed.length + r.removed.length }
+      }
+      // 3. LENGTH. Words shipped under 80% of the target get one grounded
+      // extension; the result is re-guarded and kept only if it is still longer.
+      if (Array.isArray(bp.script) && lateIntegrityOpts && lateKnownText) {
+        const beats = bp.script as IntegrityBeat[]
+        const decision = shouldExtendScript(beats, lateIntegrityOpts.targetSec, lateIntegrityOpts.wpm)
+        if (decision.extend) {
+          let reason = 'call_failed'
+          let wordsAfter = decision.words
+          try {
+            const raw = await callModel(
+              apiKey,
+              'You lengthen single script lines using only facts you are given.'
+              + ' You never invent a new fact, product, number, name or experience. You return JSON only.',
+              buildExtensionPrompt(beats, decision, lateKnownText),
+              EXTENSION_SCHEMA,
+            )
+            const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }>; inserts?: Array<{ section?: unknown; line?: unknown }> }
+            const ext = acceptExtension(beats, parsed?.rewrites, decision, lateIntegrityOpts, parsed?.inserts)
+            reason = ext.reason
+            if (ext.accepted) {
+              const guarded = reguard(ext.beats as Array<Record<string, unknown>>)
+              const n = guarded.beats.reduce((a, b) => a + String(b.line ?? '').trim().split(/\s+/).filter(Boolean).length, 0)
+              if (n > decision.words) { bp.script = guarded.beats; wordsAfter = n } else reason = 'guards_undid_it'
+            }
+          } catch (e) {
+            reason = `call_failed: ${String((e as Error)?.message ?? e).slice(0, 80)}`
+          }
+          console.warn(JSON.stringify({ event: 'script_length_extended_late', accepted: wordsAfter > decision.words, reason, words_before: decision.words, words_after: wordsAfter, target_words: decision.target }))
+        }
+      }
+      // 1. THE PRODUCT IS SHOWN in one or two beats about it.
+      if (Array.isArray(bp.script) && ownedEntity) {
+        const name = String((ownedEntity as { name?: unknown }).name ?? '')
+        const pWords = name.replace(/\(.*?\)/g, ' ').split(/[^A-Za-z]+/).filter((w) => w.length >= 4 && !/^(the|and|with|from|your|this)$/i.test(w))
+        const screens = sectionsFromKnowledge(ownedEntity)
+        const shown = ensureProductShown(bp.script as Array<Record<string, unknown>>, {
+          productName: name,
+          productWords: pWords,
+          mode: showModeOf((ownedEntity as { type?: unknown }).type, (ownedEntity as { showability?: unknown }).showability, screens),
+          shape: shapeFromKnowledge(ownedEntity),
+          screens,
+          row: videoArc.row,
+        })
+        bp.script = shown.script
+        console.log(JSON.stringify({ event: 'product_shown_ensured', reason: shown.reason, shown: shown.shown.length, added: shown.added !== null, trimmed: shown.trimmed, row: videoArc.row }))
+      }
+      // 4. THE CLOSE FITS THE GOAL (selling goals close on her own CTA above).
+      if (Array.isArray(bp.script)) {
+        const beats = bp.script as Array<Record<string, unknown>>
+        const pay = hookPayoff(beats)
+        const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
+        const payoffLine = String(beats[pay.payoffIndex ?? spokenIdx[1] ?? -1]?.line ?? '')
+        const closed = ensureGoalClose(beats, intent.goal ?? body.goal, {
+          herCta: readyPresent(brief.defaultCta) ? String(brief.defaultCta) : '',
+          payoffLine,
+          followAllowed: followOk,
+        })
+        if (closed.changed !== 'none') {
+          const guarded = reguard(closed.script)
+          if (!guarded.removed) {
+            bp.script = guarded.beats
+            console.warn(JSON.stringify({ event: 'close_fitted_to_goal', changed: closed.changed, want: closed.want }))
+          }
+        }
+      }
+      // The shot list quotes and films the script that ships.
+      if (Array.isArray(bp.shot_list) && Array.isArray(bp.script)) {
+        const synced = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>)
+        bp.shot_list = carryBeatActions(synced.shots as Array<Record<string, unknown>>, bp.script as Array<Record<string, unknown>>)
+      }
+    } catch (e) { console.warn('blueprint finish failed', String((e as Error)?.message ?? e).slice(0, 120)) }
     // ⚖️ THE ARC, CHECKED: where the product first appears, against the row.
     try {
       const lines = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
