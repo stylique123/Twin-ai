@@ -10,6 +10,7 @@
 //
 // Run: npx esbuild packages/shared/src/script/privacyGuard.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.privacyGuard.bundle.mjs && node scripts/ops/scriptBatch.mjs [label] [limit]
 
+import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.mjs'
 
@@ -19,7 +20,7 @@ const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
 const REF = process.env.HEARTBEAT_REFERENCE_URL ?? ''
 const BATCH = process.argv[2] || `batch-${new Date().toISOString().slice(0, 16)}`
 const LIMIT = Number(process.argv[3] || 0) || Infinity
-const CONCURRENCY = 3
+const CONCURRENCY = 6
 
 const GOALS = ['sell', 'educate', 'leads', 'conversations', 'personal_brand', 'authority', 'entertain', 'followers']
 const IDEAS = [
@@ -108,11 +109,11 @@ function scenarios(products, brandId, brandName) {
 }
 
 // The writer allows 12 builds a minute per account: every call (including the
-// angle read) waits its turn, ~7s apart, and a 'too many in a row' is retried.
+// angle read) waits its turn, ~5.5s apart, and a 'too many in a row' is retried.
 let lastStart = 0
 async function call(token, body, tries = 0) {
-  const wait = lastStart + 7_000 - Date.now()
-  lastStart = Math.max(Date.now(), lastStart + 7_000)
+  const wait = lastStart + 5_500 - Date.now()
+  lastStart = Math.max(Date.now(), lastStart + 5_500)
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
   const r = await callOnce(token, body)
   if (r.status === 429 && /too many in a row/i.test(r.text) && tries < 5) {
@@ -191,6 +192,71 @@ async function intakeProducts(token, admin, owner, voiceId, brandId) {
   }
 }
 
+
+// ── THE CREATOR'S EYE (owner 2026-10-03) ──────────────────────────────────
+// The code checks above find defects; they cannot say whether the script is
+// GOOD. A strong model reads each one as the best short-form creator and
+// script editor would — against her DNA, her facts, the product and the goal —
+// and scores what the owner asked about: the hook, the structure, the angle,
+// her information, outside information, invention, value, whether it moves a
+// viewer to buy or try, whether it sounds like her, and the scenes.
+const GEMINI = process.env.GEMINI_API_KEY ?? ''
+const JUDGE_MODEL = (() => { try { return JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses.profile.model } catch { return null } })()
+const JUDGE_SYSTEM = [
+  'You are the best short-form content creator, script writer, scene director and editor alive, reviewing a script an AI wrote FOR a specific creator.',
+  'Judge it the way that creator would before posting: is this a better version of me than I could write myself?',
+  'Score each dimension 1-10 (10 = would post as-is and expect it to beat her average). Be strict: 7 is good, 9-10 is rare.',
+  'hook: stops the scroll in 2 seconds, specific, promises something the script pays off.',
+  'structure: hook -> tension/setup -> substance -> payoff -> close, no filler, no repetition, right length for the seconds chosen.',
+  'angle: the chosen angle (if any) is what the script actually delivers.',
+  'her_info: uses HER facts, stories, products and voice — not generic niche talk anyone could say.',
+  'outside_info: uses niche knowledge / audience questions well (score 5 if none was needed).',
+  'invention: 10 = nothing claimed that her facts do not support; list every unsupported claim in invented_claims.',
+  'value: a viewer learns, feels or gets something real.',
+  'conversion: for a product/sell/leads goal, does it make a viewer want to buy or try it, with a clear next step that fits the relationship (affiliate disclosure, review-only never sells)? For other goals score whether the close fits the goal.',
+  'sounds_like_her: matches her DNA voice and audience.',
+  'scenes: the shot list is filmable by her alone and SHOWS the product/process where the words need it.',
+  'Return JSON only.',
+].join('\n')
+const JUDGE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    hook: { type: 'NUMBER' }, structure: { type: 'NUMBER' }, angle: { type: 'NUMBER' }, her_info: { type: 'NUMBER' },
+    outside_info: { type: 'NUMBER' }, invention: { type: 'NUMBER' }, value: { type: 'NUMBER' }, conversion: { type: 'NUMBER' },
+    sounds_like_her: { type: 'NUMBER' }, scenes: { type: 'NUMBER' }, overall: { type: 'NUMBER' },
+    would_post_as_is: { type: 'BOOLEAN' }, invented_claims: { type: 'ARRAY', items: { type: 'STRING' } },
+    best_part: { type: 'STRING' }, biggest_fix: { type: 'STRING' },
+  },
+  required: ['hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
+}
+async function judge(bp, sc, ctx) {
+  if (!GEMINI || !JUDGE_MODEL || !bp) return null
+  const product = sc.product ? ctx.products.find((p) => p.name === sc.product) : null
+  const input = [
+    `CREATOR DNA: ${JSON.stringify(ctx.dna ?? {}).slice(0, 1500)}`,
+    `HER FACTS (what she has actually given Twin):\n${ctx.allowedText.slice(0, 6000)}`,
+    product ? `PRODUCT: ${JSON.stringify({ name: product.name, type: product.type, relationship: product.relationship, offer: product.offer, summary: product.creator_summary }).slice(0, 1200)}` : 'PRODUCT: none',
+    `ASK: mode=${sc.body.door ?? '?'} goal=${sc.body.goal ?? '?'} seconds=${sc.body.target_seconds} input=${JSON.stringify(sc.body.reference_note ?? '').slice(0, 400)} focus=${sc.body.focus ?? '-'} outcome=${sc.body.outcome ?? '-'} tone=${sc.body.tone ?? '-'} angle=${JSON.stringify(sc.body.angle ?? null)} answers=${JSON.stringify(sc.body.readiness_answers ?? {}).slice(0, 400)}`,
+    `HOOK OPTIONS: ${JSON.stringify(bp.hook_options ?? []).slice(0, 800)}`,
+    `SCRIPT:\n${(Array.isArray(bp.script) ? bp.script : []).map((b) => `[${b.section ?? ''}] ${b.line ?? ''}`).join('\n')}`,
+    `SHOTS:\n${(Array.isArray(bp.shot_list) ? bp.shot_list : []).map((s) => `- ${s.kind ?? s.shot_type ?? ''}: ${String(s.notes ?? s.b_roll_visual ?? '').slice(0, 140)} | says: ${String(s.spoken_text ?? '').slice(0, 80)}`).join('\n')}`,
+    `CAPTION: ${JSON.stringify(bp.captions ?? bp.caption_packet ?? '').slice(0, 500)}`,
+  ].join('\n\n')
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${JUDGE_MODEL}:generateContent?key=${GEMINI}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: JUDGE_SYSTEM }] },
+        contents: [{ role: 'user', parts: [{ text: input }] }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: JUDGE_SCHEMA, temperature: 0 },
+      }),
+    })
+    const j = await res.json()
+    const t = j?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
+    return t ? JSON.parse(t) : { error: `${res.status} ${JSON.stringify(j).slice(0, 200)}` }
+  } catch (e) { return { error: String(e).slice(0, 200) } }
+}
+
 // ── THE CHECKS ─────────────────────────────────────────────────────────────
 function audit(bp, sc, ctx) {
   const f = []
@@ -253,6 +319,21 @@ async function main() {
     allowedText: [...(know ?? []).map((k) => `${k.text} ${k.evidence ?? ''}`), ...(products ?? []).map((p) => `${p.name ?? ''} ${p.offer ?? ''} ${p.creator_summary ?? ''}`), brands?.[0]?.name ?? '', RICH_ANSWER.claims].join('\n'),
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
+    products: products ?? [],
+    dna: (await admin.from('profiles').select('dna').eq('id', owner).maybeSingle()).data?.dna ?? null,
+  }
+  // --judge-only=<batch>: score scripts a past batch already wrote, no new builds.
+  const judgeOnly = (process.argv.find((a) => a.startsWith('--judge-only=')) ?? '').slice(13)
+  if (judgeOnly) {
+    const { data: rows } = await admin.from('script_batch_results').select('id, scenario, generation_id').eq('batch', judgeOnly).not('generation_id', 'is', null).is('judge', null)
+    let done = 0
+    for (const row of rows ?? []) {
+      const { data: g } = await admin.from('generations').select('blueprint').eq('id', row.generation_id).maybeSingle()
+      const j = await judge(g?.blueprint ?? null, { product: row.scenario?.product ?? null, body: row.scenario?.body ?? {} }, ctx)
+      await admin.from('script_batch_results').update({ judge: j }).eq('id', row.id)
+      console.log(`judged ${++done}/${rows.length} → ${j?.overall ?? j?.error ?? '?'}`)
+    }
+    return
   }
   // --group=product,idea runs only those groups (the batch is run in themed parts).
   const only = (process.argv.find((a) => a.startsWith('--group=')) ?? '').slice(8).split(',').map((x) => x.trim()).filter(Boolean)
@@ -318,6 +399,7 @@ async function main() {
         batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
+        judge: bp ? await judge(bp, { ...sc, body }, ctx) : null,
       })
       console.log(`#${sc.n} ${sc.group}/${sc.label}/${body.goal} → ${r.status} ${a.findings.map((x) => x.k).join(',') || 'clean'}`)
     }

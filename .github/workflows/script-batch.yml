@@ -18,6 +18,10 @@ on:
         description: 'Only these groups, comma-separated (product, business, idea, reference, adversarial, repeat, options, fresh); empty = all'
         required: false
         default: ''
+      judge_only:
+        description: 'Only score the scripts an earlier batch wrote (its label); no new builds'
+        required: false
+        default: ''
       intake:
         description: 'Also add products from URL / photo / name and test intake'
         type: boolean
@@ -40,9 +44,11 @@ jobs:
       - name: Run the batch
         run: |
           npx esbuild packages/shared/src/script/privacyGuard.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.privacyGuard.bundle.mjs
-          node scripts/ops/scriptBatch.mjs "$BATCH_LABEL" "$BATCH_LIMIT" ${{ inputs.intake && ' ' || '--no-intake' }} "--group=$BATCH_GROUP"
+          node scripts/ops/scriptBatch.mjs "$BATCH_LABEL" "$BATCH_LIMIT" ${{ inputs.intake && ' ' || '--no-intake' }} "--group=$BATCH_GROUP" "--judge-only=$JUDGE_ONLY"
         env:
           BATCH_GROUP: ${{ inputs.group }}
+          JUDGE_ONLY: ${{ inputs.judge_only }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BATCH_LABEL: ${{ inputs.label }}
           BATCH_LIMIT: ${{ inputs.limit }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
