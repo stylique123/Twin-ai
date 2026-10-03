@@ -13258,6 +13258,57 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             invented,
           }))
         }
+        // ⚖️ THE SHAPE IS ENFORCED, NOT ONLY REQUESTED (script batch part-1f,
+        // 2026-10-03): every entertain, story and personal-brand script named the
+        // product in the hook or the beat after it although the prompt said not to.
+        // One rewrite pass takes the product out of the beats before its allowed
+        // place; it is kept only when the shape then fits and no new number came in.
+        try {
+          const beatsNow = Array.isArray(bpAny.script) ? bpAny.script as Array<{ line?: unknown; section?: unknown }> : []
+          const pName = String((ownedEntity as { name?: unknown } | null)?.name ?? '')
+          const pWords = pName.replace(/\(.*?\)/g, ' ').split(/[^A-Za-z]+/).filter((w) => w.length >= 4 && !/^(the|and|with|from|your|this)$/i.test(w))
+          const linesNow = beatsNow.map((b) => (typeof b?.line === 'string' ? b.line : ''))
+          const before = ownedEntity && pWords.length ? arcCheck(linesNow, pWords, videoArc) : null
+          if (before && before.reason === 'product_too_early' && linesNow.length >= 3) {
+            const spokenIdx = linesNow.map((l, i) => (l.trim() ? i : -1)).filter((i) => i >= 0)
+            const allowedAt = Math.ceil(videoArc.productFirstAtLeast * (spokenIdx.length - 1))
+            const early = spokenIdx.slice(0, allowedAt)
+            const nums = (t: string) => new Set((t.match(/\$?\d+(?:[.,]\d+)?%?/g) ?? []))
+            const raw = await callModel(
+              apiKey,
+              'You rewrite single script lines so they do not name a product yet. You never add a fact, number, name or experience. You return JSON only.',
+              `This video's shape: ${videoArc.entry}\nThe product "${pName}" must not be named, hinted by name, or pitched in the lines listed; those lines lean in (the story, the moment, the lesson). Keep each line's purpose, voice and length. Later lines stay as they are.\n\nFULL SCRIPT (context):\n${beatsNow.map((b, i) => `[${i}] ${String(b?.section ?? '')}: ${linesNow[i]}`).join('\n')}\n\nREWRITE ONLY: ${early.join(', ')}\nReturn {"rewrites":[{"index":"<n>","line":"<new line>"}]}`,
+              REPAIR_SCHEMA,
+            )
+            const next = beatsNow.map((b) => ({ ...b }))
+            for (const r of parseRepairRewrites(raw)) {
+              const i = Number(r?.index)
+              const line = typeof r?.line === 'string' ? r.line.trim() : ''
+              if (!early.includes(i) || line.split(/\s+/).length < 3) continue
+              const had = nums(linesNow[i])
+              if ([...nums(line)].some((x) => !had.has(x))) continue
+              next[i].line = line
+            }
+            const after = arcCheck(next.map((b) => (typeof b?.line === 'string' ? b.line : '')), pWords, videoArc)
+            const kept = after.fits || (after.firstAt ?? 1) > (before.firstAt ?? 0)
+            if (kept) bpAny.script = next
+            console.warn(JSON.stringify({ event: 'arc_product_held_back', kept, before: before.firstAt, after: after.firstAt, row: videoArc.row }))
+          }
+        } catch (e) { console.warn('arc hold-back failed', String((e as Error)?.message ?? e).slice(0, 120)) }
+        // ⚖️ A SELLING VIDEO ENDS WITH ITS NEXT STEP (part-1f: two of four sell
+        // scripts ended on the re-hook). Her own call to action, as she gave it, is
+        // the close — no new words are written for her.
+        try {
+          const commercial = ['sell', 'leads', 'launch'].includes(String(intent.goal ?? body.goal ?? ''))
+          const beatsNow = Array.isArray(bpAny.script) ? bpAny.script as Array<{ line?: unknown; section?: unknown; camera?: unknown }> : []
+          const hasClose = beatsNow.some((b) => /cta|call to action|close|next step|offer/i.test(String(b?.section ?? '')))
+          const cta = readyPresent(brief.defaultCta) ? String(brief.defaultCta).trim() : ''
+          if (commercial && !hasClose && cta.split(/\s+/).length >= 3 && beatsNow.length) {
+            const line = /[.!?]$/.test(cta) ? cta : `${cta}.`
+            bpAny.script = [...beatsNow, { section: 'CTA', line, camera: 'front', action_posing: 'Looks into the lens and points to where to go next' }]
+            console.warn(JSON.stringify({ event: 'close_added_from_her_cta' }))
+          }
+        } catch { /* the close never fails a build */ }
         traceBeats('extension', bpAny.script)
         // ⚖️ THE PLAN IS PARALLEL TO THE SCRIPT; a dropped beat drops its plan row.
         if (integrity.report.droppedIndices.length && Array.isArray(bpAny.beat_plan)
