@@ -252,7 +252,7 @@ export async function scrapeTikTokPosts(handle: string, limit = 12): Promise<Scr
 // still works for some accounts and costs nothing; Apify is the fallback, not
 // the default. An EMPTY result counts as failure here: a profile that parses to
 // zero posts is the exact shape of the silent no-op this exists to end.
-async function apifyDataset(actor: string, input: unknown, timeoutMs = 300_000): Promise<Record<string, unknown>[]> {
+export async function apifyDataset(actor: string, input: unknown, timeoutMs = 300_000): Promise<Record<string, unknown>[]> {
   if (!env.apifyToken) throw new Error('APIFY_TOKEN is not set; cannot scrape profile')
   const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${env.apifyToken}`
   const ctl = new AbortController()
