@@ -375,10 +375,13 @@ async function main() {
   const { data: b0 } = await admin.from('brands').select('id').eq('owner_id', owner).limit(1).maybeSingle()
   if (!process.argv.includes('--no-intake')) await intakeProducts(token, admin, owner, v?.id ?? null, b0?.id ?? null)
   const { data: products } = await admin.from('product_entities').select('id, name, type, relationship, offer, creator_summary').eq('owner_id', owner).is('archived_at', null)
-  const { data: brands } = await admin.from('brands').select('id, name').eq('owner_id', owner).limit(1)
+  const { data: brands } = await admin.from('brands').select('*').eq('owner_id', owner).limit(1)
   const { data: know } = await admin.from('creator_knowledge_writable').select('text, basis, evidence').eq('owner_id', owner).limit(400)
   const ctx = {
-    allowedText: [...(know ?? []).map((k) => `${k.text} ${k.evidence ?? ''}`), ...(products ?? []).map((p) => `${p.name ?? ''} ${p.offer ?? ''} ${p.creator_summary ?? ''}`), brands?.[0]?.name ?? '', RICH_ANSWER.claims].join('\n'),
+    allowedText: [...(know ?? []).map((k) => `${k.text} ${k.evidence ?? ''}`), ...(products ?? []).map((p) => `${p.name ?? ''} ${p.offer ?? ''} ${p.creator_summary ?? ''}`), brands?.[0]?.name ?? '',
+      // Her confirmed brand facts are hers (batch part-13: the judge called
+      // "native and women-owned" invented; it is on her brand).
+      JSON.stringify(brands?.[0] ?? {}).slice(0, 3000), RICH_ANSWER.claims].join('\n'),
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
     products: products ?? [],

@@ -314,7 +314,12 @@ export function closeFits(close: string, want: CloseGoal): boolean {
   const c = close.trim()
   if (!want || !c) return want === null
   if (want === 'question') return /\?\s*["')\]]*\s*$/.test(c)
-  if (want === 'follow_save') return FOLLOW_SAVE.test(c)
+  // ⚠️ BATCH PART-13 (2026-10-04): a story or entertain video that ended on a
+  // real question to the viewer got "Save this so you have it next time."
+  // glued after it, and the reviewer marked it every time ("nobody saves a
+  // story about dumped beans"). A question back to the viewer already does a
+  // reach video's job.
+  if (want === 'follow_save') return FOLLOW_SAVE.test(c) || /\?\s*["')\]]*\s*$/.test(c)
   return TAKEAWAY.test(c)
 }
 
