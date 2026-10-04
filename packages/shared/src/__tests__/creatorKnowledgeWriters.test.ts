@@ -96,6 +96,13 @@ const ALLOWED: Record<string, { ops: string[]; sources: string[]; why: string }>
     sources: [],
     why: 'The purpose labeler: stamps serves / serves_basis / serves_at on existing rows; writes no text.',
   },
+  // 2026-10-04 (0279): private by meaning; can only set sensitive=true and
+  // stamp privacy_checked_at; writes no text and never un-marks.
+  'worker/src/nicheBrain/privacyByMeaning.ts': {
+    ops: ['update'],
+    sources: [],
+    why: 'The privacy reader: marks rows private and stamps privacy_checked_at; writes no text.',
+  },
   // 2026-10-03 (0273): her rating note rejects a fact ("the two-pound batches
   // I've excluded"); stamps creator_excluded_at only, writes no text.
   'worker/src/nicheBrain/lessons.ts': {

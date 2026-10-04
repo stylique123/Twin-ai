@@ -65,6 +65,8 @@ import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { pickHerCta, looksLikeCta } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
+import { gateAnswer } from '../_shared/answerGate.ts'
+import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
@@ -6409,11 +6411,22 @@ async function handle(req: Request): Promise<Response> {
   //   spec_questions {option, entity_key?, paragraph?} → {using, confirm, questions, thin}
   //   spec_answer {option, slot, entity_key?, product_id?, ask_id?, answer?|skip:true}
   const specMode = (peek as { mode?: unknown } | null)?.mode
-  if (specMode === 'spec_questions' || specMode === 'spec_answer') {
+  if (specMode === 'spec_questions' || specMode === 'spec_answer' || specMode === 'spec_confirm') {
     const sb = createClient(supabaseUrl, serviceKey)
     if ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== user.id) return json({ disabled: true, using: [], confirm: [], questions: [] })
     const b = (peek ?? {}) as { option?: unknown; slot?: unknown; entity_key?: unknown; product_id?: unknown; paragraph?: unknown; answer?: unknown; skip?: unknown; ask_id?: unknown }
     const spec = specById(String(b.option ?? ''))
+    if (specMode === 'spec_confirm') {
+      // Her yes on a held answer: it becomes hers to say. Her no removes it from scripts.
+      const b2 = (peek ?? {}) as { knowledge_id?: unknown; yes?: unknown }
+      const kid = String(b2.knowledge_id ?? '')
+      if (!/^[0-9a-f-]{36}$/.test(kid)) return json({ error: 'bad id' }, 400)
+      const now = new Date().toISOString()
+      const patch = b2.yes === true ? { basis: 'stated', creator_confirmed_at: now } : { creator_excluded_at: now }
+      await sb.from('creator_knowledge').update(patch).eq('id', kid).eq('owner_id', user.id).eq('source', 'asked')
+      console.log(JSON.stringify({ event: 'spec_confirm', yes: b2.yes === true }))
+      return json({ ok: true })
+    }
     if (!spec) return json({ error: 'unknown option' }, 400)
     const entityKey = String(b.entity_key ?? 'none').slice(0, 80)
     if (specMode === 'spec_answer') {
@@ -6421,21 +6434,29 @@ async function handle(req: Request): Promise<Response> {
       if (!slot) return json({ error: 'unknown slot' }, 400)
       // Her own typed (or spoken) words, never generated text.
       const herAnswer = typeof b.answer === 'string' ? b.answer.trim().slice(0, 2000) : ''
-      const outcome = b.skip === true || !herAnswer ? 'skipped' : (isNonAnswer(herAnswer) ? 'filler' : 'answered')
+      // Filler is not saved; private is saved private; a role she claims or
+      // commercial terms (bags, shipping, prices) are saved HELD until she taps
+      // yes on the exact claim; a time-bound slot expires (answerGate).
+      const gate = herAnswer ? gateAnswer(herAnswer, slot) : null
+      const outcome = b.skip === true || !herAnswer ? 'skipped' : (isNonAnswer(herAnswer) || gate?.outcome === 'filler' ? 'filler' : 'answered')
       if (typeof b.ask_id === 'string') await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
-      if (outcome === 'answered') {
+      let savedId: string | null = null
+      if (outcome === 'answered' && gate) {
         // Saved as her fact, scoped to the product and labelled with the option it answered.
         await sb.from('creator_knowledge').insert({
           // text ≤ 240 and question_id's fixed list are table rules; the option
           // and slot ride in source_ref, which spec_questions reads back.
-          owner_id: user.id, text: herAnswer.slice(0, 240), kind: slot.type === 'moment' ? 'experience' : 'claim', basis: 'stated', source: 'asked',
-          source_ref: `asked:spec:${entityKey.slice(0, 60)}:${spec.id}:${slot.id}`,
+          // Held → basis 'inferred' until she confirms: the writer only speaks
+          // and only counts as "she said it" what is stated.
+          owner_id: user.id, text: herAnswer.slice(0, 240), kind: slot.type === 'moment' ? 'experience' : 'claim', basis: gate.hold.length ? 'inferred' : 'stated', source: 'asked',
+          source_ref: `asked:${gate.hold.length ? 'hold' : 'spec'}:${entityKey.slice(0, 60)}:${spec.id}:${slot.id}`,
           product_entity_id: typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null,
           last_observed_at: new Date().toISOString(), serves: [spec.goal], serves_basis: 'her',
-        }).then(() => {}, (e: unknown) => console.warn('spec answer not saved', String(e).slice(0, 120)))
+          sensitive: gate.sensitive, source_expiry: gate.expiresAt,
+        }).select('id').maybeSingle().then((r) => { savedId = (r.data as { id?: string } | null)?.id ?? null }, (e: unknown) => console.warn('spec answer not saved', String(e).slice(0, 120)))
       }
-      console.log(JSON.stringify({ event: 'spec_answer', option: spec.id, slot: slot.id, outcome }))
-      return json({ ok: true, outcome })
+      console.log(JSON.stringify({ event: 'spec_answer', option: spec.id, slot: slot.id, outcome, held: gate?.hold.length ?? 0, private: gate?.sensitive === true }))
+      return json({ ok: true, outcome, ...(gate?.hold.length && savedId ? { confirm: { knowledge_id: savedId, claims: gate.hold } } : {}), ...(gate?.sensitive ? { saved_private: true } : {}) })
     }
     // Her facts, scoped: this product's or unscoped, never sensitive.
     const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
@@ -6944,10 +6965,22 @@ function objectiveProductIdInline(sourceRef: string, pickedId: string): string |
 
 /** "Nothing specific", "keep it general", "idk", "no": answered, but nothing to say. */
 /** A commercial claim heard in her videos that she has not confirmed (owner review, script D). */
-function unconfirmedCommercial(r: { source?: unknown; creator_confirmed_at?: unknown; text?: unknown; evidence?: unknown }): boolean {
+function unconfirmedCommercial(r: { source?: unknown; source_ref?: unknown; creator_confirmed_at?: unknown; text?: unknown; evidence?: unknown }): boolean {
   if (r.creator_confirmed_at) return false
+  // An answer she gave that claims a role or commercial terms waits for her tap (answerGate).
+  if (r.source === 'asked' && String(r.source_ref ?? '').startsWith('asked:hold:')) return true
   if (!['transcript', 'caption'].includes(String(r.source ?? ''))) return false
   return /\b(free shipping|ships? free|shipping|discount|\d+\s?% off|on sale|coupon|promo|use code|guarantee|refund|money back|\$\s?\d)/i.test(`${String(r.text ?? '')} ${String(r.evidence ?? '')}`)
+}
+
+/** A time-bound answer (a launch limit, a batch size) past its EXPIRY_DAYS. */
+function expiredAnswer(r: { source?: unknown; source_ref?: unknown; last_observed_at?: unknown; creator_confirmed_at?: unknown }): boolean {
+  if (r.source !== 'asked') return false
+  const m = String(r.source_ref ?? '').match(/:([a-z]+:[a-z_]+):([a-z_]+)$/)
+  const slot = m ? specById(m[1])?.slots.find((x) => x.id === m[2]) : undefined
+  if (!slot?.expires) return false
+  const at = Date.parse(String(r.creator_confirmed_at ?? r.last_observed_at ?? ''))
+  return Number.isFinite(at) && Date.now() - at > SPEC_EXPIRY_DAYS * 86_400_000
 }
 
 function isNonAnswer(v: string): boolean {
@@ -7223,6 +7256,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // discounts, prices, codes, guarantees) waits for her yes before it is
     // said on camera; everything else she said stays usable. All accounts.
     if (unconfirmedCommercial(r as never)) { commercialHeld++; return false }
+    if (expiredAnswer(r as never)) { commercialHeld++; return false }
     return true
   })
   if (commercialHeld) console.log(JSON.stringify({ event: 'commercial_claim_awaiting_confirmation', held_back: commercialHeld }))
