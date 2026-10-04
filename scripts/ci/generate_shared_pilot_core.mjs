@@ -140,6 +140,7 @@ const SOURCES = [
   ['packages/shared/src/script/factPurpose.ts', 'supabase/functions/_shared/factPurpose.ts'],
   ['packages/shared/src/script/arcShape.ts', 'supabase/functions/_shared/arcShape.ts'],
   ['packages/shared/src/script/blueprintFinish.ts', 'supabase/functions/_shared/blueprintFinish.ts'],
+  ['packages/shared/src/script/knowledgeRouter.ts', 'supabase/functions/_shared/knowledgeRouter.ts'],
   ['packages/shared/src/script/scriptIntegrity.ts', 'supabase/functions/_shared/scriptIntegrity.ts'],
   // Goal fidelity: rebuttal framing, promotion gating, CTA-per-goal, shot-list
   // claim diff. Generated for the same reason as scriptIntegrity just above.

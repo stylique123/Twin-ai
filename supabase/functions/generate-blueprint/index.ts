@@ -38,6 +38,7 @@ import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract 
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
 import { arcFor, arcPrompt, arcCheck, nameTheProduct } from '../_shared/arcShape.ts'
 import { keepLateSafe, spokenWords, type LateGuardContext } from '../_shared/lateGuards.ts'
+import { routeKnowledge, renderRoute, type SourceId as KnowledgeSource, type Mode as KnowledgeMode } from '../_shared/knowledgeRouter.ts'
 import { installUsageTracking, trackUsage, currentUsage } from '../_shared/aiUsage.ts'
 import { ensureProductShown, showModeOf, hookPayoff, payoffRepairPrompt, newNumbers, ensureGoalClose } from '../_shared/blueprintFinish.ts'
 import {
@@ -8639,6 +8640,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 
     let brainBlock = ''
     let brainNotesUsed = 0
+    // ⚖️ WHAT IS ON FILE PER SOURCE, for the knowledge router (docs/design/
+    // knowledge-orchestration.md): filled as each source is read.
+    const routeAvail: Partial<Record<KnowledgeSource, number>> = {}
+    let knowledgeRoute: ReturnType<typeof routeKnowledge> | null = null
+    // The audience, niche and world material itself, for tracing which of it
+    // reached a line (measurement only; never a claim's backing).
+    const boardMaterial: LineSourceInput[] = []
     let brainNoteIds: string[] = []
     {
       const ctrl = new AbortController()
@@ -8729,6 +8737,23 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       try {
         const [notes, trends, record, moments, research, reddit] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP, redditP])
         brainNotesUsed = notes.length
+        const kindCount = (xs: ReadonlyArray<{ kind?: unknown }>, k: string) => xs.filter((x) => x?.kind === k).length
+        routeAvail.niche_objection = kindCount(notes as Array<{ kind?: unknown }>, 'objection')
+        routeAvail.niche_proof = kindCount(notes as Array<{ kind?: unknown }>, 'proof')
+        routeAvail.reddit_question = kindCount(reddit, 'question')
+        routeAvail.reddit_complaint = kindCount(reddit, 'complaint')
+        routeAvail.reddit_buying = kindCount(reddit, 'buying')
+        routeAvail.reddit_debate = kindCount(reddit, 'debate')
+        routeAvail.reddit_phrase = kindCount(reddit, 'phrase')
+        routeAvail.research = research.length
+        routeAvail.moment = moments.length + trends.length
+        const clipM = (t: string) => (t.length > 70 ? `${t.slice(0, 67)}…` : t)
+        for (const r of reddit) if (typeof r?.text === 'string') boardMaterial.push({ kind: 'audience', label: `Reddit ${r.kind ?? ''}: ${clipM(r.text)}`, text: r.text })
+        for (const n of notes as Array<{ kind?: unknown; title?: unknown; body?: unknown }>) {
+          const t = `${String(n.title ?? '')} ${String(n.body ?? '')}`.trim()
+          if (t) boardMaterial.push({ kind: 'niche', label: `Niche ${String(n.kind ?? '')}: ${clipM(t)}`, text: t })
+        }
+        for (const m of research) if (typeof m?.name === 'string') boardMaterial.push({ kind: 'world', label: `Research: ${clipM(m.name)}`, text: `${m.name} ${m.detail ?? ''}` })
         brainNoteIds = notes.map((n) => n.id).filter((id): id is string => typeof id === 'string')
         // Her past captions (track record) and the web's items pass the same
         // private rule as every other reader before the writer sees them.
@@ -9239,6 +9264,16 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // 0215 records them against this generation and rotates them to the back of
     // the next tie. An item with no id is one read before 0215 was applied — it
     // is still supplied, it just cannot be recorded, which is the right way round.
+    {
+      const kinds = speakable.map((k) => String((k as { kind?: unknown }).kind ?? ''))
+      const texts = speakable.map((k) => String((k as { text?: unknown }).text ?? ''))
+      routeAvail.her_story = kinds.filter((k) => k === 'experience' || k === 'example').length
+      routeAvail.her_claim = kinds.filter((k) => k === 'claim' || k === 'opinion' || k === 'framework' || k === 'fact').length
+      routeAvail.her_viewers = texts.filter((t) => /^Viewers (ask|request)/i.test(t)).length
+      routeAvail.her_answers = (reference_note ? 1 : 0) + Object.values(body.readiness_answers ?? {}).filter((v) => typeof v === 'string' && v.trim().length > 3).length
+      routeAvail.product = ownedEntity ? 1 : 0
+      routeAvail.brand = confirmedBrand ? 1 : 0
+    }
     suppliedKnowledgeIds = speakable
       .map((k) => String((k as { id?: unknown }).id ?? '').trim())
       .filter((id) => id !== '')
@@ -10470,6 +10505,17 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       : 'NONE STORED. Use the plain format of THIS VIDEO\'S FAMILY below; never present a format as one she already makes.'
     const titleStyleLine = (vp as { title_style?: string } | null)?.title_style || 'NONE STORED. Write plain, specific titles; never present a title formula as her established style.'
     const thumbStyleLine = (vp as { thumbnail_style?: string } | null)?.thumbnail_style || 'NONE STORED. Keep the thumbnail plain and general; never present a style as her established look.'
+    // ⚖️ THE MATERIAL BOARD: which source feeds which part of this video, for
+    // this mode, goal, angle, focus and outcome (docs/design/knowledge-orchestration.md).
+    const knowledgeMode: KnowledgeMode = String(body.selected_product_id ?? '').startsWith('brand:') ? 'brand'
+      : reference_url ? 'reference' : (ownedEntity || body.door === 'product') ? 'product' : 'idea'
+    knowledgeRoute = routeKnowledge({
+      mode: knowledgeMode, goal: intent.goal ?? body.goal ?? null,
+      angle: pickedAngle ? String(pickedAngle.kind ?? '') : null,
+      focus: intent.focus, outcome: intent.outcome, available: routeAvail,
+    })
+    const knowledgeBoard = renderRoute(knowledgeRoute)
+    console.log(JSON.stringify({ event: 'knowledge_route', mode: knowledgeMode, row: knowledgeRoute.row, gaps: knowledgeRoute.gaps, slots: knowledgeRoute.slots.map((x) => `${x.role}:${x.source ?? '-'}`) }))
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
 - Specific angle (what their audience searches for): ${subNiche}` : ''}
@@ -10478,7 +10524,8 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
-- ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}${reference_url ? `
+- ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}
+- ${knowledgeBoard.split('\n').join('\n  ')}${reference_url ? `
   REFERENCE MODE (owner blueprint 2026-10-03, Part 3.1): the reference's own shape comes first. Measure how much of it leans into story, opinion or value before its subject or product appears, and keep THAT ratio in her version; the shape above is used only where the reference gives no signal.` : ''}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -14864,6 +14911,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           traced = traceLines(b2.script, sources)
         }
         bp.line_sources = traced
+        // ⚖️ WHICH KNOWLEDGE SHAPED EACH LINE (material board, measurement only).
+        if (boardMaterial.length) {
+          const board = traceLines(bp.script as Array<{ line?: unknown }>, boardMaterial)
+          ;(bp as Record<string, unknown>).board_trace = board.filter((t) => t.from.length > 0)
+          console.log(JSON.stringify({ event: 'board_traced', sentences: board.length, from_board: board.filter((t) => t.from.length > 0).length }))
+        }
         console.log(JSON.stringify({
           event: 'line_sources_traced', sentences: traced.length,
           unsourced: traced.filter((t) => t.from.length === 0).length,
@@ -15053,6 +15106,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           ...(blueprint as Record<string, unknown>),
           ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
           ai_usage: currentUsage(),
+          knowledge_route: knowledgeRoute ? { row: knowledgeRoute.row, gaps: knowledgeRoute.gaps, slots: knowledgeRoute.slots, available: routeAvail } : null,
         },
         reference_analysis: referenceAnalysis,
         brand_voice_id: voice?.id ?? null,

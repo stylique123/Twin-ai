@@ -234,6 +234,8 @@ const JUDGE_SYSTEM = [
   'arc: does the story-before-product match the EXPECTED SHAPE given (sell = short lean-in then the product is the point; entertain = long lean-in, product light or absent; story = the product arrives as the result; teach = product is the tool; answer = product only if the question is about it)?',
   // Owner 2026-10-03: sharper, blueprint-based, and through real viewers' eyes.
   'BLUEPRINT CHECK (answer each true/false from the script, not from intent): hook_paid_off (the body delivers exactly what the hook promised), lean_in_fits_row (the lean-in before the product is as long as the EXPECTED SHAPE row says), product_entry_fits_row (the product enters the way that row says), product_shown_once_or_twice (the product or its screen is SHOWN in one or two scenes whose lines are about it; true when no product), camera_labelled (every scene says front or back, no switch inside a take), close_fits_goal (the last beat is a next step that fits the goal and the relationship), full_length (enough spoken words for the seconds chosen, about 2.5 words a second).',
+  // Owner 2026-10-04: the brain is judged on whether it USED what it knew (docs/design/knowledge-orchestration.md).
+  'BRAIN USE (true/false, from the script and the MATERIAL BOARD given): hook_from_real_signal (the hook names a real audience question, complaint, buying ask or debate from the board, or her own real moment — not a generic opener), proof_is_hers (every proof or result line comes from HER facts, story or product, never from audience or niche material), story_complete (hook, middle and close are one thread: the close answers or acts on what the hook opened), no_generic_line (no line that any creator in the niche could say word for word), board_followed (each part uses the material the board named for it, or something better of hers). brain_use 1-10: how much of what Twin knew about her, her product, her audience and her niche actually made the video better.',
   'Any false in the blueprint check caps structure and arc at 6. A script missing its middle, never naming a product it must sell, or ending without a close caps overall at 4.',
   'VIEWER PANEL: imagine three REAL people from HER audience (read the DNA audience; make them different: a loyal follower, a new viewer scrolling past, a skeptic who has seen ten videos like this). For each, react honestly in their own words as they would feel while watching: stops (would they stop scrolling in the first 2 seconds), watches_to_end, likes, comments (and what they would type), acts (buys, tries, follows, saves or clicks the next step), learned (one thing they take away, or nothing). Do not be kind: most videos lose most viewers.',
   'Score every dimension with evidence: quote the line that earns or costs the score in your notes. Base overall on what the panel actually did, not on effort.',
@@ -248,6 +250,7 @@ const VIEWER = {
   required: ['who', 'reaction', 'stops', 'watches_to_end', 'likes', 'comments', 'acts', 'action', 'learned'],
 }
 const BLUEPRINT_KEYS = ['hook_paid_off', 'lean_in_fits_row', 'product_entry_fits_row', 'product_shown_once_or_twice', 'camera_labelled', 'close_fits_goal', 'full_length']
+const BRAIN_KEYS = ['hook_from_real_signal', 'proof_is_hers', 'story_complete', 'no_generic_line', 'board_followed']
 const JUDGE_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -257,9 +260,11 @@ const JUDGE_SCHEMA = {
     would_post_as_is: { type: 'BOOLEAN' }, invented_claims: { type: 'ARRAY', items: { type: 'STRING' } },
     best_part: { type: 'STRING' }, biggest_fix: { type: 'STRING' },
     blueprint: { type: 'OBJECT', properties: Object.fromEntries(BLUEPRINT_KEYS.map((k) => [k, { type: 'BOOLEAN' }])), required: BLUEPRINT_KEYS },
+    brain: { type: 'OBJECT', properties: Object.fromEntries(BRAIN_KEYS.map((k) => [k, { type: 'BOOLEAN' }])), required: BRAIN_KEYS },
+    brain_use: { type: 'NUMBER' },
     viewers: { type: 'ARRAY', items: VIEWER }, evidence: { type: 'STRING' },
   },
-  required: ['blueprint', 'viewers', 'evidence', 'hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
+  required: ['blueprint', 'brain', 'brain_use', 'viewers', 'evidence', 'hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
 }
 async function judge(bp, sc, ctx) {
   if (!GEMINI || !JUDGE_MODEL || !bp) return null
@@ -270,6 +275,7 @@ async function judge(bp, sc, ctx) {
     product ? `PRODUCT: ${JSON.stringify({ name: product.name, type: product.type, relationship: product.relationship, offer: product.offer, summary: product.creator_summary }).slice(0, 1200)}` : 'PRODUCT: none',
     `ASK: mode=${sc.body.door ?? '?'} goal=${sc.body.goal ?? '?'} seconds=${sc.body.target_seconds} input=${JSON.stringify(sc.body.reference_note ?? '').slice(0, 400)} focus=${sc.body.focus ?? '-'} outcome=${sc.body.outcome ?? '-'} tone=${sc.body.tone ?? '-'} angle=${JSON.stringify(sc.body.angle ?? null)} answers=${JSON.stringify(sc.body.readiness_answers ?? {}).slice(0, 400)}`,
     `EXPECTED SHAPE: ${JSON.stringify(bp.arc ?? null)}`,
+    `MATERIAL BOARD (which source fed each part, and what was on file): ${JSON.stringify(bp.knowledge_route ?? null).slice(0, 1500)}`,
     `HOOK OPTIONS: ${JSON.stringify(bp.hook_options ?? []).slice(0, 800)}`,
     `SCRIPT:\n${(Array.isArray(bp.script) ? bp.script : []).map((b) => `[${b.section ?? ''}${b.camera ? ` · ${b.camera} camera` : ''}] ${b.line ?? ''}${b.action_posing ? `  (does: ${String(b.action_posing).slice(0, 120)})` : ''}`).join('\n')}`,
     `SHOTS:\n${(Array.isArray(bp.shot_list) ? bp.shot_list : []).map((s) => `- ${s.kind ?? s.shot_type ?? ''}: ${String(s.notes ?? s.b_roll_visual ?? '').slice(0, 140)} | says: ${String(s.spoken_text ?? '').slice(0, 80)}`).join('\n')}`,
