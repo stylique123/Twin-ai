@@ -24,6 +24,12 @@ import {
 import { CAPTION_SHAPE_VERSION as CAPTION_SHAPE_VERSION_N } from './generated/captionShape.js'
 import { kickBrainSweep } from './nicheBrain/sweep.js'
 import { kickAudienceTests } from './nicheBrain/audience.js'
+import { createIdleBackoff } from './idleBackoff.js'
+
+// Idle claim polls back off from pollMs to this ceiling. Must stay well under
+// the Docker HEALTHCHECK (90s on /tmp/worker-alive) and check_worker_liveness
+// (180s), since both are refreshed once per loop.
+const IDLE_POLL_MAX_MS = 30_000
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -403,6 +409,7 @@ async function main() {
     })
   }
 
+  const idleBackoff = createIdleBackoff(Math.min(env.pollMs, IDLE_POLL_MAX_MS), IDLE_POLL_MAX_MS)
   while (running) {
     try {
       await beat() // record liveness before each claim attempt
@@ -419,10 +426,13 @@ async function main() {
       // TEST VIEWERS: same terms — detached, one script per kick, every 15s.
       kickAudienceTests(log)
       const didWork = await tick()
-      if (!didWork) await sleep(env.pollMs) // idle backoff when the queue is empty
+      // Exponential idle backoff (pollMs → 30s), reset the moment work is found.
+      // An empty queue polled at a fixed 3s was millions of claim_job calls.
+      if (didWork) idleBackoff.reset()
+      else await sleep(idleBackoff.idle())
     } catch (err) {
       log('error', 'loop error', { error: errorText(err) })
-      await sleep(env.pollMs)
+      await sleep(idleBackoff.idle())
     }
   }
   log('info', 'worker stopped')
