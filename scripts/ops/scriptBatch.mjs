@@ -445,6 +445,7 @@ async function main() {
   }
   // --group=product,idea runs only those groups (the batch is run in themed parts).
   const only = (process.argv.find((a) => a.startsWith('--group=')) ?? '').slice(8).split(',').map((x) => x.trim()).filter(Boolean)
+  if (only.includes('spec-questions')) { await specQuestionsProbe(token, admin, products ?? []); return }
   const list = scenarios(products ?? [], brands?.[0]?.id ?? '', brands?.[0]?.name ?? '')
     .filter((sc) => !only.length || only.includes(sc.group)).slice(0, LIMIT)
   console.log(`batch ${BATCH}: ${list.length} scenarios`)
@@ -595,6 +596,39 @@ async function scoreAfterPanel(admin, ctx) {
     }).eq('id', row.id)
     console.log(`scored after panel ${++done}/${rows.length} → ${j?.overall ?? '?'}`)
   }
+}
+
+// ⚖️ THE QUESTIONS, AS GENERATED (owner 2026-10-04: "paste the actual
+// questions; Launch and Restock side by side; the rotation across runs").
+// Every option, 10 runs each, on the test account. Runs skip the first
+// question on odd runs; runs 3 and 6 answer it with a clearly marked
+// SIMULATED answer (so later runs can ask less), deleted at the end.
+async function specQuestionsProbe(token, admin, products) {
+  const OPTIONS = ['product:launch', 'product:restock', 'product:explain', 'product:wrong', 'product:try', 'product:later', 'product:asked', 'product:dm', 'product:why_made', 'product:story',
+    'business:why_started', 'business:wrong', 'business:announce', 'idea:story', 'idea:teach', 'idea:answer', 'idea:process', 'idea:fun', 'idea:sell', 'reference:opening', 'reference:pacing', 'reference:close']
+  const prod = products.find((p) => p.relationship === 'OWN_PRODUCT' && /signature/i.test(p.name ?? '')) ?? products[0]
+  const PARAGRAPH = { idea: 'what nobody tells you about starting a coffee cart', reference: 'a video about my roasting morning, like the reference' }
+  const out = []
+  for (const option of OPTIONS) {
+    const surface = option.split(':')[0]
+    const entity = surface === 'product' ? `product:${prod?.id}` : surface === 'business' ? 'brand' : `${surface}:probe`
+    for (let run = 1; run <= 10; run++) {
+      const r = await call(token, { mode: 'spec_questions', option, entity_key: entity, product_id: surface === 'product' ? prod?.id : undefined, paragraph: PARAGRAPH[surface] ?? '' })
+      const j = r.json ?? {}
+      const qs = Array.isArray(j.questions) ? j.questions : []
+      out.push({ option, run, using: (j.using ?? []).length, confirm: (j.confirm ?? []).map((c) => `${c.slot}: ${String(c.text).slice(0, 90)}`), resting: j.resting ?? [], questions: qs.map((q) => `[${q.slot}${q.offer_back ? ', offered back' : ''}] ${q.question}`) })
+      console.log(`${option} run ${run}: ${qs.map((q) => q.question).join(' | ') || (j.disabled ? 'DISABLED' : '(none)')}`)
+      const first = qs[0]
+      if (first?.ask_id) {
+        if (run === 3 || run === 6) await call(token, { mode: 'spec_answer', option, slot: first.slot, entity_key: entity, product_id: surface === 'product' ? prod?.id : undefined, ask_id: first.ask_id, answer: `[SIMULATED TEST ANSWER, run ${run}] a specific moment for ${first.slot}` })
+        else if (run % 2 === 1) await call(token, { mode: 'spec_answer', option, slot: first.slot, entity_key: entity, ask_id: first.ask_id, skip: true })
+      }
+    }
+  }
+  // The simulated answers were never hers.
+  await admin.from('creator_knowledge').delete().like('text', '[SIMULATED TEST ANSWER%')
+  await admin.from('script_batch_results').insert({ batch: BATCH, n: -3, scenario: { group: 'spec-questions', product: prod?.name ?? null }, findings: out, status: 0 })
+  console.log(`\nspec question probe: ${out.length} runs stored as n=-3`)
 }
 
 async function regressionReport(admin) {
