@@ -5,7 +5,7 @@
 -- or brand, exact wording and how it went (shown / answered / skipped /
 -- filler), so the next question never repeats it, a skipped slot rests, and
 -- weak slots can be cut after a few weeks. Answers themselves are facts in
--- creator_knowledge (question_id = '<option>:<slot>').
+-- creator_knowledge (source_ref = 'asked:spec:<entity>:<option>:<slot>').
 
 create table if not exists public.question_asks (
   id uuid primary key default gen_random_uuid(),
