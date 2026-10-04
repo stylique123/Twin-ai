@@ -533,13 +533,15 @@ async function main() {
         batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
-        judge: bp ? await judge(bp, { ...sc, body }, ctx) : null,
+        // Scored after the viewer panel has remade it (see scoreAfterPanel).
+        judge: null,
       })
       console.log(`#${sc.n} ${sc.group}/${sc.label}/${body.goal} → ${r.status} ${a.findings.map((x) => x.k).join(',') || 'clean'}`)
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
   console.log('\nTALLY', JSON.stringify(tally, null, 1))
+  await scoreAfterPanel(admin, ctx)
   await regressionReport(admin)
 }
 
@@ -549,6 +551,36 @@ async function main() {
 // or idea, reference and goal. Each script that scores a point or more below
 // that test's best is listed with both scripts' batch and number, so the drop
 // is read and its cause named before the next fix. Stored as row n = -2.
+// ⚖️ SCORE WHAT SHE FILMS (owner 2026-10-04): every script goes to ~10 test
+// viewers from her audience and is remade from what they say (audience.ts
+// keeps a rewrite only when it tests better). The reviewer used to score the
+// first draft, before that remake. Now each script is scored once its viewer
+// test is done (or failed, or after 20 minutes), from the blueprint as saved.
+async function scoreAfterPanel(admin, ctx) {
+  const { data: rows } = await admin.from('script_batch_results').select('id, scenario, generation_id').eq('batch', BATCH).gte('n', 0).not('generation_id', 'is', null).is('judge', null)
+  const ids = (rows ?? []).map((r) => r.generation_id)
+  const until = Date.now() + 20 * 60_000
+  for (;;) {
+    const { data: t } = await admin.from('audience_tests').select('generation_id, status').in('generation_id', ids)
+    const settled = (t ?? []).filter((x) => x.status === 'done' || x.status === 'failed').length
+    console.log(`viewer tests settled ${settled}/${ids.length}`)
+    if (settled >= ids.length || Date.now() > until) break
+    await new Promise((r) => setTimeout(r, 30_000))
+  }
+  let done = 0
+  for (const row of rows ?? []) {
+    const { data: g } = await admin.from('generations').select('blueprint').eq('id', row.generation_id).maybeSingle()
+    const { data: t } = await admin.from('audience_tests').select('status, improved').eq('generation_id', row.generation_id).maybeSingle()
+    const j = await judge(g?.blueprint ?? null, { product: row.scenario?.product ?? null, body: row.scenario?.body ?? {} }, ctx)
+    const lines = Array.isArray(g?.blueprint?.script) ? g.blueprint.script.map((b) => String(b?.line ?? '').trim()).filter(Boolean) : []
+    await admin.from('script_batch_results').update({
+      judge: j ? { ...j, after_panel: t?.status === 'done', panel_changed: Array.isArray(t?.improved?.lines) ? t.improved.lines.length : 0 } : null,
+      script_text: lines.length ? lines.map((l, i) => `${i + 1}. ${l}`).join('\n') : undefined,
+    }).eq('id', row.id)
+    console.log(`scored after panel ${++done}/${rows.length} → ${j?.overall ?? '?'}`)
+  }
+}
+
 async function regressionReport(admin) {
   const keyOf = (r) => [r.scenario?.group, r.scenario?.product ?? '', String(r.scenario?.body?.reference_note ?? '').slice(0, 80), r.scenario?.body?.reference_url ?? '', r.scenario?.body?.goal ?? ''].join('|')
   const score = (r) => Number(r?.judge?.overall)
