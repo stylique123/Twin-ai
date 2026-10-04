@@ -69,9 +69,21 @@ export const SHOW_ACTION = /\b(?:hold(?:s|ing)?|open(?:s|ing)?|pour(?:s|ing)?|un
 const BODY = '(?:(?:her|his|their|your|both|one|the|a)\\s+)?(?:open\\s+)?(?:palms?|hands?|arms?|fingers?|finger|head|chin|chest|shoulders?|eyebrows?|brows?|gaze|eyes?|face|temple|lens|camera|smile|pause|pose|breath|posture|eye contact|still)\\b'
 const GESTURE = new RegExp(`\\b(?:open(?:s|ing)?|hold(?:s|ing)?|lift(?:s|ing)?|tip(?:s|ping)?|tap(?:s|ping)?|turn(?:s|ing)?|show(?:s|ing)?)\\s+(?:up\\s+|out\\s+)?${BODY}|\\bopen\\s+(?:palms?|hands?|arms?)\\b|\\b(?:palms?|hands?|arms?)\\s+open\\b`, 'gi')
 
-/** True when the direction shows the product itself, not a gesture. */
-export function showsProduct(action: string): boolean {
-  return SHOW_ACTION.test(action.replace(GESTURE, ' '))
+/** A thing in frame: what a show verb must act on to be a product shot. */
+const OBJECT = /\b(?:it|them|bag|bags|bottle|jar|cup|mug|box|pack(?:et|age|aging)?|tin|can|tube|grinder|machine|beans?|product|item|label|lid|screen|phone|laptop|app|dashboard|page|tab|device|kit|set|sample|pouch|carton|container|glass)\b/i
+
+/**
+ * True when the direction shows the product itself, not a gesture. A show
+ * verb only counts when it acts on a thing: the product's own name, an
+ * object ("the bag", "the cup", "the screen"), or "it". The writer invents
+ * gestures faster than any list ("hold an open, relaxed posture", "counting
+ * off pour over and drip"); a thing in frame is what tells them apart.
+ */
+export function showsProduct(action: string, productWords: ReadonlyArray<string> = []): boolean {
+  const a = action.replace(GESTURE, ' ')
+  if (!SHOW_ACTION.test(a)) return false
+  if (/\b(?:back|rear) camera\b|\bclose[- ]?up\b/i.test(a) && (OBJECT.test(a) || namesProduct(a, productWords))) return true
+  return OBJECT.test(a) || namesProduct(a, productWords)
 }
 
 function namesProduct(line: string, productWords: ReadonlyArray<string>): boolean {
@@ -152,7 +164,7 @@ export function ensureProductShown<T extends FinishBeat>(
   const spoken = out.map((b, i) => (text(b?.line).trim() ? i : -1)).filter((i) => i >= 0)
   const about = spoken.filter((i) => namesProduct(text(out[i].line), opts.productWords))
   if (!about.length) return { ...base, reason: 'not_named' }
-  const shows = (b: T) => showsProduct(text(b.action_posing))
+  const shows = (b: T) => showsProduct(text(b.action_posing), opts.productWords)
   const shown = about.filter((i) => shows(out[i]))
   if (shown.length) {
     let trimmed = 0

@@ -129,15 +129,20 @@ describe('showsProduct: a gesture is not a product shot (part-5 batch)', () => {
       'Holds eye contact and lifts her chin on the last word',
       'Turn the head slightly toward the lens',
       'Tap her temple twice',
-    ]) expect(showsProduct(a)).toBe(false)
+      'Hold an open, relaxed posture with direct gaze at the lens.',
+      'Hold direct eye contact with hands relaxed at waist height',
+      'Offer an open single hand gesture toward camera before smiling softly.',
+      'Raise one hand to chest height, counting off pour over and drip',
+    ]) expect(showsProduct(a, ['Encore', 'Grinder'])).toBe(false)
   })
   it('still reads real product shots', () => {
     for (const a of [
       'Holds the bag of House Espresso up to the lens',
-      'Pours the cold brew concentrate over ice',
+      'Pours the concentrate from the bottle over ice',
       'Opens the bag and scoops the beans',
-      'Back camera close-up of the burrs',
-    ]) expect(showsProduct(a)).toBe(true)
+      'Hold the Encore Grinder (batch) up to the lens at chest height and turn it',
+      'Lifts it toward the lens',
+    ]) expect(showsProduct(a, ['Encore', 'Grinder'])).toBe(true)
   })
   it('adds a product beat when only gestures were there', () => {
     const script = [
