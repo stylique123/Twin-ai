@@ -6859,13 +6859,22 @@ function objectiveProductIdInline(sourceRef: string, pickedId: string): string |
   return pickedId && key === pickedId && /^[0-9a-f-]{36}$/i.test(key) ? key : null
 }
 
+/** "Nothing specific", "keep it general", "idk", "no": answered, but nothing to say. */
+function isNonAnswer(v: string): boolean {
+  const t = v.trim().toLowerCase().replace(/[.!\s]+$/, '')
+  if (!t) return true
+  if (t.split(/\s+/).length > 12) return false
+  return /^(nothing( specific| really| much)?|none|no|n\/a|na|idk|i don'?t know|not sure|skip|keep it general|nothing specific,? keep it general|no idea|not really)\b/.test(t)
+    || /\bkeep it general\b/.test(t)
+}
+
 function objectiveAnswerInline(answers: Record<string, unknown>): {
   questionId: string; question: string; text: string; sourceRef: string
 } | null {
   const id = typeof answers.objective_question_id === 'string' ? answers.objective_question_id.trim() : ''
   if (!OBJECTIVE_QUESTION_ID_PATTERN_INLINE.test(id)) return null
   const text = typeof answers.claims === 'string' ? answers.claims.trim().replace(/\s+/g, ' ').slice(0, 2000) : ''
-  if (text.length < 3) return null
+  if (text.length < 3 || isNonAnswer(text)) return null
   const rawKey = typeof answers.objective_product_key === 'string' ? answers.objective_product_key.trim() : ''
   const key = OBJECTIVE_PRODUCT_KEY_PATTERN_INLINE.test(rawKey) ? rawKey : 'none'
   const question = typeof answers.objective_question === 'string'
@@ -7763,6 +7772,11 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   const READINESS_RELATIONSHIPS = ['NONE', 'REVIEW_ONLY', 'AFFILIATE', 'SPONSOR', 'OWN_PRODUCT', 'OWN_SERVICE']
   const readyPresent = (x: unknown) =>
     typeof x === 'string' ? x.trim() !== '' && x.trim().toLowerCase() !== 'unspecified' : x != null
+  // ⚠️ BATCH PART-12 (2026-10-04): "Nothing specific, keep it general." was
+  // written into her brief as her answer, and the script said "keep it
+  // general" out loud. A non-answer still counts as answered (she is never
+  // asked twice), but it is never her words.
+  const herSaid = (x: unknown) => readyPresent(x) && !isNonAnswer(String(x))
   const readyGoal = String(answers.goal ?? body.goal ?? brief.goal ?? '')
   const readyCommercial = readyGoal.toLowerCase().includes('sell') || readyGoal.toLowerCase().includes('leads')
   // ⚠️ THE READINESS GATE READS ONLY WHAT THE CREATOR SAID, AND IT USED TO READ
@@ -8091,7 +8105,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   const stable: Record<string, string> = {}
   if (readyPresent(answers.offer)) stable.offer = String(answers.offer).slice(0, 240)
   if (readyPresent(answers.relationship)) stable.promotes = String(answers.relationship).slice(0, 240)
-  if (readyPresent(answers.claims)) stable.productFacts = String(answers.claims).slice(0, 2000)
+  if (herSaid(answers.claims)) stable.productFacts = String(answers.claims).slice(0, 2000)
   // ⚖️ A CTA TYPED HERE IS STILL THE CREATOR'S OWN WORDING, so it earns the same
   // standing as one typed in Settings — the provenance rule is about WHO wrote
   // the sentence, not which screen it was typed on. A generated line never
@@ -8113,7 +8127,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // stored value with emptiness — the three-state rule: unanswered is not "none".
   if (readyPresent(answers.offer)) brief.offer = String(answers.offer).slice(0, 240)
   if (readyPresent(answers.relationship)) brief.promotes = String(answers.relationship).slice(0, 240)
-  if (readyPresent(answers.claims)) brief.productFacts = String(answers.claims).slice(0, 2000)
+  if (herSaid(answers.claims)) brief.productFacts = String(answers.claims).slice(0, 2000)
   // ── THE ROTATING OBJECTIVE QUESTION: STORED UNDER ITS ID ────────────────
   //
   // ⚠️ ONE FIXED QUESTION PER OBJECTIVE MEANT NOTHING NEW EVER ARRIVED, and one
@@ -8165,7 +8179,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // asked-and-discarded failure `brief_consumers.json` exists to prevent, one
   // layer up from the brief.
   if (readyPresent(answers.cta)) brief.defaultCta = String(answers.cta).slice(0, 240)
-  if (readyPresent(answers.audience)) brief.audience = String(answers.audience).slice(0, 240)
+  if (herSaid(answers.audience)) brief.audience = String(answers.audience).slice(0, 240)
   // ⚖️ `goal` IS AN ENUM DOWNSTREAM AND THE ANSWER IS FREE TEXT. The compiler
   // only accepts a known `VIDEO_GOALS` value, so "grow my audience and build
   // authority" would be silently discarded by a `??` chain that type-checks. It
@@ -8186,7 +8200,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // dead — so an enum answer here has to reach the request itself.
     body.goal = String(answers.goal)
   }
-  if (readyPresent(answers.angle)) {
+  if (herSaid(answers.angle)) {
     brief.idea = [brief.idea, String(answers.angle)].filter(Boolean).join(' — ').slice(0, 400)
   }
   if (Object.keys(stable).length && voice?.id) {
@@ -9298,7 +9312,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       routeAvail.her_story = kinds.filter((k) => k === 'experience' || k === 'example').length
       routeAvail.her_claim = kinds.filter((k) => k === 'claim' || k === 'opinion' || k === 'framework' || k === 'fact').length
       routeAvail.her_viewers = texts.filter((t) => /^Viewers (ask|request)/i.test(t)).length
-      routeAvail.her_answers = (reference_note ? 1 : 0) + Object.values(body.readiness_answers ?? {}).filter((v) => typeof v === 'string' && v.trim().length > 3).length
+      routeAvail.her_answers = (reference_note ? 1 : 0) + Object.values(body.readiness_answers ?? {}).filter((v) => typeof v === 'string' && v.trim().length > 3 && !isNonAnswer(v)).length
       routeAvail.product = ownedEntity ? 1 : 0
       routeAvail.brand = confirmedBrand ? 1 : 0
     }
@@ -9357,7 +9371,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         // hook → offer → link. Across the round, the low scores were the same
         // three misses: no know-how in the middle, the product in every beat,
         // and a sales close on a video whose goal was not a sale.
-        + ' EARN THE ASK: between the hook and the close there must be at least one line of HER know-how the viewer did not have before (the mistake people make, the step that matters, what she learned, an exact number of hers). Never go straight from the hook to the offer. Name or show the product once or twice, not in every beat; in a story, teach or entertain video it arrives at the payoff, not the start. The close does the job of the goal: a question for conversations, a takeaway for educate, a warm sign-off for entertain or personal brand, the offer only for sell and leads.\n'
+        + ' EARN THE ASK: between the hook and the close there must be at least one line of HER know-how the viewer did not have before (the mistake people make, the step that matters, what she learned, an exact number of hers). Never go straight from the hook to the offer. Name or show the product once or twice, not in every beat; in a story, teach or entertain video it arrives at the payoff, not the start. The close does the job of the goal: a question for conversations, a takeaway for educate, a warm sign-off for entertain or personal brand, the offer only for sell and leads. Never say her profile labels out loud ("everyday people, beginners, ecommerce", "starting and operating a small business"): they describe her, they are not lines. When she has nothing on file for the idea, build it from the closest real story or claim of hers, and never from a note like "keep it general".\n'
         // ⚠️ AND THE SENTENCE THAT EARNED IT, WHERE THERE IS ONE (0216). "She
         // cares about pricing" and "she charges £400 for a full rebind because
         // cheap ones fall apart within a year" are the same conclusion with and
