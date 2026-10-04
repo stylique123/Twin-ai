@@ -38,7 +38,7 @@ import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract 
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
 import { arcFor, arcPrompt, arcCheck, nameTheProduct } from '../_shared/arcShape.ts'
 import { keepLateSafe, spokenWords, type LateGuardContext } from '../_shared/lateGuards.ts'
-import { routeKnowledge, renderRoute, type SourceId as KnowledgeSource, type Mode as KnowledgeMode } from '../_shared/knowledgeRouter.ts'
+import { routeKnowledge, renderRoute, SOURCE_USE as SOURCE_USE_INLINE, type SourceId as KnowledgeSource, type Mode as KnowledgeMode } from '../_shared/knowledgeRouter.ts'
 import { installUsageTracking, trackUsage, currentUsage } from '../_shared/aiUsage.ts'
 import { ensureProductShown, showModeOf, hookPayoff, payoffRepairPrompt, newNumbers, ensureGoalClose } from '../_shared/blueprintFinish.ts'
 import {
@@ -5076,6 +5076,11 @@ function repairFor(strength: ClaimStrength, available: string | null): string {
 /** The repair call returns line rewrites, NOT a blueprint — so it needs its own
  *  schema. `required` keeps a rewrite from arriving without the index that says
  *  which beat it replaces. */
+const DRAFT_PICK_SCHEMA = {
+  type: 'OBJECT',
+  properties: { best: { type: 'STRING' }, why: { type: 'STRING' } },
+  required: ['best'],
+}
 const REPAIR_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -11308,8 +11313,44 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         .then(() => {}, () => {})
     }
     writerMaterial = userPrompt
-    const raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
-      attemptRecorder(admin, ownerId, scriptRunId))
+    // ⚖️ DRAFTS, THEN THE BEST ONE (owner 2026-10-04: "how a human creator
+    // works"). Behind a gate while it is measured: only the test account may
+    // ask for 2-3 drafts (body.drafts), so no creator's cost changes until the
+    // numbers say it is worth it. Each draft opens from a DIFFERENT hook source
+    // on the material board; one Flash read picks the one a real viewer of her
+    // audience would watch to the end. Any failure falls back to draft one.
+    const draftCount = isHeartbeat ? Math.max(1, Math.min(3, Number((body as { drafts?: unknown }).drafts ?? 1) || 1)) : 1
+    let raw: string
+    if (draftCount > 1) {
+      const hookSources = knowledgeRoute?.hookSources ?? []
+      const variants = Array.from({ length: draftCount }, (_, k) => k === 0 ? userPrompt
+        : `${userPrompt}\n\nDRAFT ${k + 1}: write a genuinely different version — a different hook and a different way into the same material${hookSources[k] ? `; open from ${SOURCE_USE_INLINE[hookSources[k]] ?? hookSources[k]}` : ''}. Same facts, same rules.`)
+      const drafts = await Promise.allSettled(variants.map((v, k) => callModel(apiKey, SYSTEM, v, blueprintSchema,
+        k === 0 ? attemptRecorder(admin, ownerId, scriptRunId) : undefined)))
+      const ok = drafts.map((d) => (d.status === 'fulfilled' ? d.value : null))
+      const usable = ok.map((t, k) => ({ t, k })).filter((x): x is { t: string; k: number } => typeof x.t === 'string')
+      if (!usable.length) throw (drafts[0] as PromiseRejectedResult).reason
+      let pick = usable[0]
+      if (usable.length > 1) {
+        try {
+          const show = usable.map(({ t, k }) => {
+            const bp = JSON.parse(t) as { script?: Array<{ section?: unknown; line?: unknown }> }
+            return `DRAFT ${k}:\n${(bp.script ?? []).map((b) => `[${String(b.section ?? '')}] ${String(b.line ?? '')}`).join('\n')}`
+          }).join('\n\n')
+          const verdict = await callModel(apiKey,
+            'You are a top short-form editor choosing which draft she films. You return JSON only.',
+            `Pick the ONE draft a real viewer from her audience would stop for, watch to the end and act on: the hook stops and is paid off, it sounds like a person talking (not a profile), it uses her own stories and facts, and the close follows from the hook.\n\n${show}\n\nReturn {"best":"<draft number>","why":"<one sentence>"}.`,
+            DRAFT_PICK_SCHEMA)
+          const best = Number((JSON.parse(verdict) as { best?: unknown }).best)
+          pick = usable.find((u) => u.k === best) ?? pick
+        } catch { /* the first draft stands */ }
+      }
+      console.log(JSON.stringify({ event: 'drafts_picked', drafts: draftCount, usable: usable.length, picked: pick.k }))
+      raw = pick.t
+    } else {
+      raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
+        attemptRecorder(admin, ownerId, scriptRunId))
+    }
 
     // OUTPUT-SIDE LINK VALIDATION — the other half of the fencing above.
     //
