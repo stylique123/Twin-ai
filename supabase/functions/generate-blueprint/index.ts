@@ -62,6 +62,7 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
+import { pickHerCta, looksLikeCta } from '../_shared/ctaAllocation.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
@@ -8110,7 +8111,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // standing as one typed in Settings — the provenance rule is about WHO wrote
   // the sentence, not which screen it was typed on. A generated line never
   // reaches this code path, so nothing Twin invented can land in the column.
-  if (readyPresent(answers.cta)) stable.defaultCta = String(answers.cta).slice(0, 240)
+  if (readyPresent(answers.cta) && looksLikeCta(answers.cta)) stable.defaultCta = String(answers.cta).slice(0, 240)
   // ⚠️ THE ANSWERS MUST REACH *THIS* SCRIPT, AND THEY DID NOT. `brief` was read
   // before the questions were asked, and every prompt field below resolves
   // through it — `offer` is `brief.offer ?? vp?.offer ?? dna.product`. Persisting
@@ -8178,7 +8179,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   // and the script ended on whatever the model chose. This is the same
   // asked-and-discarded failure `brief_consumers.json` exists to prevent, one
   // layer up from the brief.
-  if (readyPresent(answers.cta)) brief.defaultCta = String(answers.cta).slice(0, 240)
+  if (readyPresent(answers.cta) && looksLikeCta(answers.cta)) brief.defaultCta = String(answers.cta).slice(0, 240)
   if (herSaid(answers.audience)) brief.audience = String(answers.audience).slice(0, 240)
   // ⚖️ `goal` IS AN ENUM DOWNSTREAM AND THE ANSWER IS FREE TEXT. The compiler
   // only accepts a known `VIDEO_GOALS` value, so "grow my audience and build
@@ -9585,7 +9586,16 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // model is told to use it rather than to invent one. Twin still chooses the
     // MECHANISM and still refuses a commercial ask on a non-commercial video; what
     // it no longer does is write a sentence over the top of theirs.
-    const typedCta = readyPresent(brief.defaultCta) ? String(brief.defaultCta).slice(0, 240) : ''
+    // ⚠️ HER CTAs, EACH IN ITS PLACE (owner 2026-10-04). The typed CTA when it
+    // is a real ask for this goal, else the one of her recurring CTAs whose
+    // job fits it (shop for sell, stick-around for follow…). A price list in
+    // the CTA field (test account) is not a CTA and is never read out.
+    const herCtaPick = pickHerCta(intent.goal ?? body.goal, {
+      typed: brief.defaultCta,
+      recurring: Array.isArray((vp as Record<string, unknown>)?.recurring_ctas) ? (vp as Record<string, unknown>).recurring_ctas as unknown[] : [],
+    })
+    const typedCta = herCtaPick ? herCtaPick.text.slice(0, 240) : ''
+    console.log(JSON.stringify({ event: 'her_cta_picked', goal: String(intent.goal ?? body.goal ?? ''), job: herCtaPick?.job ?? null, typed_is_cta: looksLikeCta(brief.defaultCta) }))
     const ctaWordingLine = typedCta
       ? `\n- THE CREATOR'S OWN CALL TO ACTION: "${typedCta}". Use their wording for the closing ask unless this video may not carry a commercial ask at all, in which case ask for engagement instead. Do NOT paraphrase it into something smoother — it is theirs. If it does not fit this video's goal (a buy ask on a leads video, or no product on a sell video), the goal's CTA rule wins.`
       : ''
@@ -15140,7 +15150,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
         const payoffLine = String(beats[pay.payoffIndex ?? spokenIdx[1] ?? -1]?.line ?? '')
         const closed = ensureGoalClose(beats, intent.goal ?? body.goal, {
-          herCta: readyPresent(brief.defaultCta) ? String(brief.defaultCta) : '',
+          herCta: pickHerCta(intent.goal ?? body.goal, { typed: brief.defaultCta, recurring: Array.isArray((vp as Record<string, unknown>)?.recurring_ctas) ? (vp as Record<string, unknown>).recurring_ctas as unknown[] : [] })?.text ?? '',
           payoffLine,
           followAllowed: followOk,
         })

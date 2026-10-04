@@ -759,6 +759,7 @@ const EVENTS = {
   script_guard_removed: { kind: 'incident', why: 'The final privacy guard removed sentences carrying a private term or a tapped-out fact from a finished script (0252); recorded on the blueprint as guardrail_report.' },
   shown_script_audit: { kind: 'counter_ephemeral', why: 'The shown half of each script measured against the owner spec (demo beat present, distinct locations, showing framed like talk, generic gestures); stored on blueprint.shown_audit.' },
   panel_answer_applied: { kind: 'counter_ephemeral', why: 'A creator answered a question her test viewers raised and the worker wrote it into the script line; durable on audience_tests.needs_her (answer, applied_at).' },
+  her_cta_picked: { kind: 'counter_ephemeral', why: 'Which of her CTAs (by job) a video got; the CTA itself ships in the script.' },
   board_traced: { kind: 'counter_ephemeral', why: 'How many lines of one script trace to audience, niche or world material; durable on generations.blueprint.board_trace.' },
   self_review: { kind: 'counter_ephemeral', why: 'How many weak lines the self-review rewrote in one script and why others were rejected; the result ships in generations.blueprint.script and its cost in blueprint.ai_usage.' },
   drafts_picked: { kind: 'counter_ephemeral', why: 'Which of 2-3 drafts the picker kept (test account only); the picked script ships in generations.blueprint and the extra cost shows in blueprint.ai_usage.' },
