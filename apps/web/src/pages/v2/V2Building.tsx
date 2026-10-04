@@ -1420,10 +1420,14 @@ export default function V2Building() {
             ideaQuestionText.current = Object.fromEntries((ideaRead?.questions ?? []).slice(0, 1).map((q, i) => [`${FOLLOWUP_PREFIX}idea_q${i}`, q.question]))
             const purposeQuestion: AskItem[] = []
             ideaPurposeLabel.current = guess?.label ?? null
-            setIdeaAngles(ideaRead?.angles ?? [])
-            // Her earlier pick survives only if it is still one of the options for
-            // THIS reading; an edited idea otherwise starts on the new first one.
-            setPickedAngle((p) => ((ideaRead?.angles ?? []).some((a) => a.kind === p) ? p : ideaRead?.angles?.[0]?.kind ?? null))
+            // Idea mode reads its angles here; every other mode reads them from
+            // its subject below (owner, 2026-10-04: the angle is every mode's).
+            if (isIdea) {
+              setIdeaAngles(ideaRead?.angles ?? [])
+              // Her earlier pick survives only if it is still one of the options for
+              // THIS reading; an edited idea otherwise starts on the new first one.
+              setPickedAngle((p) => ((ideaRead?.angles ?? []).some((a) => a.kind === p) ? p : ideaRead?.angles?.[0]?.kind ?? null))
+            }
             if (isIdea) {
               // The paragraph outranks the standing onboarding goal for THIS video;
               // an earlier pick she made on this card (a reclaimed tab) is kept.
@@ -2294,6 +2298,27 @@ export default function V2Building() {
     : pickedSubjectId.startsWith(BRAND_CHOICE_PREFIX)
       ? `${ideaBrands.find((b) => `${BRAND_CHOICE_PREFIX}${b.id}` === pickedSubjectId)?.name ?? 'Your business'} (the whole business)`
       : (products ?? []).find((p) => p.id === pickedSubjectId)?.name ?? null
+  // Not an idea: the angles are read from the subject she brought (the
+  // product or business she picked, the reference, her note) and the goal,
+  // through the same one small read idea mode uses.
+  const isIdeaFlow = !(state.reference_url || '').trim() && !isProductSubject && !state.idea_ready
+  const angleSubject = isIdeaFlow ? '' : [
+    pickedSubjectName ? `A video about ${pickedSubjectName}.` : '',
+    (state.reference_url || '').trim() ? `Made in the style of this reference video: ${(state.reference_url || '').trim()}` : '',
+    (state.reference_note || '').trim(),
+    (askAnswers.video_goal || '').trim() ? `What it is for: ${(askAnswers.video_goal || '').trim()}.` : '',
+  ].filter(Boolean).join(' ').slice(0, 2000)
+  useEffect(() => {
+    if (isIdeaFlow || angleSubject.length < 12) return
+    let alive = true
+    void readIdeaOnce(`angle:${angleSubject}`, angleSubject).then((r) => {
+      if (!alive) return
+      const angles = r?.angles ?? []
+      setIdeaAngles(angles)
+      setPickedAngle((p) => (angles.some((a) => a.kind === p) ? p : angles[0]?.kind ?? null))
+    }).catch(() => { /* fails open: no angle row */ })
+    return () => { alive = false }
+  }, [isIdeaFlow, angleSubject])
   useEffect(() => {
     if (!pickedSubjectName || !askQuestions?.some((q) => q.field === 'offer')) return
     if ((askAnswers.offer ?? '').trim()) return
@@ -2556,24 +2581,31 @@ export default function V2Building() {
             </div>
           </>
         )}
-        {ideaAngles.length >= 2 && (
-          <div className="mt-4" data-testid="idea-angles">
-            <span className="text-sm text-cream">Which way should this video go?</span>
-            <div className="mt-2 space-y-2">
-              {ideaAngles.map((a) => (
-                <button key={a.kind} type="button" aria-pressed={pickedAngle === a.kind} onClick={() => setPickedAngle(a.kind)}
-                  className={cn('block w-full rounded-xl border px-3 py-2 text-left transition-colors',
-                    pickedAngle === a.kind ? 'border-coral/50 bg-coral/[0.08]' : 'border-white/12 hover:border-white/25')}>
-                  <span className="block text-[12px] text-stone">{a.label}</span>
-                  <span className="block text-[13px] text-cream">{a.gist}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {renderAngles()}
       </div>
     )
   }
+  // ⚖️ THE ANGLE IS EVERY MODE'S (owner, 2026-10-04): idea, product,
+  // reference and brand all offer the same pick before the build.
+  const renderAngles = () => (
+    <>
+        {ideaAngles.length >= 2 && (
+        <div className="mt-4" data-testid="idea-angles">
+          <span className="text-sm text-cream">Which way should this video go?</span>
+          <div className="mt-2 space-y-2">
+            {ideaAngles.map((a) => (
+              <button key={a.kind} type="button" aria-pressed={pickedAngle === a.kind} onClick={() => setPickedAngle(a.kind)}
+                className={cn('block w-full rounded-xl border px-3 py-2 text-left transition-colors',
+                  pickedAngle === a.kind ? 'border-coral/50 bg-coral/[0.08]' : 'border-white/12 hover:border-white/25')}>
+                <span className="block text-[12px] text-stone">{a.label}</span>
+                <span className="block text-[13px] text-cream">{a.gist}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
   const renderAsk = (q: AskItem) => q.purpose ? renderPurpose(q) : renderAskInner(q)
   const renderAskInner = (q: AskItem) => (
             <div key={q.field} className="block">
@@ -3098,6 +3130,7 @@ export default function V2Building() {
                     />
                   </label>
                 ))}
+                {!isIdeaFlow && renderAngles()}
               </div>
               {commercial.length > 0 && (
                 <div className="mt-6 space-y-4 lg:mt-0">
