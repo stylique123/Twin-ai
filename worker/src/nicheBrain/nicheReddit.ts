@@ -44,13 +44,15 @@ export async function runNicheReddit(log: Log): Promise<void> {
     const rows = await apifyDataset(env.apifyRedditActor, subs.length
       ? {
           startUrls: subs.map((s) => ({ url: `https://www.reddit.com/r/${s}/top/?t=year` })),
-          maxItems: 160, maxPostCount: 12, maxComments: 4, includeNSFW: false, skipComments: false,
+          maxItems: 90, maxPostCount: 10, maxComments: 3, includeNSFW: false, skipComments: false,
         }
       : {
           searches: redditSearches(due.sub_niche, due.niche),
           sort: 'top', time: 'year', type: 'posts',
           maxItems: 120, maxPostCount: 40, maxComments: 4, includeNSFW: false, skipComments: false,
-        }, 240_000)
+        // Second live run: 2 of 3 niches aborted at 240 s. Apify's synchronous
+        // run allows 300 s; the scrape is smaller and gets the full window.
+        }, 295_000)
     const threads = threadsFromDataset(rows).filter((t) => inCommunities(t, subs))
     if (threads.length < 3) {
       await stamp({ items: [], threads: [], failure: `only ${threads.length} threads` })
