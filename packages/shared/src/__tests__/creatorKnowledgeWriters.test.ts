@@ -126,12 +126,15 @@ describe('creator_knowledge writers', () => {
   it('generate-blueprint never persists writer or blueprint output as knowledge', () => {
     const src = readFileSync(join(ROOT, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
     const code = codeLines(src).join('\n')
-    // Its ONLY insert is the creator's typed objective answer (source 'asked',
-    // text from objectiveAnswer) — never a line of the generated script.
+    // Its ONLY inserts are the creator's own typed answers (source 'asked'):
+    // the objective answer, and a spec-question answer (2026-10-04) — never a
+    // line of the generated script.
     const inserts = [...code.matchAll(/\.from\(\s*['"]creator_knowledge['"]\s*\)\.insert\(\{([\s\S]*?)\}\)/g)].map((m) => m[1])
-    expect(inserts.length).toBe(1)
-    expect(inserts[0]).toMatch(/text:\s*objectiveAnswer\.text/)
-    expect(inserts[0]).toMatch(/source:\s*'asked'/)
+    expect(inserts.length).toBe(2)
+    expect(inserts.some((i) => /text:\s*objectiveAnswer\.text/.test(i!))).toBe(true)
+    expect(inserts.some((i) => /text:\s*herAnswer\.slice/.test(i!))).toBe(true)
+    for (const i of inserts) expect(i).toMatch(/source:\s*'asked'/)
+    for (const i of inserts) expect(i).not.toMatch(/blueprint|script|bp\./)
     expect(code).not.toMatch(/\.from\(\s*['"]creator_knowledge['"]\s*\)\s*\.(upsert|delete)\(/)
     expect(code).not.toMatch(/merge_creator_knowledge/)
     // Its only write is the spend ledger (used_count / last_used_at via 0215).

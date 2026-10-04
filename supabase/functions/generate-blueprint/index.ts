@@ -64,6 +64,8 @@ import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotL
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { pickHerCta, looksLikeCta } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
+import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
+import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
@@ -6399,6 +6401,79 @@ async function handle(req: Request): Promise<Response> {
     const audience = Array.isArray((aud as { items?: unknown } | null)?.items) ? (aud as { items: NicheRedditItemInline[] }).items : []
     const scrubbedAudience = scrubPrivate(audience) as never
     return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', scrubbedAudience, scrubPrivate(v?.profile ?? null) as never)
+  }
+
+  // ⚖️ SPEC QUESTIONS (owner 2026-10-04; questionSpecs.ts). Two light modes, no
+  // credit, no build. Trial first: only the test account until the weekly
+  // numbers (question_asks) say each question earns its place.
+  //   spec_questions {option, entity_key?, paragraph?} → {using, confirm, questions, thin}
+  //   spec_answer {option, slot, entity_key?, product_id?, ask_id?, answer?|skip:true}
+  const specMode = (peek as { mode?: unknown } | null)?.mode
+  if (specMode === 'spec_questions' || specMode === 'spec_answer') {
+    const sb = createClient(supabaseUrl, serviceKey)
+    if ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== user.id) return json({ disabled: true, using: [], confirm: [], questions: [] })
+    const b = (peek ?? {}) as { option?: unknown; slot?: unknown; entity_key?: unknown; product_id?: unknown; paragraph?: unknown; answer?: unknown; skip?: unknown; ask_id?: unknown }
+    const spec = specById(String(b.option ?? ''))
+    if (!spec) return json({ error: 'unknown option' }, 400)
+    const entityKey = String(b.entity_key ?? 'none').slice(0, 80)
+    if (specMode === 'spec_answer') {
+      const slot = spec.slots.find((x) => x.id === String(b.slot ?? ''))
+      if (!slot) return json({ error: 'unknown slot' }, 400)
+      // Her own typed (or spoken) words, never generated text.
+      const herAnswer = typeof b.answer === 'string' ? b.answer.trim().slice(0, 2000) : ''
+      const outcome = b.skip === true || !herAnswer ? 'skipped' : (isNonAnswer(herAnswer) ? 'filler' : 'answered')
+      if (typeof b.ask_id === 'string') await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
+      if (outcome === 'answered') {
+        // Saved as her fact, scoped to the product and labelled with the option it answered.
+        await sb.from('creator_knowledge').insert({
+          // text ≤ 240 and question_id's fixed list are table rules; the option
+          // and slot ride in source_ref, which spec_questions reads back.
+          owner_id: user.id, text: herAnswer.slice(0, 240), kind: slot.type === 'moment' ? 'experience' : 'claim', basis: 'stated', source: 'asked',
+          source_ref: `asked:spec:${entityKey.slice(0, 60)}:${spec.id}:${slot.id}`,
+          product_entity_id: typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null,
+          last_observed_at: new Date().toISOString(), serves: [spec.goal], serves_basis: 'her',
+        }).then(() => {}, (e: unknown) => console.warn('spec answer not saved', String(e).slice(0, 120)))
+      }
+      console.log(JSON.stringify({ event: 'spec_answer', option: spec.id, slot: slot.id, outcome }))
+      return json({ ok: true, outcome })
+    }
+    // Her facts, scoped: this product's or unscoped, never sensitive.
+    const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
+    let fq = sb.from('creator_knowledge').select('text, source_ref, last_observed_at, sensitive, product_entity_id')
+      .eq('owner_id', user.id).is('creator_excluded_at', null).limit(400)
+    if (pid) fq = fq.or(`product_entity_id.eq.${pid},product_entity_id.is.null`)
+    const { data: rows } = await fq
+    const facts = (rows ?? []).map((r) => {
+      const ref = String((r as { source_ref?: unknown }).source_ref ?? '')
+      const m = ref.match(/^asked:spec:[^:]*:([a-z]+:[a-z_]+):([a-z_]+)$/)
+      return { text: String((r as { text?: unknown }).text ?? ''), option: m?.[1] ?? null, slot: m?.[2] ?? null, at: (r as { last_observed_at?: string | null }).last_observed_at ?? null, sensitive: (r as { sensitive?: boolean }).sensitive === true }
+    })
+    const paragraph = typeof b.paragraph === 'string' ? b.paragraph : ''
+    const { data: hist } = await sb.from('question_asks').select('id, slot_id, wording, outcome, run')
+      .eq('owner_id', user.id).eq('entity_key', entityKey).eq('option_id', spec.id).order('created_at', { ascending: false }).limit(40)
+    const asked: SpecAsked[] = (hist ?? []).map((h) => ({ slot: String(h.slot_id), wording: String(h.wording), outcome: h.outcome as SpecAsked['outcome'], run: Number(h.run) || 1 }))
+    const run = (asked[0]?.run ?? 0) + 1
+    const plan = planQuestions(spec, fillSlots(spec, { facts, paragraph }), asked, run)
+    const questions: Array<{ ask_id: string | null; slot: string; type: string; question: string; offer_back?: string; voice: boolean }> = []
+    for (const a of plan.ask) {
+      try {
+        const pr = wordingPrompt(spec, a.slot, { angle: a.angle, facts: facts.filter((f) => !f.sensitive).map((f) => f.text).slice(0, 30), paragraph, asked: asked.filter((x) => x.slot === a.slot.id), offerBack: a.offerBack })
+        const raw = await Promise.race([
+          callModel(apiKey, pr.system, pr.prompt, { type: 'OBJECT', properties: { question: { type: 'STRING' } }, required: ['question'] }),
+          new Promise<string>((_, rej) => setTimeout(() => rej(new Error('slow')), 8000)),
+        ])
+        const v = validateQuestion((JSON.parse(raw) as { question?: unknown }).question, { spec, slot: a.slot, asked })
+        if (!v.ok) { console.log(JSON.stringify({ event: 'spec_question_rejected', option: spec.id, slot: a.slot.id, reason: v.reason })); continue }
+        const { data: ins } = await sb.from('question_asks').insert({ owner_id: user.id, entity_key: entityKey, option_id: spec.id, slot_id: a.slot.id, angle: a.angle, wording: v.question, run }).select('id').maybeSingle()
+        questions.push({ ask_id: (ins as { id?: string } | null)?.id ?? null, slot: a.slot.id, type: a.slot.type, question: v.question, ...(a.offerBack ? { offer_back: a.offerBack } : {}), voice: a.slot.type === 'moment' || a.slot.type === 'quote' })
+      } catch (e) { console.log(JSON.stringify({ event: 'spec_question_skipped', option: spec.id, slot: a.slot.id, why: String((e as Error)?.message ?? e).slice(0, 60) })) }
+    }
+    console.log(JSON.stringify({ event: 'spec_questions', option: spec.id, using: plan.using.length, confirm: plan.confirm.length, asked: questions.length, resting: plan.resting.length, thin: plan.thin }))
+    return json({
+      using: plan.using.map((f) => ({ slot: f.slot, text: f.value.slice(0, 200) })),
+      confirm: plan.confirm.map((f) => ({ slot: f.slot, text: f.value.slice(0, 200) })),
+      questions, thin: plan.thin, resting: plan.resting,
+    })
   }
 
   // Team seats: if this user is a member of a workspace, they create IN that
@@ -15281,6 +15356,20 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           if (kept && (!trialOn || verdict === 'edited')) bp.script = next
           console.log(JSON.stringify({ event: 'self_review', kept, rejected: reasons, verdict }))
         } catch (e) { console.warn('self review failed', String((e as Error)?.message ?? e).slice(0, 120)) }
+      }
+      // ⚠️ ROLE CLAIMS ONLY WHEN SHE SAID THEM (owner 2026-10-04, script B:
+      // "Building my coffee cart business…"; a scan-inferred topic, never her
+      // words). Trial: a line that claims a business or role her stated
+      // material never names is dropped; the script is shorter, not wrong.
+      if (trialOn && Array.isArray(bp.script)) {
+        const beats = bp.script as Array<Record<string, unknown>>
+        const spokenCount = beats.filter((b) => typeof b?.line === 'string' && b.line.trim()).length
+        const flagged = beats.map((b, i) => ({ i, claims: typeof b?.line === 'string' ? unconfirmedRoleClaims(b.line, lateIdentityText) : [] })).filter((x) => x.claims.length)
+        if (flagged.length && spokenCount - flagged.length >= 2) {
+          const drop = new Set(flagged.map((x) => x.i))
+          bp.script = beats.filter((_, i) => !drop.has(i))
+        }
+        if (flagged.length) console.warn(JSON.stringify({ event: 'role_claim_dropped', lines: flagged.length, claims: flagged.flatMap((x) => x.claims).slice(0, 4), kept: spokenCount - flagged.length < 2 }))
       }
       // The shot list quotes and films the script that ships.
       if (Array.isArray(bp.shot_list) && Array.isArray(bp.script)) {
