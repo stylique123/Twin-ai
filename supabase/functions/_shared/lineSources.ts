@@ -17,7 +17,9 @@
 
 import { statedQuantities } from './privacyGuard.ts'
 
-export type LineSourceKind = 'fact' | 'her_words' | 'product' | 'brand'
+// 'audience' / 'niche' / 'world' are traced for MEASUREMENT only (the material
+// board, 2026-10-04): they show which knowledge shaped a line, never back a claim.
+export type LineSourceKind = 'fact' | 'her_words' | 'product' | 'brand' | 'audience' | 'niche' | 'world'
 export interface LineSourceInput { kind: LineSourceKind; label: string; text: string; id?: string }
 export interface LineSourceHit { kind: LineSourceKind; label: string; id?: string }
 export interface TracedLine { beat: number; sentence: string; from: LineSourceHit[] }

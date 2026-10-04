@@ -759,6 +759,7 @@ const EVENTS = {
   script_guard_removed: { kind: 'incident', why: 'The final privacy guard removed sentences carrying a private term or a tapped-out fact from a finished script (0252); recorded on the blueprint as guardrail_report.' },
   shown_script_audit: { kind: 'counter_ephemeral', why: 'The shown half of each script measured against the owner spec (demo beat present, distinct locations, showing framed like talk, generic gestures); stored on blueprint.shown_audit.' },
   panel_answer_applied: { kind: 'counter_ephemeral', why: 'A creator answered a question her test viewers raised and the worker wrote it into the script line; durable on audience_tests.needs_her (answer, applied_at).' },
+  board_traced: { kind: 'counter_ephemeral', why: 'How many lines of one script trace to audience, niche or world material; durable on generations.blueprint.board_trace.' },
   knowledge_route: { kind: 'counter_ephemeral', why: 'Which source the knowledge router picked for each role of one script; durable on generations.blueprint.knowledge_route.' },
   niche_reddit: { kind: 'counter_ephemeral', why: 'One sub-niche read from the top Reddit threads of the year (questions, complaints, buying asks, debates, phrases); durable in public.niche_reddit.items/threads, a failure in niche_reddit.failure.' },
   niche_research: { kind: 'counter_ephemeral', why: 'One sub-niche researched by grounded search (dates, news, products, competitors, questions); durable in public.niche_research.items/sources.' },

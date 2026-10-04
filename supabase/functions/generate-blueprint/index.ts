@@ -8644,6 +8644,9 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // knowledge-orchestration.md): filled as each source is read.
     const routeAvail: Partial<Record<KnowledgeSource, number>> = {}
     let knowledgeRoute: ReturnType<typeof routeKnowledge> | null = null
+    // The audience, niche and world material itself, for tracing which of it
+    // reached a line (measurement only; never a claim's backing).
+    const boardMaterial: LineSourceInput[] = []
     let brainNoteIds: string[] = []
     {
       const ctrl = new AbortController()
@@ -8744,6 +8747,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         routeAvail.reddit_phrase = kindCount(reddit, 'phrase')
         routeAvail.research = research.length
         routeAvail.moment = moments.length + trends.length
+        const clipM = (t: string) => (t.length > 70 ? `${t.slice(0, 67)}…` : t)
+        for (const r of reddit) if (typeof r?.text === 'string') boardMaterial.push({ kind: 'audience', label: `Reddit ${r.kind ?? ''}: ${clipM(r.text)}`, text: r.text })
+        for (const n of notes as Array<{ kind?: unknown; title?: unknown; body?: unknown }>) {
+          const t = `${String(n.title ?? '')} ${String(n.body ?? '')}`.trim()
+          if (t) boardMaterial.push({ kind: 'niche', label: `Niche ${String(n.kind ?? '')}: ${clipM(t)}`, text: t })
+        }
+        for (const m of research) if (typeof m?.name === 'string') boardMaterial.push({ kind: 'world', label: `Research: ${clipM(m.name)}`, text: `${m.name} ${m.detail ?? ''}` })
         brainNoteIds = notes.map((n) => n.id).filter((id): id is string => typeof id === 'string')
         // Her past captions (track record) and the web's items pass the same
         // private rule as every other reader before the writer sees them.
@@ -14901,6 +14911,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           traced = traceLines(b2.script, sources)
         }
         bp.line_sources = traced
+        // ⚖️ WHICH KNOWLEDGE SHAPED EACH LINE (material board, measurement only).
+        if (boardMaterial.length) {
+          const board = traceLines(bp.script as Array<{ line?: unknown }>, boardMaterial)
+          ;(bp as Record<string, unknown>).board_trace = board.filter((t) => t.from.length > 0)
+          console.log(JSON.stringify({ event: 'board_traced', sentences: board.length, from_board: board.filter((t) => t.from.length > 0).length }))
+        }
         console.log(JSON.stringify({
           event: 'line_sources_traced', sentences: traced.length,
           unsourced: traced.filter((t) => t.from.length === 0).length,
