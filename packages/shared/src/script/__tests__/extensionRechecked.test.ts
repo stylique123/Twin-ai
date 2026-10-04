@@ -8,7 +8,7 @@ describe('a lengthened line may not claim more than the original', () => {
   it('re-runs the entitlement check on the extended beats and reverts new failures', () => {
     const at = EDGE.indexOf('if (ext.accepted) {')
     const block = EDGE.slice(at, at + 3200)
-    expect(block).toMatch(/entitlementFailures\(after, suppliedForCheck\)/)
+    expect(block).toMatch(/entitlementFailures\(after, entitlementEvidence\)/)
     expect(block).toMatch(/after\[f\.index\] = before\[f\.index\]/)
     expect(block.indexOf('extension_claim_reverted')).toBeLessThan(block.indexOf('bpAny.script = ext.beats'))
   })
