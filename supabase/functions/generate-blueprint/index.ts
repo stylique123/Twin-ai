@@ -9351,6 +9351,13 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         // ecommerce coffee roasting business…"). An item is a NOTE about her, not
         // a line: the meaning is kept, the words are hers.
         + ' SAY IT THE WAY SHE TALKS: each item is a note written ABOUT her, never a line to read out. Keep its meaning and any exact number, and say it in first person, short and spoken, the way she would tell a friend ("I roast in a space the size of a closet", not "operating a small ecommerce coffee roasting business"). A line that sounds like a profile, a bio or a keyword list is wrong.\n'
+        // ⚠️ BATCH PART-12 (2026-10-04): the one 8.3 and the 3.0 were the same
+        // product. The 8.3 had one line of HER know-how between hook and close
+        // ("most people buy the machine before the permits"); the 3.0 went
+        // hook → offer → link. Across the round, the low scores were the same
+        // three misses: no know-how in the middle, the product in every beat,
+        // and a sales close on a video whose goal was not a sale.
+        + ' EARN THE ASK: between the hook and the close there must be at least one line of HER know-how the viewer did not have before (the mistake people make, the step that matters, what she learned, an exact number of hers). Never go straight from the hook to the offer. Name or show the product once or twice, not in every beat; in a story, teach or entertain video it arrives at the payoff, not the start. The close does the job of the goal: a question for conversations, a takeaway for educate, a warm sign-off for entertain or personal brand, the offer only for sell and leads.\n'
         // ⚠️ AND THE SENTENCE THAT EARNED IT, WHERE THERE IS ONE (0216). "She
         // cares about pricing" and "she charges £400 for a full rebind because
         // cheap ones fall apart within a year" are the same conclusion with and
@@ -15148,10 +15155,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             'You are her editor. You fix at most TWO lines of a short video script so it sounds like her talking and holds together from hook to close. You never add a fact, number, name, product detail or experience that is not in her material. You return JSON only.',
             [
               'Find the (at most two) weakest lines, in this order of priority:',
+              '0. no line between the hook and the close gives HER know-how (the mistake people make, the step that matters, what she learned): rewrite the weakest middle line into one, from her material;',
               '1. a line that reads like a profile, bio, product page or keyword list instead of a person talking;',
               '2. a line any creator in her niche could say word for word (nothing of hers in it);',
-              '3. a line that breaks the thread: the close does not answer or act on what the hook opened.',
+              '3. a line that breaks the thread: the close does not answer or act on what the hook opened, or does a different job than the goal (a sales pitch closing a video meant for conversations, teaching or entertainment).',
               'Rewrite each in first person, short and spoken, using only her material below. Keep exact numbers exactly. If every line is already good, return no rewrites.',
+              `\nTHE VIDEO'S GOAL: ${String(intent.goal ?? body.goal ?? 'not set')} (${videoArc.row} video).`,
               `\nTHE SCRIPT (index. [section] line):\n${numbered}`,
               board ? `\n${board}` : '',
               `\nHER MATERIAL (the only source of facts):\n<<<UNTRUSTED_DATA her material\n${lateAllowedText.slice(0, 6000).split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')}\nEND_UNTRUSTED_DATA>>>`,
