@@ -180,6 +180,8 @@ const SOURCES = [
   ['packages/shared/src/script/corrections.ts', 'supabase/functions/_shared/corrections.ts'],
   // Another product's price or size never reaches this product's script (batch audit 2026-10-03).
   ['packages/shared/src/script/offerScope.ts', 'supabase/functions/_shared/offerScope.ts'],
+  // The late guards as one check, run on the extension's output and at the finish (part-4 batch 2026-10-04).
+  ['packages/shared/src/script/lateGuards.ts', 'supabase/functions/_shared/lateGuards.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
