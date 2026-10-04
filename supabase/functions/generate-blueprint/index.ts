@@ -10588,7 +10588,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     knowledgeRoute = routeKnowledge({
       mode: knowledgeMode, goal: intent.goal ?? body.goal ?? null,
       angle: pickedAngle ? String(pickedAngle.kind ?? '') : null,
-      focus: intent.focus, outcome: intent.outcome, available: routeAvail,
+      focus: intent.focus, outcome: intent.outcome, available: routeAvail, trial: trialOn,
     })
     const knowledgeBoard = renderRoute(knowledgeRoute)
     // ⚠️ WHAT HER LAST VIDEOS ALREADY SAID (batch part-13: one line of hers,

@@ -150,6 +150,8 @@ export interface RouteInput {
   outcome?: string | null
   /** How much of each source is on file for this video (count of usable items). */
   available: Partial<Record<SourceId, number>>
+  /** Test-account trial switches (owner 2026-10-04: trial first, then everyone). */
+  trial?: boolean
 }
 
 export interface Slot {
@@ -178,6 +180,11 @@ export function preferenceFor(role: Role, row: ArcRow, input: Omit<RouteInput, '
   // proof; the other parts still draw on their own material (batch part-10:
   // routing it first everywhere filled five of six parts from one paragraph).
   if (input.mode === 'idea' && (role === 'hook' || role === 'proof')) list = ['her_answers', ...list]
+  // ⚠️ BATCH PART-14 (trial): "my morning routine at the roastery" got "Today
+  // I am announcing a new single-origin lot" as its payoff — the story row put
+  // the product first. In idea mode a video that is not selling keeps the
+  // product out of proof and payoff; her own story and claims carry them.
+  if (input.trial && input.mode === 'idea' && row !== 'sell' && (role === 'proof' || role === 'payoff')) list = list.filter((s) => s !== 'product')
   // Brand mode: the brand stands where the product would.
   if (input.mode === 'brand') list = list.map((s) => (s === 'product' ? 'brand' : s))
   // Product mode: the product must carry proof or payoff (doc §4).

@@ -71,3 +71,14 @@ describe('knowledge router: which source feeds which part', () => {
     }
   })
 })
+
+describe('batch part-14: an idea video that is not selling keeps the product out of the payoff', () => {
+  it('trial: no product in proof or payoff for a story idea', () => {
+    const r = routeKnowledge({ mode: 'idea', goal: 'personal_brand', available: { product: 3, her_story: 2, her_claim: 2, her_answers: 1 }, trial: true })
+    expect(r.slots.filter((s) => s.role === 'proof' || s.role === 'payoff').map((s) => s.source)).not.toContain('product')
+  })
+  it('a sell idea still may use it', () => {
+    const r = routeKnowledge({ mode: 'idea', goal: 'sell', available: { product: 3, her_story: 1 }, trial: true })
+    expect(r.slots.map((s) => s.source)).toContain('product')
+  })
+})
