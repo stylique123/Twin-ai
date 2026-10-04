@@ -38,6 +38,7 @@ import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract 
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
 import { arcFor, arcPrompt, arcCheck, nameTheProduct } from '../_shared/arcShape.ts'
 import { keepLateSafe, spokenWords, type LateGuardContext } from '../_shared/lateGuards.ts'
+import { installUsageTracking, trackUsage, currentUsage } from '../_shared/aiUsage.ts'
 import { ensureProductShown, showModeOf, hookPayoff, payoffRepairPrompt, newNumbers, ensureGoalClose } from '../_shared/blueprintFinish.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
@@ -6317,7 +6318,10 @@ async function ideaQuestionsMode(apiKey: string, paragraph: string, voice: { nic
   }
 }
 
-Deno.serve(async (req: Request) => {
+installUsageTracking()
+Deno.serve((req: Request) => trackUsage(() => handle(req)))
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
@@ -14942,7 +14946,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const pWords = name.replace(/\(.*?\)/g, ' ').split(/[^A-Za-z]+/).filter((w) => w.length >= 4 && !/^(the|and|with|from|your|this)$/i.test(w))
         const screens = sectionsFromKnowledge(ownedEntity)
         const shown = ensureProductShown(bp.script as Array<Record<string, unknown>>, {
-          productName: name,
+          // A stored label like "Encore Grinder (batch)" is not how she says it.
+          productName: name.replace(/\s*\([^)]*\)\s*/g, ' ').trim(),
           productWords: pWords,
           mode: showModeOf((ownedEntity as { type?: unknown }).type, (ownedEntity as { showability?: unknown }).showability, screens),
           shape: shapeFromKnowledge(ownedEntity),
@@ -15022,9 +15027,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         fidelity,
         // ⚖️ ITEM 26: the one-line notice rides on the saved blueprint, so the
         // result screen reads it without a second channel.
-        blueprint: referenceScopeNote
-          ? { ...(blueprint as Record<string, unknown>), reference_scope_note: referenceScopeNote }
-          : blueprint,
+        // ⚖️ WHAT THIS SCRIPT COST: tokens per model, read off every Gemini
+        // call this request made (see _shared/aiUsage.ts).
+        blueprint: {
+          ...(blueprint as Record<string, unknown>),
+          ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
+          ai_usage: currentUsage(),
+        },
         reference_analysis: referenceAnalysis,
         brand_voice_id: voice?.id ?? null,
         transcript_id: transcript_id || null,
@@ -15367,4 +15376,4 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       code: 'GENERATION_FAILED',
     }, providerDown ? 503 : 500)
   }
-})
+}
