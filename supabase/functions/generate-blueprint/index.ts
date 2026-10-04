@@ -63,6 +63,7 @@ import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { pickHerCta, looksLikeCta } from '../_shared/ctaAllocation.ts'
+import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
@@ -10579,6 +10580,21 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
       focus: intent.focus, outcome: intent.outcome, available: routeAvail,
     })
     const knowledgeBoard = renderRoute(knowledgeRoute)
+    // ⚠️ WHAT HER LAST VIDEOS ALREADY SAID (batch part-13: one line of hers,
+    // word for word, in 16 of 54 scripts). Her last scripts are read and the
+    // lines they repeat go to the writer as "already said". A failed read
+    // leaves the block empty, never the build.
+    let recentlySaidBlock = ''
+    try {
+      const { data: prev } = await admin.from('generations').select('script:blueprint->script')
+        .eq('user_id', user.id).order('created_at', { ascending: false }).limit(8)
+      const texts = (prev ?? []).map((r) => (Array.isArray((r as { script?: unknown }).script) ? (r as { script: Array<{ line?: unknown }> }).script : [])
+        .map((b) => (typeof b?.line === 'string' ? b.line : '')).filter(Boolean).join('\n'))
+      const said = recentlySaid(texts)
+      const hooksBefore = texts.map((t) => t.split('\n')[0] ?? '').filter(Boolean)
+      recentlySaidBlock = renderRecentlySaid(said, hooksBefore)
+      console.log(JSON.stringify({ event: 'recently_said', scripts: texts.length, repeated: said.length }))
+    } catch { /* thinner, never wronger */ }
     console.log(JSON.stringify({ event: 'knowledge_route', mode: knowledgeMode, row: knowledgeRoute.row, gaps: knowledgeRoute.gaps, slots: knowledgeRoute.slots.map((x) => `${x.role}:${x.source ?? '-'}`) }))
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
@@ -10589,7 +10605,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
 - ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}
-- ${knowledgeBoard.split('\n').join('\n  ')}${reference_url ? `
+- ${knowledgeBoard.split('\n').join('\n  ')}${recentlySaidBlock ? `\n- ${recentlySaidBlock.split('\n').join('\n  ')}` : ''}${reference_url ? `
   REFERENCE MODE (owner blueprint 2026-10-03, Part 3.1): the reference's own shape comes first. Measure how much of it leans into story, opinion or value before its subject or product appears, and keep THAT ratio in her version; the shape above is used only where the reference gives no signal.` : ''}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
