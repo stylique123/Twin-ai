@@ -39,3 +39,23 @@ describe('Reddit niche research (owner 2026-10-04)', () => {
     expect(redditSearches('coffee', 'Coffee')).toEqual(['coffee'])
   })
 })
+
+describe('Reddit: the niche\'s own communities (first-run fix)', () => {
+  it('reads upvotes under any field name', async () => {
+    const { upvotesOf } = await import('./nicheRedditParse.js')
+    expect(upvotesOf({ upVotes: 0, score: 512 })).toBe(512)
+    expect(upvotesOf({ ups: 9 })).toBe(9)
+    expect(upvotesOf({})).toBe(0)
+  })
+  it('keeps threads from the niche subreddits only', async () => {
+    const { inCommunities } = await import('./nicheRedditParse.js')
+    const t = (c: string) => ({ title: 'x', body: '', community: c, upvotes: 1, comments: 1, url: null, top: [] })
+    expect(inCommunities(t('roasting'), ['roasting', 'Coffee'])).toBe(true)
+    expect(inCommunities(t('AmItheAsshole'), ['roasting', 'Coffee'])).toBe(false)
+    expect(inCommunities(t('anything'), [])).toBe(true)
+  })
+  it('cleans subreddit names', async () => {
+    const { cleanSubreddits } = await import('./nicheRedditParse.js')
+    expect(cleanSubreddits({ subreddits: ['r/roasting', '/r/Coffee', 'espresso', 'not a sub!', 'roasting'] })).toEqual(['roasting', 'Coffee', 'espresso'])
+  })
+})
