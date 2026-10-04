@@ -139,6 +139,9 @@ async function callOnce(token, body) {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, apikey: ANON, 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    // part-11 (2026-10-04): one request that never answered froze the whole
+    // batch for 40 minutes. A script past 4 minutes is a failure, not a wait.
+    signal: AbortSignal.timeout(240_000),
   })
   const text = await res.text()
   let json = null
@@ -290,6 +293,7 @@ async function judge(bp, sc, ctx) {
     if (wait) await new Promise((r) => setTimeout(r, wait))
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI}`, {
+        signal: AbortSignal.timeout(150_000),
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: JUDGE_SYSTEM }] },
