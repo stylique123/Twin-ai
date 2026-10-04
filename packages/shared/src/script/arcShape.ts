@@ -117,3 +117,73 @@ export function arcCheck(
   if (firstAt > arc.productFirstAtMost) return { firstAt, fits: false, reason: 'product_too_late' }
   return { firstAt, fits: true, reason: null }
 }
+
+// ── THE PRODUCT IS SAID BY NAME AT LEAST ONCE (reviewer, part-4 batch 2026-10-04) ──
+//
+// ⚠️ Scripts referred to the chosen product only as "it" / "this grinder" and
+// never said "Baratza Encore Grinder" aloud. `arcCheck` could not see it: it
+// counts ANY name word of four letters or more, so the generic noun ("grinder",
+// "beans") reads as the product being named. A viewer cannot buy "it".
+
+const nameCore = (name: string) => String(name ?? '').replace(/\(.*?\)/g, ' ').replace(/\s+/g, ' ').trim()
+const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const lc = (s: string) => s.toLowerCase().replace(/[’]/g, "'")
+
+/** Whether the product's own name (not just its generic noun) is spoken. */
+export function productNameSaid(lines: ReadonlyArray<string>, name: string): boolean {
+  const core = nameCore(name)
+  if (!core) return true
+  const ws = core.split(' ')
+  const distinctive = ws.length >= 2 ? ws.slice(0, -1).join(' ') : core
+  const text = lc(lines.join('\n'))
+  return text.includes(lc(core)) || text.includes(lc(distinctive))
+}
+
+/**
+ * Say the product's name once where the arc lets it enter: the first spoken
+ * line at or after the arc's earliest product position that refers to it
+ * ("this grinder", "my beans", "it") gets the name in place of the reference.
+ * Nothing is invented — the name is the chosen product's own. A script where
+ * the product is optional and never referred to is left alone.
+ */
+export function nameTheProduct(
+  lines: ReadonlyArray<string>,
+  name: string,
+  arc: Arc,
+): { lines: string[]; at: number } {
+  const out = [...lines]
+  const core = nameCore(name)
+  if (!core || productNameSaid(lines, core)) return { lines: out, at: -1 }
+  const ws = core.split(' ')
+  const noun = ws[ws.length - 1]!
+  const nounRe = noun.length >= 4 ? new RegExp(`\\b(?:this|that|my|our|the|your)\\s+${escRe(noun)}s?\\b`, 'i') : null
+  const referred = nounRe ? lines.some((l) => nounRe.test(l)) : false
+  if (arc.productOptional && !referred) return { lines: out, at: -1 }
+  const spoken = out.map((l, i) => (l.trim() ? i : -1)).filter((i) => i >= 0)
+  if (!spoken.length) return { lines: out, at: -1 }
+  const from = Math.ceil(arc.productFirstAtLeast * (spoken.length - 1))
+  const eligible = spoken.slice(from)
+  const the = (atStart: boolean) => `${atStart ? 'The' : 'the'} ${core}`
+  const tries: Array<(l: string) => string | null> = [
+    (l) => {
+      if (!nounRe) return null
+      const m = l.match(nounRe)
+      return m ? l.replace(nounRe, the(m.index === 0)) : null
+    },
+    (l) => {
+      const m = l.match(/\b[Ii]t(?:'s|’s)\b/)
+      return m ? l.replace(m[0], `${the(m[0][0] === 'I')} is`) : null
+    },
+    (l) => {
+      const m = l.match(/\b[Ii]t\b(?!['’])/)
+      return m ? l.replace(/\b[Ii]t\b(?!['’])/, the(m[0][0] === 'I')) : null
+    },
+  ]
+  for (const t of tries) {
+    for (const i of eligible) {
+      const next = t(out[i]!)
+      if (next !== null && next !== out[i]) { out[i] = next; return { lines: out, at: i } }
+    }
+  }
+  return { lines: out, at: -1 }
+}

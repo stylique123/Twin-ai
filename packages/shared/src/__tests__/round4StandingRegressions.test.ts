@@ -13,9 +13,11 @@ const PAGE = readFileSync(resolve(root, 'apps/web/src/pages/v2/V2Building.tsx'),
 const IDEAS = readFileSync(resolve(root, 'apps/web/src/components/IdeasForYou.tsx'), 'utf8')
 
 describe('1.1 / 1.2: nothing reaches a script the writer was not given', () => {
-  const knownAt = EDGE.indexOf('const knownText = [')
+  // The extension's known text IS the late guards' allowed text (part-4 batch 2026-10-04).
+  const knownAt = EDGE.indexOf('const lateAllowedText = [')
   const block = EDGE.slice(knownAt, EDGE.indexOf("].join('\\n')", knownAt))
   it('the extension and integrity passes read only the supplied items, never the whole store', () => {
+    expect(EDGE).toMatch(/const knownText = lateAllowedText/)
     expect(block).toMatch(/\(speakable \?\? \[\]\)/)
     expect(block).not.toMatch(/knowledgeRows/)
   })

@@ -403,6 +403,18 @@ export function boundAskBeats(
       out.push(b)
       continue
     }
+    // ⚠️ PART-4 BATCH 2026-10-04 (c9400b67 123→37 words, 34d18f0d 101→36,
+    // 8eaecdab 95→41): a beat whose spoken line had PASSED the claim checks was
+    // omitted here only because an ask/needs_user flag rode on it. The line is
+    // the beat; the flag is the optional part. Keep the line, drop the ask.
+    const spoken = typeof b.line === 'string' ? b.line.trim() : ''
+    if (spoken !== '') {
+      b.substance = 'general'
+      delete b.ask
+      writtenAround++
+      out.push(b)
+      continue
+    }
     const around = askIsUsable(b.ask, b.line_scaffold) ? scaffoldWithoutAnswer(b.line_scaffold) : null
     if (around !== null && around.trim() !== '') {
       b.line = around

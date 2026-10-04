@@ -36,7 +36,8 @@ import { rejectedTerms, saysRejected, scrubRejected, enforceCorrections } from '
 import { foreignOfferFigures, scrubForeignOffer, stripForeignOffer } from '../_shared/offerScope.ts'
 import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract } from '../_shared/ideaQuestions.ts'
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
-import { arcFor, arcPrompt, arcCheck } from '../_shared/arcShape.ts'
+import { arcFor, arcPrompt, arcCheck, nameTheProduct } from '../_shared/arcShape.ts'
+import { keepLateSafe, spokenWords, type LateGuardContext } from '../_shared/lateGuards.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -13039,12 +13040,27 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     const productFails = issues.filter((i) =>
       i.code === 'impossible_product_claim' || i.code === 'unsupported_product_claim')
     let productEscalated = 0
+    let productLinesKept = 0
     for (const f of productFails) {
       const b = Array.isArray(declared)
         ? (declared[f.beat] as { line?: string; substance?: string; substance_evidence?: string } | undefined)
         : undefined
       // Already escalated by the entitlement pass — one beat, one outcome.
       if (!b || b.substance === 'needs_user') continue
+      // ⚠️ PART-4 BATCH 2026-10-04: THE FLAG FAILED, NOT THE LINE. This check
+      // reads the writer's `substance` DECLARATION ("product_dna" with no
+      // product facts carried), not the spoken sentence — and the sentence had
+      // already passed the claim checks. Blanking it here and letting
+      // boundAskBeats omit the beat (product_detail is optional) cut
+      // c9400b67 123→37 words, 34d18f0d 101→36, 8eaecdab 95→41. A spoken line
+      // stays; only the false declaration goes. The late guards (figures,
+      // invented method, offer scope) still hold the sentence itself.
+      if (typeof b.line === 'string' && b.line.trim() !== '') {
+        b.substance = 'general'
+        b.substance_evidence = ''
+        productLinesKept++
+        continue
+      }
       // ⚠️ ITEMS 40/41: NAME THE PRODUCT, SHOW THE BEAT, GIVE AN EXAMPLE, AND
       // KEY THE ASK BY THE MISSING FACT. Three beats of one real script carried
       // the identical question with no product name, no context and no example;
@@ -13082,6 +13098,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       ;(b as { ask_reason?: string }).ask_reason = 'product_detail'
       if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
       productEscalated++
+    }
+    if (productLinesKept) {
+      console.warn(JSON.stringify({ event: 'product_claim_line_kept', beats: productLinesKept }))
     }
     if (productEscalated) {
       console.warn(JSON.stringify({
@@ -13184,6 +13203,67 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // so the shot list, retention map and "why it works" read the repaired
     // script. It only removes or restores — it never writes a new claim — so a
     // short script is reported short, not padded.
+    // ── ONE "ALLOWED" FOR THE EXTENSION AND THE LATE GUARDS (part-4 batch 2026-10-04) ──
+    //
+    // ⚠️ 8eaecdab: extension 94 words → shipped 50; 7a25ca3d 150 → 136. The
+    // extension was told the brief (offer block included, another product's
+    // "5lb / $65" with it) and accepted on its own invented-name/number check;
+    // the late guards then judged the same lines with a different allowed text
+    // (no brief among the line sources → invented_method), a stricter figure
+    // rule (unbacked_figure: "two weeks in a row") and the offer scope
+    // (other_product_offer). Both now read `lateAllowedText` / `lateCtx`, and
+    // the extension keeps only what `lateGuardCuts` passes.
+    const productNameNow = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+    const briefStrings = Object.values(brief ?? {}).filter((v): v is string => typeof v === 'string')
+      .map((v) => scrubForeignOffer(v, foreignOffer) ?? '')
+    const answerStrings = Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string')
+    const lateAllowedText = [
+      productNameNow,
+      JSON.stringify(ownedEntity ?? {}),
+      JSON.stringify(confirmedBrand ?? {}),
+      ...(speakable ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
+      ...productFactsForCheck,
+      reference_note,
+      ...briefStrings,
+      ...answerStrings,
+    ].join('\n')
+    const lateIdentityText = [
+      JSON.stringify(ownedEntity ?? {}),
+      JSON.stringify(confirmedBrand ?? {}),
+      ...(speakable ?? []).filter((k) => String((k as { basis?: unknown }).basis ?? '') === 'stated').map((k) => String(k.text ?? '')),
+      reference_note,
+      ...briefStrings,
+      ...answerStrings,
+    ].join('\n')
+    const lateSources: LineSourceInput[] = (() => {
+      const clip = (t: string) => (t.length > 70 ? `${t.slice(0, 67)}…` : t)
+      return [
+        ...(speakable ?? []).map((k) => ({
+          kind: 'fact' as const, id: String((k as { id?: unknown }).id ?? ''), label: clip(String(k.text ?? '')),
+          text: `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`,
+        })),
+        { kind: 'her_words' as const, label: 'Your idea for this video', text: reference_note },
+        ...answerStrings.filter((v) => v.trim().length > 3)
+          .map((v) => ({ kind: 'her_words' as const, label: `Your answer: ${clip(v)}`, text: v })),
+        { kind: 'product' as const, label: productNameNow || 'The product', text: [JSON.stringify(ownedEntity ?? ''), ...productFactsForCheck, ...briefStrings].join(' ') },
+        { kind: 'brand' as const, label: 'Your brand', text: JSON.stringify(confirmedBrand ?? '') },
+      ]
+    })()
+    const lateCtx: LateGuardContext = {
+      allowedText: lateAllowedText,
+      identityText: lateIdentityText,
+      excludedTexts: guardExcludedTexts,
+      unpicked: namesNotPicked,
+      followAllowed: String(body.outcome ?? '') === 'follow',
+      sources: lateSources,
+      rejected: herRejected,
+      herWords: [reference_note, ...answerStrings].join('\n'),
+      foreignOffer,
+    }
+    // Set inside the extension block below; the finish calls it again when a
+    // late guard has cut sentences (the late length step).
+    let lateExtend: ((beats: IntegrityBeat[]) => Promise<IntegrityBeat[] | null>) | null = null
+    let wordsAtExtension = 0
     try {
       const bpAny = templated.bp as { script?: unknown; beat_plan?: unknown }
       if (Array.isArray(bpAny.script)) {
@@ -13197,15 +13277,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // supplied items, her words for this video, and the product/brand facts.
         // The integrity pass checks against the same set, so a stored number
         // that was not supplied is removed rather than counted as grounded.
-        const knownText = [
-          JSON.stringify(ownedEntity ?? {}),
-          JSON.stringify(confirmedBrand ?? {}),
-          ...(speakable ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
-          ...productFactsForCheck,
-          reference_note,
-          ...Object.values(brief ?? {}).filter((v): v is string => typeof v === 'string'),
-          ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string'),
-        ].join('\n')
+        // The same allowed text the late guards use (another product's offer scrubbed).
+        const knownText = lateAllowedText
         // ⚠️ ITEMS 34/36: TAG EACH BEAT WITH THE STORED STORY IT TELLS. The
         // writer never says which supplied item a beat rests on, so two beats
         // paraphrasing one story ("Setup" and "Durability Proof" both telling
@@ -13256,6 +13329,36 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
         const integrity = repairScriptIntegrity(bpAny.script as IntegrityBeat[], integrityOpts)
         traceBeats('integrity', integrity.beats)
+        // Lines the extension rewrote or added that make a claim she is not
+        // entitled to are reverted / not added (same rule as the first pass).
+        const entitledOnly = (before: IntegrityBeat[], after: IntegrityBeat[]): IntegrityBeat[] => {
+          try {
+            const beforeLines = new Set(before.map((b) => b?.line))
+            const bad = new Set(entitlementFailures(after as Array<{ line?: unknown }>, suppliedForCheck)
+              .map((f) => f.index).filter((i) => !beforeLines.has(after[i]?.line)))
+            if (!bad.size) return after
+            if (before.length === after.length) return after.map((b, i) => (bad.has(i) ? before[i]! : b))
+            return after.filter((_, i) => !bad.has(i))
+          } catch { return after }
+        }
+        const plannedForLate = Array.isArray(bpAny.beat_plan)
+          ? (bpAny.beat_plan as Array<{ beat?: unknown }>).map((p) => String(p?.beat ?? '')) : []
+        lateExtend = async (beats: IntegrityBeat[]): Promise<IntegrityBeat[] | null> => {
+          const d = shouldExtendScript(beats, integrityOpts.targetSec, integrityOpts.wpm, 0, plannedForLate)
+          if (!d.extend) return null
+          const raw = await callModel(
+            apiKey,
+            'You lengthen single script lines using only facts you are given.'
+            + ' You never invent a new fact, product, number, name or experience. You return JSON only.',
+            buildExtensionPrompt(beats, d, knownText),
+            EXTENSION_SCHEMA,
+          )
+          const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }>; inserts?: Array<{ section?: unknown; line?: unknown }> }
+          const ext = acceptExtension(beats, parsed?.rewrites, d, integrityOpts, parsed?.inserts)
+          if (!ext.accepted) return null
+          const safe = keepLateSafe(beats, entitledOnly(beats, ext.beats), lateCtx)
+          return spokenWords(safe.beats) > spokenWords(beats) ? safe.beats : null
+        }
         bpAny.script = integrity.beats
         // ⚠️ ITEM 38: A SCRIPT UNDER 80% OF ITS BUDGET GETS ONE EXTENSION PASS.
         // The writer lengthens the middle beats from the facts ALREADY in the
@@ -13307,6 +13410,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
                   if (nowBad.length) console.warn(JSON.stringify({ event: 'extension_claim_reverted', lines: nowBad.length }))
                 }
               } catch { /* the re-check never fails a build */ }
+              // ⚖️ WHAT THE EXTENSION KEEPS, THE LATE GUARDS KEEP.
+              const safe = keepLateSafe(integrity.beats, ext.beats, lateCtx)
+              if (safe.cut.length) {
+                console.warn(JSON.stringify({
+                  event: 'extension_late_guard_cut', sentences: safe.cut.length,
+                  reasons: [...new Set(safe.cut.map((c) => c.reason))],
+                }))
+              }
+              ext.beats = safe.beats
+              ext.wordsAfter = spokenWords(safe.beats)
               bpAny.script = ext.beats
               wordsAfter = ext.wordsAfter
               integrity.report.words = ext.wordsAfter
@@ -13380,6 +13493,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           }
         } catch { /* the close never fails a build */ }
         traceBeats('extension', bpAny.script)
+        wordsAtExtension = spokenWords(Array.isArray(bpAny.script) ? bpAny.script as Array<{ line?: unknown }> : [])
         // ⚖️ THE PLAN IS PARALLEL TO THE SCRIPT; a dropped beat drops its plan row.
         if (integrity.report.droppedIndices.length && Array.isArray(bpAny.beat_plan)
           && bpAny.beat_plan.length === originalLen) {
@@ -14378,15 +14492,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // carrying a private term or a tapped-out fact's wording that nothing she
     // allowed contains is removed. Deterministic; it cannot be talked round.
     try {
-      const allowedText = [
-        JSON.stringify(ownedEntity ?? {}),
-        JSON.stringify(confirmedBrand ?? {}),
-        ...(speakable ?? []).map((k) => `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`),
-        ...productFactsForCheck,
-        reference_note,
-        ...Object.values(brief ?? {}).filter((v): v is string => typeof v === 'string'),
-        ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string'),
-      ].join('\n')
+      // The one allowed text — the extension was held to it too.
+      const allowedText = lateAllowedText
       const bp = blueprint as { script?: unknown; shot_list?: unknown; dropped_beats?: unknown; guardrail_report?: unknown }
       if (Array.isArray(bp.script)) {
         // ⚠️ OWNER FABRICATION AUDIT 2026-10-01: a figure nothing she gave contains
@@ -14396,14 +14503,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // product/brand facts and her words for this video count (one source, 5.1).
         // A role she claims ("I run a cart") must be in something she STATED —
         // not a topic guessed from a caption (owner retest 2026-10-01).
-        const identityText = [
-          JSON.stringify(ownedEntity ?? {}),
-          JSON.stringify(confirmedBrand ?? {}),
-          ...(speakable ?? []).filter((k) => String((k as { basis?: unknown }).basis ?? '') === 'stated').map((k) => String(k.text ?? '')),
-          reference_note,
-          ...Object.values(brief ?? {}).filter((v): v is string => typeof v === 'string'),
-          ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string'),
-        ].join('\n')
+        const identityText = lateIdentityText
         const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true, identityText })
         if (guarded.removed.length) {
           const emptied = guarded.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
@@ -14591,18 +14691,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     try {
       const bp = blueprint as { script?: unknown; line_sources?: unknown }
       if (Array.isArray(bp.script)) {
-        const clip = (t: string) => (t.length > 70 ? `${t.slice(0, 67)}…` : t)
-        const sources: LineSourceInput[] = [
-          ...(speakable ?? []).map((k) => ({
-            kind: 'fact' as const, id: String((k as { id?: unknown }).id ?? ''), label: clip(String(k.text ?? '')),
-            text: `${String(k.text ?? '')} ${String((k as { evidence?: unknown }).evidence ?? '')}`,
-          })),
-          { kind: 'her_words', label: 'Your idea for this video', text: reference_note },
-          ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string' && v.trim().length > 3)
-            .map((v) => ({ kind: 'her_words' as const, label: `Your answer: ${clip(v)}`, text: v })),
-          { kind: 'product', label: String((ownedEntity as { name?: unknown } | null)?.name ?? 'The product'), text: [JSON.stringify(ownedEntity ?? ''), ...productFactsForCheck].join(' ') },
-          { kind: 'brand', label: 'Your brand', text: JSON.stringify(confirmedBrand ?? '') },
-        ]
+        // The same sources the extension was held to (the brief's product text included).
+        const sources: LineSourceInput[] = [...lateSources]
         let traced = traceLines(bp.script as Array<{ line?: unknown }>, sources)
         // ⚠️ AUDIT 2026-09-29 (THE ESPRESSO RUN): a precise method she never
         // gave — a tamp, an extraction cue, a pinch of something — traced to
@@ -14672,6 +14762,59 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (keep.length && keep.length !== bp.hook_options.length) bp.hook_options = keep
       }
     } catch { /* enforcement never fails a generation */ }
+    // ── THE LATE LENGTH STEP (part-4 batch 2026-10-04) ──────────────────────
+    //
+    // ⚠️ 8eaecdab shipped 50 of the 94 words it had after the extension: the
+    // late guards above cut sentences and the script went out short, with the
+    // re-extension never asked. A guard that removes sentences now sends the
+    // script back through the same extension, held to the same `lateCtx`, so
+    // nothing it adds can be cut again.
+    try {
+      const bp = blueprint as { script?: unknown; shot_list?: unknown; beat_plan?: unknown }
+      const extendNow = lateExtend as ((beats: IntegrityBeat[]) => Promise<IntegrityBeat[] | null>) | null
+      if (Array.isArray(bp.script) && extendNow) {
+        const now = spokenWords(bp.script as Array<{ line?: unknown }>)
+        if (now < wordsAtExtension) {
+          const longer = await extendNow(bp.script as IntegrityBeat[])
+          if (longer) {
+            bp.script = longer
+            if (Array.isArray(bp.shot_list)) {
+              bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, longer as Array<{ line?: unknown }>).shots
+            }
+            if (Array.isArray(bp.beat_plan) && (bp.beat_plan as unknown[]).length !== longer.length) {
+              const rows = [...(bp.beat_plan as Array<{ beat?: unknown }>)]
+              bp.beat_plan = longer.map((b) => {
+                const at = rows.findIndex((r) => String(r?.beat ?? '').toLowerCase() === String(b?.section ?? '').toLowerCase())
+                return at >= 0 ? rows.splice(at, 1)[0] : { beat: String(b?.section ?? ''), proof: 'Straight to camera' }
+              })
+            }
+          }
+          console.warn(JSON.stringify({
+            event: 'late_length_extended', words_at_extension: wordsAtExtension, words_before: now,
+            words_after: spokenWords((bp.script ?? []) as Array<{ line?: unknown }>), accepted: !!longer,
+          }))
+        }
+      }
+    } catch (e) { console.warn('late length step failed', String((e as Error)?.message ?? e).slice(0, 120)) }
+    // ── THE PRODUCT IS SAID BY NAME (reviewer, part-4 batch 2026-10-04) ─────
+    // Scripts called the chosen product "it" / "this grinder" and never said
+    // its name. Where the arc requires the product (or the script already
+    // refers to it), its own name replaces one reference. The name is always
+    // allowed: it is in `lateAllowedText` and the integrity name grounding.
+    try {
+      const bp = blueprint as { script?: unknown; shot_list?: unknown }
+      if (productNameNow && Array.isArray(bp.script)) {
+        const beatsNow = bp.script as Array<{ line?: unknown }>
+        const named = nameTheProduct(beatsNow.map((b) => (typeof b?.line === 'string' ? b.line : '')), productNameNow, videoArc)
+        if (named.at >= 0) {
+          bp.script = beatsNow.map((b, i) => (i === named.at ? { ...b, line: named.lines[i] } : b))
+          if (Array.isArray(bp.shot_list)) {
+            bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>).shots
+          }
+          console.warn(JSON.stringify({ event: 'product_named_aloud', beat: named.at }))
+        }
+      }
+    } catch { /* naming never fails a build */ }
     const lessonsBroken = brokenLessons(JSON.stringify((blueprint as { script?: unknown })?.script ?? ''), lessonsInPrompt)
     if (lessonsBroken.length) {
       console.warn(JSON.stringify({ event: 'lessons_broken', count: lessonsBroken.length }))
