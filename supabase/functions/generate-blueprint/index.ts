@@ -6295,7 +6295,18 @@ function cleanCatalogueText(v: unknown): string | null {
 // A light mode on this function, answered before any credit, rate-limit or
 // build work: one short model call, 8s budget, and ANY failure returns no
 // questions so the build goes ahead (fail open).
-async function ideaQuestionsMode(apiKey: string, paragraph: string, voice: { niche?: unknown; hook_patterns?: unknown; hook_style?: unknown } | null = null): Promise<Response> {
+// ⚖️ ANGLES FROM REAL SIGNALS (owner, 2026-10-04: the material board reaches
+// every output). What her audience asks, argues over and complains about on
+// Reddit may set an angle's DIRECTION — a contrarian angle takes a side in a
+// real debate, a problem_question angle answers a real question — while its
+// gist is still built only from what she wrote.
+function audienceAngleBlock(items: readonly NicheRedditItemInline[]): string {
+  const rows = (Array.isArray(items) ? items : []).filter((m) => m && typeof m.text === 'string' && ['question', 'debate', 'complaint', 'buying'].includes(String(m.kind))).slice(0, 8)
+  if (!rows.length) return ''
+  const body = rows.map((m) => `  - [${m.kind}] ${String(m.text).slice(0, 200)}`).join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
+  return `\nWHAT HER AUDIENCE ASKS AND ARGUES ABOUT (Reddit, loudest first). When one fits her paragraph, let an angle take it as its direction: a contrarian_claim takes a side in a real debate, a problem_question answers a real question, a result_first ends a real complaint. Never put a Redditor's claim in her mouth, and never add a fact she did not write.\n<<<UNTRUSTED_DATA audience\n${body}\nEND_UNTRUSTED_DATA>>>`
+}
+async function ideaQuestionsMode(apiKey: string, paragraph: string, voice: { niche?: unknown; hook_patterns?: unknown; hook_style?: unknown } | null = null, audience: readonly NicheRedditItemInline[] = []): Promise<Response> {
   const text = paragraph.trim().slice(0, 2000)
   if (text.length < 12) return json({ questions: [], purpose: null })
   const ctrl = new AbortController()
@@ -6313,7 +6324,7 @@ async function ideaQuestionsMode(apiKey: string, paragraph: string, voice: { nic
           systemInstruction: { parts: [{ text: `${IDEA_Q_SYSTEM}\n${angleBrief(nicheBucketInline(voice?.niche), [
             ...(Array.isArray(voice?.hook_patterns) ? (voice!.hook_patterns as unknown[]).map(String) : []),
             ...(typeof voice?.hook_style === 'string' ? [voice.hook_style] : []),
-          ].slice(0, 12))}` }] },
+          ].slice(0, 12))}${audienceAngleBlock(audience)}` }] },
           contents: [{ role: 'user', parts: [{ text: `HER PARAGRAPH:\n<<<UNTRUSTED_DATA idea\n${text}\nEND_UNTRUSTED_DATA>>>` }] }],
           generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: 'application/json', responseSchema: IDEA_Q_SCHEMA },
         }),
@@ -6368,7 +6379,13 @@ async function handle(req: Request): Promise<Response> {
     const { data: v } = await createClient(supabaseUrl, serviceKey).from('brand_voices').select('profile')
       .eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle()
     // Her hook patterns feed this prompt too: scrubbed like every other reader.
-    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', scrubPrivate(v?.profile ?? null) as never)
+    const prof = (v?.profile ?? null) as { niche?: unknown; sub_niche?: unknown } | null
+    const audienceKey = String(prof?.sub_niche || prof?.niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
+    const { data: aud } = audienceKey
+      ? await createClient(supabaseUrl, serviceKey).from('niche_reddit').select('items').eq('niche_key', audienceKey).maybeSingle()
+      : { data: null }
+    const audience = Array.isArray((aud as { items?: unknown } | null)?.items) ? (aud as { items: NicheRedditItemInline[] }).items : []
+    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', scrubPrivate(v?.profile ?? null) as never, scrubPrivate(audience) as never)
   }
 
   // Team seats: if this user is a member of a workspace, they create IN that
