@@ -215,13 +215,18 @@ describe('item 38: one grounded extension pass for a short script', () => {
     expect(r.invented).toEqual(expect.arrayContaining(['500', 'amazon']))
     expect(r.beats).toEqual(short)
   })
-  it('keeps the original when re-validation finds a retold story', () => {
+  it('keeps the rewrite that passes and drops the retelling (batch part-12)', () => {
     const d = shouldExtendScript(short, 30)
     const same = 'Half of my bulk roll of snap fasteners popped open within a week, so I test every fastener batch on scrap fabric.'
     const r = acceptExtension(short, [{ index: 1, line: same }, { index: 2, line: same }], d, { knownText: facts, targetSec: 30 })
+    expect(r.accepted).toBe(true)
+    expect(r.beats.filter((b) => b.line === same)).toHaveLength(1)
+    expect(r.wordsAfter).toBeGreaterThan(r.wordsBefore)
+  })
+  it('keeps the original when the only change retells a story', () => {
+    const d = shouldExtendScript(short, 30)
+    const r = acceptExtension(short, [{ index: 1, line: String(short[2]?.line ?? '') }], d, { knownText: facts, targetSec: 30 })
     expect(r.accepted).toBe(false)
-    expect(r.reason).toBe('integrity_removed')
-    expect(r.beats).toEqual(short)
   })
   it('ignores rewrites of protected beats and keeps the original when nothing applies', () => {
     const d = shouldExtendScript(short, 30)
