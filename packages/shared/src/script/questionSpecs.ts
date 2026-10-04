@@ -214,10 +214,14 @@ export function fillSlots(spec: Spec, m: Material, now = Date.now()): Record<str
     const labelled = usable.find((f) => f.option === spec.id && f.slot === slot.id)
     if (labelled) { out[slot.id] = { slot: slot.id, value: labelled.text, source: 'labelled', expired: expired(labelled.at) }; continue }
     // A cue match counts only from facts already scoped to this option, or unscoped ones.
-    const cued = usable.find((f) => (!f.option || f.option === spec.id) && slot.cues.some((c) => norm(f.text).includes(c)))
+    // ⚠️ PROBE 2026-10-04: one cue word ("new", "first") made almost any fact
+    // "fill" Launch's what's-new slot, so it was never asked. A saved fact
+    // fits a slot only when two distinct cues of that slot appear in it.
+    const hits = (t: string) => slot.cues.filter((c) => norm(t).includes(c)).length
+    const cued = usable.find((f) => (!f.option || f.option === spec.id) && hits(f.text) >= 2)
     if (cued && slot.type !== 'quote') { out[slot.id] = { slot: slot.id, value: cued.text, source: 'cue', expired: expired(cued.at) }; continue }
     const p = String(m.paragraph ?? '')
-    if (p.length > 40 && slot.cues.some((c) => norm(p).includes(c)) && slot.type !== 'number') {
+    if (p.length > 40 && slot.cues.filter((c) => norm(p).includes(c)).length >= 2 && slot.type !== 'number') {
       out[slot.id] = { slot: slot.id, value: p, source: 'paragraph', expired: false }
     }
   }

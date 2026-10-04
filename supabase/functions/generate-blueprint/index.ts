@@ -6445,7 +6445,8 @@ async function handle(req: Request): Promise<Response> {
     const { data: rows } = await fq
     const facts = (rows ?? []).map((r) => {
       const ref = String((r as { source_ref?: unknown }).source_ref ?? '')
-      const m = ref.match(/^asked:spec:[^:]*:([a-z]+:[a-z_]+):([a-z_]+)$/)
+      // The entity key itself holds a colon ("product:<id>"): read option and slot from the END.
+      const m = ref.match(/:([a-z]+:[a-z_]+):([a-z_]+)$/)
       return { text: String((r as { text?: unknown }).text ?? ''), option: m?.[1] ?? null, slot: m?.[2] ?? null, at: (r as { last_observed_at?: string | null }).last_observed_at ?? null, sensitive: (r as { sensitive?: boolean }).sensitive === true }
     })
     const paragraph = typeof b.paragraph === 'string' ? b.paragraph : ''
