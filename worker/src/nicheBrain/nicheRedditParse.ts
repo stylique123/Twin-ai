@@ -26,6 +26,38 @@ const s = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim
  * threads; a comment joins its post's top comments by `postId` / `parentId`.
  * Removed, deleted and NSFW posts are dropped. Ranked by upvotes.
  */
+/** Scrapers name the vote count differently; the first number found wins. */
+export function upvotesOf(r: Record<string, unknown>): number {
+  for (const k of ['upVotes', 'upvotes', 'ups', 'score', 'numberOfUpvotes', 'votes']) {
+    const v = n(r[k])
+    if (v > 0) return v
+  }
+  return 0
+}
+
+/**
+ * ⚠️ FIRST RUN, 2026-10-04: a site-wide search for "micro coffee roasting
+ * business" returned r/AmItheAsshole and r/WFH. Threads are kept only from the
+ * niche's own communities when any are known.
+ */
+export function inCommunities(t: RedditThread, communities: readonly string[]): boolean {
+  if (!communities.length) return true
+  const c = String(t.community ?? '').toLowerCase().replace(/^r\//, '')
+  return communities.some((x) => x.toLowerCase().replace(/^r\//, '') === c)
+}
+
+export const SUBREDDIT_SYSTEM = [
+  'Name the subreddits where people in ONE creator niche actually talk about it: hobbyists, buyers, beginners and professionals.',
+  'Only real, active subreddits you are confident exist and are on-topic. Prefer specific ones over huge general ones (r/roasting over r/AskReddit).',
+  'Return 3 to 6 names without the r/ prefix, most relevant first.',
+].join('\n')
+export const SUBREDDIT_SCHEMA = { type: 'object', properties: { subreddits: { type: 'array', items: { type: 'string' } } }, required: ['subreddits'] }
+export function cleanSubreddits(raw: unknown): string[] {
+  const list = (raw as { subreddits?: unknown } | null)?.subreddits
+  if (!Array.isArray(list)) return []
+  return [...new Set(list.map((x) => String(x ?? '').trim().replace(/^\/?r\//i, '')).filter((x) => /^[A-Za-z0-9_]{3,21}$/.test(x)))].slice(0, 6)
+}
+
 export function threadsFromDataset(rows: ReadonlyArray<Record<string, unknown>>): RedditThread[] {
   const posts = new Map<string, RedditThread & { id: string }>()
   for (const r of rows) {
@@ -38,12 +70,12 @@ export function threadsFromDataset(rows: ReadonlyArray<Record<string, unknown>>)
     posts.set(id, {
       id, title, body: /^\[(removed|deleted)\]$/i.test(body) ? '' : body,
       community: s(r.parsedCommunityName ?? r.communityName, 60) || null,
-      upvotes: n(r.upVotes ?? r.score), comments: n(r.numberOfComments ?? r.numComments),
+      upvotes: upvotesOf(r), comments: n(r.numberOfComments ?? r.numComments ?? r.num_comments ?? r.commentsCount),
       url: typeof r.url === 'string' ? r.url : null, top: [],
     })
   }
   const comments = rows.filter((r) => String(r.dataType ?? '') === 'comment')
-    .sort((a, b) => n(b.upVotes ?? b.score) - n(a.upVotes ?? a.score))
+    .sort((a, b) => upvotesOf(b) - upvotesOf(a))
   for (const c of comments) {
     const text = s(c.body, 400)
     if (text.length < 15 || /^\[(removed|deleted)\]$/i.test(text)) continue
@@ -65,6 +97,8 @@ export const REDDIT_SYSTEM = [
   '- debate: a point people disagree on, with both sides in a few words.',
   '- phrase: a word or short phrase real people in this niche use that an outsider would not.',
   'Write each item as one plain sentence in the audience\'s own terms. `weight` is the summed upvotes of the threads it came from.',
+  'Keep ONLY what is about the niche itself; drop threads that merely mention a niche word (a celebrity story that involves coffee is not about coffee roasting).',
+  'Aim for 10 to 20 items when the threads support it; fewer only when they genuinely do not.',
   'Leave out anything personal about a named user, anything sexual, medical advice to an individual, and slurs.',
   `Return at most ${MAX_ITEMS} items, loudest first.`,
 ].join('\n')

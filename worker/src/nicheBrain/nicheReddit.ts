@@ -12,7 +12,7 @@ import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { apifyDataset } from '../media.js'
 import { nicheKey } from './nicheResearchParse.js'
-import { REDDIT_SYSTEM, REDDIT_SCHEMA, redditPrompt, cleanRedditItems, threadsFromDataset, redditSearches } from './nicheRedditParse.js'
+import { REDDIT_SYSTEM, REDDIT_SCHEMA, redditPrompt, cleanRedditItems, threadsFromDataset, redditSearches, SUBREDDIT_SYSTEM, SUBREDDIT_SCHEMA, cleanSubreddits, inCommunities } from './nicheRedditParse.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
 export const REDDIT_CHECK_MS = 10 * 60 * 1000
@@ -37,26 +37,33 @@ export async function runNicheReddit(log: Log): Promise<void> {
     niche_key: key, sub_niche: due.sub_niche.slice(0, 120), researched_at: new Date().toISOString(), ...patch,
   }, { onConflict: 'niche_key' })
   try {
-    const rows = await apifyDataset(env.apifyRedditActor, {
-      searches: redditSearches(due.sub_niche, due.niche),
-      sort: 'top', time: 'year', type: 'posts',
-      maxItems: 120, maxPostCount: 40, maxComments: 4,
-      includeNSFW: false, skipComments: false,
-    }, 240_000)
-    const threads = threadsFromDataset(rows)
+    const model = modelForTask('search')
+    // The niche's own communities first: their top threads of the year are the
+    // niche talking; a site-wide search is whatever went viral (first run).
+    const subs = cleanSubreddits(await geminiJson(SUBREDDIT_SYSTEM, `Niche: ${due.sub_niche}${due.niche ? ` (part of ${due.niche})` : ''}`, SUBREDDIT_SCHEMA, 30_000, 0, model).catch(() => null))
+    const rows = await apifyDataset(env.apifyRedditActor, subs.length
+      ? {
+          startUrls: subs.map((s) => ({ url: `https://www.reddit.com/r/${s}/top/?t=year` })),
+          maxItems: 160, maxPostCount: 12, maxComments: 4, includeNSFW: false, skipComments: false,
+        }
+      : {
+          searches: redditSearches(due.sub_niche, due.niche),
+          sort: 'top', time: 'year', type: 'posts',
+          maxItems: 120, maxPostCount: 40, maxComments: 4, includeNSFW: false, skipComments: false,
+        }, 240_000)
+    const threads = threadsFromDataset(rows).filter((t) => inCommunities(t, subs))
     if (threads.length < 3) {
       await stamp({ items: [], threads: [], failure: `only ${threads.length} threads` })
       log('info', 'niche_reddit', { event: 'niche_reddit', niche: key, rows: rows.length, threads: threads.length, items: 0 })
       return
     }
-    const model = modelForTask('search')
     const raw = await geminiJson(REDDIT_SYSTEM, redditPrompt(due.sub_niche, threads), REDDIT_SCHEMA, 90_000, 1024, model)
     const items = cleanRedditItems(raw)
     await stamp({
       items, model, failure: null,
       threads: threads.slice(0, 15).map((t) => ({ title: t.title, url: t.url, upvotes: t.upvotes, community: t.community })),
     })
-    log('info', 'niche_reddit', { event: 'niche_reddit', niche: key, rows: rows.length, threads: threads.length, items: items.length })
+    log('info', 'niche_reddit', { event: 'niche_reddit', niche: key, subreddits: subs, rows: rows.length, threads: threads.length, items: items.length })
   } catch (err) {
     const msg = err instanceof Error ? err.message.slice(0, 200) : String(err)
     await stamp({ failure: msg })
