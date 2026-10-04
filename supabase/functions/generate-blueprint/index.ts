@@ -6426,6 +6426,11 @@ async function handle(req: Request): Promise<Response> {
   // an unflagged heartbeat is visible noise, a flagged creator is invisible loss.
   const heartbeatUserId = Deno.env.get('HEARTBEAT_USER_ID') ?? ''
   const isHeartbeat = heartbeatUserId !== '' && user.id === heartbeatUserId
+  // ⚖️ TRIAL FIRST (owner 2026-10-04: "fix and keep re-running before it goes
+  // to everyone"). A writing change under trial runs for the test account
+  // only; it reaches every creator once a round shows +0.5 with no test
+  // dropping a point below its best.
+  const trialOn = isHeartbeat
 
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
   // BEFORE we ever call the model. Bounded by credits anyway, but this stops
@@ -6884,7 +6889,7 @@ function objectiveAnswerInline(answers: Record<string, unknown>): {
   return { questionId: id, question, text, sourceRef: `${OBJECTIVE_SOURCE_REF_PREFIX_INLINE}${key}:${id}` }
 }
 
-function freshObjectiveAnswerLine(question: string, answer: string): string {
+function freshObjectiveAnswerLine(question: string, answer: string, trial = false): string {
   return '\n- FRESH MATERIAL FOR THIS VIDEO — the creator answered this just now, in their own words.'
     + (question ? ` The question was: "${question}"` : '')
     + '\n  Their answer: ' + answer
@@ -6895,8 +6900,8 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // became the "lesson" of a video about her first roaster and the "test"
     // in a video about stale beans — the reviewer's non sequitur, every time.
     // Her answer leads only where it is about THIS video's idea.
-    + '\n  IF IT IS ABOUT THIS VIDEO\'S IDEA: if her answer is about something else (a shipping time in a video about her first roaster), do NOT put it in the middle of the video and never let it replace the teaching the hook promised — use it at most as one supporting line, or leave it out.'
-    + '\n  This is new, creator-supplied material that no earlier video had. When it fits the idea, build this video\'s central beat around it, and PREFER it over any older stored story, experience or example listed elsewhere in this prompt — do not fall back to a story already used in previous scripts when this answer can carry the beat. It has NOT been verified, so do not present it as independently checked, and a sentence here that promises a RESULT is still not an approved outcome claim.'
+    + (trial ? '\n  IF IT IS ABOUT THIS VIDEO\'S IDEA: if her answer is about something else (a shipping time in a video about her first roaster), do NOT put it in the middle of the video and never let it replace the teaching the hook promised — use it at most as one supporting line, or leave it out.' : '')
+    + '\n  This is new, creator-supplied material that no earlier video had. ' + (trial ? 'When it fits the idea, build' : 'Build') + ' this video\'s central beat around it, and PREFER it over any older stored story, experience or example listed elsewhere in this prompt — do not fall back to a story already used in previous scripts when this answer can carry the beat. It has NOT been verified, so do not present it as independently checked, and a sentence here that promises a RESULT is still not an approved outcome claim.'
 }
 // ── END OBJECTIVE QUESTION ──────────────────────────────────────────────────
 
@@ -9900,7 +9905,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // Not merged into `brief`: `brief` is persisted to pre_script_brief, and
     // this is a fact about THIS video only.
     if (typedProductFacts !== '' && objectiveAnswer) {
-      claimLines.push(freshObjectiveAnswerLine(objectiveAnswer.question, typedProductFacts))
+      claimLines.push(freshObjectiveAnswerLine(objectiveAnswer.question, typedProductFacts, trialOn))
     } else if (typedProductFacts !== '') {
       claimLines.push('\n- WHAT THE CREATOR TYPED ABOUT THIS PRODUCT, in their own words: '
         + typedProductFacts
@@ -15233,7 +15238,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             // ⚠️ BATCH PART-13 (owner 2026-10-04: "every run should add, never
             // reduce"): the editor rewrote the hook into a mid-script line and
             // broke closes. The hook and the close are never its to touch.
-            if (at === firstSpoken || at === lastSpoken) { reasons.push('hook_or_close'); continue }
+            if (trialOn && (at === firstSpoken || at === lastSpoken)) { reasons.push('hook_or_close'); continue }
             const original = String(next[at].line ?? '')
             if (newNumbers(line, original, lateAllowedText).length) { reasons.push('new_number'); continue }
             const trial = next.map((b, i) => (i === at ? { ...b, line } : b))
@@ -15248,7 +15253,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           // were 6-8 came back 3-5. The edited script ships only if a blind
           // side-by-side read prefers it; otherwise the original stands.
           let verdict = 'none'
-          if (kept) {
+          if (kept && trialOn) {
             try {
               const say = (b: Array<Record<string, unknown>>) => b.map((x) => String(x.line ?? '').trim()).filter(Boolean).map((l, i) => `${i + 1}. ${l}`).join('\n')
               const flip = Math.random() < 0.5
@@ -15262,7 +15267,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               verdict = editedWins ? 'edited' : 'original'
             } catch { verdict = 'original' }
           }
-          if (kept && verdict === 'edited') bp.script = next
+          if (kept && (!trialOn || verdict === 'edited')) bp.script = next
           console.log(JSON.stringify({ event: 'self_review', kept, rejected: reasons, verdict }))
         } catch (e) { console.warn('self review failed', String((e as Error)?.message ?? e).slice(0, 120)) }
       }

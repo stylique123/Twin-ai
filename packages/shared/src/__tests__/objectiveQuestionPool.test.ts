@@ -167,7 +167,10 @@ describe('the server stores the answer under its id and feeds it to the writer',
     expect(line).toContain('The first batch cracked.')
     expect(line).toMatch(/PREFER it over any older stored story/)
     expect(line).toMatch(/NOT been verified/)
+    // Under trial (test account only) an off-topic answer may not take the middle.
+    expect(inline.freshObjectiveAnswerLine('q', 'a', true)).toMatch(/IF IT IS ABOUT THIS VIDEO/)
+    expect(line).not.toMatch(/IF IT IS ABOUT THIS VIDEO/)
     // and the typed-facts reader actually uses it when an objective answer exists
-    expect(EDGE).toMatch(/if \(typedProductFacts !== '' && objectiveAnswer\) \{\n\s+claimLines\.push\(freshObjectiveAnswerLine\(objectiveAnswer\.question, typedProductFacts\)\)/)
+    expect(EDGE).toMatch(/if \(typedProductFacts !== '' && objectiveAnswer\) \{\n\s+claimLines\.push\(freshObjectiveAnswerLine\(objectiveAnswer\.question, typedProductFacts(, trialOn)?\)\)/)
   })
 })
