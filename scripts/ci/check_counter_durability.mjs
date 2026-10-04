@@ -92,6 +92,14 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per worker sweep: the model pass for facts the rules could not place failed; those rows stay unlabeled (ineligible) and are retried next sweep. Durable as creator_knowledge.serves_at IS NULL.',
   },
+  privacy_by_meaning: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker sweep: facts read for privacy and how many were marked private. Durable as creator_knowledge.privacy_checked_at / sensitive.',
+  },
+  privacy_by_meaning_failed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker sweep: the privacy model call failed; rows stay unchecked and are retried next sweep. Durable as privacy_checked_at IS NULL.',
+  },
   fact_purposes_labeled: {
     kind: 'counter_ephemeral',
     why: 'Per worker sweep: facts labeled by rule, model or none. Durable as creator_knowledge.serves_basis / serves_at.',
@@ -762,6 +770,10 @@ const EVENTS = {
   commercial_claim_awaiting_confirmation: { kind: 'counter_ephemeral', why: 'Commercial claims from her videos held back until she confirms them.' },
   role_claim_dropped: { kind: 'counter_ephemeral', why: 'A line claiming a business or role she never stated was dropped (trial).' },
   spec_questions: { kind: 'counter_ephemeral', why: 'Per run: how many slots used, confirmed, asked; durable per question in question_asks.' },
+  spec_confirm: {
+    kind: 'counter_ephemeral',
+    why: 'Per tap: her yes or no on a held answer. Durable as creator_knowledge.creator_confirmed_at / creator_excluded_at.',
+  },
   spec_answer: { kind: 'counter_ephemeral', why: 'Answer/skip/filler per slot; durable in question_asks.outcome.' },
   spec_question_rejected: { kind: 'counter_ephemeral', why: 'A generated question failed validation and was not shown.' },
   spec_question_skipped: { kind: 'counter_ephemeral', why: 'The wording call failed or was slow; no question shown.' },

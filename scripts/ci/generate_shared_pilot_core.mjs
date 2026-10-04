@@ -143,6 +143,7 @@ const SOURCES = [
   ['packages/shared/src/script/knowledgeRouter.ts', 'supabase/functions/_shared/knowledgeRouter.ts'],
   ['packages/shared/src/script/questionSpecs.ts', 'supabase/functions/_shared/questionSpecs.ts'],
   ['packages/shared/src/script/roleClaims.ts', 'supabase/functions/_shared/roleClaims.ts'],
+  ['packages/shared/src/script/answerGate.ts', 'supabase/functions/_shared/answerGate.ts'],
   ['packages/shared/src/script/ctaAllocation.ts', 'supabase/functions/_shared/ctaAllocation.ts'],
   ['packages/shared/src/script/recentlySaid.ts', 'supabase/functions/_shared/recentlySaid.ts'],
   ['packages/shared/src/script/scriptIntegrity.ts', 'supabase/functions/_shared/scriptIntegrity.ts'],

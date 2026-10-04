@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0279_private_by_meaning':
+    'One creator_knowledge column read and written by a worker job only. The editor never reads it.',
   '0278_permits_are_private':
     'A creator_knowledge trigger plus a one-time re-classification; read by generate-blueprint only. The editor never reads it.',
   '0277_every_question_remembers_how_it_went':

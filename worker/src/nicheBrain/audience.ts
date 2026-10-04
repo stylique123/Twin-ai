@@ -17,6 +17,7 @@ import { insertKnowledge } from '../knowledgeInsert.js'
 import { runMentionFinder, fileConfirmedMentions } from './mentions.js'
 import { runCommentMiner, fileConfirmedComments, postQuestionsToCandidates } from './commentMining.js'
 import { runFactPurposeLabeler } from './factPurposeLabeler.js'
+import { runPrivacyByMeaning } from './privacyByMeaning.js'
 import { runShiftFinder, fileConfirmedShifts } from './shifts.js'
 import { runNicheQuestions } from './nicheQuestions.js'
 import {
@@ -47,6 +48,7 @@ export function kickAudienceTests(log: Log): void {
     .then(() => runMentionFinder(log)).then(() => fileConfirmedMentions(log))
     .then(() => runCommentMiner(log)).then(() => fileConfirmedComments(log))
     .then(() => runFactPurposeLabeler(log))
+    .then(() => runPrivacyByMeaning(log))
     .then(() => runShiftFinder(log)).then(() => fileConfirmedShifts(log))
     .then(() => runNicheQuestions(log))
     .catch((err) => log('error', 'audience_threw', { error: err instanceof Error ? err.message : String(err) }))

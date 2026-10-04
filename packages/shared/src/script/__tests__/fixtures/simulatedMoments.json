@@ -1,0 +1,199 @@
+{
+ "_readme": "SIMULATED answers written by an AI for the owner's test of the question system (2026-10-04). NOT Savannah's words. Used in memory by tests only; NEVER written to creator_knowledge.",
+ "moments": [
+  {
+   "id": "m01",
+   "option": "product:launch",
+   "slot": "whats_new",
+   "answer": "First time I'm roasting an Ethiopian natural. It smelled like blueberry jam in the roaster, I'm not exaggerating.",
+   "simulated": true
+  },
+  {
+   "id": "m02",
+   "option": "product:launch",
+   "slot": "why_now",
+   "answer": "Um, so I got the green beans in on Tuesday and I just couldn't wait, I roasted a test batch that night and honestly I stayed up way too late tasting it.",
+   "simulated": true
+  },
+  {
+   "id": "m03",
+   "option": "product:restock",
+   "slot": "same_or_changed",
+   "answer": "Same blend, but I pulled it a little lighter this time. Nothing else changed.",
+   "simulated": true
+  },
+  {
+   "id": "m04",
+   "option": "product:restock",
+   "slot": "said_while_gone",
+   "answer": "Someone messaged me every week asking if it was back. She'd sign off with a sad coffee emoji, it became a running joke.",
+   "simulated": true
+  },
+  {
+   "id": "m05",
+   "option": "product:explain",
+   "slot": "first_notice",
+   "answer": "The smell when you open the bag. People tell me it smells like toasted nuts and brown sugar before they even brew it.",
+   "simulated": true
+  },
+  {
+   "id": "m06",
+   "option": "product:wrong",
+   "slot": "assumption",
+   "answer": "People think cold brew is just iced coffee. It's not, it steeps for hours and comes out smoother and less sharp.",
+   "simulated": true
+  },
+  {
+   "id": "m07",
+   "option": "product:try",
+   "slot": "hesitation",
+   "answer": "Everyone worries they'll buy a big bag and not like it. So I tell them just start with the small one, that's what it's for.",
+   "simulated": true
+  },
+  {
+   "id": "m08",
+   "option": "product:later",
+   "slot": "not_ready",
+   "answer": "People who say they'll wait until their current bag runs out. I tell them to message me when it's at the bottom and I'll roast to order.",
+   "simulated": true
+  },
+  {
+   "id": "m09",
+   "option": "product:asked",
+   "slot": "question",
+   "answer": "Q: Can I use a regular drip machine? A: Yes, use a medium grind and it works great, you don't need anything fancy.",
+   "simulated": true
+  },
+  {
+   "id": "m10",
+   "option": "product:asked",
+   "slot": "question",
+   "answer": "They ask how long the beans stay fresh. I say drink within a few weeks of the roast date and keep the bag sealed.",
+   "simulated": true
+  },
+  {
+   "id": "m11",
+   "option": "product:dm",
+   "slot": "dm_text",
+   "answer": "DM: 'is the single origin good for pour over or only espresso?' My reply: 'Pour over is where it shines, it's bright and fruity.'",
+   "simulated": true
+  },
+  {
+   "id": "m12",
+   "option": "product:why_made",
+   "slot": "missing",
+   "answer": "I kept buying coffee that tasted either burnt or sour and nobody around me could roast anything in between. So I started doing it in my kitchen.",
+   "simulated": true
+  },
+  {
+   "id": "m13",
+   "option": "product:story",
+   "slot": "moment",
+   "answer": "My very first batch came out uneven, half the beans were way darker than the rest. I almost threw the whole thing out, then I tasted a cup and it was actually okay. That's when I kept going.",
+   "simulated": true
+  },
+  {
+   "id": "m14",
+   "option": "business:why_started",
+   "slot": "before",
+   "answer": "I was drinking whatever was cheapest at the store. A friend gave me a fresh roasted bag and I couldn't go back.",
+   "simulated": true
+  },
+  {
+   "id": "m15",
+   "option": "business:announce",
+   "slot": "what",
+   "answer": "New cold brew concentrate this Friday, available on the website.",
+   "simulated": true
+  },
+  {
+   "id": "m16",
+   "option": "idea:story",
+   "slot": "moment",
+   "answer": "There was a morning I burned a whole batch because I got distracted by a text, and the smoke alarm went off, and my dog just stared at me like, really?",
+   "simulated": true
+  },
+  {
+   "id": "m17",
+   "option": "idea:teach",
+   "slot": "misconception",
+   "answer": "People grind way too fine for French press. Go coarse, like sea salt, otherwise it turns muddy.",
+   "simulated": true
+  },
+  {
+   "id": "m18",
+   "option": "idea:process",
+   "slot": "hidden_step",
+   "answer": "After roasting I let the beans rest a day or two before bagging. Most people don't know they taste better after resting.",
+   "simulated": true
+  },
+  {
+   "id": "m19",
+   "option": "idea:fun",
+   "slot": "moment",
+   "answer": "I once labeled a bag of decaf as regular and a customer told me she was bouncing off the walls. I felt terrible and also kind of laughed.",
+   "simulated": true
+  },
+  {
+   "id": "m20",
+   "option": "reference:opening",
+   "slot": "her_opening",
+   "answer": "Standing over the roaster at 6am with my coffee going cold because I'm too busy watching the beans.",
+   "simulated": true
+  },
+  {
+   "id": "m21",
+   "option": "reference:pacing",
+   "slot": "her_flow",
+   "answer": "I start with a bad cup, then I find a better bean, then I roast it myself, then I taste it, and it finally works.",
+   "simulated": true
+  },
+  {
+   "id": "m22",
+   "option": "reference:close",
+   "slot": "true_parts",
+   "answer": "The part about starting small at home is true for me. The part about quitting a job is not, I still have mine.",
+   "simulated": true
+  },
+  {
+   "id": "m23",
+   "option": "product:try",
+   "slot": "first_step",
+   "answer": "idk just try it lol",
+   "simulated": true,
+   "expect": "weak"
+  },
+  {
+   "id": "m24",
+   "option": "product:explain",
+   "slot": "first_notice",
+   "answer": "It's really good coffee, you'll love it.",
+   "simulated": true,
+   "expect": "weak"
+  },
+  {
+   "id": "m25",
+   "option": "product:story",
+   "slot": "moment",
+   "answer": "The city sent me a letter about the roasting smell and I had to figure out permits, that was a stressful month.",
+   "simulated": true,
+   "expect": "private"
+  },
+  {
+   "id": "m26",
+   "option": "business:why_started",
+   "slot": "before",
+   "answer": "I run my coffee cart business on weekends and that's where I realized I wanted to roast my own.",
+   "simulated": true,
+   "expect": "role_claim"
+  },
+  {
+   "id": "m27",
+   "option": "product:launch",
+   "slot": "limits",
+   "answer": "Only 30 bags and it ships free to anywhere in the US.",
+   "simulated": true,
+   "expect": "commercial"
+  }
+ ]
+}

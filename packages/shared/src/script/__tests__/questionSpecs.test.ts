@@ -141,3 +141,11 @@ describe('owner rules, second pass: fewer questions, saved stories first', () =>
     expect(planQuestions(tw, f, [{ slot: 'decision', wording: 'When did you decide?', outcome: 'answered', run: 1 }], 2).ask.map((a) => a.slot.id)).not.toContain('decision')
   })
 })
+
+describe('probe 2026-10-04: one cue word does not fill a slot', () => {
+  it('a fact that merely says "first" does not fill Launch\'s what\'s-new slot', () => {
+    const l = specById('product:launch')!
+    const f = fillSlots(l, { facts: [{ text: 'The first time I roasted at home it was a mess' }] }, now)
+    expect(f.whats_new).toBeUndefined()
+  })
+})
