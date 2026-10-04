@@ -9604,6 +9604,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const herCtaPick = pickHerCta(intent.goal ?? body.goal, {
       typed: brief.defaultCta,
       recurring: Array.isArray((vp as Record<string, unknown>)?.recurring_ctas) ? (vp as Record<string, unknown>).recurring_ctas as unknown[] : [],
+      topic: String(reference_note ?? ''),
     })
     const typedCta = herCtaPick ? herCtaPick.text.slice(0, 240) : ''
     console.log(JSON.stringify({ event: 'her_cta_picked', goal: String(intent.goal ?? body.goal ?? ''), job: herCtaPick?.job ?? null, typed_is_cta: looksLikeCta(brief.defaultCta) }))
@@ -10587,7 +10588,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     knowledgeRoute = routeKnowledge({
       mode: knowledgeMode, goal: intent.goal ?? body.goal ?? null,
       angle: pickedAngle ? String(pickedAngle.kind ?? '') : null,
-      focus: intent.focus, outcome: intent.outcome, available: routeAvail,
+      focus: intent.focus, outcome: intent.outcome, available: routeAvail, trial: trialOn,
     })
     const knowledgeBoard = renderRoute(knowledgeRoute)
     // ⚠️ WHAT HER LAST VIDEOS ALREADY SAID (batch part-13: one line of hers,
@@ -15183,7 +15184,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
         const payoffLine = String(beats[pay.payoffIndex ?? spokenIdx[1] ?? -1]?.line ?? '')
         const closed = ensureGoalClose(beats, intent.goal ?? body.goal, {
-          herCta: pickHerCta(intent.goal ?? body.goal, { typed: brief.defaultCta, recurring: Array.isArray((vp as Record<string, unknown>)?.recurring_ctas) ? (vp as Record<string, unknown>).recurring_ctas as unknown[] : [] })?.text ?? '',
+          herCta: pickHerCta(intent.goal ?? body.goal, { typed: brief.defaultCta, recurring: Array.isArray((vp as Record<string, unknown>)?.recurring_ctas) ? (vp as Record<string, unknown>).recurring_ctas as unknown[] : [], topic: String(reference_note ?? '') })?.text ?? '',
           payoffLine,
           followAllowed: followOk,
         })

@@ -72,9 +72,24 @@ export interface CtaPick { text: string; job: CtaJob }
  * goal, else the first of her recurring CTAs whose job the goal wants. Null
  * when none of hers fits — the writer then closes under the goal's own rule.
  */
+const TOPIC_STOP = new Set('if your you are the and for with this that just here dream around stick follow more like love would absolutely link bio site website check out find'.split(' '))
+const topicWords = (t: string) => (t.toLowerCase().match(/[a-z]{4,}/g) ?? []).filter((w) => !TOPIC_STOP.has(w))
+
+/**
+ * ⚠️ BATCH PART-14 (2026-10-04): "If starting a coffee cart is your dream,
+ * stick around" closed a video about roasting. A CTA that names its own
+ * subject ("if X is your dream") fits only a video about that subject.
+ */
+export function ctaFitsTopic(cta: string, topic: string): boolean {
+  const m = cta.match(/\bif\s+(.{4,80}?)\s+(?:is|are)\s+your\b/i) ?? cta.match(/\bif you(?:'re| are)?\s+(?:into|planning|thinking about|starting)\s+(.{4,60})/i)
+  if (!m || !topic.trim()) return true
+  const want = new Set(topicWords(topic))
+  return topicWords(m[1]!).some((w) => want.has(w) || [...want].some((t) => t.startsWith(w.slice(0, 5)) || w.startsWith(t.slice(0, 5))))
+}
+
 export function pickHerCta(
   goal: unknown,
-  opts: { typed?: unknown; recurring?: readonly unknown[] | null },
+  opts: { typed?: unknown; recurring?: readonly unknown[] | null; topic?: string },
 ): CtaPick | null {
   const wants = WANTS[String(goal ?? '').toLowerCase()] ?? []
   if (!wants.length) return null
@@ -83,7 +98,7 @@ export function pickHerCta(
   const typedJob: CtaJob | null = typed ? (ctaJob(typed) === 'other' ? 'shop' : ctaJob(typed)) : null
   const pool: CtaPick[] = [
     ...(typed && typedJob ? [{ text: typed, job: typedJob }] : []),
-    ...(opts.recurring ?? []).filter(isAsk).map((c) => ({ text: String(c).trim(), job: ctaJob(String(c)) })),
+    ...(opts.recurring ?? []).filter(isAsk).filter((c) => ctaFitsTopic(String(c), opts.topic ?? '')).map((c) => ({ text: String(c).trim(), job: ctaJob(String(c)) })),
   ]
   for (const job of wants) {
     const hit = pool.find((c) => c.job === job)

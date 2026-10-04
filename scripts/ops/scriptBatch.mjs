@@ -276,7 +276,26 @@ const JUDGE_SCHEMA = {
   },
   required: ['blueprint', 'brain', 'brain_use', 'viewers', 'evidence', 'hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
 }
+// ⚠️ THE REVIEWER MOVES ON ITS OWN (2026-10-04): the same 20 scripts scored
+// twice differed by 0.85 on average and up to 2.3; 11 of 20 moved a point or
+// more. One read cannot show a ±1 change. Each script is read JUDGE_READS
+// times (default 3) and the scores are averaged; the first read's notes stay.
+const JUDGE_READS = Math.max(1, Math.min(5, Number(process.env.JUDGE_READS ?? 3) || 3))
 async function judge(bp, sc, ctx) {
+  const reads = (await Promise.all(Array.from({ length: JUDGE_READS }, () => judgeOnce(bp, sc, ctx).catch(() => null))))
+    .filter((r) => r && Number.isFinite(Number(r.overall)))
+  if (!reads.length) return judgeOnce(bp, sc, ctx)
+  const first = reads[0]
+  const avg = (k) => {
+    const v = reads.map((r) => Number(r[k])).filter(Number.isFinite)
+    return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : first[k]
+  }
+  const out = { ...first, overall_reads: reads.map((r) => Number(r.overall)) }
+  for (const k of Object.keys(first)) if (typeof first[k] === 'number') out[k] = avg(k)
+  return out
+}
+
+async function judgeOnce(bp, sc, ctx) {
   if (!GEMINI || !JUDGE_MODEL || !bp) return null
   const product = sc.product ? ctx.products.find((p) => p.name === sc.product) : null
   const input = [
@@ -514,13 +533,15 @@ async function main() {
         batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
-        judge: bp ? await judge(bp, { ...sc, body }, ctx) : null,
+        // Scored after the viewer panel has remade it (see scoreAfterPanel).
+        judge: null,
       })
       console.log(`#${sc.n} ${sc.group}/${sc.label}/${body.goal} → ${r.status} ${a.findings.map((x) => x.k).join(',') || 'clean'}`)
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
   console.log('\nTALLY', JSON.stringify(tally, null, 1))
+  await scoreAfterPanel(admin, ctx)
   await regressionReport(admin)
 }
 
@@ -530,6 +551,36 @@ async function main() {
 // or idea, reference and goal. Each script that scores a point or more below
 // that test's best is listed with both scripts' batch and number, so the drop
 // is read and its cause named before the next fix. Stored as row n = -2.
+// ⚖️ SCORE WHAT SHE FILMS (owner 2026-10-04): every script goes to ~10 test
+// viewers from her audience and is remade from what they say (audience.ts
+// keeps a rewrite only when it tests better). The reviewer used to score the
+// first draft, before that remake. Now each script is scored once its viewer
+// test is done (or failed, or after 20 minutes), from the blueprint as saved.
+async function scoreAfterPanel(admin, ctx) {
+  const { data: rows } = await admin.from('script_batch_results').select('id, scenario, generation_id').eq('batch', BATCH).gte('n', 0).not('generation_id', 'is', null).is('judge', null)
+  const ids = (rows ?? []).map((r) => r.generation_id)
+  const until = Date.now() + 20 * 60_000
+  for (;;) {
+    const { data: t } = await admin.from('audience_tests').select('generation_id, status').in('generation_id', ids)
+    const settled = (t ?? []).filter((x) => x.status === 'done' || x.status === 'failed').length
+    console.log(`viewer tests settled ${settled}/${ids.length}`)
+    if (settled >= ids.length || Date.now() > until) break
+    await new Promise((r) => setTimeout(r, 30_000))
+  }
+  let done = 0
+  for (const row of rows ?? []) {
+    const { data: g } = await admin.from('generations').select('blueprint').eq('id', row.generation_id).maybeSingle()
+    const { data: t } = await admin.from('audience_tests').select('status, improved').eq('generation_id', row.generation_id).maybeSingle()
+    const j = await judge(g?.blueprint ?? null, { product: row.scenario?.product ?? null, body: row.scenario?.body ?? {} }, ctx)
+    const lines = Array.isArray(g?.blueprint?.script) ? g.blueprint.script.map((b) => String(b?.line ?? '').trim()).filter(Boolean) : []
+    await admin.from('script_batch_results').update({
+      judge: j ? { ...j, after_panel: t?.status === 'done', panel_changed: Array.isArray(t?.improved?.lines) ? t.improved.lines.length : 0 } : null,
+      script_text: lines.length ? lines.map((l, i) => `${i + 1}. ${l}`).join('\n') : undefined,
+    }).eq('id', row.id)
+    console.log(`scored after panel ${++done}/${rows.length} → ${j?.overall ?? '?'}`)
+  }
+}
+
 async function regressionReport(admin) {
   const keyOf = (r) => [r.scenario?.group, r.scenario?.product ?? '', String(r.scenario?.body?.reference_note ?? '').slice(0, 80), r.scenario?.body?.reference_url ?? '', r.scenario?.body?.goal ?? ''].join('|')
   const score = (r) => Number(r?.judge?.overall)
@@ -542,21 +593,27 @@ async function regressionReport(admin) {
   for (const r of past ?? []) {
     const k = keyOf(r)
     if (!Number.isFinite(score(r))) continue
-    if (!best.has(k) || score(r) > score(best.get(k))) best.set(k, r)
+    // ⚖️ AGAINST THE TEST'S USUAL SCORE, NOT ITS LUCKIEST: the best of many
+    // noisy reads sits ~1.5 above the truth, so every round "dropped".
+    const e = best.get(k) ?? { sum: 0, count: 0, top: r }
+    e.sum += score(r); e.count += 1
+    if (score(r) > score(e.top)) e.top = r
+    best.set(k, e)
   }
   const drops = []
   let compared = 0, gained = 0
   for (const r of scored) {
-    const b = best.get(keyOf(r))
-    if (!b) continue
+    const e = best.get(keyOf(r))
+    if (!e) continue
     compared += 1
-    const d = Math.round((score(r) - score(b)) * 10) / 10
+    const usual = e.sum / e.count
+    const d = Math.round((score(r) - usual) * 10) / 10
     if (d > 0) gained += 1
-    if (d <= -1) drops.push({ n: r.n, test: keyOf(r), now: score(r), best: score(b), best_batch: b.batch, best_n: b.n, drop: d, fix: String(r.judge?.biggest_fix ?? '').slice(0, 240) })
+    if (d <= -1) drops.push({ n: r.n, test: keyOf(r), now: score(r), usual: Math.round(usual * 10) / 10, runs: e.count, best: score(e.top), best_batch: e.top.batch, best_n: e.top.n, drop: d, fix: String(r.judge?.biggest_fix ?? '').slice(0, 240) })
   }
   drops.sort((a, b) => a.drop - b.drop)
-  const summary = { compared, gained, dropped_1_plus: drops.length, mean_vs_best: compared ? Math.round(scored.filter((r) => best.has(keyOf(r))).reduce((t, r) => t + score(r) - score(best.get(keyOf(r))), 0) / compared * 100) / 100 : null }
-  console.log('\nREGRESSIONS vs best earlier', JSON.stringify(summary), '\n' + drops.map((x) => `  #${x.n} ${x.test}: ${x.now} (best ${x.best} in ${x.best_batch} #${x.best_n})`).join('\n'))
+  const summary = { compared, gained, dropped_1_plus: drops.length, mean_vs_usual: compared ? Math.round(scored.filter((r) => best.has(keyOf(r))).reduce((t, r) => { const e = best.get(keyOf(r)); return t + score(r) - e.sum / e.count }, 0) / compared * 100) / 100 : null }
+  console.log('\nREGRESSIONS vs each test\'s usual score', JSON.stringify(summary), '\n' + drops.map((x) => `  #${x.n} ${x.test}: ${x.now} (usual ${x.usual} over ${x.runs}; best ${x.best} in ${x.best_batch} #${x.best_n})`).join('\n'))
   await admin.from('script_batch_results').insert({ batch: BATCH, n: -2, scenario: { group: 'regressions', summary }, findings: drops, status: 0 })
 }
 

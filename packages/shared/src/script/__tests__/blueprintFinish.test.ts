@@ -163,3 +163,10 @@ describe('batch part-13: a question close fits a reach video', () => {
     expect(closeFits('What was your hardest hurdle? Tell me below.', 'follow_save')).toBe(true)
   })
 })
+
+describe('batch part-14: a takeaway is never a bridge line', () => {
+  it('skips "And this is the part people miss."', () => {
+    const s = goalCloseSentence('takeaway', { payoffLine: 'And this is the part people miss. Permits come before the machine.' })
+    expect(s).toBe('So remember: permits come before the machine.')
+  })
+})
