@@ -702,6 +702,34 @@ export function acceptExtension(
   opts: IntegrityOptions,
   inserts?: ReadonlyArray<{ section?: unknown; line?: unknown }> | null,
 ): ExtensionResult {
+  const all = acceptExtensionAll(original, rewrites, decision, opts, inserts)
+  // ⚠️ BATCH PART-12 (2026-10-04): one bad rewrite threw the whole pass away
+  // ("integrity_removed"), leaving 7 of 20 scripts short. The changes are tried
+  // one at a time instead, and every one the re-check accepts is kept.
+  const rw = Array.isArray(rewrites) ? rewrites : []
+  const ins = Array.isArray(inserts) ? inserts : []
+  if (all.reason !== 'integrity_removed' || rw.length + ins.length < 2) return all
+  let keptRw: typeof rw = []
+  let keptIns: typeof ins = []
+  let best: ExtensionResult | null = null
+  const tries: Array<[typeof rw, typeof ins]> = [
+    ...rw.map((r) => [[r], []] as [typeof rw, typeof ins]),
+    ...ins.map((x) => [[], [x]] as [typeof rw, typeof ins]),
+  ]
+  for (const [r, x] of tries) {
+    const trial = acceptExtensionAll(original, [...keptRw, ...r], decision, opts, [...keptIns, ...x])
+    if (trial.accepted) { keptRw = [...keptRw, ...r]; keptIns = [...keptIns, ...x]; best = trial }
+  }
+  return best ?? all
+}
+
+function acceptExtensionAll(
+  original: readonly IntegrityBeat[],
+  rewrites: ReadonlyArray<{ index?: unknown; line?: unknown }> | null | undefined,
+  decision: ExtensionDecision,
+  opts: IntegrityOptions,
+  inserts?: ReadonlyArray<{ section?: unknown; line?: unknown }> | null,
+): ExtensionResult {
   const before = original.reduce((n, b) => n + wordsOf(str(b?.line)), 0)
   const keep = (reason: ExtensionResult['reason'], invented: string[] = []): ExtensionResult =>
     ({ accepted: false, reason, beats: [...original], report: null, wordsBefore: before, wordsAfter: before, invented })
