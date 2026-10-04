@@ -246,6 +246,16 @@ const JUDGE_SYSTEM = [
   'BLUEPRINT CHECK (answer each true/false from the script, not from intent): hook_paid_off (the body delivers exactly what the hook promised), lean_in_fits_row (the lean-in before the product is as long as the EXPECTED SHAPE row says), product_entry_fits_row (the product enters the way that row says), product_shown_once_or_twice (the product or its screen is SHOWN in one or two scenes whose lines are about it; true when no product), camera_labelled (every scene says front or back, no switch inside a take), close_fits_goal (the last beat is a next step that fits the goal and the relationship), full_length (enough spoken words for the seconds chosen, about 2.5 words a second).',
   // Owner 2026-10-04: the brain is judged on whether it USED what it knew (docs/design/knowledge-orchestration.md).
   'BRAIN USE (true/false, from the script and the MATERIAL BOARD given): hook_from_real_signal (the hook names a real audience question, complaint, buying ask or debate from the board, or her own real moment — not a generic opener), proof_is_hers (every proof or result line comes from HER facts, story or product, never from audience or niche material), story_complete (hook, middle and close are one thread: the close answers or acts on what the hook opened), no_generic_line (no line that any creator in the niche could say word for word), board_followed (each part uses the material the board named for it, or something better of hers). brain_use 1-10: how much of what Twin knew about her, her product, her audience and her niche actually made the video better.',
+  // ⚖️ CALIBRATED TO THE OWNER (2026-10-04, five scripts rated by hand): she
+  // scored a real memory followed by invented roast claims 6.5 where this
+  // reviewer gave 8.2, and one idea said four ways 5 where it gave 6.4.
+  'OWNER CALIBRATION (these override a generous read):',
+  '- A claim about the PRODUCT that its PRODUCT FACTS do not contain (how it is made, what it tastes like, its price, size or how to use it) is invented, however plausible; one such claim caps overall at 6.5, two or more at 5. When the product has no facts on file, a script that describes it anyway is invented.',
+  '- A claim stated as her own experience that appears only among INFERRED TOPICS (what a scan guessed) and not among her stated facts is unconfirmed: treat it as invented.',
+  '- A SENSITIVE fact used in the script caps overall at 4.',
+  '- The same idea said in three or more lines (reworded or not) caps overall at 5.5; in two lines lowers structure by 2.',
+  '- A video whose goal is entertain, personal_brand or conversations that turns into a sales pitch caps structure at 5.',
+  '- A small embellishment of her story ("months" when she said nothing about how long) is invented.',
   'Any false in the blueprint check caps structure and arc at 6. A script missing its middle, never naming a product it must sell, or ending without a close caps overall at 4.',
   'VIEWER PANEL: imagine three REAL people from HER audience (read the DNA audience; make them different: a loyal follower, a new viewer scrolling past, a skeptic who has seen ten videos like this). For each, react honestly in their own words as they would feel while watching: stops (would they stop scrolling in the first 2 seconds), watches_to_end, likes, comments (and what they would type), acts (buys, tries, follows, saves or clicks the next step), learned (one thing they take away, or nothing). Do not be kind: most videos lose most viewers.',
   'Score every dimension with evidence: quote the line that earns or costs the score in your notes. Base overall on what the panel actually did, not on effort.',
@@ -302,6 +312,9 @@ async function judgeOnce(bp, sc, ctx) {
     `CREATOR DNA: ${JSON.stringify(ctx.dna ?? {}).slice(0, 1500)}`,
     `HER FACTS (what she has actually given Twin):\n${ctx.allowedText.slice(0, 6000)}`,
     product ? `PRODUCT: ${JSON.stringify({ name: product.name, type: product.type, relationship: product.relationship, offer: product.offer, summary: product.creator_summary }).slice(0, 1200)}` : 'PRODUCT: none',
+    product ? `PRODUCT FACTS ON FILE: ${Array.isArray(product.knowledge) && product.knowledge.length ? JSON.stringify(product.knowledge).slice(0, 2000) : (product.offer || product.creator_summary ? 'only the offer/summary above' : 'NONE — nothing is on file about what this product is')}` : '',
+    ctx.inferredTopics?.length ? `INFERRED TOPICS (a scan guessed these; she never said them): ${ctx.inferredTopics.join(' | ').slice(0, 1200)}` : '',
+    ctx.sensitiveFacts?.length ? `SENSITIVE FACTS (must never appear): ${ctx.sensitiveFacts.join(' | ').slice(0, 800)}` : '',
     `ASK: mode=${sc.body.door ?? '?'} goal=${sc.body.goal ?? '?'} seconds=${sc.body.target_seconds} input=${JSON.stringify(sc.body.reference_note ?? '').slice(0, 400)} focus=${sc.body.focus ?? '-'} outcome=${sc.body.outcome ?? '-'} tone=${sc.body.tone ?? '-'} angle=${JSON.stringify(sc.body.angle ?? null)} answers=${JSON.stringify(sc.body.readiness_answers ?? {}).slice(0, 400)}`,
     `EXPECTED SHAPE: ${JSON.stringify(bp.arc ?? null)}`,
     `MATERIAL BOARD (which source fed each part, and what was on file): ${JSON.stringify(bp.knowledge_route ?? null).slice(0, 1500)}`,
@@ -393,14 +406,17 @@ async function main() {
   const { data: v } = await admin.from('brand_voices').select('id').eq('owner_id', owner).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle()
   const { data: b0 } = await admin.from('brands').select('id').eq('owner_id', owner).limit(1).maybeSingle()
   if (!process.argv.includes('--no-intake')) await intakeProducts(token, admin, owner, v?.id ?? null, b0?.id ?? null)
-  const { data: products } = await admin.from('product_entities').select('id, name, type, relationship, offer, creator_summary').eq('owner_id', owner).is('archived_at', null)
+  const { data: products } = await admin.from('product_entities').select('id, name, type, relationship, offer, creator_summary, knowledge').eq('owner_id', owner).is('archived_at', null)
   const { data: brands } = await admin.from('brands').select('*').eq('owner_id', owner).limit(1)
   const { data: know } = await admin.from('creator_knowledge_writable').select('text, basis, evidence').eq('owner_id', owner).limit(400)
+  const { data: kAll } = await admin.from('creator_knowledge').select('text, basis, kind, sensitive').eq('owner_id', owner).limit(600)
   const ctx = {
     allowedText: [...(know ?? []).map((k) => `${k.text} ${k.evidence ?? ''}`), ...(products ?? []).map((p) => `${p.name ?? ''} ${p.offer ?? ''} ${p.creator_summary ?? ''}`), brands?.[0]?.name ?? '',
       // Her confirmed brand facts are hers (batch part-13: the judge called
       // "native and women-owned" invented; it is on her brand).
       JSON.stringify(brands?.[0] ?? {}).slice(0, 3000), RICH_ANSWER.claims].join('\n'),
+    inferredTopics: (kAll ?? []).filter((k) => k.basis !== 'stated' && k.kind === 'topic').map((k) => String(k.text ?? '')).slice(0, 20),
+    sensitiveFacts: (kAll ?? []).filter((k) => k.sensitive === true).map((k) => String(k.text ?? '')).slice(0, 20),
     statedFacts: (know ?? []).filter((k) => k.basis === 'stated').map((k) => String(k.text ?? '')).filter((t) => t.length > 20),
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
