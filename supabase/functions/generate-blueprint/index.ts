@@ -6306,7 +6306,7 @@ function audienceAngleBlock(items: readonly NicheRedditItemInline[]): string {
   const body = rows.map((m) => `  - [${m.kind}] ${String(m.text).slice(0, 200)}`).join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
   return `\nWHAT HER AUDIENCE ASKS AND ARGUES ABOUT (Reddit, loudest first). When one fits her paragraph, let an angle take it as its direction: a contrarian_claim takes a side in a real debate, a problem_question answers a real question, a result_first ends a real complaint. Never put a Redditor's claim in her mouth, and never add a fact she did not write.\n<<<UNTRUSTED_DATA audience\n${body}\nEND_UNTRUSTED_DATA>>>`
 }
-async function ideaQuestionsMode(apiKey: string, paragraph: string, voice: { niche?: unknown; hook_patterns?: unknown; hook_style?: unknown } | null = null, audience: readonly NicheRedditItemInline[] = []): Promise<Response> {
+async function ideaQuestionsMode(apiKey: string, paragraph: string, audience: readonly NicheRedditItemInline[], voice: { niche?: unknown; hook_patterns?: unknown; hook_style?: unknown } | null = null): Promise<Response> {
   const text = paragraph.trim().slice(0, 2000)
   if (text.length < 12) return json({ questions: [], purpose: null })
   const ctrl = new AbortController()
@@ -6385,7 +6385,8 @@ async function handle(req: Request): Promise<Response> {
       ? await createClient(supabaseUrl, serviceKey).from('niche_reddit').select('items').eq('niche_key', audienceKey).maybeSingle()
       : { data: null }
     const audience = Array.isArray((aud as { items?: unknown } | null)?.items) ? (aud as { items: NicheRedditItemInline[] }).items : []
-    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', scrubPrivate(v?.profile ?? null) as never, scrubPrivate(audience) as never)
+    const scrubbedAudience = scrubPrivate(audience) as never
+    return ideaQuestionsMode(apiKey, typeof peek.paragraph === 'string' ? peek.paragraph : '', scrubbedAudience, scrubPrivate(v?.profile ?? null) as never)
   }
 
   // Team seats: if this user is a member of a workspace, they create IN that
