@@ -6225,7 +6225,12 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
       const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
-      if (blueprintComplete(parsed)) {
+      // ⚠️ ONLY A BLUEPRINT HAS A CONCEPT AND PACKAGING (2026-10-04). Repair
+      // calls (payoff, entitlement, self-review) pass their own schema; holding
+      // them to the blueprint check marked every one incomplete, re-ran it on
+      // the fallback model and shipped the fallback's answer — about three
+      // wasted calls per script.
+      if (schema !== blueprintSchema || blueprintComplete(parsed)) {
         await record?.settled(rowId, 'succeeded')
         return text // complete → accept
       }
