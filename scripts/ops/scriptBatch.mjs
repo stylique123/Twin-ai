@@ -76,7 +76,7 @@ function scenarios(products, brandId, brandName) {
     const goals = p.relationship === 'REVIEW_ONLY' ? ['educate', 'conversations', 'authority']
       : p.relationship === 'SPONSOR' ? ['sell', 'educate', 'followers']
       : ['sell', 'educate', 'leads', 'conversations', 'personal_brand', 'entertain']
-    for (const goal of goals) out.push({ group: 'product', label: `${p.type}/${p.relationship}`, product: p.name, body: { selected_product_id: p.id, goal, door: 'product', reference_note: p.name } })
+    for (const goal of goals) out.push({ group: 'product', label: `${p.type}/${p.relationship}`, product: p.name, body: { selected_product_id: p.id, goal, door: 'product', reference_note: p.name }, anglePick: out.length % 3 })
   }
   // B. The unnamed product.
   if (ghost) for (const goal of ['sell', 'educate']) out.push({ group: 'product', label: 'ghost product', body: { selected_product_id: ghost.id, goal, door: 'product', reference_note: '' }, expectRefusal: true })
@@ -424,7 +424,10 @@ async function main() {
       const body = { ...sc.body, idempotency_key: `${BATCH}-${sc.n}` }
       // The angle, picked from the same read the card shows.
       if (sc.anglePick !== undefined && body.reference_note) {
-        const read = await call(token, { mode: 'idea_questions', paragraph: body.reference_note })
+        // Same subject line the app builds for a non-idea mode (V2Building angleSubject).
+        const paragraph = body.door === 'idea' ? body.reference_note
+          : `A video about ${body.reference_note}. What it is for: ${body.goal}.`
+        const read = await call(token, { mode: 'idea_questions', paragraph })
         const angles = Array.isArray(read.json?.angles) ? read.json.angles : []
         const a = angles[sc.anglePick] ?? angles[0]
         if (a) body.angle = { kind: a.kind, gist: a.gist, offered: angles.map((x) => x.kind) }
