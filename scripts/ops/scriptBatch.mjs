@@ -20,7 +20,11 @@ const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
 const REF = process.env.HEARTBEAT_REFERENCE_URL ?? ''
 const BATCH = process.argv[2] || `batch-${new Date().toISOString().slice(0, 16)}`
 const LIMIT = Number(process.argv[3] || 0) || Infinity
-const CONCURRENCY = 6
+// Gentle by default: two at a time, a pause between scripts, and a brake
+// that waits, then stops, when the database is slow (it serves real users).
+const CONCURRENCY = Number(process.env.BATCH_CONCURRENCY || 2)
+const PACE_MS = Number(process.env.BATCH_PACE_MS || 15000)
+const SLOW_MS = 1500
 
 const GOALS = ['sell', 'educate', 'leads', 'conversations', 'personal_brand', 'authority', 'entertain', 'followers']
 const IDEAS = [
@@ -389,10 +393,29 @@ async function main() {
   // Resume: a re-run of the same label skips scenarios that already have a script.
   const { data: doneRows } = await admin.from('script_batch_results').select('n').eq('batch', BATCH).eq('status', 200)
   const done = new Set((doneRows ?? []).map((x) => x.n))
+  let stopped = false
+  // A cheap read timed end to end; slow or failing means real users feel it.
+  async function dbHealthy() {
+    const t = Date.now()
+    const { error } = await admin.from('script_batch_results').select('n').limit(1)
+    return !error && Date.now() - t < SLOW_MS
+  }
+  async function brake() {
+    for (let tries = 0; tries < 3; tries++) {
+      if (await dbHealthy()) return true
+      console.warn(`database slow, waiting 60s (${tries + 1}/3)`)
+      await new Promise((r) => setTimeout(r, 60000))
+    }
+    console.error('database still slow: stopping the batch')
+    stopped = true
+    return false
+  }
   async function worker() {
-    while (next < list.length) {
+    while (next < list.length && !stopped) {
       const sc = list[next++]
       if (done.has(sc.n)) continue
+      if (!(await brake())) break
+      await new Promise((r) => setTimeout(r, PACE_MS))
       try { await runOne(sc) } catch (e) { console.error(`#${sc.n} failed: ${String(e?.message ?? e).slice(0, 200)}`) }
     }
   }
