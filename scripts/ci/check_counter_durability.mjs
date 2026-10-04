@@ -759,6 +759,7 @@ const EVENTS = {
   script_guard_removed: { kind: 'incident', why: 'The final privacy guard removed sentences carrying a private term or a tapped-out fact from a finished script (0252); recorded on the blueprint as guardrail_report.' },
   shown_script_audit: { kind: 'counter_ephemeral', why: 'The shown half of each script measured against the owner spec (demo beat present, distinct locations, showing framed like talk, generic gestures); stored on blueprint.shown_audit.' },
   panel_answer_applied: { kind: 'counter_ephemeral', why: 'A creator answered a question her test viewers raised and the worker wrote it into the script line; durable on audience_tests.needs_her (answer, applied_at).' },
+  commercial_claim_awaiting_confirmation: { kind: 'counter_ephemeral', why: 'Commercial claims from her videos held back until she confirms them.' },
   role_claim_dropped: { kind: 'counter_ephemeral', why: 'A line claiming a business or role she never stated was dropped (trial).' },
   spec_questions: { kind: 'counter_ephemeral', why: 'Per run: how many slots used, confirmed, asked; durable per question in question_asks.' },
   spec_answer: { kind: 'counter_ephemeral', why: 'Answer/skip/filler per slot; durable in question_asks.outcome.' },

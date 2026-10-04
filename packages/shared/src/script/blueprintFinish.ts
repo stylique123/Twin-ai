@@ -319,12 +319,15 @@ export function closeFits(close: string, want: CloseGoal): boolean {
   // glued after it, and the reviewer marked it every time ("nobody saves a
   // story about dumped beans"). A question back to the viewer already does a
   // reach video's job.
-  if (want === 'follow_save') return FOLLOW_SAVE.test(c) || /\?\s*["')\]]*\s*$/.test(c) || ASKS_VIEWER.test(c)
+  if (want === 'follow_save') return FOLLOW_SAVE.test(c) || /\?\s*["')\]]*\s*$/.test(c) || ASKS_VIEWER.test(c) || HAS_CTA.test(c)
   return TAKEAWAY.test(c)
 }
 
 // A question followed by "Tell me below." still asks the viewer something.
 const ASKS_VIEWER = /\?[^?]*\b(tell me|let me know|drop it|in the comments|below)\b[^?]*$/i
+
+// Any real call to action already closes a reach video (owner: no "Save this" after a CTA).
+const HAS_CTA = /\b(link in (my )?bio|stick around|follow (along|me)|check out|grab (a|your)|order|book|dm me|message me|send me|head (over )?to|tell me|let me know|in the comments)\b/i
 
 const FOLLOW_ASK_LIKE = /\b(follow (for|me|my|along)|give (me|us) a follow|hit (the )?follow)\b/i
 
@@ -344,7 +347,9 @@ export function goalCloseSentence(
     return /[.!?]$/.test(cta) ? cta : `${cta}.`
   }
   if (want === 'question') return 'What would you do — tell me in the comments?'
-  if (want === 'follow_save') return opts.followAllowed ? 'Follow along, and save this so you have it.' : 'Save this so you have it next time.'
+  // ⚠️ OWNER 2026-10-04: "Save this so you have it next time" adds nothing and
+  // was glued after real CTAs. No generic save line: follow when allowed, else none.
+  if (want === 'follow_save') return opts.followAllowed ? 'Follow along for the next one.' : null
   // ⚠️ BATCH PART-14: "So remember: and this is the part people miss." The
   // takeaway is the payoff's first sentence that SAYS something, never a
   // bridge line ("And this is the part…", "Here is the thing").
@@ -353,7 +358,7 @@ export function goalCloseSentence(
   if (first && words(first).length >= 4 && words(first).length <= 16) {
     return `So remember: ${first.charAt(0).toLowerCase()}${first.slice(1).replace(/[.!?]*$/, '.')}`
   }
-  return 'Save this so you have it next time.'
+  return null
 }
 
 /**

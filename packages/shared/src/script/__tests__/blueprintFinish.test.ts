@@ -101,7 +101,7 @@ describe('the close fits the goal (part-3-product: 56%)', () => {
   })
   it('her own CTA is used when it fits; a follow ask is never written unless allowed', () => {
     expect(goalCloseSentence('question', { herCta: 'Which roast are you drinking today?' })).toBe('Which roast are you drinking today?')
-    expect(goalCloseSentence('follow_save', { herCta: 'Follow me for part two' })).toBe('Save this so you have it next time.')
+    expect(goalCloseSentence('follow_save', { herCta: 'Follow me for part two' })).toBeNull()
     expect(goalCloseSentence('follow_save', { herCta: 'Follow me for part two', followAllowed: true })).toBe('Follow me for part two.')
     expect(goalCloseSentence('takeaway', { payoffLine: 'Grind finer when the shot runs fast. It changes everything.' }))
       .toBe('So remember: grind finer when the shot runs fast.')

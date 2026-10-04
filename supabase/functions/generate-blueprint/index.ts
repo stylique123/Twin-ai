@@ -6942,6 +6942,13 @@ function objectiveProductIdInline(sourceRef: string, pickedId: string): string |
 }
 
 /** "Nothing specific", "keep it general", "idk", "no": answered, but nothing to say. */
+/** A commercial claim heard in her videos that she has not confirmed (owner review, script D). */
+function unconfirmedCommercial(r: { source?: unknown; creator_confirmed_at?: unknown; text?: unknown; evidence?: unknown }): boolean {
+  if (r.creator_confirmed_at) return false
+  if (!['transcript', 'caption'].includes(String(r.source ?? ''))) return false
+  return /\b(free shipping|ships? free|shipping|discount|\d+\s?% off|on sale|coupon|promo|use code|guarantee|refund|money back|\$\s?\d)/i.test(`${String(r.text ?? '')} ${String(r.evidence ?? '')}`)
+}
+
 function isNonAnswer(v: string): boolean {
   const t = v.trim().toLowerCase().replace(/[.!\s]+$/, '')
   if (!t) return true
@@ -7200,6 +7207,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // the prompt; it only stops a true line about her reading as unsupported.
   const excludedIds = new Set([...herOff, ...uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids)])
   const entitlementPool: typeof rankedRows = []
+  let commercialHeld = 0
   const knowledgeRows = [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) => {
     const k = `${r?.kind}|${String(r?.text ?? '').trim().toLowerCase()}`
     if (seenKnowledge.has(k)) return false
@@ -7208,8 +7216,15 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     if (row.sensitive !== true && !row.creator_excluded_at && !excludedIds.has(String(row.id ?? ''))
       && row.basis !== 'inferred') entitlementPool.push(r)
     if (!servesObjective(r as never, purposeGoal, herOnIds)) { offPurpose++; return false }
+    // ⚠️ OWNER REVIEW 2026-10-04 (script D): "shipping is free and you can mix
+    // and match" came from a garbled transcript ("chipping his free…") and was
+    // never confirmed. A commercial claim heard in her videos (shipping,
+    // discounts, prices, codes, guarantees) waits for her yes before it is
+    // said on camera; everything else she said stays usable. All accounts.
+    if (unconfirmedCommercial(r as never)) { commercialHeld++; return false }
     return true
   })
+  if (commercialHeld) console.log(JSON.stringify({ event: 'commercial_claim_awaiting_confirmation', held_back: commercialHeld }))
   if (offPurpose) console.log(JSON.stringify({ event: 'knowledge_off_purpose', goal: purposeGoal, held_back: offPurpose }))
   // ⚠️ WHAT THIS CREATOR'S LAST FEW SCRIPTS WERE ALREADY BUILT OUT OF. One
   // stored story reached 8 consecutive scripts (measured, used_count = 8) because
@@ -15359,17 +15374,39 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
       // ⚠️ ROLE CLAIMS ONLY WHEN SHE SAID THEM (owner 2026-10-04, script B:
       // "Building my coffee cart business…"; a scan-inferred topic, never her
-      // words). Trial: a line that claims a business or role her stated
+      // words). All accounts: a line that claims a business or role her stated
       // material never names is dropped; the script is shorter, not wrong.
-      if (trialOn && Array.isArray(bp.script)) {
+      if (Array.isArray(bp.script)) {
         const beats = bp.script as Array<Record<string, unknown>>
-        const spokenCount = beats.filter((b) => typeof b?.line === 'string' && b.line.trim()).length
         const flagged = beats.map((b, i) => ({ i, claims: typeof b?.line === 'string' ? unconfirmedRoleClaims(b.line, lateIdentityText) : [] })).filter((x) => x.claims.length)
-        if (flagged.length && spokenCount - flagged.length >= 2) {
-          const drop = new Set(flagged.map((x) => x.i))
-          bp.script = beats.filter((_, i) => !drop.has(i))
+        // ⚠️ OWNER: a dropped line can leave a gap. Each flagged line is first
+        // rewritten without the claim (same point, same place in the story);
+        // the rewrite must pass the same check and bring no new number, or
+        // the line is dropped as before.
+        let rewritten = 0
+        const next = beats.map((b) => ({ ...b }))
+        const drop = new Set<number>()
+        for (const f of flagged) {
+          const original = String(next[f.i].line ?? '')
+          let fixed = ''
+          try {
+            const raw = await callModel(apiKey,
+              'You edit one line of a short video script. You return JSON only.',
+              `This line claims she runs or owns something she never said she does (${f.claims.join(', ')}). Rewrite it so it makes the same point in the same place in the story WITHOUT claiming that role or business — talk about the subject, or what she has seen or done that she actually said. Keep it spoken, first person, one or two sentences, no new numbers.\n\nLINE: ${original}\nLINE BEFORE: ${String(next[f.i - 1]?.line ?? '')}\nLINE AFTER: ${String(next[f.i + 1]?.line ?? '')}\n\nReturn {"line":"..."}.`,
+              { type: 'OBJECT', properties: { line: { type: 'STRING' } }, required: ['line'] })
+            fixed = String((JSON.parse(raw) as { line?: unknown }).line ?? '').trim()
+          } catch { /* drop below */ }
+          if (fixed && fixed.split(/\s+/).length >= 4 && !unconfirmedRoleClaims(fixed, lateIdentityText).length && !newNumbers(fixed, original, lateAllowedText).length) {
+            next[f.i] = { ...next[f.i], line: fixed }
+            rewritten += 1
+          } else drop.add(f.i)
         }
-        if (flagged.length) console.warn(JSON.stringify({ event: 'role_claim_dropped', lines: flagged.length, claims: flagged.flatMap((x) => x.claims).slice(0, 4), kept: spokenCount - flagged.length < 2 }))
+        if (flagged.length) {
+          const kept = next.filter((_, i) => !drop.has(i))
+          if (kept.filter((b) => typeof b?.line === 'string' && String(b.line).trim()).length >= 2) bp.script = kept
+          else bp.script = next
+          console.warn(JSON.stringify({ event: 'role_claim_dropped', lines: flagged.length, rewritten, dropped: drop.size, claims: flagged.flatMap((x) => x.claims).slice(0, 4) }))
+        }
       }
       // The shot list quotes and films the script that ships.
       if (Array.isArray(bp.shot_list) && Array.isArray(bp.script)) {

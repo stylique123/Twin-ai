@@ -601,8 +601,8 @@ async function scoreAfterPanel(admin, ctx) {
 // ⚖️ THE QUESTIONS, AS GENERATED (owner 2026-10-04: "paste the actual
 // questions; Launch and Restock side by side; the rotation across runs").
 // Every option, 10 runs each, on the test account. Runs skip the first
-// question on odd runs; runs 3 and 6 answer it with a clearly marked
-// SIMULATED answer (so later runs can ask less), deleted at the end.
+// test account. Odd runs skip the first question (rotation: a new angle,
+// then rest). Nothing is answered: a batch never writes her facts.
 async function specQuestionsProbe(token, admin, products) {
   const OPTIONS = ['product:launch', 'product:restock', 'product:explain', 'product:wrong', 'product:try', 'product:later', 'product:asked', 'product:dm', 'product:why_made', 'product:story',
     'business:why_started', 'business:wrong', 'business:announce', 'idea:story', 'idea:teach', 'idea:answer', 'idea:process', 'idea:fun', 'idea:sell', 'reference:opening', 'reference:pacing', 'reference:close']
@@ -620,13 +620,10 @@ async function specQuestionsProbe(token, admin, products) {
       console.log(`${option} run ${run}: ${qs.map((q) => q.question).join(' | ') || (j.disabled ? 'DISABLED' : '(none)')}`)
       const first = qs[0]
       if (first?.ask_id) {
-        if (run === 3 || run === 6) await call(token, { mode: 'spec_answer', option, slot: first.slot, entity_key: entity, product_id: surface === 'product' ? prod?.id : undefined, ask_id: first.ask_id, answer: `[SIMULATED TEST ANSWER, run ${run}] a specific moment for ${first.slot}` })
-        else if (run % 2 === 1) await call(token, { mode: 'spec_answer', option, slot: first.slot, entity_key: entity, ask_id: first.ask_id, skip: true })
+        if (run % 2 === 1) await call(token, { mode: 'spec_answer', option, slot: first.slot, entity_key: entity, ask_id: first.ask_id, skip: true })
       }
     }
   }
-  // The simulated answers were never hers.
-  await admin.from('creator_knowledge').delete().like('text', '[SIMULATED TEST ANSWER%')
   await admin.from('script_batch_results').insert({ batch: BATCH, n: -3, scenario: { group: 'spec-questions', product: prod?.name ?? null }, findings: out, status: 0 })
   console.log(`\nspec question probe: ${out.length} runs stored as n=-3`)
 }
