@@ -2144,6 +2144,19 @@ function renderNicheResearchInline(items: readonly NicheResearchItemInline[]): s
   const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
   return `\n\nWHAT IS HAPPENING IN HER SUB-NICHE — researched from the web this week. Use a date, a question or a piece of news ONLY if it fits this video naturally. Never present a competitor's or a product's details as hers, and never state any of this as something she said or did.\n<<<UNTRUSTED_DATA niche research\n${body}\nEND_UNTRUSTED_DATA>>>`
 }
+// ⚠️ OWNER 2026-10-04 ("use Reddit as a big source"): what real people in her
+// sub-niche ask, complain about, argue over and want to buy, from the top
+// Reddit threads of the last year (worker/src/nicheBrain/nicheReddit.ts, 0276).
+// The AUDIENCE's words, for her to answer in hers; never a fact about her.
+interface NicheRedditItemInline { kind?: string; text?: string; weight?: number; threads?: number }
+function renderNicheRedditInline(items: readonly NicheRedditItemInline[]): string {
+  const rows = (Array.isArray(items) ? items : []).filter((m) => m && typeof m.text === 'string').slice(0, 12)
+  if (rows.length === 0) return ''
+  const label: Record<string, string> = { question: 'they ask', complaint: 'they complain', buying: 'what should I buy', debate: 'they argue', phrase: 'their words' }
+  const lines = rows.map((m) => `  - [${label[String(m.kind)] ?? 'they say'}${m.threads && m.threads > 1 ? `, ${m.threads} threads` : ''}] ${String(m.text).slice(0, 220)}`)
+  const body = lines.join('\n').split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
+  return `\n\nWHAT HER AUDIENCE SAYS ON REDDIT — the loudest questions, complaints, buying asks and arguments in her sub-niche this year, loudest first. A hook that names one of these, or a middle that answers one in HER words, is what makes a viewer stop. Never quote a Redditor as if she said it, and never present a product they recommend as hers.\n<<<UNTRUSTED_DATA reddit\n${body}\nEND_UNTRUSTED_DATA>>>`
+}
 function renderTrackRecordInline(r: TrackRecordInline | null): string {
   if (!r) return ''
   const cap = (v: unknown, n = 110) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
@@ -8706,16 +8719,23 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
           .abortSignal(ctrl.signal)
         return Array.isArray((data as { items?: unknown } | null)?.items) ? (data as { items: NicheResearchItemInline[] }).items : []
       })().catch(() => [] as NicheResearchItemInline[])
+      const redditP = (async (): Promise<NicheRedditItemInline[]> => {
+        const key = String(subNiche || niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
+        if (!key) return []
+        const { data } = await admin.from('niche_reddit').select('items').eq('niche_key', key).maybeSingle()
+          .abortSignal(ctrl.signal)
+        return Array.isArray((data as { items?: unknown } | null)?.items) ? (data as { items: NicheRedditItemInline[] }).items : []
+      })().catch(() => [] as NicheRedditItemInline[])
       try {
-        const [notes, trends, record, moments, research] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP])
+        const [notes, trends, record, moments, research, reddit] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP, redditP])
         brainNotesUsed = notes.length
         brainNoteIds = notes.map((n) => n.id).filter((id): id is string => typeof id === 'string')
         // Her past captions (track record) and the web's items pass the same
         // private rule as every other reader before the writer sees them.
-        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(scrubPrivate(trends)) + renderMomentsInline(scrubPrivate(moments)) + renderNicheResearchInline(scrubPrivate(research)) + renderTrackRecordInline(scrubPrivate(record))
+        brainBlock = renderNicheBrainInline(notes) + renderTrendsInline(scrubPrivate(trends)) + renderMomentsInline(scrubPrivate(moments)) + renderNicheResearchInline(scrubPrivate(research)) + renderNicheRedditInline(scrubPrivate(reddit)) + renderTrackRecordInline(scrubPrivate(record))
         console.log(JSON.stringify({
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
-          record: record !== null, moments: moments.length, research: research.length, rendered: brainBlock !== '',
+          record: record !== null, moments: moments.length, research: research.length, reddit: reddit.length, rendered: brainBlock !== '',
         }))
       } catch {
         brainBlock = ''

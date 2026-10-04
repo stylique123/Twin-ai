@@ -14,6 +14,7 @@ import {
 } from './reader.js'
 import { runMomentWatcher } from './moments.js'
 import { runNicheResearch } from './nicheResearch.js'
+import { runNicheReddit } from './nicheReddit.js'
 import { isPrivate } from '../generated/privacyGuard.js'
 import { runIdeaWriter } from './ideas.js'
 import { runCorrectionApplier, runLessonLearner } from './lessons.js'
@@ -154,6 +155,7 @@ export function kickBrainSweep(log: Log): void {
     await runCorrectionApplier(log)
     await runMomentWatcher(log)
     await runNicheResearch(log)
+    await runNicheReddit(log)
     await runIdeaWriter(log)
     await runAvailabilitySweep(log)
     await runShapeSweep(log)

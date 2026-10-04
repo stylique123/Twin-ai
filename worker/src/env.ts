@@ -54,6 +54,9 @@ export const env = {
   apifyProxyPassword: (process.env.APIFY_PROXY_PASSWORD ?? '').trim(),
   // Actor that returns YouTube captions as [{ start, dur, text }] in its KV output.
   apifyYoutubeActor: (process.env.APIFY_YOUTUBE_ACTOR ?? 'faVsWy9VTSNVIhWpR').trim(),
+  // Reddit search for niche research (owner, 2026-10-04). Apify's public Reddit
+  // scraper; swap the actor here without a code change.
+  apifyRedditActor: (process.env.APIFY_REDDIT_ACTOR ?? 'trudax~reddit-scraper-lite').trim(),
   // Actor that returns Instagram transcripts as dataset items with
   // { text, duration, segments: [{ start, end, text }] }. ID for
   // apple_yang/instagram-transcripts-scraper.
