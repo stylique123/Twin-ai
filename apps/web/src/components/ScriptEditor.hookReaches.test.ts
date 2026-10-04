@@ -29,7 +29,9 @@ describe('the chosen hook reaches the persisted script', () => {
   })
 
   it('selectedHook is still a dependency, so a new choice re-runs the effect', () => {
-    expect(CODE).toMatch(/\[\s*generationId\s*,\s*blueprint\s*,\s*selectedHook\s*\]/)
+    // The blueprint is keyed by CONTENT (blueprintKey), not identity: Result
+    // rebuilds it every render and identity made the load a render loop.
+    expect(CODE).toMatch(/\[\s*generationId\s*,\s*blueprintKey\s*,\s*selectedHook\s*\]/)
   })
 
   it('and safeBuild is still there for the first visit, when nothing is persisted', () => {

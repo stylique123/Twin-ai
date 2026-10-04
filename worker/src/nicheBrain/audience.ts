@@ -30,6 +30,7 @@ import {
   MAX_TESTED_HOOKS, PANEL_VERSION, ANSWER_REWRITE_SYSTEM, answerRewritePrompt,
 } from './audienceParse.js'
 import { FAMILY_SHAPE } from '../generated/scriptFamily.js'
+import { createEmptyProbeGate } from '../idleBackoff.js'
 import { decideBeatCameras } from '../generated/beatCamera.js'
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
@@ -98,12 +99,19 @@ export async function runPanelBuilder(log: Log): Promise<void> {
   }
 }
 
+// ⚖️ NOTHING UNTESTED IS THE COMMON ANSWER. Asking every 15s regardless was
+// tens of thousands of `audience_untested` scans returning nothing; an empty
+// answer now pushes the next ask out (15s → 5min), and a hit makes it due again.
+export const untestedGate = createEmptyProbeGate(AUDIENCE_INTERVAL_MS, 5 * 60 * 1000)
+
 export async function runAudienceTests(log: Log): Promise<void> {
+  if (!untestedGate.due()) return
   const { data, error } = await db.rpc('audience_untested', { p_limit: 1 })
-  if (error) { log('error', 'audience_untested_failed', { error: error.message }); return }
+  if (error) { untestedGate.empty(); log('error', 'audience_untested_failed', { error: error.message }); return }
   const g = (Array.isArray(data) ? data[0] : null) as
     { id: string; user_id: string; blueprint: unknown; reference_note: string | null; profile: Record<string, unknown> | null; voice_id: string | null } | null
-  if (!g) return
+  if (!g) { untestedGate.empty(); return }
+  untestedGate.found()
   const model = modelForTask('read')
   const s = scriptFromBlueprint(g.blueprint)
   const stamp = (row: Record<string, unknown>) =>

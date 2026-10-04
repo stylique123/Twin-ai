@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0275_the_database_is_not_a_busy_loop':
+    'Adds indexes (gallery_items/generations created_at, brain_notes HNSW, reaper partials), re-creates brain_brief_scoped with hnsw.ef_search, slows the reaper/liveness crons and trims cron.job_run_details; read by the worker, generate-blueprint and pg_cron only. The editor never reads it.',
   '0273_private_is_decided_when_stored':
     'Widens the creator_knowledge sensitive word list, moves private brand_voices.profile list entries to private_items on write, and re-classifies existing rows of both; read by generate-blueprint and the plan screen only. The editor never reads it.',
   '0274_her_corrections_reach_storage':

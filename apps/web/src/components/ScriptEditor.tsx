@@ -93,8 +93,22 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
   // forgotten is the one that reintroduces the bug.
   useEffect(() => { onScriptChange?.(script) }, [script, onScriptChange])
 
+  // ⚠️ THE LOAD IS KEYED ON THE BLUEPRINT'S CONTENT, NOT ITS IDENTITY. Result
+  // rebuilds its normalised `b` object on every render, and this editor reports
+  // every script up through `onScriptChange` (which re-renders Result). Keyed
+  // on identity, that was a render loop issuing `generations?select=
+  // scene_timeline` back to back for as long as the plan screen stayed open —
+  // millions of reads against one row. The ref carries the latest blueprint
+  // into the effect; the content key decides when it actually re-runs.
+  const blueprintRef = useRef(blueprint)
+  blueprintRef.current = blueprint
+  const blueprintKey = useMemo(() => {
+    try { return JSON.stringify(blueprint ?? null) } catch { return '' }
+  }, [blueprint])
+
   useEffect(() => {
     let alive = true
+    const blueprint = blueprintRef.current
     ;(async () => {
       let loaded: RecordingScript | null = null
       try {
@@ -130,7 +144,7 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
       setLoading(false)
     })()
     return () => { alive = false }
-  }, [generationId, blueprint, selectedHook])
+  }, [generationId, blueprintKey, selectedHook])
 
   const edited = useMemo(
     () => (script && original.current ? changesTheRecordedScript(original.current, script) : false),
