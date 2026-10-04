@@ -22,6 +22,10 @@ on:
         description: 'Only score the scripts an earlier batch wrote (its label); no new builds'
         required: false
         default: ''
+      drafts:
+        description: 'Drafts per script, best one kept (1-3; test account only)'
+        required: false
+        default: '1'
       intake:
         description: 'Also add products from URL / photo / name and test intake'
         type: boolean
@@ -47,6 +51,7 @@ jobs:
           node scripts/ops/scriptBatch.mjs "$BATCH_LABEL" "$BATCH_LIMIT" ${{ inputs.intake && ' ' || '--no-intake' }} "--group=$BATCH_GROUP" "--judge-only=$JUDGE_ONLY"
         env:
           BATCH_GROUP: ${{ inputs.group }}
+          BATCH_DRAFTS: ${{ inputs.drafts }}
           JUDGE_ONLY: ${{ inputs.judge_only }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BATCH_LABEL: ${{ inputs.label }}

@@ -438,7 +438,7 @@ async function main() {
   }
   async function runOne(sc) {
     {
-      const body = { ...sc.body, idempotency_key: `${BATCH}-${sc.n}` }
+      const body = { ...sc.body, idempotency_key: `${BATCH}-${sc.n}`, ...(Number(process.env.BATCH_DRAFTS) > 1 ? { drafts: Number(process.env.BATCH_DRAFTS) } : {}) }
       // The angle, picked from the same read the card shows.
       if (sc.anglePick !== undefined && body.reference_note) {
         // Same subject line the app builds for a non-idea mode (V2Building angleSubject).
