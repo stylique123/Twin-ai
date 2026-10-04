@@ -25,7 +25,7 @@ describe('the answers reach THIS generation, not just the next one', () => {
     for (const line of [
       /if \(readyPresent\(answers\.offer\)\) brief\.offer =/,
       /if \(readyPresent\(answers\.relationship\)\) brief\.promotes =/,
-      /if \(readyPresent\(answers\.claims\)\) brief\.productFacts =/,
+      /if \((readyPresent|herSaid)\(answers\.claims\)\) brief\.productFacts =/,
     ]) expect(EDGE).toMatch(line)
   })
 
@@ -38,11 +38,12 @@ describe('the answers reach THIS generation, not just the next one', () => {
 
   it('does NOT let a blank answer erase a stored value', () => {
     // ⚖️ Unanswered is not "none" — the three-state rule. Every merge is gated
-    // on `readyPresent`, never on the key existing.
+    // on `readyPresent` (or `herSaid`, which also drops "nothing specific"),
+    // never on the key existing.
     const merges = EDGE.match(/brief\.(offer|promotes|productFacts|audience) = String\(answers/g) ?? []
     expect(merges.length).toBeGreaterThanOrEqual(4)
     for (const f of ['offer', 'relationship', 'claims', 'audience']) {
-      expect(EDGE).toMatch(new RegExp(`readyPresent\\(answers\\.${f}\\)\\) brief\\.`))
+      expect(EDGE).toMatch(new RegExp(`(readyPresent|herSaid)\\(answers\\.${f}\\)\\) brief\\.`))
     }
   })
 
