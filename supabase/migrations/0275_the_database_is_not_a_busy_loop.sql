@@ -49,10 +49,15 @@ create index if not exists brain_notes_embedding_hnsw
 -- query's own window already asks for.
 create or replace function public.brain_brief_scoped(p_embedding extensions.vector, p_owner uuid, p_min_similarity double precision default 0.6, p_k integer default 24)
  returns table(id uuid, kind text, title text, body text, sub_niche text, times_seen integer, total_views bigint, similarity double precision, is_hers boolean, filmed_count integer, posted_count integer)
- language sql stable security definer
+ language plpgsql stable security definer
  set search_path to 'public', 'extensions'
- set hnsw.ef_search = 300
 as $function$
+begin
+  -- A function-level `set hnsw.ef_search` is refused for non-superusers (the
+  -- parameter is a placeholder until pgvector loads); setting it per call is
+  -- allowed, and keeps the 300-candidate window the ranking below expects.
+  perform set_config('hnsw.ef_search', '300', true);
+  return query
   with near as (
     select n.id, n.kind, n.title, n.body, n.sub_niche, n.times_seen, n.total_views,
            1 - (n.embedding <=> p_embedding) as similarity,
@@ -63,19 +68,23 @@ as $function$
     order by n.embedding <=> p_embedding
     limit 300
   )
-  select id, kind, title, body, sub_niche, times_seen, total_views, similarity, is_hers, filmed_count, posted_count
+  select near.id, near.kind, near.title, near.body, near.sub_niche, near.times_seen, near.total_views, near.similarity, near.is_hers, near.filmed_count, near.posted_count
   from near
-  where similarity >= p_min_similarity
-  order by similarity
-         + 0.02 * ln(1 + times_seen)
-         + case when is_hers then 0.05 else 0 end
-         + 0.02 * ln(1 + filmed_count)
-         + 0.03 * ln(1 + posted_count)
-         + 0.02 * ln(1 + outcome_lift)
-         + coalesce((avg_rating - 3) * 0.015, 0)
+  where near.similarity >= p_min_similarity
+  order by near.similarity
+         + 0.02 * ln(1 + near.times_seen)
+         + case when near.is_hers then 0.05 else 0 end
+         + 0.02 * ln(1 + near.filmed_count)
+         + 0.03 * ln(1 + near.posted_count)
+         + 0.02 * ln(1 + near.outcome_lift)
+         + coalesce((near.avg_rating - 3) * 0.015, 0)
          desc
   limit greatest(1, least(p_k, 60));
+end
 $function$;
+-- Scratch table from a one-off visual baseline: nothing reads it, so lock it
+-- to the service role (Supabase advisor: RLS disabled in public).
+alter table if exists public.tmp_visual_baseline_pro enable row level security;
 revoke all on function public.brain_brief_scoped(extensions.vector, uuid, double precision, integer) from public, anon, authenticated;
 grant execute on function public.brain_brief_scoped(extensions.vector, uuid, double precision, integer) to service_role;
 
