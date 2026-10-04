@@ -6426,6 +6426,11 @@ async function handle(req: Request): Promise<Response> {
   // an unflagged heartbeat is visible noise, a flagged creator is invisible loss.
   const heartbeatUserId = Deno.env.get('HEARTBEAT_USER_ID') ?? ''
   const isHeartbeat = heartbeatUserId !== '' && user.id === heartbeatUserId
+  // ⚖️ TRIAL FIRST (owner 2026-10-04: "fix and keep re-running before it goes
+  // to everyone"). A writing change under trial runs for the test account
+  // only; it reaches every creator once a round shows +0.5 with no test
+  // dropping a point below its best.
+  const trialOn = isHeartbeat
 
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
   // BEFORE we ever call the model. Bounded by credits anyway, but this stops
@@ -6884,14 +6889,19 @@ function objectiveAnswerInline(answers: Record<string, unknown>): {
   return { questionId: id, question, text, sourceRef: `${OBJECTIVE_SOURCE_REF_PREFIX_INLINE}${key}:${id}` }
 }
 
-function freshObjectiveAnswerLine(question: string, answer: string): string {
+function freshObjectiveAnswerLine(question: string, answer: string, trial = false): string {
   return '\n- FRESH MATERIAL FOR THIS VIDEO — the creator answered this just now, in their own words.'
     + (question ? ` The question was: "${question}"` : '')
     + '\n  Their answer: ' + answer
     + (/keep getting|people ask|message you|hardest to answer|wish people asked/i.test(question)
       ? '\n  ⚠️ THIS VIDEO ANSWERS A REAL QUESTION. Say the question early, then give THEIR answer from above, plainly, before the close. Never tease the answer and not give it; never replace it with a plan, a poll or an answer they did not give. If they gave only the question, answer only from facts listed in this prompt, or say where to ask them — never invent one.'
       : '')
-    + '\n  This is new, creator-supplied material that no earlier video had. Build this video\'s central beat around it, and PREFER it over any older stored story, experience or example listed elsewhere in this prompt — do not fall back to a story already used in previous scripts when this answer can carry the beat. It has NOT been verified, so do not present it as independently checked, and a sentence here that promises a RESULT is still not an approved outcome claim.'
+    // ⚠️ BATCH PART-13 vs PART-4 (2026-10-04): an answer about shipping times
+    // became the "lesson" of a video about her first roaster and the "test"
+    // in a video about stale beans — the reviewer's non sequitur, every time.
+    // Her answer leads only where it is about THIS video's idea.
+    + (trial ? '\n  IF IT IS ABOUT THIS VIDEO\'S IDEA: if her answer is about something else (a shipping time in a video about her first roaster), do NOT put it in the middle of the video and never let it replace the teaching the hook promised — use it at most as one supporting line, or leave it out.' : '')
+    + '\n  This is new, creator-supplied material that no earlier video had. ' + (trial ? 'When it fits the idea, build' : 'Build') + ' this video\'s central beat around it, and PREFER it over any older stored story, experience or example listed elsewhere in this prompt — do not fall back to a story already used in previous scripts when this answer can carry the beat. It has NOT been verified, so do not present it as independently checked, and a sentence here that promises a RESULT is still not an approved outcome claim.'
 }
 // ── END OBJECTIVE QUESTION ──────────────────────────────────────────────────
 
@@ -9895,7 +9905,7 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     // Not merged into `brief`: `brief` is persisted to pre_script_brief, and
     // this is a fact about THIS video only.
     if (typedProductFacts !== '' && objectiveAnswer) {
-      claimLines.push(freshObjectiveAnswerLine(objectiveAnswer.question, typedProductFacts))
+      claimLines.push(freshObjectiveAnswerLine(objectiveAnswer.question, typedProductFacts, trialOn))
     } else if (typedProductFacts !== '') {
       claimLines.push('\n- WHAT THE CREATOR TYPED ABOUT THIS PRODUCT, in their own words: '
         + typedProductFacts
@@ -15218,10 +15228,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           let kept = 0
           const reasons: string[] = []
           let next = beats.map((b) => ({ ...b }))
+          const spokenAt = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
+          const firstSpoken = spokenAt[0] ?? -1
+          const lastSpoken = spokenAt[spokenAt.length - 1] ?? -1
           for (const r of parseRepairRewrites(raw).slice(0, 2)) {
             const at = Number(r?.index)
             const line = typeof r?.line === 'string' ? r.line.trim() : ''
             if (!Number.isInteger(at) || at < 0 || at >= next.length || line.split(/\s+/).length < 4) { reasons.push('bad_index'); continue }
+            // ⚠️ BATCH PART-13 (owner 2026-10-04: "every run should add, never
+            // reduce"): the editor rewrote the hook into a mid-script line and
+            // broke closes. The hook and the close are never its to touch.
+            if (trialOn && (at === firstSpoken || at === lastSpoken)) { reasons.push('hook_or_close'); continue }
             const original = String(next[at].line ?? '')
             if (newNumbers(line, original, lateAllowedText).length) { reasons.push('new_number'); continue }
             const trial = next.map((b, i) => (i === at ? { ...b, line } : b))
@@ -15230,8 +15247,28 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             next = guarded.beats
             kept += 1
           }
-          if (kept) bp.script = next
-          console.log(JSON.stringify({ event: 'self_review', kept, rejected: reasons }))
+          // ⚖️ ONLY BETTER, NEVER WORSE. Batch part-13: the editor kept two
+          // rewrites on nearly every script and some broke the thread (a hook
+          // left unpaid, a fact from another story dropped in), so scripts that
+          // were 6-8 came back 3-5. The edited script ships only if a blind
+          // side-by-side read prefers it; otherwise the original stands.
+          let verdict = 'none'
+          if (kept && trialOn) {
+            try {
+              const say = (b: Array<Record<string, unknown>>) => b.map((x) => String(x.line ?? '').trim()).filter(Boolean).map((l, i) => `${i + 1}. ${l}`).join('\n')
+              const flip = Math.random() < 0.5
+              const [a, c] = flip ? [next, beats] : [beats, next]
+              const cmp = await callModel(apiKey,
+                'You compare two versions of one short video script for a creator. You return JSON only.',
+                `Which version would a real viewer of her audience watch to the end and act on? The hook must be paid off, every line must follow from the one before, it must sound like a person talking. If they are equal, answer A.\n\nVERSION A:\n${say(a)}\n\nVERSION B:\n${say(c)}\n\nReturn {"best":"A" or "B","why":"<one sentence>"}.`,
+                DRAFT_PICK_SCHEMA)
+              const best = String((JSON.parse(cmp) as { best?: unknown }).best ?? '').trim().toUpperCase().slice(0, 1)
+              const editedWins = flip ? best === 'A' : best === 'B'
+              verdict = editedWins ? 'edited' : 'original'
+            } catch { verdict = 'original' }
+          }
+          if (kept && (!trialOn || verdict === 'edited')) bp.script = next
+          console.log(JSON.stringify({ event: 'self_review', kept, rejected: reasons, verdict }))
         } catch (e) { console.warn('self review failed', String((e as Error)?.message ?? e).slice(0, 120)) }
       }
       // The shot list quotes and films the script that ships.

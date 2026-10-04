@@ -382,6 +382,7 @@ async function main() {
       // Her confirmed brand facts are hers (batch part-13: the judge called
       // "native and women-owned" invented; it is on her brand).
       JSON.stringify(brands?.[0] ?? {}).slice(0, 3000), RICH_ANSWER.claims].join('\n'),
+    statedFacts: (know ?? []).filter((k) => k.basis === 'stated').map((k) => String(k.text ?? '')).filter((t) => t.length > 20),
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
     products: products ?? [],
@@ -459,7 +460,18 @@ async function main() {
         asked = [...(asked ?? []), ...r.json.questions.map((q) => q.question)]
         // Three kinds of creator: a full answer, two words, or "nothing specific".
         const style = ['rich', 'short', 'none'][sc.n % 3]
-        const answerFor = (f) => style === 'rich' ? (RICH_ANSWER[f] ?? RICH_ANSWER.claims)
+        // ⚠️ A REAL CREATOR ANSWERS ON TOPIC (batch part-13): one shipping
+        // sentence answered every question, about stale beans or roasters
+        // alike, so the writer was handed off-topic "answers". A rich answer is
+        // now her own stated fact closest to the question and the idea.
+        const onTopic = (q) => {
+          const ws = (x) => new Set(String(x ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? [])
+          const want = ws(`${q?.question ?? ''} ${body.reference_note ?? ''}`)
+          let best = null, score = 0
+          for (const k of ctx.statedFacts) { const o = [...ws(k)].filter((w) => want.has(w)).length; if (o > score) { score = o; best = k } }
+          return score >= 2 ? best : null
+        }
+        const answerFor = (f, q) => style === 'rich' ? (['claims', 'angle'].includes(f) ? (onTopic(q) ?? RICH_ANSWER[f] ?? RICH_ANSWER.claims) : (RICH_ANSWER[f] ?? RICH_ANSWER.claims))
           : style === 'short' ? (f === 'offer' ? 'Signature Blend' : 'Fresh beans.')
           : 'Nothing specific, keep it general.'
         // "Which one is this video about?" is answered the way the app does: the
@@ -472,7 +484,7 @@ async function main() {
             : style === 'short' ? (opts.find((o) => o.startsWith('brand:')) ?? opts[0]) : opts[opts.length - 1]
           return false
         })
-        body.readiness_answers = { ...(body.readiness_answers ?? {}), ...Object.fromEntries(qs.map((q) => [q.field, answerFor(q.field)])) }
+        body.readiness_answers = { ...(body.readiness_answers ?? {}), ...Object.fromEntries(qs.map((q) => [q.field, answerFor(q.field, q)])) }
         sc.answerStyle = style
         r = await call(token, body)
       }
@@ -502,6 +514,43 @@ async function main() {
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
   console.log('\nTALLY', JSON.stringify(tally, null, 1))
+  await regressionReport(admin)
+}
+
+// ⚖️ EVERY ROUND IS CHECKED AGAINST THE BEST THE SAME TEST EVER SCORED (owner
+// 2026-10-04: "compare every one where there was a reduction after fixes, so a
+// new fix does not undo an old one"). The same test is the same group, product
+// or idea, reference and goal. Each script that scores a point or more below
+// that test's best is listed with both scripts' batch and number, so the drop
+// is read and its cause named before the next fix. Stored as row n = -2.
+async function regressionReport(admin) {
+  const keyOf = (r) => [r.scenario?.group, r.scenario?.product ?? '', String(r.scenario?.body?.reference_note ?? '').slice(0, 80), r.scenario?.body?.reference_url ?? '', r.scenario?.body?.goal ?? ''].join('|')
+  const score = (r) => Number(r?.judge?.overall)
+  const { data: mine } = await admin.from('script_batch_results').select('n, scenario, judge').eq('batch', BATCH).gte('n', 0)
+  const scored = (mine ?? []).filter((r) => Number.isFinite(score(r)))
+  if (!scored.length) return
+  const { data: past } = await admin.from('script_batch_results').select('batch, n, scenario, judge')
+    .neq('batch', BATCH).gte('n', 0).not('judge', 'is', null).order('created_at', { ascending: false }).limit(3000)
+  const best = new Map()
+  for (const r of past ?? []) {
+    const k = keyOf(r)
+    if (!Number.isFinite(score(r))) continue
+    if (!best.has(k) || score(r) > score(best.get(k))) best.set(k, r)
+  }
+  const drops = []
+  let compared = 0, gained = 0
+  for (const r of scored) {
+    const b = best.get(keyOf(r))
+    if (!b) continue
+    compared += 1
+    const d = Math.round((score(r) - score(b)) * 10) / 10
+    if (d > 0) gained += 1
+    if (d <= -1) drops.push({ n: r.n, test: keyOf(r), now: score(r), best: score(b), best_batch: b.batch, best_n: b.n, drop: d, fix: String(r.judge?.biggest_fix ?? '').slice(0, 240) })
+  }
+  drops.sort((a, b) => a.drop - b.drop)
+  const summary = { compared, gained, dropped_1_plus: drops.length, mean_vs_best: compared ? Math.round(scored.filter((r) => best.has(keyOf(r))).reduce((t, r) => t + score(r) - score(best.get(keyOf(r))), 0) / compared * 100) / 100 : null }
+  console.log('\nREGRESSIONS vs best earlier', JSON.stringify(summary), '\n' + drops.map((x) => `  #${x.n} ${x.test}: ${x.now} (best ${x.best} in ${x.best_batch} #${x.best_n})`).join('\n'))
+  await admin.from('script_batch_results').insert({ batch: BATCH, n: -2, scenario: { group: 'regressions', summary }, findings: drops, status: 0 })
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })
