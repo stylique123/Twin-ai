@@ -11362,21 +11362,28 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       const usable = ok.map((t, k) => ({ t, k })).filter((x): x is { t: string; k: number } => typeof x.t === 'string')
       if (!usable.length) throw (drafts[0] as PromiseRejectedResult).reason
       let pick = usable[0]
+      let pickSaid = ''
       if (usable.length > 1) {
         try {
           const show = usable.map(({ t, k }) => {
             const bp = JSON.parse(t) as { script?: Array<{ section?: unknown; line?: unknown }> }
-            return `DRAFT ${k}:\n${(bp.script ?? []).map((b) => `[${String(b.section ?? '')}] ${String(b.line ?? '')}`).join('\n')}`
+            return `DRAFT ${k + 1}:\n${(bp.script ?? []).map((b) => `[${String(b.section ?? '')}] ${String(b.line ?? '')}`).join('\n')}`
           }).join('\n\n')
           const verdict = await callModel(apiKey,
             'You are a top short-form editor choosing which draft she films. You return JSON only.',
             `Pick the ONE draft a real viewer from her audience would stop for, watch to the end and act on: the hook stops and is paid off, it sounds like a person talking (not a profile), it uses her own stories and facts, and the close follows from the hook.\n\n${show}\n\nReturn {"best":"<draft number>","why":"<one sentence>"}.`,
             DRAFT_PICK_SCHEMA)
-          const best = Number((JSON.parse(verdict) as { best?: unknown }).best)
+          // ⚠️ BATCH PART-13 (2026-10-04): the pick was draft one on 14 of 14
+          // scripts — the answer came back as "DRAFT 2" / "2" against drafts
+          // numbered from 0, and Number("DRAFT 2") is NaN. Drafts are shown
+          // from 1 and the first number in the answer is read.
+          const said = String((JSON.parse(verdict) as { best?: unknown }).best ?? '')
+          const best = Number(said.match(/\d+/)?.[0] ?? NaN) - 1
           pick = usable.find((u) => u.k === best) ?? pick
-        } catch { /* the first draft stands */ }
+          pickSaid = said.slice(0, 20)
+        } catch (e) { pickSaid = `failed: ${String((e as Error)?.message ?? e).slice(0, 60)}` }
       }
-      console.log(JSON.stringify({ event: 'drafts_picked', drafts: draftCount, usable: usable.length, picked: pick.k }))
+      console.log(JSON.stringify({ event: 'drafts_picked', drafts: draftCount, usable: usable.length, picked: pick.k, said: pickSaid }))
       raw = pick.t
     } else {
       raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
