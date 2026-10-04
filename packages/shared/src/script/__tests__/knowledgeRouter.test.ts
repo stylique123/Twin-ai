@@ -24,10 +24,18 @@ describe('knowledge router: which source feeds which part', () => {
     expect(slot(r, 'close').source).toBe('reddit_debate')
     expect(slot(r, 'close').job).toMatch(/question/)
   })
-  it('idea mode builds on her paragraph first', () => {
+  it('idea mode opens on her paragraph and still draws each part from its own material', () => {
     const r = routeKnowledge({ mode: 'idea', goal: 'educate', available: all })
     expect(slot(r, 'hook').source).toBe('her_answers')
     expect(slot(r, 'close').source).not.toBe('her_answers')
+    expect(slot(r, 'setup').source).toBe('reddit_complaint')
+  })
+  it('one source never carries more than two parts when others have material (part-10)', () => {
+    const r = routeKnowledge({ mode: 'idea', goal: 'educate', available: { her_answers: 1, her_claim: 4, her_story: 2, reddit_complaint: 1, niche_objection: 30 } })
+    expect(r.slots.filter((s) => s.source === 'her_answers').length).toBeLessThanOrEqual(2)
+    // A third use happens only where the part has no other allowed material.
+    const third = r.slots.filter((s, i) => s.source && r.slots.slice(0, i).filter((x) => x.source === s.source).length >= 2)
+    for (const s of third) expect(s.backups).toEqual([])
   })
   it('brand mode puts the brand where the product would be', () => {
     const r = routeKnowledge({ mode: 'brand', goal: 'sell', available: { brand: 2, reddit_buying: 1 } })

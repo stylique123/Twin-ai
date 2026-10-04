@@ -174,8 +174,10 @@ export function preferenceFor(role: Role, row: ArcRow, input: Omit<RouteInput, '
   if (role === 'hook' && input.angle && ANGLE_HOOK[input.angle]) list = [...ANGLE_HOOK[input.angle], ...list]
   if (role === 'proof' && input.focus && FOCUS_PROOF[input.focus]) list = [...FOCUS_PROOF[input.focus], ...list]
   if (role === 'close' && input.outcome && OUTCOME_CLOSE[input.outcome]) list = [...OUTCOME_CLOSE[input.outcome].sources, ...list]
-  // Idea mode: her paragraph is the spine; it is the first choice wherever hers may go.
-  if (input.mode === 'idea' && role !== 'close') list = ['her_answers', ...list]
+  // Idea mode: her paragraph is the spine — it opens the video and carries the
+  // proof; the other parts still draw on their own material (batch part-10:
+  // routing it first everywhere filled five of six parts from one paragraph).
+  if (input.mode === 'idea' && (role === 'hook' || role === 'proof')) list = ['her_answers', ...list]
   // Brand mode: the brand stands where the product would.
   if (input.mode === 'brand') list = list.map((s) => (s === 'product' ? 'brand' : s))
   // Product mode: the product must carry proof or payoff (doc §4).
@@ -188,10 +190,15 @@ export function preferenceFor(role: Role, row: ArcRow, input: Omit<RouteInput, '
 export function routeKnowledge(input: RouteInput): Route {
   const row = arcFor(input.goal ?? '', input.angle ?? '').row
   const has = (s: SourceId) => (input.available[s] ?? 0) > 0
+  // ⚖️ ONE SOURCE NEVER CARRIES THE WHOLE VIDEO: a source already used twice
+  // goes to the back of the line when another allowed source has material.
+  const used = new Map<SourceId, number>()
   const slots: Slot[] = ROLES.map((role) => {
     const prefs = preferenceFor(role, row, input)
-    const usable = prefs.filter((s) => s !== 'niche_proof' && has(s))
+    const allowed = prefs.filter((s) => s !== 'niche_proof' && has(s))
+    const usable = [...allowed.filter((s) => (used.get(s) ?? 0) < 2), ...allowed.filter((s) => (used.get(s) ?? 0) >= 2)]
     const source = usable[0] ?? null
+    if (source) used.set(source, (used.get(source) ?? 0) + 1)
     const mustBeHers = REQUIRED_HERS[row].includes(role) || (input.mode === 'product' && role === 'proof')
     const gap = mustBeHers && !usable.some((s) => HER_SOURCES.has(s))
     const job = role === 'close' && input.outcome ? OUTCOME_CLOSE[input.outcome]?.job : undefined

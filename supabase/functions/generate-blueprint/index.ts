@@ -9336,6 +9336,11 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         + ' kept so you can write the specific rather than the summary. Use it as'
         + ' evidence and as her phrasing; you do not have to reproduce it verbatim,'
         + ' and you must never contradict it.\n'
+        // ⚠️ BATCH PART-10 (2026-10-04): the reviewer's top note was lines read
+        // straight off these items ("In starting and operating my small
+        // ecommerce coffee roasting business…"). An item is a NOTE about her, not
+        // a line: the meaning is kept, the words are hers.
+        + ' SAY IT THE WAY SHE TALKS: each item is a note written ABOUT her, never a line to read out. Keep its meaning and any exact number, and say it in first person, short and spoken, the way she would tell a friend ("I roast in a space the size of a closet", not "operating a small ecommerce coffee roasting business"). A line that sounds like a profile, a bio or a keyword list is wrong.\n'
         // ⚠️ AND THE SENTENCE THAT EARNED IT, WHERE THERE IS ONE (0216). "She
         // cares about pricing" and "she charges £400 for a full rebind because
         // cheap ones fall apart within a year" are the same conclusion with and
