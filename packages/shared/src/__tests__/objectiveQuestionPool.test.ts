@@ -116,7 +116,7 @@ function loadInline() {
   // eslint-disable-next-line no-new-func
   return new Function(`${js}; return { objectiveAnswerInline, freshObjectiveAnswerLine, OBJECTIVE_SOURCE_REF_PREFIX_INLINE, OBJECTIVE_QUESTION_ID_PATTERN_INLINE }`)() as {
     objectiveAnswerInline: (a: Record<string, unknown>) => { questionId: string; question: string; text: string; sourceRef: string } | null
-    freshObjectiveAnswerLine: (q: string, a: string) => string
+    freshObjectiveAnswerLine: (q: string, a: string, trial?: boolean) => string
     OBJECTIVE_SOURCE_REF_PREFIX_INLINE: string
     OBJECTIVE_QUESTION_ID_PATTERN_INLINE: RegExp
   }
