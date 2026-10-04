@@ -15218,10 +15218,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           let kept = 0
           const reasons: string[] = []
           let next = beats.map((b) => ({ ...b }))
+          const spokenAt = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
+          const firstSpoken = spokenAt[0] ?? -1
+          const lastSpoken = spokenAt[spokenAt.length - 1] ?? -1
           for (const r of parseRepairRewrites(raw).slice(0, 2)) {
             const at = Number(r?.index)
             const line = typeof r?.line === 'string' ? r.line.trim() : ''
             if (!Number.isInteger(at) || at < 0 || at >= next.length || line.split(/\s+/).length < 4) { reasons.push('bad_index'); continue }
+            // ⚠️ BATCH PART-13 (owner 2026-10-04: "every run should add, never
+            // reduce"): the editor rewrote the hook into a mid-script line and
+            // broke closes. The hook and the close are never its to touch.
+            if (at === firstSpoken || at === lastSpoken) { reasons.push('hook_or_close'); continue }
             const original = String(next[at].line ?? '')
             if (newNumbers(line, original, lateAllowedText).length) { reasons.push('new_number'); continue }
             const trial = next.map((b, i) => (i === at ? { ...b, line } : b))
@@ -15230,8 +15237,28 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             next = guarded.beats
             kept += 1
           }
-          if (kept) bp.script = next
-          console.log(JSON.stringify({ event: 'self_review', kept, rejected: reasons }))
+          // ⚖️ ONLY BETTER, NEVER WORSE. Batch part-13: the editor kept two
+          // rewrites on nearly every script and some broke the thread (a hook
+          // left unpaid, a fact from another story dropped in), so scripts that
+          // were 6-8 came back 3-5. The edited script ships only if a blind
+          // side-by-side read prefers it; otherwise the original stands.
+          let verdict = 'none'
+          if (kept) {
+            try {
+              const say = (b: Array<Record<string, unknown>>) => b.map((x) => String(x.line ?? '').trim()).filter(Boolean).map((l, i) => `${i + 1}. ${l}`).join('\n')
+              const flip = Math.random() < 0.5
+              const [a, c] = flip ? [next, beats] : [beats, next]
+              const cmp = await callModel(apiKey,
+                'You compare two versions of one short video script for a creator. You return JSON only.',
+                `Which version would a real viewer of her audience watch to the end and act on? The hook must be paid off, every line must follow from the one before, it must sound like a person talking. If they are equal, answer A.\n\nVERSION A:\n${say(a)}\n\nVERSION B:\n${say(c)}\n\nReturn {"best":"A" or "B","why":"<one sentence>"}.`,
+                DRAFT_PICK_SCHEMA)
+              const best = String((JSON.parse(cmp) as { best?: unknown }).best ?? '').trim().toUpperCase().slice(0, 1)
+              const editedWins = flip ? best === 'A' : best === 'B'
+              verdict = editedWins ? 'edited' : 'original'
+            } catch { verdict = 'original' }
+          }
+          if (kept && verdict === 'edited') bp.script = next
+          console.log(JSON.stringify({ event: 'self_review', kept, rejected: reasons, verdict }))
         } catch (e) { console.warn('self review failed', String((e as Error)?.message ?? e).slice(0, 120)) }
       }
       // The shot list quotes and films the script that ships.
