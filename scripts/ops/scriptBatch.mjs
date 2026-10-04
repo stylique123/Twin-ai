@@ -391,12 +391,19 @@ async function main() {
   // --judge-only=<batch>: score scripts a past batch already wrote, no new builds.
   const judgeOnly = (process.argv.find((a) => a.startsWith('--judge-only=')) ?? '').slice(13)
   if (judgeOnly) {
-    const { data: rows } = await admin.from('script_batch_results').select('id, scenario, generation_id').eq('batch', judgeOnly).not('generation_id', 'is', null).is('judge', null)
+    // ⚖️ RE-SCORING: under a NEW label the same scripts are scored again into
+    // new rows (how much does the reviewer itself move?); under the same label
+    // only unscored rows are filled in.
+    const rescore = BATCH !== judgeOnly
+    let q = admin.from('script_batch_results').select('id, n, scenario, generation_id, script_text, hooks, status').eq('batch', judgeOnly).gte('n', 0).not('generation_id', 'is', null)
+    if (!rescore) q = q.is('judge', null)
+    const { data: rows } = await q
     let done = 0
     for (const row of rows ?? []) {
       const { data: g } = await admin.from('generations').select('blueprint').eq('id', row.generation_id).maybeSingle()
       const j = await judge(g?.blueprint ?? null, { product: row.scenario?.product ?? null, body: row.scenario?.body ?? {} }, ctx)
-      await admin.from('script_batch_results').update({ judge: j }).eq('id', row.id)
+      if (rescore) await admin.from('script_batch_results').insert({ batch: BATCH, n: row.n, scenario: row.scenario, status: row.status, generation_id: row.generation_id, script_text: row.script_text, hooks: row.hooks, findings: [], judge: j })
+      else await admin.from('script_batch_results').update({ judge: j }).eq('id', row.id)
       console.log(`judged ${++done}/${rows.length} → ${j?.overall ?? j?.error ?? '?'}`)
     }
     return
