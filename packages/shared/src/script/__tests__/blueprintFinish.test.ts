@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ensureProductShown, showModeOf, hookPromise, hookPayoff, newNumbers, payoffRepairPrompt,
+  ensureProductShown, showsProduct, showModeOf, hookPromise, hookPayoff, newNumbers, payoffRepairPrompt,
   closeGoalOf, closeFits, goalCloseSentence, ensureGoalClose,
 } from '../blueprintFinish'
 import { shouldExtendScript } from '../scriptIntegrity'
@@ -118,5 +118,35 @@ describe('the close fits the goal (part-3-product: 56%)', () => {
     expect(a.changed).toBe('appended')
     expect(a.script[2].line).toBe('Link in bio. So remember: grind finer when the shot runs fast.')
     expect(ensureGoalClose(s, 'sell', {}).changed).toBe('none')
+  })
+})
+
+describe('showsProduct: a gesture is not a product shot (part-5 batch)', () => {
+  it('reads her gestures as not showing the product', () => {
+    for (const a of [
+      'Raise open palms briefly on both sides to picture the slow deliberate ritual',
+      'Lean forward slightly toward the lens to mark the shift in focus, opening hands outward with palms up.',
+      'Holds eye contact and lifts her chin on the last word',
+      'Turn the head slightly toward the lens',
+      'Tap her temple twice',
+    ]) expect(showsProduct(a)).toBe(false)
+  })
+  it('still reads real product shots', () => {
+    for (const a of [
+      'Holds the bag of House Espresso up to the lens',
+      'Pours the cold brew concentrate over ice',
+      'Opens the bag and scoops the beans',
+      'Back camera close-up of the burrs',
+    ]) expect(showsProduct(a)).toBe(true)
+  })
+  it('adds a product beat when only gestures were there', () => {
+    const script = [
+      { line: 'Who my cold brew concentrate is for.', action_posing: 'Stand upright', section: 'hook' },
+      { line: 'Our Cold Brew Concentrate is steeped for a full day.', action_posing: 'Raise open palms briefly', section: 'body' },
+      { line: 'Find it on the site.', action_posing: 'Drop hands', section: 'close' },
+    ]
+    const r = ensureProductShown(script, { productName: 'Cold Brew Concentrate', productWords: ['Cold', 'Brew', 'Concentrate'], mode: 'physical' })
+    expect(r.reason).toBe('added')
+    expect(r.added).toBe(1)
   })
 })

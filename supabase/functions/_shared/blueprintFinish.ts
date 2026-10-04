@@ -59,6 +59,21 @@ export function showModeOf(type: unknown, showability: unknown, screens: Readonl
 /** An action that shows the thing itself: in hand, opened, poured, or its screen. */
 export const SHOW_ACTION = /\b(?:hold(?:s|ing)?|open(?:s|ing)?|pour(?:s|ing)?|unbox\w*|scoop(?:s|ing)?|tip(?:s|ping)?|lift(?:s|ing)?|turn(?:s|ing)? (?:the|it)|show(?:s|ing)? (?:the|it|off)|screen|scroll(?:s|ing)?|tap(?:s|ping)?|back camera|rear camera|close[- ]?up|demonstrat\w*|appl(?:y|ies|ying)|wear(?:s|ing)?)\b/i
 
+/**
+ * Her body, not the product: "raise open palms", "hold eye contact", "lift her
+ * chin", "tap her temple". The writer uses show verbs for gestures, and the
+ * part-5 batch (2026-10-04) shipped 13 of 20 product scripts with no product
+ * in frame because a gesture read as a show beat. These are struck before
+ * SHOW_ACTION is tested.
+ */
+const BODY = '(?:(?:her|his|their|your|both|one|the|a)\\s+)?(?:open\\s+)?(?:palms?|hands?|arms?|fingers?|finger|head|chin|chest|shoulders?|eyebrows?|brows?|gaze|eyes?|face|temple|lens|camera|smile|pause|pose|breath|posture|eye contact|still)\\b'
+const GESTURE = new RegExp(`\\b(?:open(?:s|ing)?|hold(?:s|ing)?|lift(?:s|ing)?|tip(?:s|ping)?|tap(?:s|ping)?|turn(?:s|ing)?|show(?:s|ing)?)\\s+(?:up\\s+|out\\s+)?${BODY}|\\bopen\\s+(?:palms?|hands?|arms?)\\b|\\b(?:palms?|hands?|arms?)\\s+open\\b`, 'gi')
+
+/** True when the direction shows the product itself, not a gesture. */
+export function showsProduct(action: string): boolean {
+  return SHOW_ACTION.test(action.replace(GESTURE, ' '))
+}
+
 function namesProduct(line: string, productWords: ReadonlyArray<string>): boolean {
   const l = line.toLowerCase()
   return productWords.some((w) => w.length >= 4 && l.includes(w.toLowerCase()))
@@ -137,7 +152,7 @@ export function ensureProductShown<T extends FinishBeat>(
   const spoken = out.map((b, i) => (text(b?.line).trim() ? i : -1)).filter((i) => i >= 0)
   const about = spoken.filter((i) => namesProduct(text(out[i].line), opts.productWords))
   if (!about.length) return { ...base, reason: 'not_named' }
-  const shows = (b: T) => SHOW_ACTION.test(text(b.action_posing))
+  const shows = (b: T) => showsProduct(text(b.action_posing))
   const shown = about.filter((i) => shows(out[i]))
   if (shown.length) {
     let trimmed = 0
