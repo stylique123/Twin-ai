@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ctaJob, looksLikeCta, pickHerCta } from '../ctaAllocation.js'
+import { ctaJob, looksLikeCta, pickHerCta, ctaFitsTopic } from '../ctaAllocation.js'
 
 const HERS = [
   "If you're just here for the beans, you'll find a link to my website in my bio.",
@@ -30,5 +30,14 @@ describe('her CTAs, each in its place', () => {
     expect(pickHerCta('leads', { typed: 'Book a planning call from my bio', recurring: HERS })?.text).toBe('Book a planning call from my bio')
     expect(pickHerCta('sell', { typed: '12oz bag — $18\n5lb — $65', recurring: [] })).toBeNull()
     expect(pickHerCta('conversations', { recurring: HERS })).toBeNull()
+  })
+})
+
+describe('batch part-14: a CTA about one subject never closes a video about another', () => {
+  it('the coffee-cart stick-around line does not close a roasting video', () => {
+    expect(ctaFitsTopic(HERS[2]!, 'why I roast in small batches instead of buying pre-roasted beans')).toBe(false)
+    expect(ctaFitsTopic(HERS[2]!, 'what nobody tells you about starting a coffee cart')).toBe(true)
+    expect(ctaFitsTopic(HERS[0]!, 'anything at all')).toBe(true)
+    expect(pickHerCta('followers', { recurring: HERS, topic: 'my morning routine at the roastery' })).toBeNull()
   })
 })

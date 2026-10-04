@@ -349,7 +349,11 @@ export function goalCloseSentence(
   }
   if (want === 'question') return 'What would you do — tell me in the comments?'
   if (want === 'follow_save') return opts.followAllowed ? 'Follow along, and save this so you have it.' : 'Save this so you have it next time.'
-  const first = (opts.payoffLine ?? '').split(/(?<=[.!?])\s+/)[0]?.trim() ?? ''
+  // ⚠️ BATCH PART-14: "So remember: and this is the part people miss." The
+  // takeaway is the payoff's first sentence that SAYS something, never a
+  // bridge line ("And this is the part…", "Here is the thing").
+  const BRIDGE = /^(?:and|but|so|now|here(?:'s| is)|this is|that'?s|okay|ok)\b.{0,40}(?:part|thing|secret|catch|where|why|miss|wrong)\b[^.!?]*[.!?]?$/i
+  const first = (opts.payoffLine ?? '').split(/(?<=[.!?])\s+/).map((x) => x.trim()).find((x) => x && !BRIDGE.test(x)) ?? ''
   if (first && words(first).length >= 4 && words(first).length <= 16) {
     return `So remember: ${first.charAt(0).toLowerCase()}${first.slice(1).replace(/[.!?]*$/, '.')}`
   }
