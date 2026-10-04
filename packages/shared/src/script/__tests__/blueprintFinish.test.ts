@@ -160,5 +160,6 @@ describe('batch part-13: a question close fits a reach video', () => {
   it('does not glue a save line after a real question', () => {
     expect(closeFits('What was the first coffee that made you taste the difference?', 'follow_save')).toBe(true)
     expect(closeFits('That is the whole story.', 'follow_save')).toBe(false)
+    expect(closeFits('What was your hardest hurdle? Tell me below.', 'follow_save')).toBe(true)
   })
 })

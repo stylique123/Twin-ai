@@ -382,6 +382,7 @@ async function main() {
       // Her confirmed brand facts are hers (batch part-13: the judge called
       // "native and women-owned" invented; it is on her brand).
       JSON.stringify(brands?.[0] ?? {}).slice(0, 3000), RICH_ANSWER.claims].join('\n'),
+    statedFacts: (know ?? []).filter((k) => k.basis === 'stated').map((k) => String(k.text ?? '')).filter((t) => t.length > 20),
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
     products: products ?? [],
@@ -459,7 +460,18 @@ async function main() {
         asked = [...(asked ?? []), ...r.json.questions.map((q) => q.question)]
         // Three kinds of creator: a full answer, two words, or "nothing specific".
         const style = ['rich', 'short', 'none'][sc.n % 3]
-        const answerFor = (f) => style === 'rich' ? (RICH_ANSWER[f] ?? RICH_ANSWER.claims)
+        // ⚠️ A REAL CREATOR ANSWERS ON TOPIC (batch part-13): one shipping
+        // sentence answered every question, about stale beans or roasters
+        // alike, so the writer was handed off-topic "answers". A rich answer is
+        // now her own stated fact closest to the question and the idea.
+        const onTopic = (q) => {
+          const ws = (x) => new Set(String(x ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? [])
+          const want = ws(`${q?.question ?? ''} ${body.reference_note ?? ''}`)
+          let best = null, score = 0
+          for (const k of ctx.statedFacts) { const o = [...ws(k)].filter((w) => want.has(w)).length; if (o > score) { score = o; best = k } }
+          return score >= 2 ? best : null
+        }
+        const answerFor = (f, q) => style === 'rich' ? (['claims', 'angle'].includes(f) ? (onTopic(q) ?? RICH_ANSWER[f] ?? RICH_ANSWER.claims) : (RICH_ANSWER[f] ?? RICH_ANSWER.claims))
           : style === 'short' ? (f === 'offer' ? 'Signature Blend' : 'Fresh beans.')
           : 'Nothing specific, keep it general.'
         // "Which one is this video about?" is answered the way the app does: the
@@ -472,7 +484,7 @@ async function main() {
             : style === 'short' ? (opts.find((o) => o.startsWith('brand:')) ?? opts[0]) : opts[opts.length - 1]
           return false
         })
-        body.readiness_answers = { ...(body.readiness_answers ?? {}), ...Object.fromEntries(qs.map((q) => [q.field, answerFor(q.field)])) }
+        body.readiness_answers = { ...(body.readiness_answers ?? {}), ...Object.fromEntries(qs.map((q) => [q.field, answerFor(q.field, q)])) }
         sc.answerStyle = style
         r = await call(token, body)
       }

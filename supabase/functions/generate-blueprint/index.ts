@@ -6891,7 +6891,12 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
     + (/keep getting|people ask|message you|hardest to answer|wish people asked/i.test(question)
       ? '\n  ⚠️ THIS VIDEO ANSWERS A REAL QUESTION. Say the question early, then give THEIR answer from above, plainly, before the close. Never tease the answer and not give it; never replace it with a plan, a poll or an answer they did not give. If they gave only the question, answer only from facts listed in this prompt, or say where to ask them — never invent one.'
       : '')
-    + '\n  This is new, creator-supplied material that no earlier video had. Build this video\'s central beat around it, and PREFER it over any older stored story, experience or example listed elsewhere in this prompt — do not fall back to a story already used in previous scripts when this answer can carry the beat. It has NOT been verified, so do not present it as independently checked, and a sentence here that promises a RESULT is still not an approved outcome claim.'
+    // ⚠️ BATCH PART-13 vs PART-4 (2026-10-04): an answer about shipping times
+    // became the "lesson" of a video about her first roaster and the "test"
+    // in a video about stale beans — the reviewer's non sequitur, every time.
+    // Her answer leads only where it is about THIS video's idea.
+    + '\n  IF IT IS ABOUT THIS VIDEO\'S IDEA: if her answer is about something else (a shipping time in a video about her first roaster), do NOT put it in the middle of the video and never let it replace the teaching the hook promised — use it at most as one supporting line, or leave it out.'
+    + '\n  This is new, creator-supplied material that no earlier video had. When it fits the idea, build this video\'s central beat around it, and PREFER it over any older stored story, experience or example listed elsewhere in this prompt — do not fall back to a story already used in previous scripts when this answer can carry the beat. It has NOT been verified, so do not present it as independently checked, and a sentence here that promises a RESULT is still not an approved outcome claim.'
 }
 // ── END OBJECTIVE QUESTION ──────────────────────────────────────────────────
 

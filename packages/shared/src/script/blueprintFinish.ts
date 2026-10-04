@@ -319,9 +319,12 @@ export function closeFits(close: string, want: CloseGoal): boolean {
   // glued after it, and the reviewer marked it every time ("nobody saves a
   // story about dumped beans"). A question back to the viewer already does a
   // reach video's job.
-  if (want === 'follow_save') return FOLLOW_SAVE.test(c) || /\?\s*["')\]]*\s*$/.test(c)
+  if (want === 'follow_save') return FOLLOW_SAVE.test(c) || /\?\s*["')\]]*\s*$/.test(c) || ASKS_VIEWER.test(c)
   return TAKEAWAY.test(c)
 }
+
+// A question followed by "Tell me below." still asks the viewer something.
+const ASKS_VIEWER = /\?[^?]*\b(tell me|let me know|drop it|in the comments|below)\b[^?]*$/i
 
 const FOLLOW_ASK_LIKE = /\b(follow (for|me|my|along)|give (me|us) a follow|hit (the )?follow)\b/i
 
