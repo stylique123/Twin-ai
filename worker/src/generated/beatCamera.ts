@@ -61,6 +61,8 @@ const BACK_ACTION = new RegExp([
   String.raw`\b(?:texture|label|side profile|the beans|the grounds|the ingredients)\b`,
 ].join('|'), 'i')
 
+const FACE_TO_LENS = /\b(?:eye contact|to (?:the )?(?:lens|camera)|into (?:the )?(?:lens|camera)|at (?:the )?(?:lens|camera)|lean(?:s|ing)? in|open palms?|talking head|nods?|smiles? at)\b/i
+
 const text = (v: unknown) => (typeof v === 'string' ? v : '')
 
 /**
@@ -74,11 +76,16 @@ export function cameraForBeat(beat: CameraBeat, index = -1, total = -1): BeatCam
   if (total > 0 && index === total - 1) return 'front'
   const job = text(beat.shown_job).trim().toLowerCase().replace(/[\s-]+/g, '_')
   if (job === 'cta') return 'front'
-  if (BACK_JOBS.has(job)) return 'back'
   // ⚖️ THE ACTION OUTRANKS A 'talk' JOB: the audit's "turn the bag slowly"
   // beats were filed as talk too. What her hands do is what the lens needs.
-  if (/\b(?:demo|demonstration|process|how it works|in use|step)\b/i.test(section)) return 'back'
   const doing = [beat.action_posing, beat.direction, beat.cuts_info].map(text).join(' • ')
+  // ⚠️ BATCH PART-13 (2026-10-04): the reviewer's most repeated camera note was
+  // a beat marked back camera while its direction is her face ("hold eye
+  // contact", "lean in to the lens", open palms). Her face to the lens with no
+  // product action is the front camera, whatever the job says.
+  if (FACE_TO_LENS.test(doing) && !BACK_ACTION.test(doing)) return 'front'
+  if (/\b(?:demo|demonstration|process|how it works|in use|step)\b/i.test(section)) return 'back'
+  if (BACK_JOBS.has(job)) return 'back'
   return BACK_ACTION.test(doing) ? 'back' : 'front'
 }
 
