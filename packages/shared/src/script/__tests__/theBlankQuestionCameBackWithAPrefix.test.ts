@@ -32,7 +32,7 @@ import type { KnowledgeItem } from '../../creatorKnowledge'
 const item = (kind: string, basis: string): KnowledgeItem =>
   ({ kind, basis, text: 'something' } as unknown as KnowledgeItem)
 
-const NOTHING_ON_RECORD = checkEntitlement('Wired is better for the money.', []).ask
+const NOTHING_ON_RECORD = checkEntitlement('I think wired is better for the money.', []).ask
 const HISTORY_ASK = checkEntitlement(
   'those high-end, wired earbuds I used to swear by',
   [item('covered', 'demonstrated')],

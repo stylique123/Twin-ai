@@ -38,6 +38,7 @@ import { IDEA_Q_SYSTEM, IDEA_Q_SCHEMA, cleanIdeaRead, angleBrief, angleContract 
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from '../_shared/factPurpose.ts'
 import { arcFor, arcPrompt, arcCheck, nameTheProduct } from '../_shared/arcShape.ts'
 import { keepLateSafe, spokenWords, type LateGuardContext } from '../_shared/lateGuards.ts'
+import { ensureProductShown, showModeOf, hookPayoff, payoffRepairPrompt, newNumbers, ensureGoalClose } from '../_shared/blueprintFinish.ts'
 import {
   repairScriptIntegrity, tagStorySources, shouldExtendScript, buildExtensionPrompt, acceptExtension,
   type IntegrityBeat,
@@ -5126,7 +5127,11 @@ function entitlementFailures(
     const line = typeof (raw as { line?: unknown })?.line === 'string' ? (raw as { line: string }).line : ''
     if (!line) return
     const strength = claimStrength(line)
-    const entitled = available !== null && LEVEL_RANK[available] >= NEED[strength]
+    // ⚖️ NAMING A SUBJECT NEEDS NO EVIDENCE — `discussion` is entitled even
+    // with nothing supplied (batch part-3-product, 2026-10-03: an entertain
+    // script lost 6 of 6 beats to this). Positions and histories still need it.
+    const entitled = NEED[strength] === 0
+      || (available !== null && LEVEL_RANK[available] >= NEED[strength])
     if (entitled) return
     out.push({
       index, line, repair: repairFor(strength, available),
@@ -7043,10 +7048,23 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
   const purposeGoal = purposeOfGoal(body.goal)
   const herOnIds = new Set(uuidList((body as { on_by_her_ids?: unknown }).on_by_her_ids))
   let offPurpose = 0
+  // ⚠️ OFF-PURPOSE IS NOT UNTRUE (batch part-3-product, 2026-10-03). The
+  // purpose rule decides what the WRITER is handed, and the claim checks used to
+  // read the same reduced list — so on an entertain video, where most of her
+  // facts are labeled for other objectives, the entitlement check saw NOTHING
+  // and blocked 6 of 6 beats (128 words drafted, 21 shipped). This keeps every
+  // usable fact — deduped, not excluded, not sensitive, not a correction she
+  // rejected (already spliced out above) — as EVIDENCE only. It never reaches
+  // the prompt; it only stops a true line about her reading as unsupported.
+  const excludedIds = new Set([...herOff, ...uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids)])
+  const entitlementPool: typeof rankedRows = []
   const knowledgeRows = [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) => {
     const k = `${r?.kind}|${String(r?.text ?? '').trim().toLowerCase()}`
     if (seenKnowledge.has(k)) return false
     seenKnowledge.add(k)
+    const row = r as { id?: unknown; sensitive?: unknown; creator_excluded_at?: unknown; basis?: unknown }
+    if (row.sensitive !== true && !row.creator_excluded_at && !excludedIds.has(String(row.id ?? ''))
+      && row.basis !== 'inferred') entitlementPool.push(r)
     if (!servesObjective(r as never, purposeGoal, herOnIds)) { offPurpose++; return false }
     return true
   })
@@ -11432,6 +11450,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // does; making it the caller means there is a single place in this function
     // where untrusted knowledge becomes a typed `SubstanceItem`.
     const suppliedForCheck = asSubstance(speakable)
+    // ⚖️ EXCEPT ENTITLEMENT, which asks a different question: is this line TRUE
+    // OF HER, at this strength? A fact held back from the writer as off-purpose
+    // for this goal is still true, so it still licenses a line that matches it.
+    // What the writer was shown comes first; the rest of her usable store
+    // follows (see `entitlementPool`). Traceability, depth, the particular and
+    // regulatory floors stay on `suppliedForCheck` — those DO ask what the
+    // writer had.
+    const entitlementEvidence = asSubstance([...speakable, ...entitlementPool])
     // THE PRODUCT FACTS THE PROMPT CARRIED — derived from the block that was
     // actually built above, never from the brief. `evidenceBlock` is the whole
     // of what the writer was told about the product; if a fact is not in it,
@@ -11474,7 +11500,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         ? (bpH.hook_options as unknown[]).filter((h): h is string => typeof h === 'string')
         : []
       if (hooks.length > 1) {
-        const bad = new Set(entitlementFailures(hooks.map((line) => ({ line })), suppliedForCheck)
+        const bad = new Set(entitlementFailures(hooks.map((line) => ({ line })), entitlementEvidence)
           .map((f) => f.index))
         const kept = hooks.filter((_, i) => !bad.has(i))
         // An empty hook list is a worse outcome than an overreaching one, and
@@ -12338,7 +12364,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // spoken as written" path below. A second parallel mechanism would be a
     // second thing to get subtly wrong, and this one already has the shape.
     let entFails = [
-      ...entitlementFailures(declared, suppliedForCheck),
+      ...entitlementFailures(declared, entitlementEvidence),
       ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
       // ⚠️ MERGED HERE FOR THE REASON THE COMMENT ABOVE GIVES: one repair call,
       // one re-check, and the ask-beat path for whatever survives. A regulatory
@@ -12357,7 +12383,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         event: 'entitlement_blocked',
         beats: entFails.length,
         of: Array.isArray(declared) ? declared.length : 0,
-        available_evidence: bestAvailableLevel(suppliedForCheck),
+        available_evidence: bestAvailableLevel(entitlementEvidence),
         strengths: entFails.map((f) => claimStrength(f.line)),
       }))
       try {
@@ -12398,7 +12424,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // RE-CHECK. A repair nobody verified is the same trust we just withdrew
         // from the first draft.
         entFails = [
-          ...entitlementFailures(declared, suppliedForCheck),
+          ...entitlementFailures(declared, entitlementEvidence),
           ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
           ...regulatoryFailuresInline(declared, suppliedForCheck),
           ...firstPersonFailuresInline(declared, suppliedForCheck.length),
@@ -12409,6 +12435,59 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
       } catch (e) {
         console.error('entitlement repair failed', String((e as Error)?.message ?? e))
+      }
+    }
+    // ⚠️ A CLAIM CHECK MUST NOT HOLLOW OUT THE SCRIPT (batch part-3-product,
+    // 2026-10-03: 128 drafted words, 21 shipped). If blanking what still fails
+    // would leave under half the writer's words, those beats get ONE more
+    // rewrite — as safe, non-personal lines: the subject, its general value,
+    // the product's own facts. No "I did", no number, no role. Re-checked like
+    // every repair; whatever still fails falls through to the ask path below.
+    // ⚖️ THIS DOES NOT WEAKEN THE BLOCK. An invented history is still never
+    // spoken as written — it is replaced by a line that claims nothing about
+    // her, which is the honest version of the beat rather than a hole in it.
+    {
+      const wordsOf = (t: unknown) => String(t ?? '').split(/\s+/).filter((w) => w !== '').length
+      const lines = Array.isArray(declared) ? (declared as Array<{ line?: unknown }>) : []
+      const total = lines.reduce((n, b) => n + wordsOf(b?.line), 0)
+      const failing = new Set(entFails.map((f) => f.index))
+      const surviving = lines.reduce((n, b, i) => n + (failing.has(i) ? 0 : wordsOf(b?.line)), 0)
+      if (entFails.length && total > 0 && surviving < total * 0.5) {
+        try {
+          const safePrompt = 'Most of this script cannot be spoken as written: it claims things about the creator nobody has on record.'
+            + ' Rewrite ONLY the indexed lines as SAFE, NON-PERSONAL lines: what is true of the subject, why it matters to the viewer, or the product\'s own facts listed below.'
+            + ' No first-person history ("I did", "I bought", "I used to"), no personal opinion stated as hers, no number, no role, no event. Keep each line\'s purpose and position, and keep it speakable.'
+            + ' Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n'
+            + (productFactsForCheck.length ? `\nPRODUCT FACTS (the only facts you may state):\n${productFactsForCheck.map((f) => `- ${f}`).join('\n')}\n` : '')
+            + '\nFULL SCRIPT (context only):\n'
+            + lines.map((b, i) => `[${i}] ${String((b as { section?: unknown })?.section ?? '')}: ${String(b?.line ?? '')}`).join('\n')
+            + '\n\nLINES TO REWRITE:\n' + entFails.map((f) => `index ${f.index}\nLINE: ${f.line}`).join('\n\n')
+          const safe = await callModel(
+            apiKey,
+            'You rewrite script lines so they make no claim about the speaker. You never invent a fact, number or experience. You return JSON only.',
+            safePrompt,
+            REPAIR_SCHEMA,
+          )
+          const parsed = JSON.parse(safe) as { rewrites?: Array<{ index?: unknown; line?: unknown }> }
+          let applied = 0
+          for (const r of parsed?.rewrites ?? []) {
+            const i = Number(r?.index)
+            const line = typeof r?.line === 'string' ? r.line.trim() : ''
+            if (!Number.isInteger(i) || !line || !failing.has(i) || !lines[i]) continue
+            ;(lines[i] as { line?: string }).line = line
+            applied++
+          }
+          entFails = [
+            ...entitlementFailures(declared, entitlementEvidence),
+            ...comparativeFailures(declared, isCommercial, productFactCountOf(ownedEntity)),
+            ...regulatoryFailuresInline(declared, suppliedForCheck),
+            ...askAsLineFailuresInline(declared),
+            ...platformCtaFailuresInline(declared, voice?.platform),
+          ]
+          console.warn(JSON.stringify({ event: 'entitlement_safe_rewrite', words: total, surviving, applied, still_failing: entFails.length }))
+        } catch (e) {
+          console.error('entitlement safe rewrite failed', String((e as Error)?.message ?? e))
+        }
       }
     }
     // ⚖️ WHAT SURVIVES THE REPAIR IS NEVER SPOKEN AS WRITTEN. The beat is not
@@ -13264,6 +13343,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // late guard has cut sentences (the late length step).
     let lateExtend: ((beats: IntegrityBeat[]) => Promise<IntegrityBeat[] | null>) | null = null
     let wordsAtExtension = 0
+    // ⚖️ KEPT FOR THE LATE LENGTH CHECK (part-3-product): the guards that run
+    // after integrity can shorten the script, so the same grounded facts and
+    // options are read again at the end.
+    let lateKnownText = ''
+    let lateIntegrityOpts: Parameters<typeof acceptExtension>[3] | null = null
     try {
       const bpAny = templated.bp as { script?: unknown; beat_plan?: unknown }
       if (Array.isArray(bpAny.script)) {
@@ -13327,6 +13411,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             ? (bpAny.beat_plan as Array<{ target_sec?: unknown }>).map((p) => Number(p?.target_sec))
             : null,
         }
+        lateKnownText = knownText
+        lateIntegrityOpts = integrityOpts
         const integrity = repairScriptIntegrity(bpAny.script as IntegrityBeat[], integrityOpts)
         traceBeats('integrity', integrity.beats)
         // Lines the extension rewrote or added that make a claim she is not
@@ -13334,7 +13420,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const entitledOnly = (before: IntegrityBeat[], after: IntegrityBeat[]): IntegrityBeat[] => {
           try {
             const beforeLines = new Set(before.map((b) => b?.line))
-            const bad = new Set(entitlementFailures(after as Array<{ line?: unknown }>, suppliedForCheck)
+            const bad = new Set(entitlementFailures(after as Array<{ line?: unknown }>, entitlementEvidence)
               .map((f) => f.index).filter((i) => !beforeLines.has(after[i]?.line)))
             if (!bad.size) return after
             if (before.length === after.length) return after.map((b, i) => (bad.has(i) ? before[i]! : b))
@@ -13397,14 +13483,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
                 if (Array.isArray(before) && Array.isArray(after) && before.length !== after.length) {
                   // A restored section that claims more than she is entitled to is not kept.
                   const beforeLines = new Set(before.map((b) => b?.line))
-                  const bad = new Set(entitlementFailures(after, suppliedForCheck).map((f) => f.index).filter((i) => !beforeLines.has(after[i]?.line)))
+                  const bad = new Set(entitlementFailures(after, entitlementEvidence).map((f) => f.index).filter((i) => !beforeLines.has(after[i]?.line)))
                   if (bad.size) {
                     ext.beats = (after as typeof ext.beats).filter((_, i) => !bad.has(i))
                     console.warn(JSON.stringify({ event: 'extension_claim_reverted', lines: bad.size }))
                   }
                 } else if (Array.isArray(before) && Array.isArray(after) && before.length === after.length) {
-                  const wasBad = new Set(entitlementFailures(before, suppliedForCheck).map((f) => f.index))
-                  const nowBad = entitlementFailures(after, suppliedForCheck)
+                  const wasBad = new Set(entitlementFailures(before, entitlementEvidence).map((f) => f.index))
+                  const nowBad = entitlementFailures(after, entitlementEvidence)
                     .filter((f) => !wasBad.has(f.index) && after[f.index]?.line !== before[f.index]?.line)
                   for (const f of nowBad) after[f.index] = before[f.index]
                   if (nowBad.length) console.warn(JSON.stringify({ event: 'extension_claim_reverted', lines: nowBad.length }))
@@ -13492,6 +13578,40 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             console.warn(JSON.stringify({ event: 'close_added_from_her_cta' }))
           }
         } catch { /* the close never fails a build */ }
+        // ⚖️ THE BODY PAYS OFF THE HOOK (part-3-product: 46%). A hook that sets
+        // up a count, a question or a claim is checked against the body; when no
+        // later beat delivers it, ONE repair call rewrites the payoff beat from
+        // the supplied facts. A rewrite that brings a new number, or still does
+        // not deliver, is not kept.
+        try {
+          const beatsNow = Array.isArray(bpAny.script) ? bpAny.script as Array<{ line?: unknown; section?: unknown }> : []
+          const check = hookPayoff(beatsNow)
+          if (!check.paid && check.payoffIndex !== null) {
+            const at = check.payoffIndex
+            const original = String(beatsNow[at]?.line ?? '')
+            let kept = false
+            let reason = 'no_rewrite'
+            const raw = await callModel(
+              apiKey,
+              'You rewrite one script line so it delivers what the hook promised. You never add a fact, number, name or experience. You return JSON only.',
+              payoffRepairPrompt(beatsNow, check, knownText),
+              REPAIR_SCHEMA,
+            )
+            for (const r of parseRepairRewrites(raw)) {
+              const line = typeof r?.line === 'string' ? r.line.trim() : ''
+              if (Number(r?.index) !== at || line.split(/\s+/).length < 4) continue
+              if (newNumbers(line, original, knownText).length) { reason = 'new_number'; continue }
+              const next = beatsNow.map((b) => ({ ...b }))
+              next[at].line = line
+              if (!hookPayoff(next).paid) { reason = 'still_unpaid'; continue }
+              bpAny.script = next
+              kept = true
+              reason = 'accepted'
+              break
+            }
+            console.warn(JSON.stringify({ event: 'hook_payoff_repaired', kept, reason, promise: check.promise.kind, beat: at }))
+          }
+        } catch (e) { console.warn('hook payoff failed', String((e as Error)?.message ?? e).slice(0, 120)) }
         traceBeats('extension', bpAny.script)
         wordsAtExtension = spokenWords(Array.isArray(bpAny.script) ? bpAny.script as Array<{ line?: unknown }> : [])
         // ⚖️ THE PLAN IS PARALLEL TO THE SCRIPT; a dropped beat drops its plan row.
@@ -14762,59 +14882,6 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (keep.length && keep.length !== bp.hook_options.length) bp.hook_options = keep
       }
     } catch { /* enforcement never fails a generation */ }
-    // ── THE LATE LENGTH STEP (part-4 batch 2026-10-04) ──────────────────────
-    //
-    // ⚠️ 8eaecdab shipped 50 of the 94 words it had after the extension: the
-    // late guards above cut sentences and the script went out short, with the
-    // re-extension never asked. A guard that removes sentences now sends the
-    // script back through the same extension, held to the same `lateCtx`, so
-    // nothing it adds can be cut again.
-    try {
-      const bp = blueprint as { script?: unknown; shot_list?: unknown; beat_plan?: unknown }
-      const extendNow = lateExtend as ((beats: IntegrityBeat[]) => Promise<IntegrityBeat[] | null>) | null
-      if (Array.isArray(bp.script) && extendNow) {
-        const now = spokenWords(bp.script as Array<{ line?: unknown }>)
-        if (now < wordsAtExtension) {
-          const longer = await extendNow(bp.script as IntegrityBeat[])
-          if (longer) {
-            bp.script = longer
-            if (Array.isArray(bp.shot_list)) {
-              bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, longer as Array<{ line?: unknown }>).shots
-            }
-            if (Array.isArray(bp.beat_plan) && (bp.beat_plan as unknown[]).length !== longer.length) {
-              const rows = [...(bp.beat_plan as Array<{ beat?: unknown }>)]
-              bp.beat_plan = longer.map((b) => {
-                const at = rows.findIndex((r) => String(r?.beat ?? '').toLowerCase() === String(b?.section ?? '').toLowerCase())
-                return at >= 0 ? rows.splice(at, 1)[0] : { beat: String(b?.section ?? ''), proof: 'Straight to camera' }
-              })
-            }
-          }
-          console.warn(JSON.stringify({
-            event: 'late_length_extended', words_at_extension: wordsAtExtension, words_before: now,
-            words_after: spokenWords((bp.script ?? []) as Array<{ line?: unknown }>), accepted: !!longer,
-          }))
-        }
-      }
-    } catch (e) { console.warn('late length step failed', String((e as Error)?.message ?? e).slice(0, 120)) }
-    // ── THE PRODUCT IS SAID BY NAME (reviewer, part-4 batch 2026-10-04) ─────
-    // Scripts called the chosen product "it" / "this grinder" and never said
-    // its name. Where the arc requires the product (or the script already
-    // refers to it), its own name replaces one reference. The name is always
-    // allowed: it is in `lateAllowedText` and the integrity name grounding.
-    try {
-      const bp = blueprint as { script?: unknown; shot_list?: unknown }
-      if (productNameNow && Array.isArray(bp.script)) {
-        const beatsNow = bp.script as Array<{ line?: unknown }>
-        const named = nameTheProduct(beatsNow.map((b) => (typeof b?.line === 'string' ? b.line : '')), productNameNow, videoArc)
-        if (named.at >= 0) {
-          bp.script = beatsNow.map((b, i) => (i === named.at ? { ...b, line: named.lines[i] } : b))
-          if (Array.isArray(bp.shot_list)) {
-            bp.shot_list = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>).shots
-          }
-          console.warn(JSON.stringify({ event: 'product_named_aloud', beat: named.at }))
-        }
-      }
-    } catch { /* naming never fails a build */ }
     const lessonsBroken = brokenLessons(JSON.stringify((blueprint as { script?: unknown })?.script ?? ''), lessonsInPrompt)
     if (lessonsBroken.length) {
       console.warn(JSON.stringify({ event: 'lessons_broken', count: lessonsBroken.length }))
@@ -14824,6 +14891,105 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       void admin.rpc('lessons_used', { p_ids: lessonsInPrompt.map((l) => l.id) }).then(() => {}, () => {})
       console.log(JSON.stringify({ event: 'lessons_supplied', count: lessonsInPrompt.length }))
     }
+    // ── THE FINISH: LENGTH, THE PRODUCT SHOWN, A CLOSE THAT FITS ─────────────
+    //
+    // ⚠️ SCRIPT BATCH part-3-product (2026-10-03): 44% full length, 16% showed
+    // the product, 56% closed on a next step fitting the goal. Everything above
+    // can shorten the script (privacy, corrections, offer scope, the rules), so
+    // these run HERE, after the last guard, and the shot list is re-derived once.
+    try {
+      const bp = blueprint as { script?: unknown; shot_list?: unknown }
+      const herWords = [reference_note, ...Object.values(answers ?? {}).filter((v): v is string => typeof v === 'string')].join('\n')
+      const followOk = String(body.outcome ?? '') === 'follow'
+      // The same guards that ran above, re-run on anything written here.
+      const reguard = (beats: Array<Record<string, unknown>>): { beats: Array<Record<string, unknown>>; removed: number } => {
+        const g = guardScript(beats as Array<{ line?: unknown }>, { allowedText: lateAllowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true, identityText: lateIdentityText })
+        const c = enforceCorrections(g.beats, herRejected, herWords)
+        const o = stripForeignOffer(c.beats, foreignOffer)
+        const r = enforceScriptRules(o.beats, { unpicked: namesNotPicked, followAllowed: followOk })
+        const out = (r.beats as Array<Record<string, unknown>>).filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
+        return { beats: out, removed: g.removed.length + c.removed.length + o.removed.length + r.removed.length }
+      }
+      // 3. LENGTH. Words shipped under 80% of the target get one grounded
+      // extension; the result is re-guarded and kept only if it is still longer.
+      if (Array.isArray(bp.script) && lateIntegrityOpts && lateKnownText) {
+        const beats = bp.script as IntegrityBeat[]
+        const decision = shouldExtendScript(beats, lateIntegrityOpts.targetSec, lateIntegrityOpts.wpm)
+        if (decision.extend) {
+          let reason = 'call_failed'
+          let wordsAfter = decision.words
+          // ⚖️ ONE LATE LENGTH STEP (part-4 batch 2026-10-04): the same extension
+          // as the first pass, held to the same `lateCtx` (keepLateSafe) and the
+          // same entitlement rule, so nothing it adds is cut by the guards above.
+          const extendNow = lateExtend as ((b: IntegrityBeat[]) => Promise<IntegrityBeat[] | null>) | null
+          try {
+            const longer = extendNow ? await extendNow(beats) : null
+            reason = longer ? 'accepted' : 'not_accepted'
+            if (longer) {
+              const guarded = reguard(longer as Array<Record<string, unknown>>)
+              const n = spokenWords(guarded.beats as Array<{ line?: unknown }>)
+              if (n > decision.words) { bp.script = guarded.beats; wordsAfter = n } else reason = 'guards_undid_it'
+            }
+          } catch (e) {
+            reason = `call_failed: ${String((e as Error)?.message ?? e).slice(0, 80)}`
+          }
+          console.warn(JSON.stringify({ event: 'script_length_extended_late', accepted: wordsAfter > decision.words, reason, words_at_extension: wordsAtExtension, words_before: decision.words, words_after: wordsAfter, target_words: decision.target }))
+        }
+      }
+      // 1. THE PRODUCT IS SHOWN in one or two beats about it.
+      if (Array.isArray(bp.script) && ownedEntity) {
+        const name = String((ownedEntity as { name?: unknown }).name ?? '')
+        const pWords = name.replace(/\(.*?\)/g, ' ').split(/[^A-Za-z]+/).filter((w) => w.length >= 4 && !/^(the|and|with|from|your|this)$/i.test(w))
+        const screens = sectionsFromKnowledge(ownedEntity)
+        const shown = ensureProductShown(bp.script as Array<Record<string, unknown>>, {
+          productName: name,
+          productWords: pWords,
+          mode: showModeOf((ownedEntity as { type?: unknown }).type, (ownedEntity as { showability?: unknown }).showability, screens),
+          shape: shapeFromKnowledge(ownedEntity),
+          screens,
+          row: videoArc.row,
+        })
+        bp.script = shown.script
+        // ⚖️ AND SAID BY NAME (reviewer, part-4 batch 2026-10-04): scripts
+        // called the product "it" / "this grinder" and never said its name;
+        // arcCheck counts the generic noun as the name. One reference becomes
+        // the name where the arc needs the product. The name is in
+        // `lateAllowedText` and the integrity name grounding, so it is allowed.
+        if (productNameNow) {
+          const beatsNow = bp.script as Array<Record<string, unknown>>
+          const named = nameTheProduct(beatsNow.map((b) => (typeof b?.line === 'string' ? b.line : '')), productNameNow, videoArc)
+          if (named.at >= 0) {
+            bp.script = beatsNow.map((b, i) => (i === named.at ? { ...b, line: named.lines[i] } : b))
+            console.warn(JSON.stringify({ event: 'product_named_aloud', beat: named.at }))
+          }
+        }
+        console.log(JSON.stringify({ event: 'product_shown_ensured', reason: shown.reason, shown: shown.shown.length, added: shown.added !== null, trimmed: shown.trimmed, row: videoArc.row }))
+      }
+      // 4. THE CLOSE FITS THE GOAL (selling goals close on her own CTA above).
+      if (Array.isArray(bp.script)) {
+        const beats = bp.script as Array<Record<string, unknown>>
+        const pay = hookPayoff(beats)
+        const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
+        const payoffLine = String(beats[pay.payoffIndex ?? spokenIdx[1] ?? -1]?.line ?? '')
+        const closed = ensureGoalClose(beats, intent.goal ?? body.goal, {
+          herCta: readyPresent(brief.defaultCta) ? String(brief.defaultCta) : '',
+          payoffLine,
+          followAllowed: followOk,
+        })
+        if (closed.changed !== 'none') {
+          const guarded = reguard(closed.script)
+          if (!guarded.removed) {
+            bp.script = guarded.beats
+            console.warn(JSON.stringify({ event: 'close_fitted_to_goal', changed: closed.changed, want: closed.want }))
+          }
+        }
+      }
+      // The shot list quotes and films the script that ships.
+      if (Array.isArray(bp.shot_list) && Array.isArray(bp.script)) {
+        const synced = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>)
+        bp.shot_list = carryBeatActions(synced.shots as Array<Record<string, unknown>>, bp.script as Array<Record<string, unknown>>)
+      }
+    } catch (e) { console.warn('blueprint finish failed', String((e as Error)?.message ?? e).slice(0, 120)) }
     // ⚖️ THE ARC, CHECKED: where the product first appears, against the row.
     try {
       const lines = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
