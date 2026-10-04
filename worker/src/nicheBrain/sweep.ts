@@ -20,6 +20,12 @@ import { runCorrectionApplier, runLessonLearner } from './lessons.js'
 import { runAvailabilitySweep } from './availabilitySweep.js'
 import { runShapeSweep } from './shapeSweep.js'
 import { MAX_SOURCES, embedText, notesFromRead, place, relationFor, type NoteDraft } from './librarian.js'
+import { createEmptyProbeGate } from '../idleBackoff.js'
+
+// A caught-up corpus answers `brain_unread` with nothing, and that answer was
+// the most expensive query on the database (it walks every read card to prove
+// it). Empty answers push the next ask out (2min → 30min); a hit resets.
+export const unreadGate = createEmptyProbeGate(2 * 60 * 1000, 30 * 60 * 1000)
 
 export const BRAIN_SWEEP_INTERVAL_MS = 2 * 60 * 1000
 /** ~6,800 videos at 15 per 2 minutes clears the backlog in about 15 hours
@@ -157,10 +163,12 @@ export function kickBrainSweep(log: Log): void {
 }
 
 export async function runBrainSweep(log: Log): Promise<void> {
+  if (!unreadGate.due()) return
   const { data: cards, error } = await db.rpc('brain_unread', { p_version: CORPUS_READ_VERSION, p_limit: BRAIN_SWEEP_BATCH })
-  if (error) { log('error', 'brain_sweep_read_failed', { error: error.message }); return }
+  if (error) { unreadGate.empty(); log('error', 'brain_sweep_read_failed', { error: error.message }); return }
   const todo = (Array.isArray(cards) ? cards : []) as CorpusCard[]
-  if (todo.length === 0) return
+  if (todo.length === 0) { unreadGate.empty(); return }
+  unreadGate.found()
 
   const model = modelForTask('read')
   let read = 0, unreadable = 0, failed = 0, notes = 0
