@@ -92,6 +92,14 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per worker sweep: the model pass for facts the rules could not place failed; those rows stay unlabeled (ineligible) and are retried next sweep. Durable as creator_knowledge.serves_at IS NULL.',
   },
+  privacy_by_meaning: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker sweep: facts read for privacy and how many were marked private. Durable as creator_knowledge.privacy_checked_at / sensitive.',
+  },
+  privacy_by_meaning_failed: {
+    kind: 'counter_ephemeral',
+    why: 'Per worker sweep: the privacy model call failed; rows stay unchecked and are retried next sweep. Durable as privacy_checked_at IS NULL.',
+  },
   fact_purposes_labeled: {
     kind: 'counter_ephemeral',
     why: 'Per worker sweep: facts labeled by rule, model or none. Durable as creator_knowledge.serves_basis / serves_at.',
