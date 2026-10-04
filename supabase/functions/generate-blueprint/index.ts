@@ -6225,7 +6225,12 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
       const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
-      if (blueprintComplete(parsed)) {
+      // ⚠️ ONLY A BLUEPRINT HAS A CONCEPT AND PACKAGING (2026-10-04). Repair
+      // calls (payoff, entitlement, self-review) pass their own schema; holding
+      // them to the blueprint check marked every one incomplete, re-ran it on
+      // the fallback model and shipped the fallback's answer — about three
+      // wasted calls per script.
+      if (schema !== blueprintSchema || blueprintComplete(parsed)) {
         await record?.settled(rowId, 'succeeded')
         return text // complete → accept
       }
@@ -9336,6 +9341,11 @@ function freshObjectiveAnswerLine(question: string, answer: string): string {
         + ' kept so you can write the specific rather than the summary. Use it as'
         + ' evidence and as her phrasing; you do not have to reproduce it verbatim,'
         + ' and you must never contradict it.\n'
+        // ⚠️ BATCH PART-10 (2026-10-04): the reviewer's top note was lines read
+        // straight off these items ("In starting and operating my small
+        // ecommerce coffee roasting business…"). An item is a NOTE about her, not
+        // a line: the meaning is kept, the words are hers.
+        + ' SAY IT THE WAY SHE TALKS: each item is a note written ABOUT her, never a line to read out. Keep its meaning and any exact number, and say it in first person, short and spoken, the way she would tell a friend ("I roast in a space the size of a closet", not "operating a small ecommerce coffee roasting business"). A line that sounds like a profile, a bio or a keyword list is wrong.\n'
         // ⚠️ AND THE SENTENCE THAT EARNED IT, WHERE THERE IS ONE (0216). "She
         // cares about pricing" and "she charges £400 for a full rebind because
         // cheap ones fall apart within a year" are the same conclusion with and
@@ -15079,6 +15089,53 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             console.warn(JSON.stringify({ event: 'close_fitted_to_goal', changed: closed.changed, want: closed.want }))
           }
         }
+      }
+      // ⚖️ 5. THE SELF-REVIEW (owner 2026-10-04; batch part-10: "no generic
+      // line" held in 10% of scripts, "story complete" in 45%). One Flash read
+      // of the finished script against its material board names at most two
+      // beats that sound like a profile, could be said by anyone, or break the
+      // thread from hook to close, and rewrites them from her own material. A
+      // rewrite that brings a new number, or that the late guards strip, is
+      // not kept. SELF_REVIEW=off turns it off.
+      if (Array.isArray(bp.script) && (Deno.env.get('SELF_REVIEW') ?? 'on') !== 'off') {
+        try {
+          const beats = bp.script as Array<Record<string, unknown>>
+          const numbered = beats.map((b, i) => `${i}. [${String(b.section ?? '')}] ${String(b.line ?? '')}`).join('\n')
+          const board = knowledgeRoute ? renderRoute(knowledgeRoute) : ''
+          const raw = await callModel(
+            apiKey,
+            'You are her editor. You fix at most TWO lines of a short video script so it sounds like her talking and holds together from hook to close. You never add a fact, number, name, product detail or experience that is not in her material. You return JSON only.',
+            [
+              'Find the (at most two) weakest lines, in this order of priority:',
+              '1. a line that reads like a profile, bio, product page or keyword list instead of a person talking;',
+              '2. a line any creator in her niche could say word for word (nothing of hers in it);',
+              '3. a line that breaks the thread: the close does not answer or act on what the hook opened.',
+              'Rewrite each in first person, short and spoken, using only her material below. Keep exact numbers exactly. If every line is already good, return no rewrites.',
+              `\nTHE SCRIPT (index. [section] line):\n${numbered}`,
+              board ? `\n${board}` : '',
+              `\nHER MATERIAL (the only source of facts):\n<<<UNTRUSTED_DATA her material\n${lateAllowedText.slice(0, 6000).split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')}\nEND_UNTRUSTED_DATA>>>`,
+              '\nReturn {"rewrites":[{"index":"<line index>","line":"<new line>"}]}.',
+            ].join('\n'),
+            REPAIR_SCHEMA,
+          )
+          let kept = 0
+          const reasons: string[] = []
+          let next = beats.map((b) => ({ ...b }))
+          for (const r of parseRepairRewrites(raw).slice(0, 2)) {
+            const at = Number(r?.index)
+            const line = typeof r?.line === 'string' ? r.line.trim() : ''
+            if (!Number.isInteger(at) || at < 0 || at >= next.length || line.split(/\s+/).length < 4) { reasons.push('bad_index'); continue }
+            const original = String(next[at].line ?? '')
+            if (newNumbers(line, original, lateAllowedText).length) { reasons.push('new_number'); continue }
+            const trial = next.map((b, i) => (i === at ? { ...b, line } : b))
+            const guarded = reguard(trial)
+            if (guarded.removed) { reasons.push('guarded'); continue }
+            next = guarded.beats
+            kept += 1
+          }
+          if (kept) bp.script = next
+          console.log(JSON.stringify({ event: 'self_review', kept, rejected: reasons }))
+        } catch (e) { console.warn('self review failed', String((e as Error)?.message ?? e).slice(0, 120)) }
       }
       // The shot list quotes and films the script that ships.
       if (Array.isArray(bp.shot_list) && Array.isArray(bp.script)) {

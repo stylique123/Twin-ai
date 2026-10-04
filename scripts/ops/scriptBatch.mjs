@@ -139,6 +139,9 @@ async function callOnce(token, body) {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, apikey: ANON, 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    // part-11 (2026-10-04): one request that never answered froze the whole
+    // batch for 40 minutes. A script past 4 minutes is a failure, not a wait.
+    signal: AbortSignal.timeout(240_000),
   })
   const text = await res.text()
   let json = null
@@ -160,8 +163,15 @@ const INTAKE = [
 async function intakeProducts(token, admin, owner, voiceId, brandId) {
   const out = []
   for (const it of INTAKE) {
+    // ⚠️ 2026-10-04: every run inserted a fresh "<name> (batch)" copy, so the
+    // test creator had 54 duplicates of 15 products (30 with no facts) and every
+    // product script saw a dozen near-identical names. One product per name,
+    // reused, named the way a creator names it.
+    const { data: have } = await admin.from('product_entities').select('id')
+      .eq('owner_id', owner).is('archived_at', null).in('name', [it.name, `${it.name} (batch)`]).limit(1).maybeSingle()
+    if (have?.id) { out.push({ ...it, id: have.id, reused: true }); continue }
     const { data: ent, error } = await admin.from('product_entities').insert({
-      owner_id: owner, voice_id: voiceId, brand_id: brandId || null, name: `${it.name} (batch)`, type: 'PHYSICAL_PRODUCT',
+      owner_id: owner, voice_id: voiceId, brand_id: brandId || null, name: it.name, type: 'PHYSICAL_PRODUCT',
       relationship: 'OWN_PRODUCT', product_url: it.url ?? null, user_confirmed: true,
     }).select('id').single()
     if (error) { out.push({ ...it, error: error.message }); continue }
@@ -290,6 +300,7 @@ async function judge(bp, sc, ctx) {
     if (wait) await new Promise((r) => setTimeout(r, wait))
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI}`, {
+        signal: AbortSignal.timeout(150_000),
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: JUDGE_SYSTEM }] },
