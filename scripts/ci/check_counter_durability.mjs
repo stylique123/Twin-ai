@@ -770,6 +770,10 @@ const EVENTS = {
   commercial_claim_awaiting_confirmation: { kind: 'counter_ephemeral', why: 'Commercial claims from her videos held back until she confirms them.' },
   role_claim_dropped: { kind: 'counter_ephemeral', why: 'A line claiming a business or role she never stated was dropped (trial).' },
   spec_questions: { kind: 'counter_ephemeral', why: 'Per run: how many slots used, confirmed, asked; durable per question in question_asks.' },
+  spec_confirm: {
+    kind: 'counter_ephemeral',
+    why: 'Per tap: her yes or no on a held answer. Durable as creator_knowledge.creator_confirmed_at / creator_excluded_at.',
+  },
   spec_answer: { kind: 'counter_ephemeral', why: 'Answer/skip/filler per slot; durable in question_asks.outcome.' },
   spec_question_rejected: { kind: 'counter_ephemeral', why: 'A generated question failed validation and was not shown.' },
   spec_question_skipped: { kind: 'counter_ephemeral', why: 'The wording call failed or was slow; no question shown.' },
