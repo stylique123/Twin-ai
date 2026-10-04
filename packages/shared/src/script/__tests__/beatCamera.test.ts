@@ -41,3 +41,12 @@ describe('decideBeatCameras', () => {
     expect(script[1].camera).toBe('front') // never mutates
   })
 })
+
+describe('batch part-13: her face to the lens is the front camera', () => {
+  it('a talk beat that holds eye contact is front even with a back job', () => {
+    expect(cameraForBeat({ section: 'Payoff', line: 'x', shown_job: 'demo', action_posing: 'Lean in to the lens and hold eye contact' }, 2, 5)).toBe('front')
+  })
+  it('a hands-on product action stays back', () => {
+    expect(cameraForBeat({ section: 'Proof', line: 'x', action_posing: 'Turn the bag to show the label' }, 2, 5)).toBe('back')
+  })
+})

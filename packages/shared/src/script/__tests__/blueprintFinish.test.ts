@@ -155,3 +155,10 @@ describe('showsProduct: a gesture is not a product shot (part-5 batch)', () => {
     expect(r.added).toBe(1)
   })
 })
+
+describe('batch part-13: a question close fits a reach video', () => {
+  it('does not glue a save line after a real question', () => {
+    expect(closeFits('What was the first coffee that made you taste the difference?', 'follow_save')).toBe(true)
+    expect(closeFits('That is the whole story.', 'follow_save')).toBe(false)
+  })
+})

@@ -161,8 +161,8 @@ describe('the writer is told the creator’s own CTA', () => {
   it('merges the answer into THIS generation, not only the next one', () => {
     // ⚖️ The brief is read before the questions are asked, so persisting alone
     // would fix the following video and leave the paid one unchanged.
-    expect(EDGE).toMatch(/if \(readyPresent\(answers\.cta\)\) brief\.defaultCta =/)
-    expect(EDGE).toMatch(/if \(readyPresent\(answers\.cta\)\) stable\.defaultCta =/)
+    expect(EDGE).toMatch(/if \(readyPresent\(answers\.cta\)( && looksLikeCta\(answers\.cta\))?\) brief\.defaultCta =/)
+    expect(EDGE).toMatch(/if \(readyPresent\(answers\.cta\)( && looksLikeCta\(answers\.cta\))?\) stable\.defaultCta =/)
   })
 
   it('puts their wording in the prompt and tells the model not to smooth it', () => {
