@@ -8015,8 +8015,12 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // empty — and the writer filled it with roast claims she never made. Only a
   // SELLING video asked first. A video about one of her products with nothing
   // on file asks her what it is, whatever the goal.
-  const askAboutEmptyProduct = trialOn && !!ownedEntity && !readyEntityKnows && readyFacts.length === 0
-  if ((readyPromoting || askAboutEmptyProduct) && readyFacts.length === 0 && !readyPresent(answers.claims)
+  const askAboutEmptyProduct = trialOn && !readyPromoting && !!ownedEntity && !readyEntityKnows && readyFacts.length === 0
+    && !readyPresent(answers.claims) && !readyNeedsPick
+  if (askAboutEmptyProduct) {
+    readyMissing.push({ field: 'claims', question: readyClaimsQuestion(readyOffer) })
+  }
+  if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)
     && !readyEntityKnows && !readyNeedsPick) {
     readyMissing.push({
       field: 'claims',
