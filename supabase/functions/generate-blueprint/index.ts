@@ -6968,7 +6968,7 @@ function objectiveProductIdInline(sourceRef: string, pickedId: string): string |
 function unconfirmedCommercial(r: { source?: unknown; source_ref?: unknown; creator_confirmed_at?: unknown; text?: unknown; evidence?: unknown }): boolean {
   if (r.creator_confirmed_at) return false
   // An answer she gave that claims a role or commercial terms waits for her tap (answerGate).
-  if (r.source === 'asked' && String(r.source_ref ?? '').startsWith('asked:hold:')) return true
+  if (r.source === 'asked' && (String(r.source_ref ?? '').startsWith('asked:hold:') || (r as { basis?: unknown }).basis === 'inferred')) return true
   if (!['transcript', 'caption'].includes(String(r.source ?? ''))) return false
   return /\b(free shipping|ships? free|shipping|discount|\d+\s?% off|on sale|coupon|promo|use code|guarantee|refund|money back|\$\s?\d)/i.test(`${String(r.text ?? '')} ${String(r.evidence ?? '')}`)
 }
@@ -8284,13 +8284,21 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // carries that id — the read the card rotates on — and fed to the writer
   // below as FRESH material for THIS video.
   const objectiveAnswer = objectiveAnswerInline(answers)
-  if (objectiveAnswer) {
+  // ⚖️ THE SAME CHECK AS THE QUESTION SCREEN'S, ALL ACCOUNTS (owner 2026-10-05):
+  // filler is not stored; a private matter is stored private; a role she
+  // claims or commercial terms are stored HELD (basis 'inferred') until she
+  // says yes. What she typed still shapes THIS video — she said it for it.
+  const objectiveGate = objectiveAnswer ? gateAnswer(objectiveAnswer.text, {}) : null
+  if (objectiveAnswer && objectiveGate && objectiveGate.outcome === 'filler') {
+    console.log(JSON.stringify({ event: 'objective_answer_not_stored', why: 'filler', question_id: objectiveAnswer.questionId }))
+  } else if (objectiveAnswer && objectiveGate) {
     const { error: objErr } = await admin.from('creator_knowledge').insert({
       owner_id: ownerId,
       voice_id: voice?.id ?? null,
       kind: 'experience',
       text: objectiveAnswer.text,
-      basis: 'stated',
+      basis: objectiveGate.hold.length ? 'inferred' : 'stated',
+      sensitive: objectiveGate.sensitive,
       source: 'asked',
       confidence: 0.9,
       times_seen: 1,
@@ -8315,6 +8323,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     console.log(JSON.stringify({
       event: 'objective_answer_stored',
       question_id: objectiveAnswer.questionId,
+      held: objectiveGate.hold.length,
+      private: objectiveGate.sensitive,
       ok: !objErr || /duplicate key|unique/i.test(String(objErr.message ?? '')),
       error: objErr ? String(objErr.message ?? '') : null,
     }))

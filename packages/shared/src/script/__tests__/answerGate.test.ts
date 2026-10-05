@@ -57,3 +57,30 @@ describe('owner\'s simulated moments, through the answer check', () => {
     expect(isFillerAnswer('idk just try it lol')).toBe(true)
   })
 })
+
+describe('owner 2026-10-05: phrasings not in the simulated set', () => {
+  const priv = [
+    'The zoning board said I could not roast out of my garage anymore.',
+    'My landlord threatened to end my lease over the smell.',
+    'A supplier filed a lawsuit against me last spring.',
+    'Right after my diagnosis I could not lift the bean sacks for months.',
+    'We got a visit from the health inspector and failed the first time.',
+    'I was behind on my rent that whole winter.',
+    'My divorce was the reason I started roasting at night.',
+  ]
+  it.each(priv)('private: %s', (a) => expect(gateAnswer(a, {}).sensitive).toBe(true))
+  const roles = [
+    ['I take my cart to the farmers market every Saturday.', /cart/],
+    ['My studio is in the back of the house.', /studio/],
+    ['I run a little bakery on the side.', /bakery/],
+  ] as const
+  it.each(roles)('role held: %s', (a, re) => expect(gateAnswer(a, {}).hold.join(' ')).toMatch(re))
+  it('"my team" is not a business claim on its own', () => {
+    expect(gateAnswer('My team helps me bag on Fridays.', {}).hold).toEqual([])
+  })
+  const fine = [
+    'I grind fine for espresso and coarse for French press.',
+    'The court yard at the market is where I set up.',
+  ]
+  it.each(fine)('ordinary, not private: %s', (a) => expect(gateAnswer(a, {}).sensitive).toBe(false))
+})

@@ -39,7 +39,7 @@ export function isFillerAnswer(answer: string): boolean {
 }
 
 // Backstop only: the worker reads every fact by meaning (privacyByMeaning).
-const PRIVATE = /\b(permits?|permitting|inspections?|inspector|zoning|licen[cs]e|the city sent|council|fined|(?:got|paid|gave me) a fine|lawsuit|sued|court|police|landlord|evict\w*|rent (is|was) late|debt|bank (account|balance)|broke\b|diagnos\w*|illness|hospital|pregnan\w*|divorce|my ex\b|therapy|medication)/i
+const PRIVATE = /\b(permits?|permitting|inspections?|inspector|zoning|licen[cs]e|the city sent|council|fined|(?:got|paid|gave me) a fine|lawsuit|sued|court(?!\s?yard)\b|courtroom|police|landlord|evict\w*|rent (is|was) late|behind on (?:my |the )?(?:rent|bills|payments)|couldn.?t (?:pay|afford) (?:rent|the rent|my bills)|debt|bank (account|balance)|broke\b|diagnos\w*|illness|hospital|pregnan\w*|divorce|my ex\b|therapy|medication)/i
 
 const COMMERCIAL = /\b(free shipping|ships? free|shipping|discount|\d+\s?% off|on sale|coupon|promo|use code|code [A-Z0-9]{3,}|guarantee|refund|money back|\$\s?\d|£\s?\d|€\s?\d|\d+\s+(bags?|units?|spots?|seats?|pieces?)\b|only \d+(?:\s+[a-z]+)?)/i
 
