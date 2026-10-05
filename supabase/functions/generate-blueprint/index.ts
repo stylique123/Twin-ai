@@ -69,6 +69,7 @@ import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels } from '../_shared/beatCleanup.ts'
 import { dropNovelSentences } from '../_shared/novelDetail.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
+import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
@@ -7536,6 +7537,20 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // braces. It states at the point of use that a decline yields no subject, and
   // the next person to add a fallback has to delete an explicit `null` to do it.
   const ownedEntity = declinedAProduct ? null : chosenEntity
+  // Owner 2026-10-05 (blind set 2 #13, #15): scanned rows must share a
+  // distinctive word with THIS product and ask, or they stay out (trial).
+  if (trialOn && (ownedEntity || String(reference_note ?? '').trim())) {
+    const e = (ownedEntity ?? {}) as { name?: unknown; offer?: unknown; creator_summary?: unknown }
+    const askText = [e.name, e.offer, e.creator_summary, reference_note, (body as { focus?: unknown }).focus, (body as { outcome?: unknown }).outcome].filter((x) => typeof x === 'string').join(' ')
+    const rel = relevantToAsk(knowledgeRows as Array<{ text?: unknown; source?: unknown; id?: unknown }>, askText, {
+      exempt: (r) => ['asked', 'comment'].includes(String(r.source ?? '')) || herOnIds.has(String(r.id ?? '')),
+    })
+    if (rel.dropped.length) {
+      const drop = new Set(rel.dropped)
+      for (let i = knowledgeRows.length - 1; i >= 0; i--) if (drop.has(knowledgeRows[i] as never)) knowledgeRows.splice(i, 1)
+      console.log(JSON.stringify({ event: 'knowledge_off_ask', held_back: rel.dropped.length, kept: knowledgeRows.length, examples: rel.dropped.slice(0, 3).map((r) => String(r.text ?? '').slice(0, 60)) }))
+    }
+  }
   // ⚖️ ITEM 26: set when a multi-product reference is built for ONE chosen
   // subject. Saved on the blueprint so the result screen says so in one line.
   let referenceScopeNote: string | null = null
