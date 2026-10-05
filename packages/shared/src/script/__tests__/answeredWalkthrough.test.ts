@@ -21,7 +21,7 @@ function walk(optionId: string, extra: Record<string, string> = {}) {
     const m = moments.find((x) => x.option === optionId && x.slot === slot.id && !x.expect)
     const answer = m?.answer ?? extra[slot.id]
     if (!answer) { history.push({ slot: slot.id, wording: `q${run}`, outcome: 'nothing', run }); log.push(`run ${run}: asks ${slot.id} → "nothing like that happened" (counts as answered)`); continue }
-    const g = gateAnswer(answer, slot, now)
+    const g = gateAnswer(answer, slot, { now })
     history.push({ slot: slot.id, wording: `q${run}`, outcome: g.outcome === 'filler' ? 'filler' : 'answered', run })
     if (g.outcome === 'answered' && !g.hold.length) facts.push({ text: answer, option: optionId, slot: slot.id })
     log.push(`run ${run}: asks ${slot.id} → ${m ? `${m.id} (simulated)` : 'extra (simulated)'}: "${answer.slice(0, 70)}…" → ${g.outcome}${g.hold.length ? ` HELD: ${g.hold.join('; ')}` : ''}`)

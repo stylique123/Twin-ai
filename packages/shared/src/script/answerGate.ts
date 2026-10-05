@@ -13,46 +13,70 @@
 import { unconfirmedRoleClaims } from './roleClaims.js'
 import type { Slot as SpecSlot } from './questionSpecs.js'
 import { EXPIRY_DAYS } from './questionSpecs.js'
+import { isPrivate } from './privacyGuard.js'
 
 export type AnswerOutcome = 'answered' | 'filler'
-export interface GatedAnswer {
-  outcome: AnswerOutcome
-  sensitive: boolean
-  /** Claims she must confirm before any of this answer is said on camera. */
-  hold: string[]
-  /** ISO time this answer stops being current, or null. */
-  expiresAt: string | null
-}
 
-const NON_ANSWER = /^(nothing( specific| really| much)?|none|no|n\/a|na|idk|i don'?t know|not sure|skip|no idea|not really|dunno)\b/
-const PRAISE_ONLY = /\b(really good|so good|you'?ll love it|it'?s (great|amazing|the best|delicious)|the best|amazing|just try it)\b/
+// The WHOLE answer must be a shrug or pure praise. "No one told me it would
+// smell like this" starts with "no" and is a real moment (owner review 2026-10-05).
+const SHRUG = /^(nothing( specific| really| much)?|none|no|nope|n\/a|na|idk|i don'?t know|not sure|skip|no idea|not really|dunno|nah|pass|keep it general)( lol| haha| tbh| really| sorry)*$/
+const PRAISE_WORDS = new Set(['it', "it's", 'its', 'is', 'really', 'so', 'very', 'good', 'great', 'amazing', 'the', 'best', 'delicious', 'coffee', "you'll", 'youll', 'you', 'will', 'love', 'just', 'try', 'lol', 'honestly', 'a', 'and', 'tasty', 'awesome', 'nice', 'idk'])
 
 /** No moment, no detail: a short answer that is only a shrug or praise. */
 export function isFillerAnswer(answer: string): boolean {
-  const t = answer.trim().toLowerCase().replace(/[.!\s]+$/, '')
+  const t = answer.trim().toLowerCase().replace(/[.!?,\s]+$/g, '').replace(/\s+/g, ' ')
   if (!t) return true
-  const words = t.split(/\s+/)
-  if (NON_ANSWER.test(t) && words.length <= 12) return true
-  if (/\bkeep it general\b/.test(t)) return true
-  if (words.length <= 12 && PRAISE_ONLY.test(t) && !/\d/.test(t)) return true
-  return false
+  if (SHRUG.test(t)) return true
+  // Pure praise: every word is a praise/filler word — no person, moment, thing or number.
+  const words = t.replace(/[.!?,;:]/g, ' ').split(/\s+/).filter(Boolean)
+  return words.length <= 14 && words.every((w) => PRAISE_WORDS.has(w))
 }
 
-// Backstop only: the worker reads every fact by meaning (privacyByMeaning).
-const PRIVATE = /\b(permits?|permitting|inspections?|inspector|zoning|licen[cs]e|the city sent|council|fined|(?:got|paid|gave me) a fine|lawsuit|sued|court(?!\s?yard)\b|courtroom|police|landlord|evict\w*|rent (is|was) late|behind on (?:my |the )?(?:rent|bills|payments)|couldn.?t (?:pay|afford) (?:rent|the rent|my bills)|debt|bank (account|balance)|broke\b|diagnos\w*|illness|hospital|pregnan\w*|divorce|my ex\b|therapy|medication)/i
 
-const COMMERCIAL = /\b(free shipping|ships? free|shipping|discount|\d+\s?% off|on sale|coupon|promo|use code|code [A-Z0-9]{3,}|guarantee|refund|money back|\$\s?\d|£\s?\d|€\s?\d|\d+\s+(bags?|units?|spots?|seats?|pieces?)\b|only \d+(?:\s+[a-z]+)?)/i
+// OFFERS only: shipping terms, discounts, prices, codes, guarantees, and
+// scarcity said as a limit ("only 30 bags", "20 left"). "Only 12 minutes" and
+// "10 bags a week" are not offers (owner review 2026-10-05).
+const COMMERCIAL = /\b(free shipping|ships? free|shipping (is|was)? ?(free|included|\$\s?\d)|discount|\d+\s?% off|on sale|coupon|promo code|use code|code [A-Z0-9]{3,}\b|guarantee\w*|refund|money back|\$\s?\d+(\.\d\d)?|£\s?\d+|€\s?\d+|only \d+\s+(bags?|units?|spots?|seats?|pieces?|left|available|made)\b|\d+\s+(bags?|units?|spots?|seats?|pieces?)\s+(left|available|only)\b|limited to \d+)/i
 
-export function gateAnswer(answer: string, slot: Pick<SpecSlot, 'expires'>, now = Date.now()): GatedAnswer {
-  if (isFillerAnswer(answer)) return { outcome: 'filler', sensitive: false, hold: [], expiresAt: null }
+export interface GatedAnswer {
+  outcome: AnswerOutcome
+  sensitive: boolean
+  /** Claims she must confirm, in plain words. */
+  hold: string[]
+  /** The sentences that carry those claims, held until her yes. */
+  heldText: string
+  /** The rest of her answer, saved as hers now. */
+  keptText: string
+  expiresAt: string | null
+}
+
+const sentences = (t: string) => (t.match(/[^.!?]+[.!?]*/g) ?? [t]).map((x) => x.trim()).filter(Boolean)
+
+/**
+ * @param known what she has already stated or confirmed (her brand, her
+ *   products, her stated facts) — "my roastery" is not a claim to hold for a
+ *   creator whose brand is a roastery.
+ */
+export function gateAnswer(answer: string, slot: { expires?: boolean }, opts: { known?: string; now?: number } = {}): GatedAnswer {
+  const now = opts.now ?? Date.now()
+  if (isFillerAnswer(answer)) return { outcome: 'filler', sensitive: false, hold: [], heldText: '', keptText: '', expiresAt: null }
   const hold: string[] = []
-  for (const c of unconfirmedRoleClaims(answer, '')) hold.push(`You run a ${c.replace(/^(my|our)\s+/, '')}`)
-  const m = answer.match(new RegExp(COMMERCIAL.source, 'gi'))
-  for (const x of new Set((m ?? []).map((s) => s.trim()))) hold.push(x)
+  const held: string[] = []
+  const kept: string[] = []
+  for (const sentence of sentences(answer)) {
+    const roles = unconfirmedRoleClaims(sentence, opts.known ?? '')
+    const offers = sentence.match(new RegExp(COMMERCIAL.source, 'gi')) ?? []
+    if (!roles.length && !offers.length) { kept.push(sentence); continue }
+    held.push(sentence)
+    for (const c of roles) hold.push(`You run a ${c.replace(/^(my|our)\s+/, '')}`)
+    for (const x of offers) hold.push(x.trim())
+  }
   return {
     outcome: 'answered',
-    sensitive: PRIVATE.test(answer),
-    hold,
+    sensitive: isPrivate(answer),
+    hold: [...new Set(hold)],
+    heldText: held.join(' '),
+    keptText: kept.join(' '),
     expiresAt: slot.expires ? new Date(now + EXPIRY_DAYS * 86_400_000).toISOString() : null,
   }
 }

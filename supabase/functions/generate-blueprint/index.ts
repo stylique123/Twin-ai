@@ -67,7 +67,7 @@ import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
-import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
+import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
@@ -2090,7 +2090,6 @@ function brainViewsInline(v: number | string): string {
   if (!Number.isFinite(n) || n <= 0) return ''
   return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M views` : n >= 1e3 ? `${Math.round(n / 1e3)}K views` : `${n} views`
 }
-const BRAIN_PRIVATE = /\b(permits?|permitting|inspections?|inspector|zoning|code enforcement|police|neighbou?r complain\w*|landlord|evict\w*|lawsuit|sued|court(?!\s?yard)\b|fined|debt|bank (account|balance)|diagnos\w*|postpartum|divorce)/i
 function renderNicheBrainInline(rows: readonly BrainNoteInline[]): string {
   if (!Array.isArray(rows) || rows.length < BRAIN_MIN_NOTES) return ''
   const lines: string[] = []
@@ -2103,10 +2102,13 @@ function renderNicheBrainInline(rows: readonly BrainNoteInline[]): string {
     const seenTitles = new Set<string>()
     const picked = rows.filter((r) => {
       if (!r || r.kind !== kind || typeof r.title !== 'string') return false
-      if (BRAIN_PRIVATE.test(`${r.title} ${r.body ?? ''}`)) return false
-      const key = r.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-      if (seenTitles.has(key)) return false
-      seenTitles.add(key)
+      // The ONE private list (storyRotation SENSITIVE via privacyGuard).
+      if (isPrivate(`${r.title} ${r.body ?? ''}`)) return false
+      // A viewer's comment on her own post is a question for HER, not
+      // material: it never reaches the writer as a claim (owner 2026-10-05).
+      if (r.is_hers && r.kind === 'objection') return false
+      if ([...seenTitles].some((t) => nearDuplicate(t, r.title))) return false
+      seenTitles.add(r.title)
       return true
     }).slice(0, max)
     if (picked.length === 0) continue
@@ -6440,22 +6442,34 @@ async function handle(req: Request): Promise<Response> {
   //   spec_questions {option, entity_key?, paragraph?} → {using, confirm, questions, thin}
   //   spec_answer {option, slot, entity_key?, product_id?, ask_id?, answer?|skip:true}
   const specMode = (peek as { mode?: unknown } | null)?.mode
-  if (specMode === 'spec_questions' || specMode === 'spec_answer' || specMode === 'spec_confirm') {
+  // ⚖️ HER YES / NO, EVERY ACCOUNT (owner review 2026-10-05). A held answer
+  // (role or offer) and a fact wrongly marked private need a way back on every
+  // account, not just the test one. Only her own row, by her own tap.
+  //   fact_confirm {knowledge_id, yes}  → held answer becomes hers, or leaves scripts
+  //   fact_private {knowledge_id, private:false} → she turns a private fact back on
+  if (specMode === 'fact_confirm' || specMode === 'spec_confirm' || specMode === 'fact_private') {
+    const sb = createClient(supabaseUrl, serviceKey)
+    const b2 = (peek ?? {}) as { knowledge_id?: unknown; yes?: unknown; private?: unknown }
+    const kid = String(b2.knowledge_id ?? '')
+    if (!/^[0-9a-f-]{36}$/.test(kid)) return json({ error: 'bad id' }, 400)
+    const now = new Date().toISOString()
+    if (specMode === 'fact_private') {
+      // Her choice wins and the sweep never re-marks it (creator_confirmed_at).
+      const patch = b2.private === false ? { sensitive: false, creator_confirmed_at: now } : { sensitive: true }
+      await sb.from('creator_knowledge').update(patch).eq('id', kid).eq('owner_id', user.id)
+      console.log(JSON.stringify({ event: 'fact_private_set', private: b2.private !== false }))
+      return json({ ok: true })
+    }
+    const patch = b2.yes === true ? { basis: 'stated', creator_confirmed_at: now } : { creator_excluded_at: now }
+    await sb.from('creator_knowledge').update(patch).eq('id', kid).eq('owner_id', user.id).eq('source', 'asked')
+    console.log(JSON.stringify({ event: 'spec_confirm', yes: b2.yes === true }))
+    return json({ ok: true })
+  }
+  if (specMode === 'spec_questions' || specMode === 'spec_answer') {
     const sb = createClient(supabaseUrl, serviceKey)
     if ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== user.id) return json({ disabled: true, using: [], confirm: [], questions: [] })
     const b = (peek ?? {}) as { option?: unknown; slot?: unknown; entity_key?: unknown; product_id?: unknown; paragraph?: unknown; answer?: unknown; skip?: unknown; ask_id?: unknown }
     const spec = specById(String(b.option ?? ''))
-    if (specMode === 'spec_confirm') {
-      // Her yes on a held answer: it becomes hers to say. Her no removes it from scripts.
-      const b2 = (peek ?? {}) as { knowledge_id?: unknown; yes?: unknown }
-      const kid = String(b2.knowledge_id ?? '')
-      if (!/^[0-9a-f-]{36}$/.test(kid)) return json({ error: 'bad id' }, 400)
-      const now = new Date().toISOString()
-      const patch = b2.yes === true ? { basis: 'stated', creator_confirmed_at: now } : { creator_excluded_at: now }
-      await sb.from('creator_knowledge').update(patch).eq('id', kid).eq('owner_id', user.id).eq('source', 'asked')
-      console.log(JSON.stringify({ event: 'spec_confirm', yes: b2.yes === true }))
-      return json({ ok: true })
-    }
     if (!spec) return json({ error: 'unknown option' }, 400)
     const entityKey = String(b.entity_key ?? 'none').slice(0, 80)
     if (specMode === 'spec_answer') {
@@ -6466,25 +6480,32 @@ async function handle(req: Request): Promise<Response> {
       // Filler is not saved; private is saved private; a role she claims or
       // commercial terms (bags, shipping, prices) are saved HELD until she taps
       // yes on the exact claim; a time-bound slot expires (answerGate).
-      const gate = herAnswer ? gateAnswer(herAnswer, slot) : null
+      // What she already stated counts as hers ("my roastery" for a roastery).
+      const known = herAnswer ? await knownForGate(sb, user.id) : ''
+      const gate = herAnswer ? gateAnswer(herAnswer, slot, { known }) : null
       // "Nothing like that happened" is an answer: the slot is done, no fact is stored.
       const outcome = (b as { nothing?: unknown }).nothing === true ? 'nothing'
-        : b.skip === true || !herAnswer ? 'skipped' : (isNonAnswer(herAnswer) || gate?.outcome === 'filler' ? 'filler' : 'answered')
+        : b.skip === true || !herAnswer ? 'skipped' : (gate?.outcome === 'filler' ? 'filler' : 'answered')
       if (typeof b.ask_id === 'string') await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
       let savedId: string | null = null
       if (outcome === 'answered' && gate) {
-        // Saved as her fact, scoped to the product and labelled with the option it answered.
-        await sb.from('creator_knowledge').insert({
-          // text ≤ 240 and question_id's fixed list are table rules; the option
-          // and slot ride in source_ref, which spec_questions reads back.
-          // Held → basis 'inferred' until she confirms: the writer only speaks
-          // and only counts as "she said it" what is stated.
-          owner_id: user.id, text: herAnswer.slice(0, 240), kind: slot.type === 'moment' ? 'experience' : 'claim', basis: gate.hold.length ? 'inferred' : 'stated', source: 'asked',
-          source_ref: `asked:${gate.hold.length ? 'hold' : 'spec'}:${entityKey.slice(0, 60)}:${spec.id}:${slot.id}`,
+        // Two rows at most: what is hers now (stated), and only the sentences
+        // carrying a claim (held until her yes). The text column holds 240
+        // characters, cut at a sentence end; her whole answer stays in evidence.
+        const base = {
+          owner_id: user.id, kind: slot.type === 'moment' ? 'experience' : 'claim', source: 'asked',
           product_entity_id: typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null,
           last_observed_at: new Date().toISOString(), serves: [spec.goal], serves_basis: 'her',
           sensitive: gate.sensitive, source_expiry: gate.expiresAt,
-        }).select('id').maybeSingle().then((r) => { savedId = (r.data as { id?: string } | null)?.id ?? null }, (e: unknown) => console.warn('spec answer not saved', String(e).slice(0, 120)))
+        }
+        if (gate.keptText) {
+          await sb.from('creator_knowledge').insert({ ...base, text: clipAtSentence(gate.keptText), evidence: gate.keptText.slice(0, 4000), basis: 'stated', source_ref: `asked:spec:${entityKey.slice(0, 60)}:${spec.id}:${slot.id}` })
+            .then(() => {}, (e: unknown) => console.warn('spec answer not saved', String(e).slice(0, 120)))
+        }
+        if (gate.heldText) {
+          await sb.from('creator_knowledge').insert({ ...base, text: clipAtSentence(gate.heldText), evidence: gate.heldText.slice(0, 4000), basis: 'inferred', source_ref: `asked:hold:${entityKey.slice(0, 60)}:${spec.id}:${slot.id}` })
+            .select('id').maybeSingle().then((r) => { savedId = (r.data as { id?: string } | null)?.id ?? null }, (e: unknown) => console.warn('spec answer not saved', String(e).slice(0, 120)))
+        }
       }
       console.log(JSON.stringify({ event: 'spec_answer', option: spec.id, slot: slot.id, outcome, held: gate?.hold.length ?? 0, private: gate?.sensitive === true }))
       return json({ ok: true, outcome, ...(gate?.hold.length && savedId ? { confirm: { knowledge_id: savedId, claims: gate.hold } } : {}), ...(gate?.sensitive ? { saved_private: true } : {}) })
@@ -6514,7 +6535,9 @@ async function handle(req: Request): Promise<Response> {
       const ref = String((r as { source_ref?: unknown }).source_ref ?? '')
       // The entity key itself holds a colon ("product:<id>"): read option and slot from the END.
       const m = ref.match(/:([a-z]+:[a-z_]+):([a-z_]+)$/)
-      return { text: String((r as { text?: unknown }).text ?? ''), option: m?.[1] ?? null, slot: m?.[2] ?? null, at: (r as { last_observed_at?: string | null }).last_observed_at ?? null, sensitive: (r as { sensitive?: boolean }).sensitive === true }
+      // A TOPIC is what she talks about, not what she has: "building a coffee
+      // cart business" as a topic never makes "your cart" hers.
+      return { kind: String((r as { kind?: unknown }).kind ?? ''), text: String((r as { text?: unknown }).text ?? ''), option: m?.[1] ?? null, slot: m?.[2] ?? null, at: (r as { last_observed_at?: string | null }).last_observed_at ?? null, sensitive: (r as { sensitive?: boolean }).sensitive === true }
     })
     const paragraph = typeof b.paragraph === 'string' ? b.paragraph : ''
     const { data: hist } = await sb.from('question_asks').select('id, slot_id, wording, outcome, run')
@@ -6530,7 +6553,7 @@ async function handle(req: Request): Promise<Response> {
           callModel(apiKey, pr.system, pr.prompt, { type: 'OBJECT', properties: { question: { type: 'STRING' } }, required: ['question'] }),
           new Promise<string>((_, rej) => setTimeout(() => rej(new Error('slow')), 8000)),
         ])
-        const v = validateQuestion((JSON.parse(raw) as { question?: unknown }).question, { spec, slot: a.slot, asked, known: facts.filter((f) => !f.sensitive && !/^(starting|building|operating)\b/i.test(f.text)).map((f) => f.text).join(' ') })
+        const v = validateQuestion((JSON.parse(raw) as { question?: unknown }).question, { spec, slot: a.slot, asked, known: [...ownNames, ...facts.filter((f) => !f.sensitive && f.kind !== 'topic').map((f) => f.text)].join(' ') })
         if (!v.ok) { console.log(JSON.stringify({ event: 'spec_question_rejected', option: spec.id, slot: a.slot.id, reason: v.reason })); continue }
         // Still asking for this slot, not a new topic (probe 2: grinder cleaning under "buying later").
         const fp = slotFitPrompt(spec, a.slot, v.question)
@@ -7034,6 +7057,26 @@ function expiredAnswer(r: { source?: unknown; source_ref?: unknown; last_observe
   if (!slot?.expires) return false
   const at = Date.parse(String(r.creator_confirmed_at ?? r.last_observed_at ?? ''))
   return Number.isFinite(at) && Date.now() - at > SPEC_EXPIRY_DAYS * 86_400_000
+}
+
+/** 240 characters for the text column, ending at a sentence, never mid-word. */
+function clipAtSentence(t: string, max = 240): string {
+  const x = t.replace(/\s+/g, ' ').trim()
+  if (x.length <= max) return x
+  const cut = x.slice(0, max)
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '))
+  if (end > 60) return cut.slice(0, end + 1)
+  return `${cut.slice(0, cut.lastIndexOf(' ')).trim()}…`
+}
+
+/** Her brand, her products and her stated facts: what she has already said is hers. */
+async function knownForGate(sb: ReturnType<typeof createClient>, ownerId: string): Promise<string> {
+  const [{ data: br }, { data: en }, { data: kn }] = await Promise.all([
+    sb.from('brands').select('name').eq('owner_id', ownerId),
+    sb.from('product_entities').select('name').eq('owner_id', ownerId),
+    sb.from('creator_knowledge').select('text').eq('owner_id', ownerId).eq('basis', 'stated').neq('kind', 'topic').limit(200),
+  ])
+  return [...(br ?? []), ...(en ?? []), ...(kn ?? [])].map((x) => String((x as { name?: unknown; text?: unknown }).name ?? (x as { text?: unknown }).text ?? '')).join(' ')
 }
 
 function isNonAnswer(v: string): boolean {
@@ -8341,7 +8384,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // filler is not stored; a private matter is stored private; a role she
   // claims or commercial terms are stored HELD (basis 'inferred') until she
   // says yes. What she typed still shapes THIS video — she said it for it.
-  const objectiveGate = objectiveAnswer ? gateAnswer(objectiveAnswer.text, {}) : null
+  const objectiveGate = objectiveAnswer ? gateAnswer(objectiveAnswer.text, {}, { known: await knownForGate(admin, ownerId) }) : null
   if (objectiveAnswer && objectiveGate && objectiveGate.outcome === 'filler') {
     console.log(JSON.stringify({ event: 'objective_answer_not_stored', why: 'filler', question_id: objectiveAnswer.questionId }))
   } else if (objectiveAnswer && objectiveGate) {
@@ -8349,8 +8392,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       owner_id: ownerId,
       voice_id: voice?.id ?? null,
       kind: 'experience',
-      text: objectiveAnswer.text,
-      basis: objectiveGate.hold.length ? 'inferred' : 'stated',
+      // Only the claim sentences are held; the rest of her answer is hers now.
+      text: objectiveGate.hold.length && objectiveGate.keptText ? clipAtSentence(objectiveGate.keptText) : objectiveAnswer.text,
+      basis: objectiveGate.hold.length && !objectiveGate.keptText ? 'inferred' : 'stated',
       sensitive: objectiveGate.sensitive,
       source: 'asked',
       confidence: 0.9,
@@ -8372,6 +8416,13 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         .eq('owner_id', ownerId)
         .eq('source', 'asked')
         .ilike('text', objectiveAnswer.text.replace(/[%_\\]/g, (c) => `\\${c}`))
+    }
+    if (objectiveGate.hold.length && objectiveGate.keptText && objectiveGate.heldText) {
+      await admin.from('creator_knowledge').insert({
+        owner_id: ownerId, voice_id: voice?.id ?? null, kind: 'claim', text: clipAtSentence(objectiveGate.heldText), evidence: objectiveGate.heldText,
+        basis: 'inferred', source: 'asked', confidence: 0.9, times_seen: 1, source_ref: `asked:hold:${objectiveAnswer.sourceRef}`.slice(0, 200),
+        sensitive: objectiveGate.sensitive, last_observed_at: new Date().toISOString(),
+      }).then(() => {}, () => {})
     }
     console.log(JSON.stringify({
       event: 'objective_answer_stored',

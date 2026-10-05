@@ -137,10 +137,12 @@ describe('creator_knowledge writers', () => {
     // the objective answer, and a spec-question answer (2026-10-04) — never a
     // line of the generated script.
     const inserts = [...code.matchAll(/\.from\(\s*['"]creator_knowledge['"]\s*\)\.insert\(\{([\s\S]*?)\}\)/g)].map((m) => m[1])
-    expect(inserts.length).toBe(2)
-    expect(inserts.some((i) => /text:\s*objectiveAnswer\.text/.test(i!))).toBe(true)
-    expect(inserts.some((i) => /text:\s*herAnswer\.slice/.test(i!))).toBe(true)
-    for (const i of inserts) expect(i).toMatch(/source:\s*'asked'/)
+    // 2026-10-05: an answer is split into what is hers now and the claim
+    // sentences held for her yes — still only her own words, two rows each.
+    expect(inserts.length).toBe(4)
+    for (const i of inserts) expect(i).toMatch(/text:\s*(objectiveAnswer\.text|objectiveGate|clipAtSentence\((objectiveGate|gate)\.(keptText|heldText)\))/)
+    for (const i of inserts) expect(i).toMatch(/source:\s*'asked'|\.\.\.base/)
+    expect(code).toMatch(/const base = \{[\s\S]{0,200}source: 'asked'/)
     for (const i of inserts) expect(i).not.toMatch(/blueprint|script|bp\./)
     expect(code).not.toMatch(/\.from\(\s*['"]creator_knowledge['"]\s*\)\s*\.(upsert|delete)\(/)
     expect(code).not.toMatch(/merge_creator_knowledge/)

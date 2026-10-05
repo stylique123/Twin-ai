@@ -21,7 +21,7 @@ describe('owner\'s simulated moments, through the answer check', () => {
   it('real answers are saved; neither weak answer is', () => {
     for (const m of moments) {
       const slot = specById(m.option)!.slots.find((s) => s.id === m.slot)!
-      const g = gateAnswer(m.answer, slot, now)
+      const g = gateAnswer(m.answer, slot, { now })
       if (m.expect === 'weak') expect(g.outcome, m.id).toBe('filler')
       else expect(g.outcome, m.id).toBe('answered')
     }
@@ -29,23 +29,23 @@ describe('owner\'s simulated moments, through the answer check', () => {
 
   it('trap m25: the permits letter is saved private', () => {
     const m = moments.find((x) => x.id === 'm25')!
-    expect(gateAnswer(m.answer, {}, now).sensitive).toBe(true)
-    expect(moments.filter((x) => x.expect !== 'private').every((x) => !gateAnswer(x.answer, {}, now).sensitive)).toBe(true)
+    expect(gateAnswer(m.answer, {}, { now }).sensitive).toBe(true)
+    expect(moments.filter((x) => x.expect !== 'private').every((x) => !gateAnswer(x.answer, {}, { now }).sensitive)).toBe(true)
   })
 
   it('trap m26: "my coffee cart business" is held for her yes', () => {
-    expect(gateAnswer(moments.find((x) => x.id === 'm26')!.answer, {}, now).hold).toEqual(['You run a coffee cart business'])
+    expect(gateAnswer(moments.find((x) => x.id === 'm26')!.answer, {}, { now }).hold).toEqual(['You run a coffee cart business'])
   })
 
   it('trap m27: 30 bags and free shipping are held, and the limit expires', () => {
-    const g = gateAnswer(moments.find((x) => x.id === 'm27')!.answer, { expires: true }, now)
+    const g = gateAnswer(moments.find((x) => x.id === 'm27')!.answer, { expires: true }, { now })
     expect(g.hold.join(' | ')).toMatch(/30 bags/i)
     expect(g.hold.join(' | ')).toMatch(/ships free/i)
     expect(Date.parse(g.expiresAt!)).toBeGreaterThan(now)
   })
 
   it('no ordinary answer is held', () => {
-    const held = moments.filter((x) => !x.expect).filter((x) => gateAnswer(x.answer, {}, now).hold.length).map((x) => x.id)
+    const held = moments.filter((x) => !x.expect).filter((x) => gateAnswer(x.answer, {}, { now }).hold.length).map((x) => x.id)
     expect(held).toEqual([])
   })
 
@@ -83,4 +83,26 @@ describe('owner 2026-10-05: phrasings not in the simulated set', () => {
     'The court yard at the market is where I set up.',
   ]
   it.each(fine)('ordinary, not private: %s', (a) => expect(gateAnswer(a, {}).sensitive).toBe(false))
+})
+
+describe('owner review 2026-10-05: no false filler, no ordinary-word privacy, offers only, hold only the claim', () => {
+  it.each([
+    'No one told me it would smell like this.',
+    'Nothing beats the smell of the first roast of the day.',
+    'A customer said it was the best coffee she had ever had.',
+  ])('saved, not filler: %s', (a) => expect(gateAnswer(a, {}).outcome).toBe('answered'))
+  it.each(['idk', 'nothing really', 'no', "It's really good coffee, you'll love it.", 'so good lol'])('filler: %s', (a) => expect(isFillerAnswer(a)).toBe(true))
+  it.each(['My roaster broke mid-batch.', 'Coffee is my therapy.', 'I have a food license.', 'Our town council market is on Saturdays.'])('not private: %s', (a) => expect(gateAnswer(a, {}).sensitive).toBe(false))
+  it.each(['I was broke that whole year.', 'I started therapy for my anxiety.', 'The city shut down my stand.'])('private: %s', (a) => expect(gateAnswer(a, {}).sensitive).toBe(true))
+  it.each(['It only takes 12 minutes to roast a batch.', 'I roast 10 bags a week.', 'The first 2 batches were uneven.'])('not an offer: %s', (a) => expect(gateAnswer(a, {}).hold).toEqual([]))
+  it.each(['Only 30 bags this run.', 'There are 20 bags left.', 'Use code SUNNY for 10% off.', 'Shipping is free this week.'])('an offer, held: %s', (a) => expect(gateAnswer(a, {}).hold.length).toBeGreaterThan(0))
+  it('only the claim sentence is held; the real moment around it is kept', () => {
+    const g = gateAnswer('My first batch came out uneven and I almost quit. I run my coffee cart business on weekends now.', {})
+    expect(g.keptText).toBe('My first batch came out uneven and I almost quit.')
+    expect(g.heldText).toBe('I run my coffee cart business on weekends now.')
+  })
+  it('"my roastery" is not held for a creator whose brand is a roastery', () => {
+    expect(gateAnswer('I was alone in my roastery at 5am when the batch caught.', {}, { known: 'Sunflower Coffee Roasters roastery' }).hold).toEqual([])
+    expect(gateAnswer('I was alone in my roastery at 5am when the batch caught.', {}).hold.length).toBeGreaterThan(0)
+  })
 })
