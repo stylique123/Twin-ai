@@ -67,7 +67,7 @@ import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
-import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
+import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
 import {
   personalUseGateApplies, personalUseViolations, claimsPersonalUse, dropPersonalUseSentences,
@@ -6438,7 +6438,9 @@ async function handle(req: Request): Promise<Response> {
       // commercial terms (bags, shipping, prices) are saved HELD until she taps
       // yes on the exact claim; a time-bound slot expires (answerGate).
       const gate = herAnswer ? gateAnswer(herAnswer, slot) : null
-      const outcome = b.skip === true || !herAnswer ? 'skipped' : (isNonAnswer(herAnswer) || gate?.outcome === 'filler' ? 'filler' : 'answered')
+      // "Nothing like that happened" is an answer: the slot is done, no fact is stored.
+      const outcome = (b as { nothing?: unknown }).nothing === true ? 'nothing'
+        : b.skip === true || !herAnswer ? 'skipped' : (isNonAnswer(herAnswer) || gate?.outcome === 'filler' ? 'filler' : 'answered')
       if (typeof b.ask_id === 'string') await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
       let savedId: string | null = null
       if (outcome === 'answered' && gate) {
@@ -6460,10 +6462,25 @@ async function handle(req: Request): Promise<Response> {
     }
     // Her facts, scoped: this product's or unscoped, never sensitive.
     const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
-    let fq = sb.from('creator_knowledge').select('text, source_ref, last_observed_at, sensitive, product_entity_id')
+    let fq = sb.from('creator_knowledge').select('text, kind, source, source_ref, last_observed_at, sensitive, product_entity_id')
       .eq('owner_id', user.id).is('creator_excluded_at', null).limit(400)
     if (pid) fq = fq.or(`product_entity_id.eq.${pid},product_entity_id.is.null`)
-    const { data: rows } = await fq
+    const [{ data: rowsAll }, { data: herBrands }, { data: herEntities }] = await Promise.all([
+      fq,
+      sb.from('brands').select('name').eq('owner_id', user.id),
+      sb.from('product_entities').select('id, name').eq('owner_id', user.id),
+    ])
+    // ⚠️ PROBE 2 (2026-10-05): "Barr Coffee Co" reached two questions as if it
+    // were her brand. A "product" item from her captions is any product she
+    // NAMED — she was thanking another roaster for beans. One that names
+    // neither her brand nor her own products is not hers to be asked about.
+    const ownNames = [...(herBrands ?? []), ...(herEntities ?? [])].map((x) => String((x as { name?: unknown }).name ?? '').toLowerCase().replace(/\s*\(batch\)$/, '').trim()).filter((x) => x.length > 2)
+    const rows = (rowsAll ?? []).filter((r) => {
+      const k = r as { kind?: unknown; source?: unknown; text?: unknown }
+      if (k.kind !== 'product' || !['caption', 'transcript'].includes(String(k.source ?? ''))) return true
+      const t = String(k.text ?? '').toLowerCase()
+      return ownNames.some((n) => t.includes(n) || n.split(/\s+/).filter((w) => w.length > 3).some((w) => t.includes(w)))
+    })
     const facts = (rows ?? []).map((r) => {
       const ref = String((r as { source_ref?: unknown }).source_ref ?? '')
       // The entity key itself holds a colon ("product:<id>"): read option and slot from the END.
@@ -6486,6 +6503,13 @@ async function handle(req: Request): Promise<Response> {
         ])
         const v = validateQuestion((JSON.parse(raw) as { question?: unknown }).question, { spec, slot: a.slot, asked, known: facts.filter((f) => !f.sensitive && !/^(starting|building|operating)\b/i.test(f.text)).map((f) => f.text).join(' ') })
         if (!v.ok) { console.log(JSON.stringify({ event: 'spec_question_rejected', option: spec.id, slot: a.slot.id, reason: v.reason })); continue }
+        // Still asking for this slot, not a new topic (probe 2: grinder cleaning under "buying later").
+        const fp = slotFitPrompt(spec, a.slot, v.question)
+        const fit = await Promise.race([
+          callModel(apiKey, fp.system, fp.prompt, { type: 'OBJECT', properties: { fits: { type: 'BOOLEAN' } }, required: ['fits'] }).then((x) => (JSON.parse(x) as { fits?: unknown }).fits !== false),
+          new Promise<boolean>((res) => setTimeout(() => res(true), 5000)),
+        ]).catch(() => true)
+        if (!fit) { console.log(JSON.stringify({ event: 'spec_question_rejected', option: spec.id, slot: a.slot.id, reason: 'off_slot' })); continue }
         const { data: ins } = await sb.from('question_asks').insert({ owner_id: user.id, entity_key: entityKey, option_id: spec.id, slot_id: a.slot.id, angle: a.angle, wording: v.question, run }).select('id').maybeSingle()
         questions.push({ ask_id: (ins as { id?: string } | null)?.id ?? null, slot: a.slot.id, type: a.slot.type, question: v.question, ...(a.offerBack ? { offer_back: a.offerBack } : {}), voice: a.slot.type === 'moment' || a.slot.type === 'quote' })
       } catch (e) { console.log(JSON.stringify({ event: 'spec_question_skipped', option: spec.id, slot: a.slot.id, why: String((e as Error)?.message ?? e).slice(0, 60) })) }

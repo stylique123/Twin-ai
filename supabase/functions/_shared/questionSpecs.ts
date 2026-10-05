@@ -232,7 +232,7 @@ export function fillSlots(spec: Spec, m: Material, now = Date.now()): Record<str
   return out
 }
 
-export interface Asked { slot: string; wording: string; outcome: 'shown' | 'answered' | 'skipped' | 'filler'; run: number }
+export interface Asked { slot: string; wording: string; outcome: 'shown' | 'answered' | 'skipped' | 'filler' | 'nothing'; run: number }
 
 export interface Plan {
   /** Slots filled from facts labelled for this option: one "Using: …" line with a Change link. */
@@ -266,6 +266,9 @@ export function planQuestions(spec: Spec, filled: Record<string, Fill>, history:
     const f = filled[slot.id]
     if (f && !f.expired) continue
     const mine = history.filter((h) => h.slot === slot.id)
+    // She answered (or said "nothing like that happened"): never asked again,
+    // even before the stored fact is read back.
+    if (mine.some((h) => h.outcome === 'answered' || h.outcome === 'nothing')) continue
     const skips = mine.filter((h) => h.outcome === 'skipped' || h.outcome === 'filler')
     const lastSkip = skips.length ? Math.max(...skips.map((h) => h.run)) : -Infinity
     if (skips.length >= 2 && run - lastSkip < REST_RUNS) { resting.push(slot.id); continue }
@@ -293,13 +296,15 @@ export function wordingPrompt(spec: Spec, slot: Slot, opts: { angle: 'first' | '
       'Ask only for the one missing piece named. Never ask about money, health, family, private matters, price, sizes or her call to action.',
       'Never repeat or lightly reword a question already asked.',
       'Never assume she runs, owns or works at a business, cart, shop, studio or role that WHAT TWIN ALREADY KNOWS does not name as hers. A video idea about something (e.g. starting a coffee cart) is a topic, not proof she has one.',
+      'Never presume something happened. For a moment or a quote, ask whether it did first ("Did anyone say anything while it was gone? If so, what?"); "nothing like that" must be an easy, honest answer.',
+      'Stay on THE MISSING PIECE for THE VIDEO. A different angle is a different way of asking for the SAME piece, never a new topic (no maintenance tips, no exercises, nothing about other products).',
       'Return JSON {"question":"..."}.',
     ].join('\n'),
     prompt: [
       `THE VIDEO: ${spec.label} — ${spec.job}`,
       `THE MISSING PIECE: ${slot.need} (${slot.type}${slot.type === 'moment' ? ': one specific moment, not a summary' : ''}).`,
       opts.offerBack ? `SHE TOLD TWIN BEFORE: "${opts.offerBack}". Ask if it is still true or what changed (is this the same one or a new one?).` : '',
-      opts.angle === 'different' ? 'She skipped this before: come at it from a clearly different angle.' : '',
+      opts.angle === 'different' ? 'She skipped this before: ask for the SAME missing piece in clearly different words (simpler, more concrete, or as a choice). Not a different subject.' : '',
       opts.paragraph ? `HER NOTE FOR THIS VIDEO: ${opts.paragraph.slice(0, 400)}` : '',
       opts.facts.length ? `WHAT TWIN ALREADY KNOWS (never ask for these): ${opts.facts.slice(0, 12).join(' | ').slice(0, 1200)}` : '',
       opts.asked.length ? `ALREADY ASKED (never reuse these words):\n${opts.asked.slice(-8).map((a) => `- "${a.wording}" (${a.outcome})`).join('\n')}` : '',
@@ -316,17 +321,37 @@ export function nearDuplicate(a: string, b: string): boolean {
 }
 
 /** Step 6: every generated question is checked; a failure means no question, never a block. */
-const PRESUMED_VENTURE = /\byour\s+((?:[a-z-]+\s+){0,2}(?:business|company|cart|truck|shop|store|studio|bakery|caf[eé]|roastery|salon|clinic|agency|restaurant|farm|gym|boutique))\b/gi
+const PRESUMED_VENTURE = /\byour\s+((?:[a-z-]+\s+){0,2}(?:business|company|cart|truck|shop|store|studio|bakery|caf[eé]|roastery|salon|clinic|agency|restaurant|farm|gym|boutique|podcast|channel|newsletter|community|course|class|workshop|team|staff|employees|partner|kids|routine|mornings|kitchen|garage|events?|market stall|booth))\b/gi
 
 /** Ventures a question presumes are hers ("your coffee cart") that her facts never name. */
 export function presumedVentures(question: string, known: string): string[] {
   const k = known.toLowerCase()
   const out: string[] = []
   for (const m of question.toLowerCase().matchAll(PRESUMED_VENTURE)) {
-    const words = (m[1] ?? '').split(/\s+/).filter((w) => w.length > 2 && !['own', 'new', 'small', 'little', 'mobile'].includes(w))
+    const words = (m[1] ?? '').split(/\s+/).filter((w) => w.length > 2 && !['own', 'new', 'small', 'little', 'mobile', 'first', 'daily', 'usual'].includes(w))
     if (words.some((w) => !k.includes(w.replace(/s$/, '')))) out.push(m[1]!)
   }
   return out
+}
+
+/**
+ * A moment or quote question that takes for granted it happened ("What was the
+ * exact comment a customer sent you?") invites her to invent one. Asked
+ * neutrally, it opens with whether it happened, or leaves room for "if so".
+ */
+export function presumesItHappened(q: string): boolean {
+  const t = q.trim().toLowerCase()
+  if (/^(did|has|have|had|was there|were there|is there|are there|do you|does|any)\b/.test(t)) return false
+  if (/\b(if (so|any|anything|ever|it did|there was|one comes to mind)|if you have one|ever)\b/.test(t)) return false
+  return true
+}
+
+/** The cheap yes/no check that a generated question still asks for its slot. */
+export function slotFitPrompt(spec: Spec, slot: Slot, question: string): { system: string; prompt: string } {
+  return {
+    system: 'You check one question for a content creator. Answer JSON {"fits": true|false}. fits=true only if answering it would directly give THE MISSING PIECE for THE VIDEO. A question about a different subject (maintenance tips, exercises, another product, general advice) is false.',
+    prompt: `THE VIDEO: ${spec.label} — ${spec.job}\nTHE MISSING PIECE: ${slot.need}\nQUESTION: ${question}`,
+  }
 }
 
 export function validateQuestion(q: unknown, opts: { spec: Spec; slot: Slot; asked: readonly Asked[]; known?: string }): { ok: true; question: string } | { ok: false; reason: string } {
@@ -338,5 +363,6 @@ export function validateQuestion(q: unknown, opts: { spec: Spec; slot: Slot; ask
   if ((text.match(/\?/g) ?? []).length > 1) return { ok: false, reason: 'two_questions' }
   if (opts.asked.some((a) => nearDuplicate(a.wording, text))) return { ok: false, reason: 'repeats' }
   if (opts.known !== undefined && presumedVentures(text, opts.known).length) return { ok: false, reason: 'presumes_venture' }
+  if ((opts.slot.type === 'moment' || opts.slot.type === 'quote') && presumesItHappened(text)) return { ok: false, reason: 'presumes_it_happened' }
   return { ok: true, question: text }
 }
