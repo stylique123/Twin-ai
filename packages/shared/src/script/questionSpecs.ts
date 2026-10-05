@@ -317,7 +317,7 @@ export function nearDuplicate(a: string, b: string): boolean {
 }
 
 /** Step 6: every generated question is checked; a failure means no question, never a block. */
-const PRESUMED_VENTURE = /\byour\s+((?:[a-z-]+\s+){0,2}(?:business|company|cart|truck|shop|store|studio|bakery|caf[eé]|roastery|salon|clinic|agency|restaurant|farm|gym|boutique|podcast|channel|newsletter|community|course|class|workshop|team|staff|employees|partner|kids|routine|mornings|kitchen|garage|events?|market stall|booth))\b/gi
+const PRESUMED_VENTURE = /\b(?:your|the)\s+((?:[a-z-]+\s+){0,2}(?:business|company|cart|truck|shop|store|studio|bakery|caf[eé]|roastery|salon|clinic|agency|restaurant|farm|gym|boutique|podcast|channel|newsletter|community|course|class|workshop|team|staff|employees|partner|kids|routine|mornings|kitchen|garage|events?|market stall|booth))\b/gi
 
 /** Ventures a question presumes are hers ("your coffee cart") that her facts never name. */
 export function presumedVentures(question: string, known: string): string[] {

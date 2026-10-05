@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0281_one_private_list':
+    'Re-creates the 0273 private-flag triggers from the one shared list; same tables and readers as 0273.',
   '0280_nothing_like_that_happened':
     'Widens one CHECK on question_asks, read and written by generate-blueprint only. The editor never reads it.',
   '0279_private_by_meaning':

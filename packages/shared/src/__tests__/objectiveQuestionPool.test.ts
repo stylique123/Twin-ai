@@ -152,7 +152,7 @@ describe('the server stores the answer under its id and feeds it to the writer',
   it('the insert writes source asked, the source_ref and the question_id', () => {
     const at = EDGE.indexOf('const objectiveAnswer = objectiveAnswerInline(answers)')
     expect(at).toBeGreaterThan(-1)
-    const body = EDGE.slice(at, at + 2500)
+    const body = EDGE.slice(at, at + 5000)
     expect(body).toMatch(/from\('creator_knowledge'\)\.insert\(/)
     expect(body).toMatch(/source: 'asked'/)
     expect(body).toMatch(/source_ref: objectiveAnswer\.sourceRef/)

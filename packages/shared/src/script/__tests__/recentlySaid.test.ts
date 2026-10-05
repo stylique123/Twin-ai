@@ -18,3 +18,11 @@ describe('what her last videos already said', () => {
     expect(renderRecentlySaid([], ['I threw out an entire coffee batch last month.'])).toMatch(/open differently/)
   })
 })
+
+describe('strict (trial, owner 2026-10-05): a story already told rests', () => {
+  it('says not to use it at all, and to go shorter instead', () => {
+    const t = renderRecentlySaid(['Someone told me they could taste the difference'], [], { strict: true })
+    expect(t).toMatch(/do NOT use these stories/)
+    expect(t).toMatch(/shorter/)
+  })
+})

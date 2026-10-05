@@ -83,8 +83,8 @@ describe('the final guard: spoken lines, hooks and captions', () => {
   })
 })
 
-describe('the stored flag (0273) is the same list', () => {
-  const MIG = readFileSync(new URL('../../../../../supabase/migrations/0273_private_is_decided_when_stored.sql', import.meta.url), 'utf8')
+describe('the stored flag (0273, re-created by 0281) is the same list', () => {
+  const MIG = readFileSync(new URL('../../../../../supabase/migrations/0281_one_private_list.sql', import.meta.url), 'utf8')
   it('the knowledge flag and the voice-profile split both use it', () => {
     // Once in the trigger for text, once for evidence, twice in the backfill,
     // once in the voice-profile split.

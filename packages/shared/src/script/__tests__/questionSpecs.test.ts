@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  SPECS, specById, fillSlots, planQuestions, validateQuestion, nearDuplicate, wordingPrompt, BANNED_ASKS,
+  SPECS, specById, presumedVentures, fillSlots, planQuestions, validateQuestion, nearDuplicate, wordingPrompt, BANNED_ASKS,
   EXPIRY_DAYS, REST_RUNS, type Asked,
 } from '../questionSpecs.js'
 
@@ -159,5 +159,17 @@ describe('probe 2 (2026-10-05): a question never presumes a venture she has not 
   })
   it('"your roastery" is fine when her facts name it', () => {
     expect(validateQuestion('Was there a morning in your roastery when a batch burned?', { spec: idea, slot: idea.slots[0]!, asked: [], known: `${known} Her roastery is in a commercial space.` }).ok).toBe(true)
+  })
+})
+
+describe('owner review 2026-10-05: presumption beyond "your"', () => {
+  const known = 'Sunflower Coffee Roasters roasts small batches in Farmington.'
+  it.each([
+    'What ridiculous mishap happened mid-rush at the cart?',
+    'How did your setup look the next time you rolled the cart out?',
+    'What caught you off guard during your first events?',
+  ])('presumes: %s', (q) => expect(presumedVentures(q, known).length).toBeGreaterThan(0))
+  it('the same question is fine for a creator whose facts name a cart', () => {
+    expect(presumedVentures('What happened at the cart that morning?', `${known} She runs a coffee cart on Saturdays.`)).toEqual([])
   })
 })

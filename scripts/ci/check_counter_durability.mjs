@@ -774,6 +774,14 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per generation: her answer to the rotating question was filler and was not stored. Nothing to persist.',
   },
+  fact_private_set: {
+    kind: 'counter_ephemeral',
+    why: 'Per tap: she turned a fact private or back on. Durable as creator_knowledge.sensitive / creator_confirmed_at.',
+  },
+  leftovers_cleaned: {
+    kind: 'counter_ephemeral',
+    why: 'Per script (trial): empty bridges and stray follow closers removed after writing. Visible in the stored script.',
+  },
   spec_confirm: {
     kind: 'counter_ephemeral',
     why: 'Per tap: her yes or no on a held answer. Durable as creator_knowledge.creator_confirmed_at / creator_excluded_at.',
