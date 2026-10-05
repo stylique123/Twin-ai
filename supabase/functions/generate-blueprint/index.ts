@@ -67,6 +67,7 @@ import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels } from '../_shared/beatCleanup.ts'
+import { dropNovelSentences } from '../_shared/novelDetail.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
@@ -15477,6 +15478,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (cleaned.changed || labelled || echoDropped) {
           bp.script = relabelled
           console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed, labels: labelled, echo_closer: echoDropped }))
+        }
+        // Owner 2026-10-05 (blind set 2 #9, #17): a sentence carrying a
+        // specific found nowhere in her material ("equal parts", "dread") is
+        // removed. Hook and close keep their line; the reviewer cap counts it.
+        const novel = dropNovelSentences(bp.script as Array<{ line?: unknown }>, lateAllowedText)
+        if (novel.removed.length || novel.kept.length) {
+          if (novel.removed.length) bp.script = novel.beats
+          console.log(JSON.stringify({ event: 'novel_detail_removed', removed: novel.removed.length, kept_in_hook_or_close: novel.kept.length, sentences: novel.removed.map((x) => x.slice(0, 80)) }))
         }
       }
       // ⚖️ 5. THE SELF-REVIEW (owner 2026-10-04; batch part-10: "no generic

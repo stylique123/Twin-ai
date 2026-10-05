@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { findNovelDetails, novelCounts } from '../novelDetail.js'
+import { dropNovelSentences, findNovelDetails, novelCounts } from '../novelDetail.js'
 
 const HER = [
   'Someone told me they could taste the difference between my roast and the grocery store bag their mom always bought.',
@@ -40,5 +40,24 @@ describe('second pass on the 34 real scripts', () => {
   it('does not flag her own number written as a word, or a line addressed to the viewer', () => {
     expect(findNovelDetails(['In a sixty minute one-on-one call we plan your first market.'], HER)).toEqual([])
     expect(findNovelDetails(['If you brew at home every morning, what roast do you reach for?'], HER)).toEqual([])
+  })
+})
+
+describe('dropNovelSentences (trial removal)', () => {
+  const beats = [
+    { line: 'Why does your cold brew taste bitter?' },
+    { line: 'Because this is a true concentrate, you cut it with equal parts water. It stays smooth.' },
+    { line: 'I know that exact dread because starting out is messy.' },
+    { line: 'Book the call in my bio.' },
+  ]
+  it('drops only the sentence with the invented detail, and an emptied middle beat', () => {
+    const r = dropNovelSentences(beats, HER)
+    expect(r.beats.map((b) => b.line)).toEqual(['Why does your cold brew taste bitter?', 'It stays smooth.', 'Book the call in my bio.'])
+    expect(r.removed.length).toBe(2)
+  })
+  it('never empties the hook or the close', () => {
+    const r = dropNovelSentences([{ line: 'I felt total dread.' }, { line: 'Mid.' }, { line: 'Grab it all week long.' }], HER)
+    expect(r.beats.length).toBe(3)
+    expect(r.kept.length).toBe(2)
   })
 })
