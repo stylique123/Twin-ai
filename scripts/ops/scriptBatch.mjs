@@ -11,6 +11,7 @@
 // Run: npx esbuild packages/shared/src/script/privacyGuard.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.privacyGuard.bundle.mjs && node scripts/ops/scriptBatch.mjs [label] [limit]
 
 import { readFileSync } from 'node:fs'
+import { combineReads, FLAG_KEYS } from './judgeScore.mjs'
 import { createClient } from '@supabase/supabase-js'
 import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.mjs'
 
@@ -259,6 +260,7 @@ const JUDGE_SYSTEM = [
   'Any false in the blueprint check caps structure and arc at 6. A script missing its middle, never naming a product it must sell, or ending without a close caps overall at 4.',
   'VIEWER PANEL: imagine three REAL people from HER audience (read the DNA audience; make them different: a loyal follower, a new viewer scrolling past, a skeptic who has seen ten videos like this). For each, react honestly in their own words as they would feel while watching: stops (would they stop scrolling in the first 2 seconds), watches_to_end, likes, comments (and what they would type), acts (buys, tries, follows, saves or clicks the next step), learned (one thing they take away, or nothing). Do not be kind: most videos lose most viewers.',
   'Score every dimension with evidence: quote the line that earns or costs the score in your notes. Base overall on what the panel actually did, not on effort.',
+  'CLAIM FLAGS (count each, from the script against HER FACTS and PRODUCT FACTS ON FILE): invented_product (a claim about how the product is made, tastes, costs, its size or use that its facts do not contain), invented_experience (something she did, saw or felt, stated as hers, that her facts do not contain: "I spent weeks researching…"), people_ask_unconfirmed ("people keep asking me", "I see people… all the time" with no comment or DM in her facts), unconfirmed_offer (shipping, discount, bundle, code or price terms not in her facts or product facts), wrong_product (another product\'s facts said about this one), sensitive (a SENSITIVE FACT used). The final score is computed from these counts and your dimension scores.',
   'Return JSON only.',
 ].join('\n')
 const VIEWER = {
@@ -280,11 +282,12 @@ const JUDGE_SCHEMA = {
     would_post_as_is: { type: 'BOOLEAN' }, invented_claims: { type: 'ARRAY', items: { type: 'STRING' } },
     best_part: { type: 'STRING' }, biggest_fix: { type: 'STRING' },
     blueprint: { type: 'OBJECT', properties: Object.fromEntries(BLUEPRINT_KEYS.map((k) => [k, { type: 'BOOLEAN' }])), required: BLUEPRINT_KEYS },
+    claim_flags: { type: 'OBJECT', properties: Object.fromEntries(FLAG_KEYS.map((k) => [k, { type: 'NUMBER' }])), required: FLAG_KEYS },
     brain: { type: 'OBJECT', properties: Object.fromEntries(BRAIN_KEYS.map((k) => [k, { type: 'BOOLEAN' }])), required: BRAIN_KEYS },
     brain_use: { type: 'NUMBER' },
     viewers: { type: 'ARRAY', items: VIEWER }, evidence: { type: 'STRING' },
   },
-  required: ['blueprint', 'brain', 'brain_use', 'viewers', 'evidence', 'hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
+  required: ['claim_flags', 'blueprint', 'brain', 'brain_use', 'viewers', 'evidence', 'hook', 'structure', 'angle', 'her_info', 'outside_info', 'invention', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc', 'overall', 'would_post_as_is', 'invented_claims', 'best_part', 'biggest_fix'],
 }
 // ⚠️ THE REVIEWER MOVES ON ITS OWN (2026-10-04): the same 20 scripts scored
 // twice differed by 0.85 on average and up to 2.3; 11 of 20 moved a point or
@@ -300,8 +303,16 @@ async function judge(bp, sc, ctx) {
     const v = reads.map((r) => Number(r[k])).filter(Number.isFinite)
     return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : first[k]
   }
-  const out = { ...first, overall_reads: reads.map((r) => Number(r.overall)) }
+  const out = { ...first }
   for (const k of Object.keys(first)) if (typeof first[k] === 'number') out[k] = avg(k)
+  // WS1.1/1.2: the model's own overall is kept for comparison only; the
+  // score used everywhere is computed in code with caps, plus its noise.
+  out.overall_model = avg('overall')
+  out.overall_model_reads = reads.map((r) => Number(r.overall))
+  const c = combineReads(reads)
+  if (c) Object.assign(out, c)
+  out.allowed_text_chars = ctx.allowedText.length
+  out.allowed_text_truncated = ctx.allowedText.length > 6000
   return out
 }
 
