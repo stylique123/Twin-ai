@@ -6461,8 +6461,11 @@ async function handle(req: Request): Promise<Response> {
       console.log(JSON.stringify({ event: 'fact_private_set', private: b2.private !== false }))
       return json({ ok: true })
     }
+    // Any of her own facts: an answer she typed (held claim) or a commercial
+    // fact heard in her videos ("free shipping…") — her yes releases it, her
+    // no takes it out of scripts.
     const patch = b2.yes === true ? { basis: 'stated', creator_confirmed_at: now } : { creator_excluded_at: now }
-    await sb.from('creator_knowledge').update(patch).eq('id', kid).eq('owner_id', user.id).eq('source', 'asked')
+    await sb.from('creator_knowledge').update(patch).eq('id', kid).eq('owner_id', user.id)
     console.log(JSON.stringify({ event: 'spec_confirm', yes: b2.yes === true }))
     return json({ ok: true })
   }
@@ -7352,7 +7355,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // never confirmed. A commercial claim heard in her videos (shipping,
     // discounts, prices, codes, guarantees) waits for her yes before it is
     // said on camera; everything else she said stays usable. All accounts.
-    if (unconfirmedCommercial(r as never)) { commercialHeld++; return false }
+    // Her switch on the plan screen for THIS video is her yes (Workstream 0:
+    // 160 heard commercial facts had no way back).
+    if (unconfirmedCommercial(r as never) && !herOnIds.has(String((r as { id?: unknown }).id ?? ''))) { commercialHeld++; return false }
     if (expiredAnswer(r as never)) { commercialHeld++; return false }
     return true
   })

@@ -33,3 +33,13 @@ describe('What I will use (owner, 2026-09-28)', () => {
     expect(byId('a')?.text.endsWith('bought.')).toBe(true)
   })
 })
+
+describe('Workstream 0 (2026-10-05): an offer heard in her videos starts off, labelled', () => {
+  it('free shipping from a transcript starts off; the same line she typed does not', () => {
+    const heard = planUseItems([{ id: 'a', kind: 'claim', text: 'Shipping is free and you can mix and match on the website', source: 'transcript' }] as never, 'beans')
+    expect(heard[0]).toMatchObject({ defaultOff: true })
+    expect(heard[0]!.reason).toMatch(/offer heard in your videos/i)
+    const typed = planUseItems([{ id: 'b', kind: 'claim', text: 'Shipping is free and you can mix and match on the website', source: 'asked' }] as never, 'beans')
+    expect(typed[0]!.defaultOff).toBe(false)
+  })
+})
