@@ -149,3 +149,15 @@ describe('probe 2026-10-04: one cue word does not fill a slot', () => {
     expect(f.whats_new).toBeUndefined()
   })
 })
+
+describe('probe 2 (2026-10-05): a question never presumes a venture she has not named', () => {
+  const idea = specById('idea:fun')!
+  const known = 'Sunflower Coffee Roasters roasts small batches in Farmington. She roasts at home.'
+  it('"behind your coffee cart" is rejected when nothing says she has one', () => {
+    expect(validateQuestion('What chaotic moment happened behind your coffee cart that nobody warned you about?', { spec: idea, slot: idea.slots[0]!, asked: [], known }))
+      .toEqual({ ok: false, reason: 'presumes_venture' })
+  })
+  it('"your roastery" is fine when her facts name it', () => {
+    expect(validateQuestion('What happened in your roastery the morning the batch burned?', { spec: idea, slot: idea.slots[0]!, asked: [], known: `${known} Her roastery is in a commercial space.` }).ok).toBe(true)
+  })
+})

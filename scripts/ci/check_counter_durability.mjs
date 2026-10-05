@@ -770,6 +770,10 @@ const EVENTS = {
   commercial_claim_awaiting_confirmation: { kind: 'counter_ephemeral', why: 'Commercial claims from her videos held back until she confirms them.' },
   role_claim_dropped: { kind: 'counter_ephemeral', why: 'A line claiming a business or role she never stated was dropped (trial).' },
   spec_questions: { kind: 'counter_ephemeral', why: 'Per run: how many slots used, confirmed, asked; durable per question in question_asks.' },
+  objective_answer_not_stored: {
+    kind: 'counter_ephemeral',
+    why: 'Per generation: her answer to the rotating question was filler and was not stored. Nothing to persist.',
+  },
   spec_confirm: {
     kind: 'counter_ephemeral',
     why: 'Per tap: her yes or no on a held answer. Durable as creator_knowledge.creator_confirmed_at / creator_excluded_at.',

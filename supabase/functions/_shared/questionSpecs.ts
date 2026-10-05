@@ -292,6 +292,7 @@ export function wordingPrompt(spec: Spec, slot: Slot, opts: { angle: 'first' | '
       `At most ${MAX_QUESTION_WORDS} words, one sentence, ends with "?". Plain, warm, specific to her world.`,
       'Ask only for the one missing piece named. Never ask about money, health, family, private matters, price, sizes or her call to action.',
       'Never repeat or lightly reword a question already asked.',
+      'Never assume she runs, owns or works at a business, cart, shop, studio or role that WHAT TWIN ALREADY KNOWS does not name as hers. A video idea about something (e.g. starting a coffee cart) is a topic, not proof she has one.',
       'Return JSON {"question":"..."}.',
     ].join('\n'),
     prompt: [
@@ -315,7 +316,20 @@ export function nearDuplicate(a: string, b: string): boolean {
 }
 
 /** Step 6: every generated question is checked; a failure means no question, never a block. */
-export function validateQuestion(q: unknown, opts: { spec: Spec; slot: Slot; asked: readonly Asked[] }): { ok: true; question: string } | { ok: false; reason: string } {
+const PRESUMED_VENTURE = /\byour\s+((?:[a-z-]+\s+){0,2}(?:business|company|cart|truck|shop|store|studio|bakery|caf[eé]|roastery|salon|clinic|agency|restaurant|farm|gym|boutique))\b/gi
+
+/** Ventures a question presumes are hers ("your coffee cart") that her facts never name. */
+export function presumedVentures(question: string, known: string): string[] {
+  const k = known.toLowerCase()
+  const out: string[] = []
+  for (const m of question.toLowerCase().matchAll(PRESUMED_VENTURE)) {
+    const words = (m[1] ?? '').split(/\s+/).filter((w) => w.length > 2 && !['own', 'new', 'small', 'little', 'mobile'].includes(w))
+    if (words.some((w) => !k.includes(w.replace(/s$/, '')))) out.push(m[1]!)
+  }
+  return out
+}
+
+export function validateQuestion(q: unknown, opts: { spec: Spec; slot: Slot; asked: readonly Asked[]; known?: string }): { ok: true; question: string } | { ok: false; reason: string } {
   const text = String(q ?? '').replace(/\s+/g, ' ').trim()
   if (!text) return { ok: false, reason: 'empty' }
   if (!text.endsWith('?')) return { ok: false, reason: 'not_a_question' }
@@ -323,5 +337,6 @@ export function validateQuestion(q: unknown, opts: { spec: Spec; slot: Slot; ask
   if (BANNED_ASKS.some((re) => re.test(text))) return { ok: false, reason: 'banned' }
   if ((text.match(/\?/g) ?? []).length > 1) return { ok: false, reason: 'two_questions' }
   if (opts.asked.some((a) => nearDuplicate(a.wording, text))) return { ok: false, reason: 'repeats' }
+  if (opts.known !== undefined && presumedVentures(text, opts.known).length) return { ok: false, reason: 'presumes_venture' }
   return { ok: true, question: text }
 }
