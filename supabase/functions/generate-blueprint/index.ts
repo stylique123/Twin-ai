@@ -68,6 +68,7 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels } from '../_shared/beatCleanup.ts'
 import { dropNovelSentences } from '../_shared/novelDetail.ts'
+import { filledProductSlots } from '../_shared/productSlots.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
@@ -8250,10 +8251,15 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // empty product is when it is not filler and has a few real words.
   const readySaysWhatItIs = (x: unknown) => readyPresent(x) && !isNonAnswer(String(x)) && gateAnswer(String(x), {}).outcome !== 'filler'
     && String(x).trim().split(/\s+/).filter((w) => w.length > 2).length >= 4
+  // Owner 2026-10-05: for an EMPTY PRODUCT the answer must fill a named slot
+  // (what it is, size, price, how to use it), not reach a word count.
+  const emptyProductAnswered = readySaysWhatItIs(answers.claims) && filledProductSlots(String(answers.claims)).length > 0
   const askAboutEmptyProduct = trialOn && !readyPromoting && !!ownedEntity && !readyEntityKnows && readyFacts.length === 0
-    && !readySaysWhatItIs(answers.claims) && !readyNeedsPick
+    && !emptyProductAnswered && !readyNeedsPick
   if (askAboutEmptyProduct) {
-    readyMissing.push({ field: 'claims', question: readyClaimsQuestion(readyOffer) })
+    const pn = String((ownedEntity as { name?: unknown })?.name ?? '').trim() || 'it'
+    readyMissing.push({ field: 'claims', question: `What is ${pn}? Tell me one of: what it is or is made from, the size, the price, or how to use it.` })
+    if (readyPresent(answers.claims)) console.log(JSON.stringify({ event: 'empty_product_answer_fills_no_slot', answer: String(answers.claims).slice(0, 80) }))
   }
   if (readyPromoting && readyFacts.length === 0 && !readySaysWhatItIs(answers.claims)
     && !readyEntityKnows && !readyNeedsPick) {
