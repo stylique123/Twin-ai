@@ -16,7 +16,7 @@ export type PrivateCategory = (typeof PRIVATE_CATEGORIES)[number]
 export const PRIVACY_SYSTEM = [
   'You decide, for each fact about a content creator, whether it is a PRIVATE matter: something she would not expect a script to say on camera unless she chose it.',
   'Private: health and bodies (illness, diagnosis, pregnancy, mental health, medication); money hardship (debt, bank balance, being broke, unpaid bills); legal or regulatory trouble or process (permits, zoning, licences, inspections, fines, lawsuits, police, courts); family and relationships (children, partners, exes, divorce, deaths); housing (landlords, eviction, home address); identity details (where she lives exactly, immigration status); conflicts at work.',
-  'NOT private: her craft, her products, prices she advertises, her business milestones, opinions, public achievements, her niche topics.',
+  'NOT private: her craft, her products, prices she advertises, her business milestones, opinions, public achievements, her niche topics, and the town or city her business is in ("a coffee roasting business in Farmington, NM" is public). Only an exact home address is a location secret.',
   'When unsure, choose private: a wrongly private fact can be turned on by her; a wrongly public one ends up on camera.',
   'Return one row per id.',
 ].join('\n')

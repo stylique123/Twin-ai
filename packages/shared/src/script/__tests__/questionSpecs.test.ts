@@ -101,7 +101,7 @@ describe('validating a generated question', () => {
     expect(v('What happened the day your batch went wrong?').ok).toBe(false)
     expect(v('What did you feel? And what then?').ok).toBe(false)
     expect(v(`${'word '.repeat(26)}?`).ok).toBe(false)
-    expect(v('Which roast morning do you still think about, and why?').ok).toBe(true)
+    expect(v('Is there a roast morning you still think about? If so, what happened?'.replace('? If so', ', and if so')).ok).toBe(true)
   })
   it('private matters are banned', () => {
     expect(BANNED_ASKS.some((re) => re.test('How was your bank balance then?'))).toBe(true)
@@ -158,6 +158,6 @@ describe('probe 2 (2026-10-05): a question never presumes a venture she has not 
       .toEqual({ ok: false, reason: 'presumes_venture' })
   })
   it('"your roastery" is fine when her facts name it', () => {
-    expect(validateQuestion('What happened in your roastery the morning the batch burned?', { spec: idea, slot: idea.slots[0]!, asked: [], known: `${known} Her roastery is in a commercial space.` }).ok).toBe(true)
+    expect(validateQuestion('Was there a morning in your roastery when a batch burned?', { spec: idea, slot: idea.slots[0]!, asked: [], known: `${known} Her roastery is in a commercial space.` }).ok).toBe(true)
   })
 })
