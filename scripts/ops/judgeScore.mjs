@@ -20,11 +20,15 @@ export const CAPS = {
   invented_product_2plus: 3.5,
   unconfirmed_offer: 4.5,
   people_ask_unconfirmed: 5,
+  // Counted in CODE (novelDetail.ts), not by the model: the model never
+  // listed blind set 2 #4/#17's invented details as claims.
+  invented_detail: 4.5,
+  invented_detail_2plus: 3.5,
 }
 
 const r1 = (x) => Math.round(x * 10) / 10
 
-export function scoreRead(read) {
+export function scoreRead(read, codeFlags = {}) {
   const dims = CRAFT_KEYS.map((k) => Number(read?.[k])).filter(Number.isFinite)
   const craft = dims.length ? dims.reduce((a, b) => a + b, 0) / dims.length : NaN
   const f = read?.claim_flags ?? {}
@@ -37,13 +41,16 @@ export function scoreRead(read) {
   else if (n('invented_product') === 1) caps.push(['invented_product', CAPS.invented_product])
   if (n('unconfirmed_offer')) caps.push(['unconfirmed_offer', CAPS.unconfirmed_offer])
   if (n('people_ask_unconfirmed')) caps.push(['people_ask_unconfirmed', CAPS.people_ask_unconfirmed])
+  const nd = Math.max(0, Math.floor(Number(codeFlags.invented_detail) || 0))
+  if (nd >= 2) caps.push(['invented_detail_2plus', CAPS.invented_detail_2plus])
+  else if (nd === 1) caps.push(['invented_detail', CAPS.invented_detail])
   const cap = caps.length ? Math.min(...caps.map((c) => c[1])) : 10
   return { craft: r1(craft), cap, overall: r1(Math.min(craft, cap)), caps: caps.map((c) => c[0]) }
 }
 
 /** Combine reads: mean overall, spread (max − min) as the noise of this script. */
-export function combineReads(reads) {
-  const scored = reads.map(scoreRead).filter((s) => Number.isFinite(s.overall))
+export function combineReads(reads, codeFlags = {}) {
+  const scored = reads.map((r) => scoreRead(r, codeFlags)).filter((s) => Number.isFinite(s.overall))
   if (!scored.length) return null
   const o = scored.map((s) => s.overall)
   return {
@@ -73,5 +80,8 @@ if (process.argv.includes('--selftest')) {
   ok(c.overall_spread > 0 && c.caps_applied.includes('unconfirmed_offer'), 'spread and caps reported')
   ok(!isRealChange({ overall: 5, overall_spread: 0.8 }, { overall: 5.5, overall_spread: 0.3 }), 'a 0.5 change inside 0.8 noise is no change')
   ok(isRealChange({ overall: 4, overall_spread: 0.3 }, { overall: 5.2, overall_spread: 0.4 }), 'a 1.2 change beyond noise is real')
+  ok(scoreRead(base, { invented_detail: 1 }).overall === 4.5, 'one novel detail (code count) caps at 4.5')
+  ok(scoreRead(base, { invented_detail: 2 }).overall === 3.5, 'two novel details cap at 3.5 (blind set 2 #17: dread, terrifying)')
+  ok(combineReads([base], { invented_detail: 2 }).caps_applied.includes('invented_detail_2plus'), 'code flags reach combineReads')
   console.log('judgeScore selftest: OK')
 }

@@ -28,7 +28,7 @@ const NAMED = /(?<=[a-z,;:] )(?:[A-Z][a-zA-Z'-]+(?:\s+(?:&|of|and)\s+[A-Z][a-zA-
 const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$%:£€ ]+/g, ' ').replace(/\s+/g, ' ').trim()
 
 /** The specifics a sentence asserts. */
-export function extractSpecifics(sentence: string): Specific[] {
+function extractSpecifics(sentence: string): Specific[] {
   const out: Specific[] = []
   const seen = new Set<string>()
   for (const [kind, re] of PATTERNS) {
@@ -49,7 +49,7 @@ export function extractSpecifics(sentence: string): Specific[] {
 }
 
 /** A specific is supported when its words appear in her material (numbers as written or as words). */
-export function isSupported(s: Specific, material: string): boolean {
+function isSupported(s: Specific, material: string): boolean {
   const m = ` ${norm(material)} `
   const t = norm(s.text)
   if (!t) return true

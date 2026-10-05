@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs'
 import { combineReads, FLAG_KEYS } from './judgeScore.mjs'
 import { createClient } from '@supabase/supabase-js'
 import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.mjs'
+import { findNovelDetails, novelCounts } from './.novelDetail.bundle.mjs'
 
 const URL_ = process.env.SUPABASE_URL
 const ANON = process.env.SUPABASE_ANON_KEY
@@ -309,7 +310,13 @@ async function judge(bp, sc, ctx) {
   // score used everywhere is computed in code with caps, plus its noise.
   out.overall_model = avg('overall')
   out.overall_model_reads = reads.map((r) => Number(r.overall))
-  const c = combineReads(reads)
+  // Owner 2026-10-05: specifics (ratios, durations, time words, emotions…)
+  // found nowhere in her material are counted in code and capped.
+  const scriptLines = (Array.isArray(bp?.script) ? bp.script : []).map((b) => String(b?.line ?? '')).filter(Boolean)
+  const novel = findNovelDetails(scriptLines, `${ctx.allowedText}\n${sc.body.reference_note ?? ''}\n${JSON.stringify(sc.body.readiness_answers ?? {})}`)
+  const invented_detail = novel.reduce((a, f) => a + f.novel.length, 0)
+  out.novel_details = { count: invented_detail, by_kind: novelCounts(novel), found: novel.flatMap((f) => f.novel.map((n) => n.text)) }
+  const c = combineReads(reads, { invented_detail })
   if (c) Object.assign(out, c)
   out.allowed_text_chars = ctx.allowedText.length
   out.allowed_text_truncated = ctx.allowedText.length > 6000

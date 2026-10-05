@@ -48,6 +48,7 @@ jobs:
       - name: Run the batch
         run: |
           npx esbuild packages/shared/src/script/privacyGuard.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.privacyGuard.bundle.mjs
+          npx esbuild packages/shared/src/script/novelDetail.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.novelDetail.bundle.mjs
           node scripts/ops/scriptBatch.mjs "$BATCH_LABEL" "$BATCH_LIMIT" ${{ inputs.intake && ' ' || '--no-intake' }} "--group=$BATCH_GROUP" "--judge-only=$JUDGE_ONLY"
         env:
           BATCH_GROUP: ${{ inputs.group }}

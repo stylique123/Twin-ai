@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractSpecifics, findNovelDetails, novelCounts } from '../novelDetail.js'
+import { findNovelDetails, novelCounts } from '../novelDetail.js'
 
 const HER = [
   'Someone told me they could taste the difference between my roast and the grocery store bag their mom always bought.',
@@ -28,7 +28,7 @@ describe('novel details (owner WS1, blind set 2 lines)', () => {
     ], HER)).toEqual([])
   })
   it('extracts nothing from a plain line', () => {
-    expect(extractSpecifics('Start small from home and learn as you go.')).toEqual([])
+    expect(findNovelDetails(['Start small from home and learn as you go.'], '')).toEqual([])
   })
 })
 
