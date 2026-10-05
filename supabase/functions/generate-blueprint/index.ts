@@ -6484,7 +6484,7 @@ async function handle(req: Request): Promise<Response> {
           callModel(apiKey, pr.system, pr.prompt, { type: 'OBJECT', properties: { question: { type: 'STRING' } }, required: ['question'] }),
           new Promise<string>((_, rej) => setTimeout(() => rej(new Error('slow')), 8000)),
         ])
-        const v = validateQuestion((JSON.parse(raw) as { question?: unknown }).question, { spec, slot: a.slot, asked })
+        const v = validateQuestion((JSON.parse(raw) as { question?: unknown }).question, { spec, slot: a.slot, asked, known: facts.filter((f) => !f.sensitive && !/^(starting|building|operating)\b/i.test(f.text)).map((f) => f.text).join(' ') })
         if (!v.ok) { console.log(JSON.stringify({ event: 'spec_question_rejected', option: spec.id, slot: a.slot.id, reason: v.reason })); continue }
         const { data: ins } = await sb.from('question_asks').insert({ owner_id: user.id, entity_key: entityKey, option_id: spec.id, slot_id: a.slot.id, angle: a.angle, wording: v.question, run }).select('id').maybeSingle()
         questions.push({ ask_id: (ins as { id?: string } | null)?.id ?? null, slot: a.slot.id, type: a.slot.type, question: v.question, ...(a.offerBack ? { offer_back: a.offerBack } : {}), voice: a.slot.type === 'moment' || a.slot.type === 'quote' })
