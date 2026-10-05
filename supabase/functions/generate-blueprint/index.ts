@@ -2090,11 +2090,25 @@ function brainViewsInline(v: number | string): string {
   if (!Number.isFinite(n) || n <= 0) return ''
   return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M views` : n >= 1e3 ? `${Math.round(n / 1e3)}K views` : `${n} views`
 }
+const BRAIN_PRIVATE = /\b(permits?|permitting|inspections?|inspector|zoning|code enforcement|police|neighbou?r complain\w*|landlord|evict\w*|lawsuit|sued|court(?!\s?yard)\b|fined|debt|bank (account|balance)|diagnos\w*|postpartum|divorce)/i
 function renderNicheBrainInline(rows: readonly BrainNoteInline[]): string {
   if (!Array.isArray(rows) || rows.length < BRAIN_MIN_NOTES) return ''
   const lines: string[] = []
   for (const [kind, label, max] of BRAIN_SECTIONS) {
-    const picked = rows.filter((r) => r && r.kind === kind && typeof r.title === 'string').slice(0, max)
+    // ⚠️ LANE CHECK 2026-10-05: "What permits or commercial requirements are
+    // they making you get for ventilation?" — a comment on HER permit story —
+    // reached the writer four times in one sample. Notes skip the privacy read
+    // her facts get, so the same backstop applies here, and a repeated note is
+    // listed once.
+    const seenTitles = new Set<string>()
+    const picked = rows.filter((r) => {
+      if (!r || r.kind !== kind || typeof r.title !== 'string') return false
+      if (BRAIN_PRIVATE.test(`${r.title} ${r.body ?? ''}`)) return false
+      const key = r.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+      if (seenTitles.has(key)) return false
+      seenTitles.add(key)
+      return true
+    }).slice(0, max)
     if (picked.length === 0) continue
     lines.push(`${label}:`)
     for (const r of picked) {
@@ -2768,6 +2782,22 @@ function ctaEvidenceForInline(
     })
 }
 
+/**
+ * ⚠️ BLIND-1 (2026-10-05): "mix and match on the website with free shipping"
+ * still closed two scripts after the commercial hold shipped. Her RECURRING
+ * CTAs are lifted from her videos' captions and transcripts — the same
+ * garbled "chipping his free…" source — and went to the writer directly.
+ * A recurring CTA that carries shipping, discount, price or code terms waits
+ * for her yes like any other heard commercial claim. What she typed is hers.
+ */
+const COMMERCIAL_CTA = /\b(free shipping|ships? free|shipping|discount|\d+\s?% off|on sale|coupon|promo|use code|guarantee|refund|money back|\$\s?\d|£\s?\d|€\s?\d)/i
+function heardCtasWithoutCommercialTerms(recurring: unknown): unknown[] {
+  const list = Array.isArray(recurring) ? recurring : []
+  const kept = list.filter((c) => !COMMERCIAL_CTA.test(typeof c === 'string' ? c : JSON.stringify(c ?? '')))
+  if (kept.length < list.length) console.log(JSON.stringify({ event: 'commercial_claim_awaiting_confirmation', held_back: list.length - kept.length, where: 'recurring_cta' }))
+  return kept
+}
+
 function renderRecurringCtasInline(
   vp: Record<string, unknown>,
   // ⚖️ THE LIVE COUNT WINS. It was computed against the speech this request
@@ -2775,9 +2805,8 @@ function renderRecurringCtasInline(
   // leave, and for every voice in production that is nothing at all.
   live?: readonly CtaEvidenceInline[] | null,
 ): string {
-  const ctas = Array.isArray(vp?.recurring_ctas)
-    ? (vp.recurring_ctas as unknown[]).filter((c): c is string => typeof c === 'string')
-    : []
+  // Heard commercial terms wait for her yes (heardCtasWithoutCommercialTerms).
+  const ctas = heardCtasWithoutCommercialTerms(vp?.recurring_ctas).filter((c): c is string => typeof c === 'string')
   const ev: Array<Record<string, unknown>> = (Array.isArray(live) && live.length > 0)
     ? live as unknown as Array<Record<string, unknown>>
     : (Array.isArray(vp?.recurring_ctas_evidence)
@@ -9772,7 +9801,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // the CTA field (test account) is not a CTA and is never read out.
     const herCtaPick = pickHerCta(intent.goal ?? body.goal, {
       typed: brief.defaultCta,
-      recurring: Array.isArray((vp as Record<string, unknown>)?.recurring_ctas) ? (vp as Record<string, unknown>).recurring_ctas as unknown[] : [],
+      recurring: heardCtasWithoutCommercialTerms((vp as Record<string, unknown>)?.recurring_ctas),
       topic: String(reference_note ?? ''),
     })
     const typedCta = herCtaPick ? herCtaPick.text.slice(0, 240) : ''
@@ -15353,7 +15382,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
         const payoffLine = String(beats[pay.payoffIndex ?? spokenIdx[1] ?? -1]?.line ?? '')
         const closed = ensureGoalClose(beats, intent.goal ?? body.goal, {
-          herCta: pickHerCta(intent.goal ?? body.goal, { typed: brief.defaultCta, recurring: Array.isArray((vp as Record<string, unknown>)?.recurring_ctas) ? (vp as Record<string, unknown>).recurring_ctas as unknown[] : [], topic: String(reference_note ?? '') })?.text ?? '',
+          herCta: pickHerCta(intent.goal ?? body.goal, { typed: brief.defaultCta, recurring: heardCtasWithoutCommercialTerms((vp as Record<string, unknown>)?.recurring_ctas), topic: String(reference_note ?? '') })?.text ?? '',
           payoffLine,
           followAllowed: followOk,
         })
