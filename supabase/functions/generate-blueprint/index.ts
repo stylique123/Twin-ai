@@ -66,7 +66,7 @@ import { pickHerCta, looksLikeCta } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
-import { cleanBeats } from '../_shared/beatCleanup.ts'
+import { cleanBeats, dropEchoCloser, stripProfileLabels } from '../_shared/beatCleanup.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
@@ -15462,9 +15462,21 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // bridge opening a beat and a "stick around" closer on a non-follow video.
       if (trialOn && Array.isArray(bp.script)) {
         const cleaned = cleanBeats(bp.script as Array<{ line?: unknown }>, String(intent.goal ?? body.goal ?? ''))
-        if (cleaned.changed) {
-          bp.script = cleaned.beats
-          console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed }))
+        // Blind set 2: her profile labels and scan topics said out loud, and
+        // the "So remember: <echo>" closer.
+        const labels = String((dna as { audience?: unknown })?.audience ?? '').split(/,|\band\b|\//).map((x) => x.trim()).filter(Boolean)
+        const topics = (Array.isArray(knowledgeRows) ? knowledgeRows : []).filter((k) => (k as { kind?: unknown }).kind === 'topic').map((k) => String((k as { text?: unknown }).text ?? ''))
+        let labelled = 0
+        const relabelled = dropEchoCloser(cleaned.beats).map((b) => {
+          if (typeof b.line !== 'string') return b
+          const line = stripProfileLabels(b.line, labels, topics)
+          if (line !== b.line) { labelled++; return { ...b, line } }
+          return b
+        })
+        const echoDropped = relabelled.length !== cleaned.beats.length || relabelled.at(-1)?.line !== cleaned.beats.at(-1)?.line
+        if (cleaned.changed || labelled || echoDropped) {
+          bp.script = relabelled
+          console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed, labels: labelled, echo_closer: echoDropped }))
         }
       }
       // ⚖️ 5. THE SELF-REVIEW (owner 2026-10-04; batch part-10: "no generic
