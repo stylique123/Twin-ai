@@ -8242,12 +8242,19 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // empty — and the writer filled it with roast claims she never made. Only a
   // SELLING video asked first. A video about one of her products with nothing
   // on file asks her what it is, whatever the goal.
+  // ⚠️ BLIND SET 2 (owner 2026-10-05): Cold Brew #7 and #10 stopped to ask,
+  // #8, #9, #11 and #12 were written with an invented ratio, shelf life and
+  // process. Not the goal: the stand-in answered "Fresh beans." or "Nothing
+  // specific", and ANY text released the block. An answer only says what an
+  // empty product is when it is not filler and has a few real words.
+  const readySaysWhatItIs = (x: unknown) => readyPresent(x) && !isNonAnswer(String(x)) && gateAnswer(String(x), {}).outcome !== 'filler'
+    && String(x).trim().split(/\s+/).filter((w) => w.length > 2).length >= 4
   const askAboutEmptyProduct = trialOn && !readyPromoting && !!ownedEntity && !readyEntityKnows && readyFacts.length === 0
-    && !readyPresent(answers.claims) && !readyNeedsPick
+    && !readySaysWhatItIs(answers.claims) && !readyNeedsPick
   if (askAboutEmptyProduct) {
     readyMissing.push({ field: 'claims', question: readyClaimsQuestion(readyOffer) })
   }
-  if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)
+  if (readyPromoting && readyFacts.length === 0 && !readySaysWhatItIs(answers.claims)
     && !readyEntityKnows && !readyNeedsPick) {
     readyMissing.push({
       field: 'claims',
