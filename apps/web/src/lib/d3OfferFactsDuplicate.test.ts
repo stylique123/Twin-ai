@@ -73,7 +73,7 @@ describe('D3: the courtesy pre-check resolves offer facts from Product Library',
 
 describe('D3: server keeps the fallback, unchanged', () => {
   it('readyFacts still comes from evidence.sections and gates the claims question', () => {
-    expect(EDGE).toMatch(/readyPromoting && readyFacts\.length === 0 && !readyPresent\(answers\.claims\)/)
+    expect(EDGE).toMatch(/readyPromoting && readyFacts\.length === 0 && !readySaysWhatItIs\(answers\.claims\)/)
   })
 })
 
