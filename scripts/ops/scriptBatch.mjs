@@ -514,7 +514,15 @@ async function main() {
           for (const k of ctx.statedFacts) { const o = [...ws(k)].filter((w) => want.has(w)).length; if (o > score) { score = o; best = k } }
           return score >= 2 ? best : null
         }
-        const answerFor = (f, q) => style === 'rich' ? (['claims', 'angle'].includes(f) ? (onTopic(q) ?? RICH_ANSWER[f] ?? RICH_ANSWER.claims) : (RICH_ANSWER[f] ?? RICH_ANSWER.claims))
+        // ⚠️ BLIND-1 (owner 2026-10-05): asked "what is Cold Brew Concentrate?",
+        // the stand-in answered with the single-origin lot's facts (script 7)
+        // and a stock shipping line (scripts 3, 9) — the harness invented what
+        // the product's empty-record check exists to stop. About a named
+        // product she answers only with a fact that names it, else nothing.
+        const productWords = String(sc.product ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? []
+        const aboutThisProduct = (k) => productWords.length === 0 || productWords.some((w) => String(k).toLowerCase().includes(w))
+        const onTopicHere = (q) => { const k = onTopic(q); return k && aboutThisProduct(k) ? k : null }
+        const answerFor = (f, q) => style === 'rich' ? (['claims', 'angle'].includes(f) ? (sc.product ? (onTopicHere(q) ?? '') : (onTopic(q) ?? RICH_ANSWER[f] ?? RICH_ANSWER.claims)) : (RICH_ANSWER[f] ?? RICH_ANSWER.claims))
           : style === 'short' ? (f === 'offer' ? 'Signature Blend' : 'Fresh beans.')
           : 'Nothing specific, keep it general.'
         // "Which one is this video about?" is answered the way the app does: the

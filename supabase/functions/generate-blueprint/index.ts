@@ -66,6 +66,7 @@ import { pickHerCta, looksLikeCta } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
+import { cleanBeats } from '../_shared/beatCleanup.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
@@ -15443,6 +15444,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             bp.script = guarded.beats
             console.warn(JSON.stringify({ event: 'close_fitted_to_goal', changed: closed.changed, want: closed.want }))
           }
+        }
+      }
+      // ⚖️ BLIND SET 1 LEFTOVERS (owner 2026-10-05; trial first): an empty
+      // bridge opening a beat and a "stick around" closer on a non-follow video.
+      if (trialOn && Array.isArray(bp.script)) {
+        const cleaned = cleanBeats(bp.script as Array<{ line?: unknown }>, String(intent.goal ?? body.goal ?? ''))
+        if (cleaned.changed) {
+          bp.script = cleaned.beats
+          console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed }))
         }
       }
       // ⚖️ 5. THE SELF-REVIEW (owner 2026-10-04; batch part-10: "no generic
