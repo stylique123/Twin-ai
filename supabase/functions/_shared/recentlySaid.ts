@@ -52,13 +52,19 @@ export function recentlySaid(
 }
 
 /** The writer's note, or '' when nothing repeats. */
-export function renderRecentlySaid(lines: readonly string[], recentHooks: readonly string[] = []): string {
+export function renderRecentlySaid(lines: readonly string[], recentHooks: readonly string[] = [], opts: { strict?: boolean } = {}): string {
   // Owner 2026-10-04: "every script should be unique" — the opening too.
   const hooks = [...new Set(recentHooks.map((h) => h.trim()).filter((h) => h.length > 8))].slice(0, 8)
   if (!lines.length && !hooks.length) return ''
   return [
     ...(lines.length ? [
-      'ALREADY SAID IN HER LAST VIDEOS (her audience has heard these): build this video from OTHER material of hers first. Use one of these only if this video cannot work without it, and then say it in new words, never the same sentence:',
+      // ⚠️ BLIND SET 1 (owner 2026-10-05): one real customer story was in five
+      // of six scripts — "only if it cannot work without it" was always taken.
+      // Strict (trial): her audience has heard it; it rests. Fewer lines beat
+      // the same story again.
+      opts.strict
+        ? 'ALREADY SAID IN HER LAST VIDEOS (her audience has heard these): do NOT use these stories or points in this video, not even reworded. Build it from her other material; if there is none, make the video shorter rather than repeat one of these:'
+        : 'ALREADY SAID IN HER LAST VIDEOS (her audience has heard these): build this video from OTHER material of hers first. Use one of these only if this video cannot work without it, and then say it in new words, never the same sentence:',
       ...lines.map((l) => `  • "${l}"`),
     ] : []),
     ...(hooks.length ? [

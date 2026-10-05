@@ -10853,7 +10853,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         .map((b) => (typeof b?.line === 'string' ? b.line : '')).filter(Boolean).join('\n'))
       const said = recentlySaid(texts)
       const hooksBefore = texts.map((t) => t.split('\n')[0] ?? '').filter(Boolean)
-      recentlySaidBlock = renderRecentlySaid(said, hooksBefore)
+      recentlySaidBlock = renderRecentlySaid(said, hooksBefore, { strict: trialOn })
       console.log(JSON.stringify({ event: 'recently_said', scripts: texts.length, repeated: said.length }))
     } catch { /* thinner, never wronger */ }
     console.log(JSON.stringify({ event: 'knowledge_route', mode: knowledgeMode, row: knowledgeRoute.row, gaps: knowledgeRoute.gaps, slots: knowledgeRoute.slots.map((x) => `${x.role}:${x.source ?? '-'}`) }))
