@@ -50,6 +50,8 @@ function overlap(a: Set<string>, b: Set<string>): number {
 
 import { purposeOfGoal, servesObjective, PURPOSE_LABEL } from './factPurpose'
 
+const HEARD_OFFER = /\b(free shipping|ships? free|shipping|discount|\d+\s?% off|on sale|coupon|promo|use code|guarantee|refund|money back|mix and match)\b/i
+
 export function planUseItems(
   knowledge: readonly { id?: unknown; kind?: unknown; text?: unknown; source?: unknown; creator_confirmed_at?: unknown; creator_excluded_at?: unknown; serves?: unknown }[] | null | undefined,
   about: string,
@@ -83,16 +85,20 @@ export function planUseItems(
     const mine = MINE_SOURCES.has(String(k?.source ?? '')) || !!k?.creator_confirmed_at || fromComments
     const sensitive = SENSITIVE.test(text) || LEGALISH.test(text)
     const risky = !mine && (HAS_NUMBER.test(text) || STRONG_CLAIM.test(text))
+    // An offer heard in her videos (shipping, discount, code…) waits for her
+    // turning it on: the server holds it otherwise (Workstream 0, 2026-10-05).
+    const heardOffer = !mine && HEARD_OFFER.test(text)
     const leftOut = !!k?.creator_excluded_at
     const offPurpose = !!purpose && !servesObjective(k as never, purpose, noOverrides)
     out.push({
       id, text, kind, mine,
       fits: overlap(aboutWords, w) > 0 || [...w].some((x) => aboutWords.has(x)),
-      defaultOff: sensitive || risky || leftOut || offPurpose,
+      defaultOff: sensitive || risky || heardOffer || leftOut || offPurpose,
       sensitive,
       leftOut,
       reason: sensitive
         ? 'Private or legal, so it stays out unless you turn it on'
+        : heardOffer ? 'An offer heard in your videos. Turn it on only if it is your offer today'
         : leftOut ? 'You left this out before, so it stays out unless you turn it on'
         : offPurpose ? `Not material for ${PURPOSE_LABEL[purpose!]}, so it stays out unless you turn it on`
         : fromComments ? 'From your comments, you confirmed it'
