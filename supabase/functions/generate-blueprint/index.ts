@@ -9739,6 +9739,18 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           return `  * ${k.text}${Number.isFinite(n) && n > 1 ? ` — covered in ${Math.trunc(n)} of their videos` : ''}`
         }).join('\n'))
     }
+    // ⚖️ STORY CRAFT (owner brief 2026-10-05; trial): one spine. When one
+    // story is kept, the writer tells it ONCE in her words, bridges it to the
+    // viewer, and earns the ask from what it meant. Blind set 2: stories
+    // stitched (#3), told twice (#3), embellished (#2), asks bolted on (#12).
+    if (storyCut?.kept) {
+      const told = String(storyCut.kept.text ?? '').trim()
+      knowledgeParts.push(`\nTHE ONE STORY IN THIS VIDEO (her words): "${told.slice(0, 600)}"\n`
+        + '- Tell it ONCE, in one or two beats, keeping her own wording and every detail she gave. Add no detail she did not give: no time words ("recently", "early on"), no relatives, no feelings, no numbers.\n'
+        + '- Do not tell any other story. Do not repeat this one in the hook and again later.\n'
+        + '- After it, one bridge line that turns it to the viewer ("If you…").\n'
+        + '- The close follows from what the story meant: a question about the same experience, or her offer when the goal sells. Never a generic "follow for more".\n')
+    }
     const knowledgeBlock = knowledgeParts.join('\n')
     // ⚠️ THE SHAPE BLOCK, COMPUTED HERE AND ABSENT BY DEFAULT. Two independent
     // reasons to emit nothing, and both are silence rather than a hedge: the
