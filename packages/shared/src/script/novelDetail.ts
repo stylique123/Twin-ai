@@ -25,7 +25,9 @@ const PATTERNS: Array<[SpecificKind, RegExp]> = [
   // Blind set 2 #4 (owner 5, reviewer 7.9): "Grocery store coffee tasted
   // burned, so I started roasting my own" — an origin she never told. A
   // first-person past event is a specific too: its verb and object must be hers.
-  ['event', /\bI\s+(?:started|began|decided|quit|left|moved|opened|launched|built|switched|learned|realized|bought|sold|spent|tried|grew up|used to)\s+(?:to\s+|a\s+|an\s+|the\s+|my\s+|our\s+)?[a-z]+(?:\s+[a-z]+){0,2}/g],
+  // Set 4 #13 "I got completely stuck…", #5 "I ordered … skipped … loaded":
+  // the fixed verb list missed them. Any first-person past action counts.
+  ['event', /\bI\s+(?:\w+ly\s+)?(?:got|went|felt|had|made|took|spent|lost|threw|sold|bought|grew up|used to|[a-z]{3,}ed)\b(?:\s+(?:to|a|an|the|my|our|into|up|out|in|on))?(?:\s+[a-z]+){0,3}/g],
   // Blind set 3 T2: "pour it over ice or blend it with milk" for a product
   // with nothing on file. How to use or make a thing is a specific too.
   ['method', /\b(?:pour(?:ed|ing)? (?:it )?over ice|blend(?:ed)? (?:it )?with|dilut(?:e|ed|ing) (?:it )?with|cut (?:it )?with (?:water|milk)|steep(?:ed|ing)? (?:it )?(?:for|overnight)|mix(?:ed)? (?:it )?with|shake (?:it )?with)\b/gi],
@@ -77,8 +79,12 @@ function isSupported(s: Specific, material: string): boolean {
     const words = t.split(' ').slice(1)
     const verb = words[0] ?? ''
     const objs = words.slice(1).filter((w) => w.length > 3 && !['your', 'their', 'with', 'from', 'that', 'this'].includes(w))
-    const stem = verb.slice(0, Math.max(4, verb.length - 3))
-    return m.includes(` ${stem}`) && (objs.length === 0 || objs.some((w) => m.includes(w.replace(/(?:ing|ed|s)$/, ''))))
+    const adverb = /ly$/.test(verb)
+    const v = adverb ? (words[1] ?? '') : verb
+    const rest = adverb ? words.slice(2) : words.slice(1)
+    const stem = v.length <= 4 ? v : v.replace(/(?:ied|ed|d)$/, '').slice(0, Math.max(3, v.length - 3))
+    const content = rest.filter((w) => w.length > 3 && !['your', 'their', 'with', 'from', 'that', 'this', 'completely', 'really', 'just', 'very', 'even', 'before', 'after'].includes(w))
+    return m.includes(` ${stem}`) && (content.length === 0 || content.some((w) => m.includes(w.replace(/(?:ing|ed|s)$/, ''))))
   }
   if (s.kind === 'named') {
     const words = t.split(' ').filter((w) => w.length > 3)

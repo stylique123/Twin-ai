@@ -74,3 +74,10 @@ describe('dropWriterNotes (blind set 3 #4)', () => {
     expect(dropWriterNotes('Numbers matter less than your first market.')).toBe('Numbers matter less than your first market.')
   })
 })
+
+describe('a standalone bridge beat (set 4 T3)', () => {
+  it('drops a middle beat that is only "And this is where it clicks."', () => {
+    const r = cleanBeats([{ line: 'If your coffee tastes burnt, try this.' }, { line: 'Most cups end up bitter for one reason.' }, { line: 'And this is where it clicks.' }, { line: 'Tell me what brewer you use.' }], 'personal_brand')
+    expect(r.beats.map((b) => b.line)).not.toContain('And this is where it clicks.')
+  })
+})

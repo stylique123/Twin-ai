@@ -8238,12 +8238,13 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const picked = originConflictFound.values.find((v) => said.includes(v))
     if (!picked) {
       const name = String((ownedEntity as { name?: unknown } | null)?.name ?? 'this coffee')
-      readyMissing.push({ field: 'origin', question: `Your notes give ${name} more than one origin (${originConflictFound.values.map((v) => v[0]!.toUpperCase() + v.slice(1)).join(', ')}). Which is it now?` })
+      // Owner 2026-10-06: these may be different coffees, not one product's
+      // conflicting facts. Ask which coffee THIS is, never 'which is current'.
+      readyMissing.push({ field: 'origin', question: `Your notes mention ${originConflictFound.values.map((v) => v[0]!.toUpperCase() + v.slice(1)).join(', ')} roasts. Which origin is ${name}, or is it a blend? (The others stay as your other coffees.)` })
     } else {
-      // Her answer settles it: the facts naming another origin are retired.
-      const stale = (await admin.from('creator_knowledge').select('id, text').in('id', originConflictFound.ids)).data ?? []
-      const retire = stale.filter((r) => !String(r.text ?? '').toLowerCase().includes(picked)).map((r) => r.id)
-      if (retire.length) await admin.from('creator_knowledge').update({ superseded_at: new Date().toISOString(), superseded_reason: `she said the origin is ${picked}` }).in('id', retire).eq('owner_id', ownerId)
+      // Her answer names THIS product's origin only. Facts about other origins
+      // are other coffees: nothing is retired, they just stay off this script.
+      const retire: string[] = []
       console.log(JSON.stringify({ event: 'fact_conflict_settled', attribute: 'origin', picked, retired: retire.length }))
     }
   }
@@ -9709,7 +9710,11 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const storyCut = trialOn && !chosenRows
       ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>) })
       : null
-    const speakable = (storyCut ? storyCut.rows : speakableAll) as typeof speakableAll
+    // Set 4 #18: "no numbers, just first steps" was her note TO Twin stored
+    // inside a fact, and the writer said it. Notes are cut from the fact text
+    // before the writer sees it (trial).
+    const speakable = ((storyCut ? storyCut.rows : speakableAll) as typeof speakableAll)
+      .map((k) => (trialOn && typeof (k as { text?: unknown }).text === 'string' ? { ...k, text: dropWriterNotes(String((k as { text?: unknown }).text)) } : k)) as typeof speakableAll
     if (storyCut?.dropped.length) console.log(JSON.stringify({ event: 'one_story', kept: storyCut.kept ? String(storyCut.kept.text ?? '').slice(0, 60) : null, dropped: storyCut.dropped.length }))
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
     // 0215 records them against this generation and rotates them to the back of
@@ -15667,7 +15672,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           return b
         })
         const echoDropped = relabelled.length !== cleaned.beats.length || relabelled.at(-1)?.line !== cleaned.beats.at(-1)?.line
-        if (cleaned.changed || labelled || echoDropped) {
+        // ⚠️ SET 4 #17: clean-up left a hook and one line. A clean-up never
+        // takes a script below three spoken beats; the leftover stays instead.
+        const spokenCount = (bs: Array<{ line?: unknown }>) => bs.filter((b) => typeof b.line === 'string' && b.line.trim()).length
+        if ((cleaned.changed || labelled || echoDropped) && spokenCount(relabelled) < 3) {
+          console.log(JSON.stringify({ event: 'cleanup_would_stub', beats: spokenCount(relabelled) }))
+        } else if (cleaned.changed || labelled || echoDropped) {
           bp.script = relabelled
           console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed, labels: labelled, echo_closer: echoDropped }))
         }
@@ -15676,7 +15686,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // removed. Hook and close keep their line; the reviewer cap counts it.
         const novel = dropNovelSentences(bp.script as Array<{ line?: unknown }>, lateAllowedText)
         if (novel.removed.length || novel.kept.length) {
-          if (novel.removed.length) bp.script = novel.beats
+          if (novel.removed.length && novel.beats.filter((b) => typeof b.line === 'string' && String(b.line).trim()).length >= 3) bp.script = novel.beats
           console.log(JSON.stringify({ event: 'novel_detail_removed', removed: novel.removed.length, kept_in_hook_or_close: novel.kept.length, sentences: novel.removed.map((x) => x.slice(0, 80)) }))
         }
       }
