@@ -6633,7 +6633,10 @@ async function handle(req: Request): Promise<Response> {
   // to everyone"). A writing change under trial runs for the test account
   // only; it reaches every creator once a round shows +0.5 with no test
   // dropping a point below its best.
-  const trialOn = isHeartbeat
+  // Paired test (owner 2026-10-06): the test account may switch the trial off
+  // for one request (`trial_off: true`) so enforced and plain scripts are
+  // compared from the same facts. Real creators never have the trial.
+  let trialOn = isHeartbeat
   const reqStartedAt = Date.now()
 
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
@@ -6668,6 +6671,7 @@ async function handle(req: Request): Promise<Response> {
   let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; target_seconds?: unknown; transcript_id?: string; idempotency_key?: string; goal?: string; focus?: string; outcome?: string; reference_use?: string; readiness_answers?: Record<string, string>; selected_product_id?: string; mentioned_product_id?: string; door?: string; exclude_knowledge_ids?: string[]; use_knowledge_ids?: string[]; excluded_by_her_ids?: string[]; on_by_her_ids?: string[] }
   try {
     body = await req.json()
+    if (isHeartbeat && (body as { trial_off?: unknown }).trial_off === true) trialOn = false
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }

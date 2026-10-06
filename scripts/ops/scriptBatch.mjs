@@ -138,8 +138,19 @@ function scenarios(products, brandId, brandName) {
     out.push({ group: 'ceiling', label: `ceiling ${c.goal}`, product: prod?.name ?? null, simulatedMaterial: true,
       body: { ...(prod ? { selected_product_id: prod.id, door: 'product' } : { door: 'idea' }), goal: c.goal, reference_note: c.note } })
   }
+  // L. Paired test (owner 2026-10-06): 20 requests, each written twice from the
+  // same facts and the same simulated answers — once with the trial checks
+  // (enforced) and once with them off — for a blind side-by-side rating.
+  const pairProducts = products.filter((p) => p.name && /signature|cart/i.test(p.name)).slice(0, 2)
+  const pairReqs = []
+  for (const p of pairProducts) for (const goal of ['sell', 'educate', 'leads', 'conversations', 'personal_brand', 'entertain']) pairReqs.push({ product: p.name, body: { selected_product_id: p.id, goal, door: 'product', reference_note: p.name } })
+  for (const [note, goal] of [['how I test a new green coffee supplier', 'educate'], ['why my roast tastes different from grocery coffee', 'conversations'], ['starting a coffee cart from home', 'personal_brand'], ['what fresh beans look like', 'entertain'], ['my small batch roasting routine', 'personal_brand'], ['the mistake I made with my first big bean order', 'entertain'], ['what to plan before buying cart gear', 'leads'], ['why I roast to order', 'sell']]) pairReqs.push({ body: { reference_note: note, goal, door: 'idea' } })
+  pairReqs.slice(0, 20).forEach((r, i) => {
+    for (const arm of ['enforced', 'plain']) out.push({ group: 'paired', label: `pair ${i + 1} ${arm}`, pairKey: `pair-${i + 1}`, product: r.product ?? null, body: { ...r.body, ...(arm === 'plain' ? { trial_off: true } : {}) } })
+  })
   // Lengths rotate the way creators pick them.
-  return out.map((s, n) => ({ ...s, n, body: { ...s.body, target_seconds: [30, 45, 60][n % 3] } }))
+  // A pair shares its length, so the only difference is the trial.
+  return out.map((s, n) => ({ ...s, n, body: { ...s.body, target_seconds: [30, 45, 60][(s.pairKey ? Number(s.pairKey.slice(5)) : n) % 3] } }))
 }
 
 // The writer allows 12 builds a minute per account: every call (including the
@@ -611,7 +622,7 @@ async function main() {
         // entertain script "none" — a confound. Now drawn per script from a
         // hash of the batch label and n: varied, reproducible, logged, and
         // every answer is labelled simulated in the results.
-        const style = ['rich', 'short', 'none'][styleHash(`${BATCH}#${sc.n}`) % 3]
+        const style = ['rich', 'short', 'none'][styleHash(`${BATCH}#${sc.pairKey ?? sc.n}`) % 3]
         // ⚠️ A REAL CREATOR ANSWERS ON TOPIC (batch part-13): one shipping
         // sentence answered every question, about stale beans or roasters
         // alike, so the writer was handed off-topic "answers". A rich answer is
@@ -674,7 +685,7 @@ async function main() {
       if (compliance) { complianceTally.scripts++; if (compliance.compliant) complianceTally.compliant++; for (const k of ['hookPaid', 'body', 'oneSpine', 'closeFollows', 'arcFitsGoal']) if (!compliance[k]) complianceTally.fails[k] = (complianceTally.fails[k] ?? 0) + 1 }
       for (const x of a.findings) tally[x.k] = (tally[x.k] ?? 0) + 1
       await admin.from('script_batch_results').insert({
-        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, simulated_material: sc.simulatedMaterial ?? false, compliance, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
+        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, simulated_material: sc.simulatedMaterial ?? false, pair: sc.pairKey ?? null, compliance, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
         // Scored after the viewer panel has remade it (see scoreAfterPanel).
