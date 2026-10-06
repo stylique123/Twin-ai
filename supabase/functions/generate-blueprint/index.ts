@@ -70,6 +70,7 @@ import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from 
 import { dropNovelSentences } from '../_shared/novelDetail.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
+import { originConflict } from '../_shared/factConflicts.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
@@ -7576,6 +7577,21 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       console.log(JSON.stringify({ event: 'knowledge_off_ask', held_back: rel.dropped.length, kept: knowledgeRows.length, examples: rel.dropped.slice(0, 3).map((r) => String(r.text ?? '').slice(0, 60)) }))
     }
   }
+  // ⚖️ CONFLICTING FACTS ARE HELD, NEVER CHOSEN (owner 2026-10-06). Facts
+  // about this product that state different origins are all kept from the
+  // writer; she is asked which is current (below), and her answer marks the
+  // others superseded (0282).
+  let originConflictFound: { values: string[]; ids: string[] } | null = null
+  if (ownedEntity) {
+    const pName = String((ownedEntity as { name?: unknown }).name ?? '')
+    const c = originConflict(knowledgeRows as Array<{ id?: unknown; text?: unknown }>, pName)
+    if (c) {
+      const held = new Set(c.rows)
+      for (let i = knowledgeRows.length - 1; i >= 0; i--) if (held.has(knowledgeRows[i] as never)) knowledgeRows.splice(i, 1)
+      originConflictFound = { values: c.values, ids: c.rows.map((r) => String(r.id ?? '')).filter(Boolean) }
+      console.log(JSON.stringify({ event: 'fact_conflict_held', attribute: 'origin', values: c.values, held: c.rows.length }))
+    }
+  }
   // ⚖️ ITEM 26: set when a multi-product reference is built for ONE chosen
   // subject. Saved on the blueprint so the result screen says so in one line.
   let referenceScopeNote: string | null = null
@@ -8189,6 +8205,20 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     ? String(body.goal ?? '').trim()
     : ''
   const readyMissing: Array<{ field: string; question: string }> = []
+  if (originConflictFound) {
+    const said = String(answers.origin ?? '').toLowerCase()
+    const picked = originConflictFound.values.find((v) => said.includes(v))
+    if (!picked) {
+      const name = String((ownedEntity as { name?: unknown } | null)?.name ?? 'this coffee')
+      readyMissing.push({ field: 'origin', question: `Your notes give ${name} more than one origin (${originConflictFound.values.map((v) => v[0]!.toUpperCase() + v.slice(1)).join(', ')}). Which is it now?` })
+    } else {
+      // Her answer settles it: the facts naming another origin are retired.
+      const stale = (await admin.from('creator_knowledge').select('id, text').in('id', originConflictFound.ids)).data ?? []
+      const retire = stale.filter((r) => !String(r.text ?? '').toLowerCase().includes(picked)).map((r) => r.id)
+      if (retire.length) await admin.from('creator_knowledge').update({ superseded_at: new Date().toISOString(), superseded_reason: `she said the origin is ${picked}` }).in('id', retire).eq('owner_id', ownerId)
+      console.log(JSON.stringify({ event: 'fact_conflict_settled', attribute: 'origin', picked, retired: retire.length }))
+    }
+  }
   // ⚠️ THE GOAL IS NOT ASKED HERE ANY MORE — the remix card's three intent chips
   // ask it in plain English before the build starts, and asking it again put one
   // question on the card twice: a chip row, and a text box in marketing language.
