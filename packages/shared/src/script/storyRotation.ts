@@ -222,7 +222,7 @@ export function storyTwins<T extends StoryCandidate>(rows: readonly T[]): Map<st
   const stories = rows.filter((r) => STORY_KINDS.has(String(r?.kind ?? '')))
   const terms = stories.map((r) => contentTerms(r.text))
   const out = new Map<string, string[]>()
-  stories.forEach((r, i) => {
+  stories.forEach((_r, i) => {
     const k = [...terms[i]!].sort().slice(0, 12).join(' ')
     const ids = stories.filter((_, j) => {
       const a = terms[i]!, b = terms[j]!
