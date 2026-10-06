@@ -85,3 +85,9 @@ describe('usage methods (blind set 3 T2)', () => {
     expect(novelCounts(findNovelDetails(['Pour it over ice.'], HER + ' Pour it over ice and add milk.')).method).toBe(0)
   })
 })
+
+describe('counts written as words (blind set 3 #15)', () => {
+  it('flags "a three drink menu" she never gave', () => {
+    expect(findNovelDetails(['We lock in a focused three drink menu.'], HER).length).toBe(1)
+  })
+})

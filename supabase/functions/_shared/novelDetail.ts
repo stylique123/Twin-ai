@@ -22,6 +22,8 @@ const PATTERNS: Array<[SpecificKind, RegExp]> = [
   ['ratio', /\b(?:\d+\s*(?::|to)\s*\d+|equal parts|half and half|double[- ]strength|triple[- ]strength|1:1|2:1)\b/gi],
   ['duration', new RegExp(`\\b(?:\\d+|${NUMBER_WORDS}|a|few|several)[- ](?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)\\b|\\b(?:all|every)\\s+(?:week|day|month|morning|year)(?:\\s+long)?\\b|\\bovernight\\b|\\b(?:spent|spend|spends|for|sit|sat|sits|sitting)\\s+(?:\\w+\\s+)?(?:weeks|months|years)\\b`, 'gi')],
   ['number', /(?:\$|£|€)\s?\d[\d,.]*|\b\d[\d,.]*\s?(?:%|percent|lbs?|pounds?|oz|ounces?|grams?|kg|bags?|cups?|batches?|customers?|orders?|people|followers?)?\b/gi],
+  // Blind set 3 #15: "a focused three drink menu". A count written as a word.
+  ['number', /\b(?:two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty)[- ](?!(?:ounce|pound|oz|lb|gram|kilo|minute|second|hour)s?\b)(?:[a-z]+[- ])?(?:drinks?|items?|steps?|ingredients?|flavou?rs?|options?|machines?|bags?|batches?|customers?|orders?|markets?|menus?|days?|weeks?|months?|years?)\b/gi],
   ['time', /\b(?:recently|growing up|as a kid|last (?:week|month|year|summer|winter)|yesterday|this morning|years ago|back then|early on|for years|lately)\b/gi],
   ['relative', /\b(?:my|her|his|their)\s+(?:mom|mother|dad|father|grandma|grandmother|grandpa|grandfather|sister|brother|husband|wife|partner|son|daughter|kids?|aunt|uncle|cousin|best friend)\b/gi],
   // Blind set 2 #4 (owner 5, reviewer 7.9): "Grocery store coffee tasted

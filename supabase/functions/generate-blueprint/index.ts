@@ -9856,6 +9856,21 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         + '- After it, one bridge line that turns it to the viewer ("If you…").\n'
         + '- The close follows from what the story meant: a question about the same experience, or her offer when the goal sells. Never a generic "follow for more".\n')
     }
+    // ⚖️ GOAL ARCS THAT DO THE JOB (owner plan B3, trial). Blind sets 1-3:
+    // entertain scripts that entertained nobody, educate scripts that said
+    // "I don't have a clean answer", hooks whose promise the body skipped.
+    if (trialOn) {
+      const ARCS: Record<string, string> = {
+        entertain: 'ENTERTAIN: setup in one line → one real moment of hers with a twist, contrast or surprise → her reaction or the punchline → a light close. No lesson, no pitch, no "here is what I learned".',
+        educate: 'EDUCATE: the mistake people make → her ONE concrete step or know-how (from her material) → why it works → a one-line takeaway. Never "I do not have a clean answer" in a teaching video.',
+        sell: 'SELL: the problem in her words → what the product is (her facts only) → one proof she gave (a customer line or her own result) → the offer exactly as she states it → one direct ask.',
+        leads: 'LEADS: the viewer\'s stuck point → what she does about it → exactly what the offer covers → how to reach her (only a route she confirmed).',
+        conversations: 'CONVERSATIONS: one sharp take of hers → why she holds it → a closing question with two real sides.',
+        personal_brand: 'PERSONAL BRAND: one story told once in her words → what it taught her → a bridge to the viewer → a question about the same experience.',
+      }
+      const arc = ARCS[String(intent.goal ?? body.goal ?? '')]
+      if (arc) knowledgeParts.push(`\nTHE ARC FOR THIS GOAL (each beat has one job):\n${arc}\n- The hook's promise is delivered by the third line at the latest, in plain words.\n- If her material is thin for a beat, make the script SHORTER rather than filling the beat with a line anyone could say.\n`)
+    }
     const knowledgeBlock = knowledgeParts.join('\n')
     // ⚠️ THE SHAPE BLOCK, COMPUTED HERE AND ABSENT BY DEFAULT. Two independent
     // reasons to emit nothing, and both are silence rather than a hedge: the
@@ -14045,7 +14060,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           ? (bpAny.beat_plan as Array<{ beat?: unknown }>).map((p) => String(p?.beat ?? '')) : []
         lateExtend = async (beats: IntegrityBeat[]): Promise<IntegrityBeat[] | null> => {
           const d = shouldExtendScript(beats, integrityOpts.targetSec, integrityOpts.wpm, 0, plannedForLate)
-          if (!d.extend) return null
+          // Owner plan B2: thin material makes a SHORTER script, not a padded one (trial).
+          if (!d.extend || (trialOn && suppliedKnowledgeIds.length < 3)) return null
           const raw = await callModel(
             apiKey,
             'You lengthen single script lines using only facts you are given.'
@@ -14069,7 +14085,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const plannedSections = Array.isArray(bpAny.beat_plan)
           ? (bpAny.beat_plan as Array<{ beat?: unknown }>).map((p) => String(p?.beat ?? '')) : []
         const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords, plannedSections)
-        if (extendDecision.extend) {
+        if (extendDecision.extend && !(trialOn && suppliedKnowledgeIds.length < 3)) {
           let extensionReason = 'call_failed'
           let wordsAfter = extendDecision.words
           let invented: string[] = []
@@ -15535,7 +15551,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       if (Array.isArray(bp.script) && lateIntegrityOpts && lateKnownText) {
         const beats = bp.script as IntegrityBeat[]
         const decision = shouldExtendScript(beats, lateIntegrityOpts.targetSec, lateIntegrityOpts.wpm)
-        if (decision.extend) {
+        if (decision.extend && !(trialOn && suppliedKnowledgeIds.length < 3)) {
           let reason = 'call_failed'
           let wordsAfter = decision.words
           // ⚖️ ONE LATE LENGTH STEP (part-4 batch 2026-10-04): the same extension
@@ -15687,6 +15703,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             'You are her editor. You fix at most TWO lines of a short video script so it sounds like her talking and holds together from hook to close. You never add a fact, number, name, product detail or experience that is not in her material. You return JSON only.',
             [
               'Find the (at most two) weakest lines, in this order of priority:',
+              ...(trialOn ? [
+                // Owner plan B1/B5 (blind set 3: #3 "one detail most people miss" never named, #5 question never answered, #4/#17 body about another product).
+                '-2. the hook promises or asks something (a detail, a reason, "what happens when", "who it is for") that no line by the third delivers in plain words: rewrite line 1 or 2 so it delivers it from her material, or rewrite the hook to promise exactly what the body delivers;',
+                `-1. a middle line about a different product or topic than this video (${String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? 'the subject').slice(0, 80)}): rewrite it from her material about THIS subject;`,
+              ] : []),
               '0. no line between the hook and the close gives HER know-how (the mistake people make, the step that matters, what she learned): rewrite the weakest middle line into one, from her material;',
               '1. a line that reads like a profile, bio, product page or keyword list instead of a person talking;',
               '2. a line any creator in her niche could say word for word (nothing of hers in it);',
