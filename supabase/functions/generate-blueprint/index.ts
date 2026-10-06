@@ -15844,7 +15844,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     {
       const spoken = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
         .filter((b) => typeof b?.line === 'string' && b.line.trim().split(/\s+/).length >= 3)
-      if (spoken.length < 2) throw new Error(`${SCRIPT_EMPTIED}: ${spoken.length} spoken lines left after the checks`)
+      // Owner plan B2 floor (set 4 #17, a hook plus one line): a script needs a body, a payoff and a close (trial).
+      const floor = trialOn ? 3 : 2
+      if (spoken.length < floor) {
+        console.log(JSON.stringify({ event: 'script_below_floor', spoken: spoken.length, floor }))
+        throw new Error(`${SCRIPT_EMPTIED}: ${spoken.length} spoken lines left after the checks`)
+      }
     }
     const { data: gen, error: insErr } = await admin
       .from('generations')
