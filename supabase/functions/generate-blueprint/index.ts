@@ -25,7 +25,7 @@ import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats, productA
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
-import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
+import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS, oneStory, storyTwins } from '../_shared/storyRotation.ts'
 import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
@@ -9590,7 +9590,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       ? useIds.map((id) => kRows.find((k) => String((k as { id?: unknown }).id ?? '') === id))
         .filter((k): k is (typeof kRows)[number] => !!k && k.basis !== 'inferred')
       : null
-    const speakable = chosenRows ?? [
+    const speakableAll = chosenRows ?? [
       ...askedHold.reserved,
       ...selectSpeakable(
         askedHold.pool,
@@ -9598,6 +9598,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         Math.max(0, intent.substanceFloor - askedSubstance),
       ),
     ]
+    // Owner 2026-10-05 (trial): one story per script, and not one told in two
+    // of her last five — her reserved answers included. Not when she picked
+    // the list herself on the plan screen.
+    const storyCut = trialOn && !chosenRows
+      ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>) })
+      : null
+    const speakable = (storyCut ? storyCut.rows : speakableAll) as typeof speakableAll
+    if (storyCut?.dropped.length) console.log(JSON.stringify({ event: 'one_story', kept: storyCut.kept ? String(storyCut.kept.text ?? '').slice(0, 60) : null, dropped: storyCut.dropped.length }))
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
     // 0215 records them against this generation and rotates them to the back of
     // the next tie. An item with no id is one read before 0215 was applied — it
