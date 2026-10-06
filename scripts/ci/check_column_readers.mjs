@@ -76,10 +76,6 @@ export const REGISTRY = {
       + 'can be undone by hand. The writer reads superseded_at through the view. '
       + 'WIRE when the plan screen shows "replaced by" on a hidden fact.',
   },
-  'creator_knowledge.superseded_reason': {
-    why: 'Audit trail for 0282: why a fact was retired (duplicate, or which of '
-      + 'her conflicting facts she said is current). WIRE with the same plan-screen line.',
-  },
   'profiles.free_export_used': {
     why: 'Added by 0034 for a free-export allowance that was never built. No code '
       + 'has ever read it and no feature depends on it. Kept rather than dropped '
