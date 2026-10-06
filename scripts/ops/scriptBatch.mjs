@@ -16,6 +16,7 @@ import { createClient } from '@supabase/supabase-js'
 import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.mjs'
 import { findNovelDetails, novelCounts } from './.novelDetail.bundle.mjs'
 import { storyCraft } from './.storyCraft.bundle.mjs'
+import { blueprintCompliance } from './.blueprintCompliance.bundle.mjs'
 
 const URL_ = process.env.SUPABASE_URL
 const ANON = process.env.SUPABASE_ANON_KEY
@@ -555,6 +556,7 @@ async function main() {
 
   let next = 0
   const tally = {}
+  const complianceTally = { scripts: 0, compliant: 0, fails: {} }
   const seen = new Map()
   const shingles = (t) => { const w = t.toLowerCase().replace(/^\d+\.\s*/gm, '').split(/[^a-z0-9']+/).filter(Boolean); const out = new Set(); for (let i = 0; i + 5 <= w.length; i++) out.add(w.slice(i, i + 5).join(' ')); return out }
   // Resume: a re-run of the same label skips scenarios that already have a script.
@@ -667,9 +669,12 @@ async function main() {
       }
       if (asked) a.findings.push({ k: 'asked_first', d: asked.join(' | ').slice(0, 300) })
       if (sc.expectRefusal && r.status === 400) a.findings = [{ k: 'refused_as_expected', d: String(r.json?.error ?? '').slice(0, 200) }]
+      // Owner 2026-10-06: blueprint compliance on every script, in every report.
+      const compliance = a.text ? blueprintCompliance(a.text, String(body.goal ?? '')) : null
+      if (compliance) { complianceTally.scripts++; if (compliance.compliant) complianceTally.compliant++; for (const k of ['hookPaid', 'body', 'oneSpine', 'closeFollows', 'arcFitsGoal']) if (!compliance[k]) complianceTally.fails[k] = (complianceTally.fails[k] ?? 0) + 1 }
       for (const x of a.findings) tally[x.k] = (tally[x.k] ?? 0) + 1
       await admin.from('script_batch_results').insert({
-        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, simulated_material: sc.simulatedMaterial ?? false, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
+        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, simulated_material: sc.simulatedMaterial ?? false, compliance, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
         // Scored after the viewer panel has remade it (see scoreAfterPanel).
@@ -680,6 +685,7 @@ async function main() {
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
   console.log('\nTALLY', JSON.stringify(tally, null, 1))
+  console.log('BLUEPRINT COMPLIANCE', JSON.stringify(complianceTally))
   await scoreAfterPanel(admin, ctx)
   await regressionReport(admin)
 }
