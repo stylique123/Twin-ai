@@ -232,6 +232,9 @@ const GEMINI = process.env.GEMINI_API_KEY ?? ''
 // calls are kept for the voice/DNA profile, where nuance needs it.
 const ROUTING = (() => { try { return JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses } catch { return null } })()
 const JUDGE_MODEL = process.env.JUDGE_MODEL || ROUTING?.search?.model || null
+// WS1 (owner): a second judge from a different model family/tier, one read,
+// scored by the same code caps, so agreement can be checked against the owner.
+const JUDGE2_MODEL = process.env.JUDGE2_MODEL || null
 const JUDGE_FALLBACK = process.env.JUDGE_FALLBACK_MODEL || ROUTING?.profile?.model || null
 const JUDGE_SYSTEM = [
   'You are the best short-form content creator, script writer, scene director and editor alive, reviewing a script an AI wrote FOR a specific creator.',
@@ -333,12 +336,17 @@ async function judge(bp, sc, ctx) {
   out.novel_details = { count: invented_detail, by_kind: novelCounts(novel), found: novel.flatMap((f) => f.novel.map((n) => n.text)) }
   const c = combineReads(reads, { invented_detail })
   if (c) Object.assign(out, c)
+  if (JUDGE2_MODEL) {
+    const r2 = await judgeOnce(bp, sc, ctx, JUDGE2_MODEL).catch(() => null)
+    const c2 = r2 && Number.isFinite(Number(r2.overall)) ? combineReads([r2], { invented_detail }) : null
+    out.judge2 = c2 ? { model: JUDGE2_MODEL, overall: c2.overall, craft: c2.craft, caps_applied: c2.caps_applied, overall_model: Number(r2.overall) } : { model: JUDGE2_MODEL, error: r2?.error ?? 'no read' }
+  }
   out.allowed_text_chars = ctx.allowedText.length
   out.allowed_text_truncated = ctx.allowedText.length > 6000
   return out
 }
 
-async function judgeOnce(bp, sc, ctx) {
+async function judgeOnce(bp, sc, ctx, only = null) {
   if (!GEMINI || !JUDGE_MODEL || !bp) return null
   const product = sc.product ? ctx.products.find((p) => p.name === sc.product) : null
   const input = [
@@ -360,7 +368,7 @@ async function judgeOnce(bp, sc, ctx) {
   // reviews (429). Retry once, then fall back to the writer-class Flash model;
   // the model that judged is recorded so scores are compared like for like.
   let last = null
-  for (const [model, wait] of [[JUDGE_MODEL, 0], [JUDGE_MODEL, 20000], [JUDGE_FALLBACK, 0], [JUDGE_FALLBACK, 30000]]) {
+  for (const [model, wait] of (only ? [[only, 0], [only, 20000]] : [[JUDGE_MODEL, 0], [JUDGE_MODEL, 20000], [JUDGE_FALLBACK, 0], [JUDGE_FALLBACK, 30000]])) {
     if (!model) continue
     if (wait) await new Promise((r) => setTimeout(r, wait))
     try {

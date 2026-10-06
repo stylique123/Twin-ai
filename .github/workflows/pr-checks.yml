@@ -875,7 +875,9 @@ jobs:
         run: node --experimental-strip-types scripts/ops/heartbeat.mjs --selftest
       # WS1.1: the reviewer's overall is computed in code with caps; its rules run here.
       - name: Reviewer score caps hold
-        run: node scripts/ops/judgeScore.mjs --selftest
+        run: |
+          node scripts/ops/judgeScore.mjs --selftest
+          node scripts/ops/judgeAgreement.mjs --selftest
       # ⚠️ THE UNWIRED-MODULE DETECTOR WAS ITSELF UNWIRED. Built, tested,
       # correct, and nothing called it in CI — exactly the defect class its
       # own header names four instances of. Reports only, never fails: a
