@@ -91,3 +91,10 @@ describe('counts written as words (blind set 3 #15)', () => {
     expect(findNovelDetails(['We lock in a focused three drink menu.'], HER).length).toBe(1)
   })
 })
+
+describe('any first-person past action (set 4 #13, #5)', () => {
+  it('flags "I got completely stuck" and "I ordered a full lot" she never said', () => {
+    expect(novelCounts(findNovelDetails(['I got completely stuck trying to choose an espresso machine.'], HER)).event).toBe(1)
+    expect(novelCounts(findNovelDetails(['I ordered a full lot of green beans and loaded the whole order in.'], HER)).event).toBe(1)
+  })
+})
