@@ -7806,7 +7806,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // Blind set 3 T5: a hook pattern retelling her private relocation story had
     // no listed word; anything sharing two distinctive words with a private
     // fact is cut too.
-    const p = scrubRejected(scrubLike(scrubPrivate(voice?.profile ?? null), guardExcludedTexts), herRejected) as Record<string, unknown> | null
+    const p = scrubLike(scrubRejected(scrubPrivate(voice?.profile ?? null), herRejected), guardExcludedTexts) as Record<string, unknown> | null
     if (p && typeof p.offer === 'string') return { ...p, offer: scrubForeignOffer(p.offer, foreignOffer) }
     return p
   })() as (typeof voice)['profile'] | null
