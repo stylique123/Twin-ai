@@ -3,7 +3,7 @@
 // and the real stored facts they came from. They must never survive the guard
 // unless she allowed them for that video.
 import { describe, it, expect } from 'vitest'
-import { guardScript, scrubPrivate, isPrivate, privateSqlPattern, statedQuantities, PRIVATE } from '../privacyGuard'
+import { guardScript, scrubPrivate, isPrivate, privateSqlPattern, statedQuantities, PRIVATE, scrubLike } from '../privacyGuard'
 
 const STORED = {
   police: 'Faced neighbor complaints, police visits, and code enforcement threats over coffee roasting smells at home, forcing a move.',
@@ -95,5 +95,16 @@ describe('owner fabrication audit 2026-10-01: a figure nothing she gave states i
   })
   it('is off unless asked for, so other callers keep their behaviour', () => {
     expect(guardScript([{ line: 'It scores 82.' }], { allowedText: '', excludedTexts: [] }).removed).toEqual([])
+  })
+})
+
+describe('scrubLike (blind set 3 T5: private relocation story in her voice profile)', () => {
+  const priv = ['She had 26 days to move Sunflower Coffee from her home to a commercial space to avoid fines or a court date.']
+  it('cuts profile lines that retell a private fact without a listed word', () => {
+    const out = scrubLike({ dos: ['Introduce yourself and your mission to move from a home roastery to a commercial space.', 'Describe flavor notes vividly.'], hook_patterns: ["High-Stakes Countdown: 'I have 26 days to move sunflower coffee from my home to a commercial space.'"] }, priv)
+    expect(out).toEqual({ dos: ['Describe flavor notes vividly.'], hook_patterns: [] })
+  })
+  it('leaves unrelated lines alone', () => {
+    expect(scrubLike(['I roast in small batches from home.'], priv)).toEqual(['I roast in small batches from home.'])
   })
 })

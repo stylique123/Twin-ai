@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripEmptyBridge, cleanBeats, dropEchoCloser, stripProfileLabels } from '../beatCleanup.js'
+import { stripEmptyBridge, cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../beatCleanup.js'
 
 describe('blind set 1 leftovers (owner 2026-10-05)', () => {
   it.each([
@@ -52,5 +52,25 @@ describe('stripProfileLabels never touches her own wording (owner 2026-10-05)', 
     'When I was a beginner I burned my first batch.',
   ])('leaves "%s" unchanged', (line) => {
     expect(stripProfileLabels(line, labels, topics)).toBe(line)
+  })
+})
+
+describe('single profile labels (blind set 3: 14, 17, 18, T2, T4)', () => {
+  const labels = ['everyday people', 'beginners', 'ecommerce']
+  it('drops the label word before a noun, once', () => {
+    expect(stripProfileLabels('I help everyday people plan their first coffee cart.', labels)).toBe('I help people plan their first coffee cart.')
+    expect(stripProfileLabels('Most everyday beginners think you need every machine.', labels)).toBe('Most beginners think you need every machine.')
+  })
+  it('never touches a noun-led label', () => {
+    expect(stripProfileLabels('Our coffee lovers club meets Fridays.', ['coffee lovers', 'beginners'])).toBe('Our coffee lovers club meets Fridays.')
+  })
+})
+
+describe('dropWriterNotes (blind set 3 #4)', () => {
+  it('cuts her note to the writer from a spoken line', () => {
+    expect(dropWriterNotes("The first thing I'd do is start small from home and learn as you go — no numbers, just first steps.")).toBe("The first thing I'd do is start small from home and learn as you go.")
+  })
+  it('leaves an ordinary line alone', () => {
+    expect(dropWriterNotes('Numbers matter less than your first market.')).toBe('Numbers matter less than your first market.')
   })
 })

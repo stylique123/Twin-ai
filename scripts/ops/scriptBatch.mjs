@@ -603,10 +603,15 @@ async function main() {
         // and a stock shipping line (scripts 3, 9) — the harness invented what
         // the product's empty-record check exists to stop. About a named
         // product she answers only with a fact that names it, else nothing.
-        const productWords = String(sc.product ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? []
+        // ⚠️ BLIND SET 3 (thin "coffee"): the stand-in picked Cold Brew in one
+        // round, then answered "what is it?" with an unrelated stored fact
+        // because only a scenario's own product counted. A product picked in
+        // an earlier round counts too.
+        const aboutProduct = sc.product ?? sc.pickedProduct ?? null
+        const productWords = String(aboutProduct ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? []
         const aboutThisProduct = (k) => productWords.length === 0 || productWords.some((w) => String(k).toLowerCase().includes(w))
         const onTopicHere = (q) => { const k = onTopic(q); return k && aboutThisProduct(k) ? k : null }
-        const answerFor = (f, q) => style === 'rich' ? (['claims', 'angle'].includes(f) ? (sc.product ? (onTopicHere(q) ?? '') : (onTopic(q) ?? RICH_ANSWER[f] ?? RICH_ANSWER.claims)) : (RICH_ANSWER[f] ?? RICH_ANSWER.claims))
+        const answerFor = (f, q) => style === 'rich' ? (['claims', 'angle'].includes(f) ? (aboutProduct ? (onTopicHere(q) ?? '') : (onTopic(q) ?? RICH_ANSWER[f] ?? RICH_ANSWER.claims)) : (RICH_ANSWER[f] ?? RICH_ANSWER.claims))
           : style === 'short' ? (f === 'offer' ? 'Signature Blend' : 'Fresh beans.')
           : 'Nothing specific, keep it general.'
         // "Which one is this video about?" is answered the way the app does: the
@@ -617,6 +622,8 @@ async function main() {
           const opts = q.options.map((o) => String(o.value))
           body.selected_product_id = style === 'rich' ? (opts.find((o) => !o.startsWith('brand:') && !/none/i.test(o)) ?? opts[0])
             : style === 'short' ? (opts.find((o) => o.startsWith('brand:')) ?? opts[0]) : opts[opts.length - 1]
+          const pickedOpt = q.options.find((o) => String(o.value) === body.selected_product_id)
+          if (pickedOpt && !String(pickedOpt.value).startsWith('brand:')) sc.pickedProduct = String(pickedOpt.label ?? pickedOpt.name ?? '') || null
           return false
         })
         body.readiness_answers = { ...(body.readiness_answers ?? {}), ...Object.fromEntries(qs.map((q) => [q.field, answerFor(q.field, q)])) }

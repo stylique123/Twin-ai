@@ -26,7 +26,7 @@ import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS, oneStory, storyTwins } from '../_shared/storyRotation.ts'
-import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
+import { scrubPrivate, scrubLike, isPrivate, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
 import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript, referenceShownKept } from '../_shared/shownJob.ts'
@@ -66,7 +66,7 @@ import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose,
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
-import { cleanBeats, dropEchoCloser, stripProfileLabels } from '../_shared/beatCleanup.ts'
+import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../_shared/beatCleanup.ts'
 import { dropNovelSentences } from '../_shared/novelDetail.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
@@ -7565,7 +7565,10 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const e = (ownedEntity ?? {}) as { name?: unknown; offer?: unknown; creator_summary?: unknown }
     const askText = [e.name, e.offer, e.creator_summary, reference_note, (body as { focus?: unknown }).focus, (body as { outcome?: unknown }).outcome].filter((x) => typeof x === 'string').join(' ')
     const rel = relevantToAsk(knowledgeRows as Array<{ text?: unknown; source?: unknown; id?: unknown }>, askText, {
-      exempt: (r) => ['asked', 'comment'].includes(String(r.source ?? '')) || herOnIds.has(String(r.id ?? '')),
+      // Blind set 3 #4, #17, T4: her typed cart answers reached Signature
+      // Blend scripts because answers were exempt. With a product picked, her
+      // answers are held to the same test; only what she switched on is exempt.
+      exempt: (r) => herOnIds.has(String(r.id ?? '')) || (!ownedEntity && ['asked', 'comment'].includes(String(r.source ?? ''))),
     })
     if (rel.dropped.length) {
       const drop = new Set(rel.dropped)
@@ -7800,7 +7803,10 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // opens "Hello, I'm Savannah" after she said never to is dropped the same way,
   // and the account-level offer line loses another product's price or size.
   const vp = (() => {
-    const p = scrubRejected(scrubPrivate(voice?.profile ?? null), herRejected) as Record<string, unknown> | null
+    // Blind set 3 T5: a hook pattern retelling her private relocation story had
+    // no listed word; anything sharing two distinctive words with a private
+    // fact is cut too.
+    const p = scrubLike(scrubRejected(scrubPrivate(voice?.profile ?? null), herRejected), guardExcludedTexts) as Record<string, unknown> | null
     if (p && typeof p.offer === 'string') return { ...p, offer: scrubForeignOffer(p.offer, foreignOffer) }
     return p
   })() as (typeof voice)['profile'] | null
@@ -8195,8 +8201,15 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // does NOT read `referenceAnalysis.mode`: the reference stop must never catch
   // `none`, a build from the creator's own idea stays free, and
   // `referenceAnalysis.test.ts` bans the expression outright to keep it that way.
-  if (!readyPresent(reference_note) && !readyPresent(brief.idea) && !readyPresent(reference_url)) {
-    readyMissing.push({ field: 'angle', question: 'What is this video about?' })
+  // ⚠️ BLIND SET 3 (owner 2026-10-06): "?" became an invented story and
+  // "coffee" an invented product script. One word or a symbol is not a
+  // subject either: fewer than three real words, no reference, no product
+  // picked and no answer yet → ask what the video is about.
+  const subjectWords = `${reference_note ?? ''} ${brief.idea ?? ''} ${typeof answers.angle === 'string' ? answers.angle : ''}`.toLowerCase().match(/[a-z]{3,}/g) ?? []
+  const thinSubject = !readyPresent(reference_url) && !body.selected_product_id && subjectWords.length < 3
+  if ((!readyPresent(reference_note) && !readyPresent(brief.idea) && !readyPresent(reference_url)) || thinSubject) {
+    if (thinSubject && readyPresent(reference_note)) console.log(JSON.stringify({ event: 'thin_subject_asked', words: subjectWords.length }))
+    readyMissing.push({ field: 'angle', question: 'What is this video about? One sentence is enough.' })
   }
   // ⚠️ NO PRODUCT CHOSEN IS NOT "RELATIONSHIP MISSING". When a selling video
   // reaches here with a library of products and no `selected_product_id`, the
@@ -8290,7 +8303,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     && String(x).trim().split(/\s+/).filter((w) => w.length > 2).length >= 4
   // Owner 2026-10-05: for an EMPTY PRODUCT the answer must fill a named slot
   // (what it is, size, price, how to use it), not reach a word count.
-  const emptyProductAnswered = readySaysWhatItIs(answers.claims) && filledProductSlots(String(answers.claims)).length > 0
+  // Blind set 3 (thin "coffee"): one of her stored facts about roasting came
+  // back as the answer to "what is Cold Brew?" and released the block. A
+  // stored fact that does not name the product is not an answer about it.
+  const claimNorm = String(answers.claims ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const productNameWords = String((ownedEntity as { name?: unknown } | null)?.name ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? []
+  const claimIsUnrelatedStoredFact = claimNorm !== '' && !productNameWords.some((w) => claimNorm.includes(w))
+    && knowledgeRows.some((k) => String((k as { text?: unknown }).text ?? '').toLowerCase().replace(/\s+/g, ' ').trim() === claimNorm)
+  const emptyProductAnswered = readySaysWhatItIs(answers.claims) && filledProductSlots(String(answers.claims)).length > 0 && !claimIsUnrelatedStoredFact
   const askAboutEmptyProduct = trialOn && !readyPromoting && !!ownedEntity && !readyEntityKnows && readyFacts.length === 0
     && !emptyProductAnswered && !readyNeedsPick
   if (askAboutEmptyProduct) {
@@ -15563,7 +15583,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         let labelled = 0
         const relabelled = dropEchoCloser(cleaned.beats).map((b) => {
           if (typeof b.line !== 'string') return b
-          const line = stripProfileLabels(b.line, labels, topics)
+          const line = dropWriterNotes(stripProfileLabels(b.line, labels, topics))
           if (line !== b.line) { labelled++; return { ...b, line } }
           return b
         })

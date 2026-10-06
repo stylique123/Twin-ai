@@ -54,6 +54,31 @@ export function scrubPrivate<T>(v: T): T {
 }
 
 /**
+ * BLIND SET 3 T5 (owner 2026-10-06): her voice profile kept "move from a
+ * home roastery to a commercial space" and "I have 26 days to move … to a
+ * commercial space" — her private relocation story — because neither line
+ * has a word on the list. The writer turned it into "signing a commercial
+ * lease". A profile string that shares two distinctive words with any private
+ * fact is cut, the same way a listed word would cut it.
+ */
+const LIKE_STOP = new Set(['about', 'their', 'there', 'which', 'would', 'could', 'should', 'small', 'business', 'coffee', 'people', 'every', 'being', 'after', 'before', 'where', 'while', 'these', 'those', 'things'])
+function likeWords(t: string): Set<string> {
+  return new Set((t.toLowerCase().match(/[a-z]{5,}/g) ?? []).filter((w) => !LIKE_STOP.has(w)))
+}
+export function scrubLike<T>(v: T, privateTexts: readonly string[], minShared = 2): T {
+  const bags = privateTexts.map(likeWords).filter((b) => b.size >= 2)
+  if (!bags.length) return v
+  const hit = (s: string) => { const w = likeWords(s); return bags.some((b) => { let n = 0; for (const x of w) if (b.has(x) && ++n >= minShared) return true; return false }) }
+  const walk = (x: unknown): unknown => {
+    if (typeof x === 'string') return hit(x) ? x.split(SENTENCES).filter((s) => !hit(s)).join(' ') : x
+    if (Array.isArray(x)) return x.filter((i) => !(typeof i === 'string' && hit(i))).map(walk)
+    if (x && typeof x === 'object') return Object.fromEntries(Object.entries(x as Record<string, unknown>).map(([k, i]) => [k, walk(i)]))
+    return x
+  }
+  return walk(v) as T
+}
+
+/**
  * The private half of a value: every private list item and private sentence
  * `scrubPrivate` would cut. Handed to `guardScript` as excluded text, so a
  * paraphrase of a private hook in her voice profile (audit 2026-10-03, part 2:

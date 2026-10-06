@@ -26,6 +26,8 @@ describe('1.1 / 1.2: nothing reaches a script the writer was not given', () => {
   })
   it('her voice profile is scrubbed of private and legal material before the writer sees it', () => {
     expect(EDGE).toMatch(/scrubRejected\(scrubPrivate\(voice\?\.profile \?\? null\)/)
+    // Blind set 3 T5: and lines that retell a private fact without a listed word.
+    expect(EDGE).toMatch(/scrubLike\(scrubRejected\(scrubPrivate\(voice\?\.profile \?\? null\), herRejected\), guardExcludedTexts\)/)
   })
 })
 
