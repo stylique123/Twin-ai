@@ -7581,6 +7581,19 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // about this product that state different origins are all kept from the
   // writer; she is asked which is current (below), and her answer marks the
   // others superseded (0282).
+  // ⚖️ A SCANNED TOPIC IS NOT HER CLAIM (owner 2026-10-06, sheet #25). "Building
+  // and operating a … coffee cart business" was a scan's topic guess; she
+  // offers cart planning calls, she does not run a cart. A topic row that
+  // states a role or a business she runs is held unless she confirmed it.
+  {
+    let rolesHeld = 0
+    for (let i = knowledgeRows.length - 1; i >= 0; i--) {
+      const k = knowledgeRows[i] as { kind?: unknown; text?: unknown; creator_confirmed_at?: unknown }
+      if (String(k.kind ?? '') !== 'topic' || k.creator_confirmed_at) continue
+      if (/\b(?:operat(?:e|es|ing)|run(?:s|ning)?|own(?:s|ing)?|found(?:ed|ing)?|manag(?:e|es|ing)|building and operating|starting and operating)\b[^.]{0,80}\b(?:business|company|shop|cart|caf[eé]|bakery|studio|brand|store|roastery)\b/i.test(String(k.text ?? ''))) { knowledgeRows.splice(i, 1); rolesHeld++ }
+    }
+    if (rolesHeld) console.log(JSON.stringify({ event: 'topic_role_held', held: rolesHeld }))
+  }
   let originConflictFound: { values: string[]; ids: string[] } | null = null
   if (ownedEntity) {
     const pName = String((ownedEntity as { name?: unknown }).name ?? '')
@@ -8205,6 +8218,21 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     ? String(body.goal ?? '').trim()
     : ''
   const readyMissing: Array<{ field: string; question: string }> = []
+  // ⚖️ ASK FOR NEW MATERIAL WHEN IT RUNS OUT (owner 2026-10-06, plan A4/B2).
+  // Three cart answers were stretched over six scripts. For a story-led goal
+  // about a product, when every story about it is resting (told in 2 of her
+  // last 5, twins included), she is asked for one new moment instead of the
+  // writer recycling or inventing one. One question, skippable (trial).
+  if (trialOn && ownedEntity && ['personal_brand', 'entertain', 'conversations'].includes(String(body.goal ?? '')) && !herSaid(answers.story)) {
+    const storyRows = (knowledgeRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? '')))
+    const twins = storyTwins(storyRows)
+    const fresh = oneStory(storyRows, { recent: recentStorySupply, last: lastStorySupply, idsByText: twins }).kept
+    if (!fresh) {
+      const name = String((ownedEntity as { name?: unknown }).name ?? 'this')
+      readyMissing.push({ field: 'story', question: `Tell me one moment with ${name} you haven't shared yet — what happened?` })
+      console.log(JSON.stringify({ event: 'new_story_asked', stories: storyRows.length }))
+    }
+  }
   if (originConflictFound) {
     const said = String(answers.origin ?? '').toLowerCase()
     const picked = originConflictFound.values.find((v) => said.includes(v))
@@ -8570,6 +8598,11 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   }
   if (herSaid(answers.angle)) {
     brief.idea = [brief.idea, String(answers.angle)].filter(Boolean).join(' — ').slice(0, 400)
+  }
+  // Her new moment (asked when every story for this product was resting)
+  // is the material this video is built on.
+  if (herSaid(answers.story)) {
+    brief.idea = [brief.idea, String(answers.story)].filter(Boolean).join(' — ').slice(0, 600)
   }
   if (Object.keys(stable).length && voice?.id) {
     const { error: briefErr } = await admin
