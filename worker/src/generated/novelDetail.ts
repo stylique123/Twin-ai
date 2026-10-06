@@ -13,7 +13,7 @@
 // found nowhere is NOVEL: removed from the script, and counted for the
 // reviewer's caps.
 
-export type SpecificKind = 'number' | 'ratio' | 'duration' | 'time' | 'relative' | 'named' | 'emotion' | 'event' | 'method'
+export type SpecificKind = 'number' | 'ratio' | 'duration' | 'time' | 'relative' | 'named' | 'emotion' | 'event' | 'method' | 'claim'
 export interface Specific { kind: SpecificKind; text: string }
 
 const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|hundred|thousand|half|double|triple|dozen'
@@ -34,6 +34,11 @@ const PATTERNS: Array<[SpecificKind, RegExp]> = [
   // Blind set 3 T2: "pour it over ice or blend it with milk" for a product
   // with nothing on file. How to use or make a thing is a specific too.
   ['method', /\b(?:pour(?:ed|ing)? (?:it )?over ice|blend(?:ed)? (?:it )?with|dilut(?:e|ed|ing) (?:it )?with|cut (?:it )?with (?:water|milk)|steep(?:ed|ing)? (?:it )?(?:for|overnight)|mix(?:ed)? (?:it )?with|shake (?:it )?with)\b/gi],
+  // Set 4 #2 "uniform surface without … yellow spots", #4 "even matte finish",
+  // T3 "boiling water scorches the grounds", T5 "scorching away origin
+  // flavors": general mechanism and "how it looks" claims nothing of hers
+  // backs. Held until a verified-claims library exists (owner plan B6b).
+  ['claim', /\b(?:scorch(?:es|ed|ing)?|extract(?:s|ion|ed|ing)?|burn(?:s|ed|ing)? (?:off|away)|oxidi[sz]\w*|degrad\w*|oils?|oily|matte|shiny|glossy|uniform\w*|yellow spots?|boiling|caffeine)\b/gi],
   ['emotion', /\b(?:dread|terrified|terrifying|panic(?:ked)?|devastated|heartbroken|thrilled|ecstatic|overwhelmed|stressed|anxious|scared|ashamed|embarrassed|in tears|cried|crying|shaking)\b/gi],
 ]
 // Named items: two or more Capitalised words not at the start of the sentence.
@@ -89,6 +94,10 @@ function isSupported(s: Specific, material: string): boolean {
     const content = rest.filter((w) => w.length > 3 && !['your', 'their', 'with', 'from', 'that', 'this', 'completely', 'really', 'just', 'very', 'even', 'before', 'after'].includes(w))
     return m.includes(` ${stem}`) && (content.length === 0 || content.some((w) => m.includes(w.replace(/(?:ing|ed|s)$/, ''))))
   }
+  if (s.kind === 'claim') {
+    const stem = t.split(' ')[0]!.replace(/(?:es|ed|ing|ion|s)$/, '').slice(0, 6)
+    return m.includes(stem)
+  }
   if (s.kind === 'named') {
     const words = t.split(' ').filter((w) => w.length > 3)
     return words.length > 0 && words.every((w) => m.includes(w))
@@ -107,6 +116,8 @@ export function findNovelDetails(lines: readonly string[], material: string): No
       const aboutViewer = /^\s*(?:(?:so|and|but|now),?\s+)?(?:if|when|whether|do|does|did|are|have|what|how)\s+you\b|^\s*you(?:'re|r)?\b/i.test(sentence)
       const novel = extractSpecifics(sentence)
         .filter((s) => !(aboutViewer && (s.kind === 'duration' || s.kind === 'time')))
+        // "Is your bag shiny or matte?" asks; it does not claim.
+        .filter((s) => !(s.kind === 'claim' && /\?\s*$/.test(sentence)))
         // "…what you brew every morning": the viewer's routine, not her claim.
         .filter((s) => !(s.kind === 'duration' && /^every\s/i.test(s.text) && /\b(?:you|your)\b/i.test(sentence) && !/\b(?:I|my|me|we|our)\b/.test(sentence)))
         .filter((s) => !isSupported(s, material))
@@ -118,7 +129,7 @@ export function findNovelDetails(lines: readonly string[], material: string): No
 
 /** Counts by kind, for the reviewer's caps and the weekly numbers. */
 export function novelCounts(findings: readonly NovelFinding[]): Record<SpecificKind, number> {
-  const c: Record<SpecificKind, number> = { number: 0, ratio: 0, duration: 0, time: 0, relative: 0, named: 0, emotion: 0, event: 0, method: 0 }
+  const c: Record<SpecificKind, number> = { number: 0, ratio: 0, duration: 0, time: 0, relative: 0, named: 0, emotion: 0, event: 0, method: 0, claim: 0 }
   for (const f of findings) for (const s of f.novel) c[s.kind]++
   return c
 }
