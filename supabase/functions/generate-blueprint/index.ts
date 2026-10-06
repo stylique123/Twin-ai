@@ -67,7 +67,8 @@ import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../_shared/beatCleanup.ts'
-import { dropNovelSentences } from '../_shared/novelDetail.ts'
+import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
+import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -15839,6 +15840,33 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // saved, shown and charged as a success. A script the checks have left with
     // fewer than two spoken lines is not a script: it fails like any other
     // failed build — refunded, recorded, and answered with what to add.
+    // Owner 2026-10-06: scripts that follow the blueprint rate higher (set 4
+    // by hand: 5.6 vs 3.5). Compliance is computed on every script; on the
+    // trial, a hook whose subject never comes back by line 3 is swapped for
+    // one of the writer's own hook options that does, if one passes the
+    // novel-detail check. Nothing is written fresh, so no new claim enters.
+    try {
+      const bpc = blueprint as { script?: Array<{ line?: unknown }>; hook_options?: unknown }
+      const goalForArc = String(body.goal ?? '')
+      const lines = () => (Array.isArray(bpc.script) ? bpc.script : []).map((b) => String(b?.line ?? ''))
+      let c = blueprintCompliance(lines(), goalForArc)
+      let hookSwapped = false
+      if (trialOn && !c.hookPaid && Array.isArray(bpc.script) && bpc.script.length >= 3 && Array.isArray(bpc.hook_options)) {
+        const rest = lines().slice(1)
+        for (const h of (bpc.hook_options as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)) {
+          if (h === lines()[0]) continue
+          const trial = blueprintCompliance([h, ...rest], goalForArc)
+          if (trial.hookPaid && findNovelDetails([h], lateAllowedText).length === 0) {
+            bpc.script[0] = { ...bpc.script[0], line: h }
+            c = trial
+            hookSwapped = true
+            break
+          }
+        }
+      }
+      ;(blueprint as Record<string, unknown>).compliance = c
+      console.log(JSON.stringify({ event: 'blueprint_compliance', passed: c.passed, compliant: c.compliant, hook_swapped: hookSwapped, fails: Object.entries(c).filter(([, v]) => v === false).map(([k]) => k) }))
+    } catch { /* measuring never fails a build */ }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
     ;(blueprint as Record<string, unknown>).beat_trace = beatTrace
     {
