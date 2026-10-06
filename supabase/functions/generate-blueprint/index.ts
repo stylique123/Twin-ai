@@ -6247,6 +6247,15 @@ async function callModel(apiKey: string, system: string, prompt: string, schema:
   }
 }
 
+/** Rejects after `ms` so an optional pass cannot spend the edge's 150s. */
+function withDeadline<T>(ms: number, p: Promise<T>): Promise<T> {
+  let timer: number | undefined
+  return Promise.race([
+    p.finally(() => clearTimeout(timer)),
+    new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(`deadline ${ms}ms`)), Math.max(0, ms)) as unknown as number }),
+  ])
+}
+
 async function callModelInner(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
@@ -6623,6 +6632,7 @@ async function handle(req: Request): Promise<Response> {
   // only; it reaches every creator once a round shows +0.5 with no test
   // dropping a point below its best.
   const trialOn = isHeartbeat
+  const reqStartedAt = Date.now()
 
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
   // BEFORE we ever call the model. Bounded by credits anyway, but this stops
@@ -15578,12 +15588,18 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // thread from hook to close, and rewrites them from her own material. A
       // rewrite that brings a new number, or that the late guards strip, is
       // not kept. SELF_REVIEW=off turns it off.
-      if (Array.isArray(bp.script) && (Deno.env.get('SELF_REVIEW') ?? 'on') !== 'off') {
+      // ⚠️ BLIND SET 3 (2026-10-06): this editor call averaged 54s (max 85s)
+      // and pushed 12 of 74 requests past the 150s edge limit. It is an
+      // improvement pass, so it runs only when there is time for it and is cut
+      // off at 35s; the script it would have edited is kept as written.
+      const reviewBudgetMs = 150_000 - 40_000 - (Date.now() - reqStartedAt)
+      if (Array.isArray(bp.script) && reviewBudgetMs < 20_000) console.log(JSON.stringify({ event: 'self_review_skipped', elapsed_ms: Date.now() - reqStartedAt }))
+      if (Array.isArray(bp.script) && reviewBudgetMs >= 20_000 && (Deno.env.get('SELF_REVIEW') ?? 'on') !== 'off') {
         try {
           const beats = bp.script as Array<Record<string, unknown>>
           const numbered = beats.map((b, i) => `${i}. [${String(b.section ?? '')}] ${String(b.line ?? '')}`).join('\n')
           const board = knowledgeRoute ? renderRoute(knowledgeRoute) : ''
-          const raw = await callModel(
+          const raw = await withDeadline(Math.min(35_000, reviewBudgetMs), callModel(
             apiKey,
             'You are her editor. You fix at most TWO lines of a short video script so it sounds like her talking and holds together from hook to close. You never add a fact, number, name, product detail or experience that is not in her material. You return JSON only.',
             [
@@ -15600,7 +15616,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               '\nReturn {"rewrites":[{"index":"<line index>","line":"<new line>"}]}.',
             ].join('\n'),
             REPAIR_SCHEMA,
-          )
+          ))
           let kept = 0
           const reasons: string[] = []
           let next = beats.map((b) => ({ ...b }))

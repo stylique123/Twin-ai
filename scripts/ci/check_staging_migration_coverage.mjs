@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0282_superseded_facts':
+    'Three nullable columns on creator_knowledge and the writer view replaced in place with one more filter; applied live by hand 2026-10-06 (owner rule). No staging-only surface.',
   '0281_one_private_list':
     'Re-creates the 0273 private-flag triggers from the one shared list; same tables and readers as 0273.',
   '0280_nothing_like_that_happened':
