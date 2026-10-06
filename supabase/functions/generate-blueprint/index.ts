@@ -62,7 +62,7 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
-import { pickHerCta, looksLikeCta } from '../_shared/ctaAllocation.ts'
+import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
@@ -15487,6 +15487,32 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             console.warn(JSON.stringify({ event: 'close_fitted_to_goal', changed: closed.changed, want: closed.want }))
           }
         }
+      }
+      // ⚖️ CLOSING-ASK FIXES (owner 2026-10-05, blind set 2; trial): no hedged
+      // "if you're just here for…" line, and a sell/leads close that names a
+      // product with an offer must describe that offer (#13, #15).
+      if (trialOn && Array.isArray(bp.script)) {
+        const beats = bp.script as Array<Record<string, unknown>>
+        let hedged = 0
+        for (const b of beats) {
+          if (typeof b.line !== 'string' || !isHedgedCta(b.line)) continue
+          const rest = (b.line.match(/[^.!?]+[.!?]*/g) ?? []).filter((x) => !isHedgedCta(x)).join('').trim()
+          if (rest) { b.line = rest; hedged++ }
+        }
+        const goalNow = String(intent.goal ?? body.goal ?? '')
+        const offerText = typeof productOffer === 'string' ? productOffer.trim() : ''
+        const pName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+        let offerFixed = false
+        if ((goalNow === 'sell' || goalNow === 'leads') && pName && offerText.split(/\s+/).length >= 4) {
+          const lastIdx = beats.map((b, i) => (typeof b.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0).at(-1)
+          if (lastIdx !== undefined && !beats.some((b) => closeDescribesOffer(b.line, pName, offerText))) {
+            const her = pickHerCta(goalNow, { typed: brief.defaultCta, recurring: heardCtasWithoutCommercialTerms((vp as Record<string, unknown>)?.recurring_ctas), topic: pName })?.text ?? ''
+            const how = her && !isHedgedCta(her) ? her : 'Send me a message if you want it.'
+            beats[lastIdx] = { ...beats[lastIdx], line: offerClose(pName, offerText, how) }
+            offerFixed = true
+          }
+        }
+        if (hedged || offerFixed) console.log(JSON.stringify({ event: 'close_fixed', hedged, offer_described: offerFixed }))
       }
       // ⚖️ BLIND SET 1 LEFTOVERS (owner 2026-10-05; trial first): an empty
       // bridge opening a beat and a "stick around" closer on a non-follow video.

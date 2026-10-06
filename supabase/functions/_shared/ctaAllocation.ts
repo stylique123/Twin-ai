@@ -43,7 +43,40 @@ export function looksLikeCta(text: unknown): boolean {
 
 /** A recurring CTA counts only when it names an action (the scan can mis-file a sentence). */
 function isAsk(text: unknown): boolean {
-  return looksLikeCta(text) && ctaJob(String(text)) !== 'other'
+  return looksLikeCta(text) && ctaJob(String(text)) !== 'other' && !isHedgedCta(text)
+}
+
+/** Owner 2026-10-05 (blind set 2 #2): "if you're just here for the beans"
+ *  reads as an apology for the video. A recurring CTA hedged this way is not
+ *  reused as the close. */
+export function isHedgedCta(text: unknown): boolean {
+  return /\bif you(?:'re| are)\s+(?:just|only)\s+here for\b/i.test(String(text ?? ''))
+}
+
+const OFFER_STOP = new Set(['with', 'your', 'that', 'this', 'from', 'call', 'will', 'help', 'plan', 'what', 'into'])
+function offerWords(t: unknown): string[] {
+  return [...new Set((String(t ?? '').toLowerCase().match(/[a-z0-9$][a-z0-9$-]{2,}/g) ?? []).filter((w) => !OFFER_STOP.has(w)))]
+}
+
+/**
+ * Owner 2026-10-05 (blind set 2 #13, #15): a call's CTA said "let us build
+ * your setup" and "pick the right coffee cart launch call" — neither is what
+ * the call is. A selling close describes the offer: it names the offer AND
+ * carries at least two of its own words (price, length, what is covered).
+ */
+export function closeDescribesOffer(line: unknown, name: unknown, offer: unknown): boolean {
+  const l = String(line ?? '').toLowerCase()
+  const n = String(name ?? '').trim().toLowerCase()
+  if (!n || !l.includes(n)) return false
+  const own = offerWords(offer).filter((w) => !n.includes(w))
+  if (own.length < 2) return true
+  return own.filter((w) => l.includes(w)).length >= 2
+}
+
+/** The close rewritten from her offer, in her ask's place. */
+export function offerClose(name: string, offer: string, how: string): string {
+  const o = offer.trim().replace(/[.\s]+$/, '')
+  return `${name}: ${o.charAt(0).toLowerCase()}${o.slice(1)}. ${how.trim()}`
 }
 
 /** Which jobs each goal wants, best first. */
