@@ -10,7 +10,7 @@
 // found nowhere is NOVEL: removed from the script, and counted for the
 // reviewer's caps.
 
-export type SpecificKind = 'number' | 'ratio' | 'duration' | 'time' | 'relative' | 'named' | 'emotion'
+export type SpecificKind = 'number' | 'ratio' | 'duration' | 'time' | 'relative' | 'named' | 'emotion' | 'event'
 export interface Specific { kind: SpecificKind; text: string }
 
 const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|hundred|thousand|half|double|triple|dozen'
@@ -20,6 +20,10 @@ const PATTERNS: Array<[SpecificKind, RegExp]> = [
   ['number', /(?:\$|£|€)\s?\d[\d,.]*|\b\d[\d,.]*\s?(?:%|percent|lbs?|pounds?|oz|ounces?|grams?|kg|bags?|cups?|batches?|customers?|orders?|people|followers?)?\b/gi],
   ['time', /\b(?:recently|growing up|as a kid|last (?:week|month|year|summer|winter)|yesterday|this morning|years ago|back then|early on|for years|lately)\b/gi],
   ['relative', /\b(?:my|her|his|their)\s+(?:mom|mother|dad|father|grandma|grandmother|grandpa|grandfather|sister|brother|husband|wife|partner|son|daughter|kids?|aunt|uncle|cousin|best friend)\b/gi],
+  // Blind set 2 #4 (owner 5, reviewer 7.9): "Grocery store coffee tasted
+  // burned, so I started roasting my own" — an origin she never told. A
+  // first-person past event is a specific too: its verb and object must be hers.
+  ['event', /\bI\s+(?:started|began|decided|quit|left|moved|opened|launched|built|switched|learned|realized|bought|sold|spent|tried|grew up|used to)\s+(?:to\s+|a\s+|an\s+|the\s+|my\s+|our\s+)?[a-z]+(?:\s+[a-z]+){0,2}/g],
   ['emotion', /\b(?:dread|terrified|terrifying|panic(?:ked)?|devastated|heartbroken|thrilled|ecstatic|overwhelmed|stressed|anxious|scared|ashamed|embarrassed|in tears|cried|crying|shaking)\b/gi],
 ]
 // Named items: two or more Capitalised words not at the start of the sentence.
@@ -60,6 +64,13 @@ function isSupported(s: Specific, material: string): boolean {
     const digits = t.match(/\d[\d,.]*/)?.[0]?.replace(/,/g, '')
     if (digits && m.includes(digits)) return true
   }
+  if (s.kind === 'event') {
+    const words = t.split(' ').slice(1)
+    const verb = words[0] ?? ''
+    const objs = words.slice(1).filter((w) => w.length > 3 && !['your', 'their', 'with', 'from', 'that', 'this'].includes(w))
+    const stem = verb.slice(0, Math.max(4, verb.length - 3))
+    return m.includes(` ${stem}`) && (objs.length === 0 || objs.some((w) => m.includes(w.replace(/(?:ing|ed|s)$/, ''))))
+  }
   if (s.kind === 'named') {
     const words = t.split(' ').filter((w) => w.length > 3)
     return words.length > 0 && words.every((w) => m.includes(w))
@@ -87,7 +98,7 @@ export function findNovelDetails(lines: readonly string[], material: string): No
 
 /** Counts by kind, for the reviewer's caps and the weekly numbers. */
 export function novelCounts(findings: readonly NovelFinding[]): Record<SpecificKind, number> {
-  const c: Record<SpecificKind, number> = { number: 0, ratio: 0, duration: 0, time: 0, relative: 0, named: 0, emotion: 0 }
+  const c: Record<SpecificKind, number> = { number: 0, ratio: 0, duration: 0, time: 0, relative: 0, named: 0, emotion: 0, event: 0 }
   for (const f of findings) for (const s of f.novel) c[s.kind]++
   return c
 }
