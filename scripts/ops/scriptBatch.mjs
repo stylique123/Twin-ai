@@ -227,6 +227,13 @@ async function intakeProducts(token, admin, owner, voiceId, brandId) {
 // her information, outside information, invention, value, whether it moves a
 // viewer to buy or try, whether it sounds like her, and the scenes.
 const GEMINI = process.env.GEMINI_API_KEY ?? ''
+const ANTHROPIC = process.env.ANTHROPIC_API_KEY ?? ''
+/** Gemini's schema (type: 'OBJECT') as standard JSON Schema (type: 'object'). */
+function toJsonSchema(s) {
+  if (Array.isArray(s)) return s.map(toJsonSchema)
+  if (!s || typeof s !== 'object') return s
+  return Object.fromEntries(Object.entries(s).map(([k, v]) => [k, k === 'type' && typeof v === 'string' ? v.toLowerCase() : toJsonSchema(v)]))
+}
 // Owner 2026-10-03: Flash is the primary reviewer (rubric-following, cheap, and
 // not bound by the Pro preview's Tier 1 daily cap); Pro is the fallback. Pro
 // calls are kept for the voice/DNA profile, where nuance needs it.
@@ -371,6 +378,31 @@ async function judgeOnce(bp, sc, ctx, only = null) {
   for (const [model, wait] of (only ? [[only, 0], [only, 20000]] : [[JUDGE_MODEL, 0], [JUDGE_MODEL, 20000], [JUDGE_FALLBACK, 0], [JUDGE_FALLBACK, 30000]])) {
     if (!model) continue
     if (wait) await new Promise((r) => setTimeout(r, wait))
+    // A judge from a different model family (owner WS1): Claude, through the
+    // Anthropic API, when the repo has ANTHROPIC_API_KEY. Same prompt, same
+    // schema (as a forced tool), same code caps.
+    if (String(model).startsWith('claude-')) {
+      if (!ANTHROPIC) return { error: 'ANTHROPIC_API_KEY not set', judge_model: model }
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          signal: AbortSignal.timeout(150_000),
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model, max_tokens: 4000, temperature: 0, system: JUDGE_SYSTEM,
+            tools: [{ name: 'score', description: 'Record the review.', input_schema: toJsonSchema(JUDGE_SCHEMA) }],
+            tool_choice: { type: 'tool', name: 'score' },
+            messages: [{ role: 'user', content: input }],
+          }),
+        })
+        const j = await res.json()
+        const call = (j?.content ?? []).find((c) => c.type === 'tool_use')
+        if (call?.input) return { ...call.input, judge_model: model }
+        last = { error: `${res.status} ${JSON.stringify(j).slice(0, 200)}`, judge_model: model }
+        if (res.status !== 429 && res.status < 500) return last
+      } catch (e) { last = { error: String(e).slice(0, 200), judge_model: model } }
+      continue
+    }
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI}`, {
         signal: AbortSignal.timeout(150_000),

@@ -11,7 +11,12 @@
 export const CRAFT_KEYS = ['hook', 'structure', 'angle', 'her_info', 'value', 'conversion', 'sounds_like_her', 'scenes', 'arc']
 export const FLAG_KEYS = ['invented_product', 'invented_experience', 'people_ask_unconfirmed', 'unconfirmed_offer', 'wrong_product', 'sensitive']
 
-/** Provisional caps: a script with the problem cannot score above this. */
+/** Caps: a script with the problem cannot score above this.
+ *  ⚖️ FROZEN 2026-10-06 FOR BLIND SET 3 (owner: set 3 is the hold-out). The
+ *  base caps were set from blind set 1 (#1121); invented_detail(_2plus) were
+ *  added after reading set 2 (#17), so set 2 is NOT a clean hold-out. Do not
+ *  change a value until set 3's owner ratings are scored against these; the
+ *  selftest pins them. */
 export const CAPS = {
   sensitive: 3,
   wrong_product: 3,
@@ -83,5 +88,6 @@ if (process.argv.includes('--selftest')) {
   ok(scoreRead(base, { invented_detail: 1 }).overall === 4.5, 'one novel detail (code count) caps at 4.5')
   ok(scoreRead(base, { invented_detail: 2 }).overall === 3.5, 'two novel details cap at 3.5 (blind set 2 #17: dread, terrifying)')
   ok(combineReads([base], { invented_detail: 2 }).caps_applied.includes('invented_detail_2plus'), 'code flags reach combineReads')
+  ok(JSON.stringify(CAPS) === JSON.stringify({ sensitive: 3, wrong_product: 3, invented_experience: 4.5, invented_product: 4.5, invented_product_2plus: 3.5, unconfirmed_offer: 4.5, people_ask_unconfirmed: 5, invented_detail: 4.5, invented_detail_2plus: 3.5 }), 'caps frozen for blind set 3 (2026-10-06)')
   console.log('judgeScore selftest: OK')
 }
