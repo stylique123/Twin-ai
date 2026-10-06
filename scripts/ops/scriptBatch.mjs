@@ -15,6 +15,7 @@ import { combineReads, FLAG_KEYS } from './judgeScore.mjs'
 import { createClient } from '@supabase/supabase-js'
 import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.mjs'
 import { findNovelDetails, novelCounts } from './.novelDetail.bundle.mjs'
+import { storyCraft } from './.storyCraft.bundle.mjs'
 
 const URL_ = process.env.SUPABASE_URL
 const ANON = process.env.SUPABASE_ANON_KEY
@@ -326,6 +327,9 @@ async function judge(bp, sc, ctx) {
   const scriptLines = (Array.isArray(bp?.script) ? bp.script : []).map((b) => String(b?.line ?? '')).filter(Boolean)
   const novel = findNovelDetails(scriptLines, `${ctx.allowedText}\n${sc.body.reference_note ?? ''}\n${JSON.stringify(sc.body.readiness_answers ?? {})}`)
   const invented_detail = novel.reduce((a, f) => a + f.novel.length, 0)
+  // Story craft (owner brief 2026-10-05), measured: stories stitched, her
+  // wording kept, tellings, and whether the close follows from the story.
+  out.story_craft = storyCraft(scriptLines, ctx.stories ?? [])
   out.novel_details = { count: invented_detail, by_kind: novelCounts(novel), found: novel.flatMap((f) => f.novel.map((n) => n.text)) }
   const c = combineReads(reads, { invented_detail })
   if (c) Object.assign(out, c)
@@ -437,7 +441,7 @@ async function main() {
   if (!process.argv.includes('--no-intake')) await intakeProducts(token, admin, owner, v?.id ?? null, b0?.id ?? null)
   const { data: products } = await admin.from('product_entities').select('id, name, type, relationship, offer, creator_summary, knowledge').eq('owner_id', owner).is('archived_at', null)
   const { data: brands } = await admin.from('brands').select('*').eq('owner_id', owner).limit(1)
-  const { data: know } = await admin.from('creator_knowledge_writable').select('text, basis, evidence').eq('owner_id', owner).limit(400)
+  const { data: know } = await admin.from('creator_knowledge_writable').select('text, basis, evidence, kind').eq('owner_id', owner).limit(400)
   const { data: kAll } = await admin.from('creator_knowledge').select('text, basis, kind, sensitive').eq('owner_id', owner).limit(600)
   const ctx = {
     allowedText: [...(know ?? []).map((k) => `${k.text} ${k.evidence ?? ''}`), ...(products ?? []).map((p) => `${p.name ?? ''} ${p.offer ?? ''} ${p.creator_summary ?? ''}`), brands?.[0]?.name ?? '',
@@ -446,6 +450,7 @@ async function main() {
       JSON.stringify(brands?.[0] ?? {}).slice(0, 3000), RICH_ANSWER.claims].join('\n'),
     inferredTopics: (kAll ?? []).filter((k) => k.basis !== 'stated' && k.kind === 'topic').map((k) => String(k.text ?? '')).slice(0, 20),
     sensitiveFacts: (kAll ?? []).filter((k) => k.sensitive === true).map((k) => String(k.text ?? '')).slice(0, 20),
+    stories: (know ?? []).filter((k) => ['experience', 'story'].includes(k.kind)).map((k) => String(k.text ?? '')),
     statedFacts: (know ?? []).filter((k) => k.basis === 'stated').map((k) => String(k.text ?? '')).filter((t) => t.length > 20),
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
