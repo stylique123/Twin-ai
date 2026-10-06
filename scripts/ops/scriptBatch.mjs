@@ -121,7 +121,12 @@ function scenarios(products, brandId, brandName) {
 // The writer allows 12 builds a minute per account: every call (including the
 // angle read) waits its turn, ~5.5s apart, and a 'too many in a row' is retried.
 let lastStart = 0
+// ⚠️ BLIND SET 3: the batch outlived its one-hour access token and every
+// later call (the six thin-input requests) came back 401. The session is
+// re-read before each call; supabase-js refreshes it when it has expired.
+let AUTH = null
 async function call(token, body, tries = 0) {
+  if (AUTH) { try { const { data } = await AUTH.auth.getSession(); token = data?.session?.access_token ?? token } catch { /* keep the old one */ } }
   const wait = lastStart + 5_500 - Date.now()
   lastStart = Math.max(Date.now(), lastStart + 5_500)
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
@@ -473,6 +478,7 @@ async function main() {
   const { data: s, error } = await auth.auth.signInWithPassword({ email: process.env.HEARTBEAT_USER_EMAIL, password: process.env.HEARTBEAT_USER_PASSWORD })
   if (error || !s?.session) throw new Error(`sign-in failed: ${error?.message}`)
   const token = s.session.access_token
+  AUTH = auth
   const owner = s.user.id
   const admin = createClient(URL_, SERVICE)
 
