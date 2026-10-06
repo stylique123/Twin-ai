@@ -8290,7 +8290,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     && String(x).trim().split(/\s+/).filter((w) => w.length > 2).length >= 4
   // Owner 2026-10-05: for an EMPTY PRODUCT the answer must fill a named slot
   // (what it is, size, price, how to use it), not reach a word count.
-  const emptyProductAnswered = readySaysWhatItIs(answers.claims) && filledProductSlots(String(answers.claims)).length > 0
+  // Blind set 3 (thin "coffee"): one of her stored facts about roasting came
+  // back as the answer to "what is Cold Brew?" and released the block. A
+  // stored fact that does not name the product is not an answer about it.
+  const claimNorm = String(answers.claims ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const productNameWords = String((ownedEntity as { name?: unknown } | null)?.name ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? []
+  const claimIsUnrelatedStoredFact = claimNorm !== '' && !productNameWords.some((w) => claimNorm.includes(w))
+    && knowledgeRows.some((k) => String((k as { text?: unknown }).text ?? '').toLowerCase().replace(/\s+/g, ' ').trim() === claimNorm)
+  const emptyProductAnswered = readySaysWhatItIs(answers.claims) && filledProductSlots(String(answers.claims)).length > 0 && !claimIsUnrelatedStoredFact
   const askAboutEmptyProduct = trialOn && !readyPromoting && !!ownedEntity && !readyEntityKnows && readyFacts.length === 0
     && !emptyProductAnswered && !readyNeedsPick
   if (askAboutEmptyProduct) {
