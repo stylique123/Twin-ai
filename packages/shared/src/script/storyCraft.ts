@@ -33,7 +33,7 @@ export function storyCraft(lines: readonly string[], stories: readonly string[])
   const perLine = lines.map((l) => hitShare(main, terms(l)))
   const tellings = perLine.filter((s) => s >= 0.3).length
   const spoken = lines.map((l) => l.trim()).filter(Boolean)
-  const last = terms(spoken.at(-1) ?? '')
+  const last = terms(spoken[spoken.length - 1] ?? '')
   const storyIdx = perLine.lastIndexOf(Math.max(...perLine))
   const bridge = terms(lines[storyIdx + 1] ?? '')
   const askFollows = [...last].some((w) => main.has(w) || (bridge.has(w) && storyIdx + 1 < spoken.length - 1))
