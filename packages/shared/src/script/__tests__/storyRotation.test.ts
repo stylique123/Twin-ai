@@ -92,3 +92,12 @@ describe('oneStory (owner 2026-10-05, blind set 2)', () => {
     expect(r.rows.map((x) => x.id)).toEqual(['c1'])
   })
 })
+
+describe('storyTwins groups paraphrases (blind set 3: one cart answer in six scripts)', () => {
+  it('a story rests with its paraphrases', () => {
+    const a = { id: 'a', kind: 'experience', text: "People keep asking how to start a coffee cart. I tell them there's no clean formula, it's messy, and the best first step is to start small from home and learn as you go." }
+    const b = { id: 'b', kind: 'experience', text: "People keep asking how to start a coffee cart. I don't have a clean formula, but the first thing I'd do is start small from home and learn as you go. No numbers, just first steps." }
+    const r = oneStory([b], { recent: new Map([['a', 2]]), idsByText: storyTwins([a, b]) })
+    expect(r.kept).toBeNull()
+  })
+})
