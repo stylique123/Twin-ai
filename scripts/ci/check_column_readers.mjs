@@ -71,6 +71,10 @@ const MIG = join(REPO, 'supabase', 'migrations')
 // ⚠️ EVERY ENTRY IS A DECISION SOMEBODY MADE, WITH A DATE. An unregistered
 // unread column fails the build; a registered one is a debt that was named.
 export const REGISTRY = {
+  'creator_knowledge.superseded_reason': {
+    why: 'Audit trail for 0282: why a fact was retired (duplicate, or a claim held until she confirms '
+      + 'a softer wording). Read by hand when a decision is undone. WIRE with the My Twin "Left out" list.',
+  },
   'creator_knowledge.superseded_by': {
     why: 'Audit trail for 0282: which row replaces a duplicate, so the decision '
       + 'can be undone by hand. The writer reads superseded_at through the view. '
