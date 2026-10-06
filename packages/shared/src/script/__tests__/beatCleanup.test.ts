@@ -40,3 +40,17 @@ describe('blind set 2 leftovers (owner 2026-10-05)', () => {
       .toBe('I see people expecting a smoky bite.')
   })
 })
+
+describe('stripProfileLabels never touches her own wording (owner 2026-10-05)', () => {
+  const labels = ['everyday people', 'beginners', 'ecommerce', 'coffee lovers']
+  const topics = ['starting and operating a small coffee roasting business in Farmington, NM']
+  it.each([
+    'Someone told me they could taste the difference between my roast and the grocery store bag their mom always bought.',
+    'I roast in small batches out of a tiny space, and every batch tastes slightly different depending on humidity and bean age.',
+    'Honestly, there is no clean formula. It is messy, and the best first step is to start small from home.',
+    'I bought green beans from a new supplier without testing a sample first, and the whole lot had to be tossed.',
+    'When I was a beginner I burned my first batch.',
+  ])('leaves "%s" unchanged', (line) => {
+    expect(stripProfileLabels(line, labels, topics)).toBe(line)
+  })
+})

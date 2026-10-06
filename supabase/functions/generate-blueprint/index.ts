@@ -25,7 +25,7 @@ import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats, productA
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
-import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS } from '../_shared/storyRotation.ts'
+import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS, oneStory, storyTwins } from '../_shared/storyRotation.ts'
 import { scrubPrivate, isPrivate, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
@@ -62,11 +62,14 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
-import { pickHerCta, looksLikeCta } from '../_shared/ctaAllocation.ts'
+import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels } from '../_shared/beatCleanup.ts'
+import { dropNovelSentences } from '../_shared/novelDetail.ts'
+import { filledProductSlots } from '../_shared/productSlots.ts'
+import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
@@ -7534,6 +7537,20 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // braces. It states at the point of use that a decline yields no subject, and
   // the next person to add a fallback has to delete an explicit `null` to do it.
   const ownedEntity = declinedAProduct ? null : chosenEntity
+  // Owner 2026-10-05 (blind set 2 #13, #15): scanned rows must share a
+  // distinctive word with THIS product and ask, or they stay out (trial).
+  if (trialOn && (ownedEntity || String(reference_note ?? '').trim())) {
+    const e = (ownedEntity ?? {}) as { name?: unknown; offer?: unknown; creator_summary?: unknown }
+    const askText = [e.name, e.offer, e.creator_summary, reference_note, (body as { focus?: unknown }).focus, (body as { outcome?: unknown }).outcome].filter((x) => typeof x === 'string').join(' ')
+    const rel = relevantToAsk(knowledgeRows as Array<{ text?: unknown; source?: unknown; id?: unknown }>, askText, {
+      exempt: (r) => ['asked', 'comment'].includes(String(r.source ?? '')) || herOnIds.has(String(r.id ?? '')),
+    })
+    if (rel.dropped.length) {
+      const drop = new Set(rel.dropped)
+      for (let i = knowledgeRows.length - 1; i >= 0; i--) if (drop.has(knowledgeRows[i] as never)) knowledgeRows.splice(i, 1)
+      console.log(JSON.stringify({ event: 'knowledge_off_ask', held_back: rel.dropped.length, kept: knowledgeRows.length, examples: rel.dropped.slice(0, 3).map((r) => String(r.text ?? '').slice(0, 60)) }))
+    }
+  }
   // ⚖️ ITEM 26: set when a multi-product reference is built for ONE chosen
   // subject. Saved on the blueprint so the result screen says so in one line.
   let referenceScopeNote: string | null = null
@@ -8249,10 +8266,15 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // empty product is when it is not filler and has a few real words.
   const readySaysWhatItIs = (x: unknown) => readyPresent(x) && !isNonAnswer(String(x)) && gateAnswer(String(x), {}).outcome !== 'filler'
     && String(x).trim().split(/\s+/).filter((w) => w.length > 2).length >= 4
+  // Owner 2026-10-05: for an EMPTY PRODUCT the answer must fill a named slot
+  // (what it is, size, price, how to use it), not reach a word count.
+  const emptyProductAnswered = readySaysWhatItIs(answers.claims) && filledProductSlots(String(answers.claims)).length > 0
   const askAboutEmptyProduct = trialOn && !readyPromoting && !!ownedEntity && !readyEntityKnows && readyFacts.length === 0
-    && !readySaysWhatItIs(answers.claims) && !readyNeedsPick
+    && !emptyProductAnswered && !readyNeedsPick
   if (askAboutEmptyProduct) {
-    readyMissing.push({ field: 'claims', question: readyClaimsQuestion(readyOffer) })
+    const pn = String((ownedEntity as { name?: unknown })?.name ?? '').trim() || 'it'
+    readyMissing.push({ field: 'claims', question: `What is ${pn}? Tell me one of: what it is or is made from, the size, the price, or how to use it.` })
+    if (readyPresent(answers.claims)) console.log(JSON.stringify({ event: 'empty_product_answer_fills_no_slot', answer: String(answers.claims).slice(0, 80) }))
   }
   if (readyPromoting && readyFacts.length === 0 && !readySaysWhatItIs(answers.claims)
     && !readyEntityKnows && !readyNeedsPick) {
@@ -9568,7 +9590,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       ? useIds.map((id) => kRows.find((k) => String((k as { id?: unknown }).id ?? '') === id))
         .filter((k): k is (typeof kRows)[number] => !!k && k.basis !== 'inferred')
       : null
-    const speakable = chosenRows ?? [
+    const speakableAll = chosenRows ?? [
       ...askedHold.reserved,
       ...selectSpeakable(
         askedHold.pool,
@@ -9576,6 +9598,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         Math.max(0, intent.substanceFloor - askedSubstance),
       ),
     ]
+    // Owner 2026-10-05 (trial): one story per script, and not one told in two
+    // of her last five — her reserved answers included. Not when she picked
+    // the list herself on the plan screen.
+    const storyCut = trialOn && !chosenRows
+      ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>) })
+      : null
+    const speakable = (storyCut ? storyCut.rows : speakableAll) as typeof speakableAll
+    if (storyCut?.dropped.length) console.log(JSON.stringify({ event: 'one_story', kept: storyCut.kept ? String(storyCut.kept.text ?? '').slice(0, 60) : null, dropped: storyCut.dropped.length }))
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
     // 0215 records them against this generation and rotates them to the back of
     // the next tie. An item with no id is one read before 0215 was applied — it
@@ -10872,7 +10902,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
 - Specific angle (what their audience searches for): ${subNiche}` : ''}
-- Audience: ${audienceResolved}${prov('audience')}${audienceLevelLine}
+- Audience: ${trialOn ? 'on file. Owner 2026-10-05: her profile labels were said out loud ("everyday people and beginners"). Never name or label her audience; speak to one viewer as "you".' : `${audienceResolved}${prov('audience')}`}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. ⚠️ Do NOT invent her audience\'s pain, a statistic about them, or a claim about what they feel (owner fabrication audit 2026-10-01). Speak only to the problem this video\'s own topic solves, in general words.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
 - Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
@@ -15458,6 +15488,32 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           }
         }
       }
+      // ⚖️ CLOSING-ASK FIXES (owner 2026-10-05, blind set 2; trial): no hedged
+      // "if you're just here for…" line, and a sell/leads close that names a
+      // product with an offer must describe that offer (#13, #15).
+      if (trialOn && Array.isArray(bp.script)) {
+        const beats = bp.script as Array<Record<string, unknown>>
+        let hedged = 0
+        for (const b of beats) {
+          if (typeof b.line !== 'string' || !isHedgedCta(b.line)) continue
+          const rest = (b.line.match(/[^.!?]+[.!?]*/g) ?? []).filter((x) => !isHedgedCta(x)).join('').trim()
+          if (rest) { b.line = rest; hedged++ }
+        }
+        const goalNow = String(intent.goal ?? body.goal ?? '')
+        const offerText = typeof productOffer === 'string' ? productOffer.trim() : ''
+        const pName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+        let offerFixed = false
+        if ((goalNow === 'sell' || goalNow === 'leads') && pName && offerText.split(/\s+/).length >= 4) {
+          const lastIdx = beats.map((b, i) => (typeof b.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0).at(-1)
+          if (lastIdx !== undefined && !beats.some((b) => closeDescribesOffer(b.line, pName, offerText))) {
+            const her = pickHerCta(goalNow, { typed: brief.defaultCta, recurring: heardCtasWithoutCommercialTerms((vp as Record<string, unknown>)?.recurring_ctas), topic: pName })?.text ?? ''
+            const how = her && !isHedgedCta(her) ? her : 'Send me a message if you want it.'
+            beats[lastIdx] = { ...beats[lastIdx], line: offerClose(pName, offerText, how) }
+            offerFixed = true
+          }
+        }
+        if (hedged || offerFixed) console.log(JSON.stringify({ event: 'close_fixed', hedged, offer_described: offerFixed }))
+      }
       // ⚖️ BLIND SET 1 LEFTOVERS (owner 2026-10-05; trial first): an empty
       // bridge opening a beat and a "stick around" closer on a non-follow video.
       if (trialOn && Array.isArray(bp.script)) {
@@ -15477,6 +15533,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (cleaned.changed || labelled || echoDropped) {
           bp.script = relabelled
           console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed, labels: labelled, echo_closer: echoDropped }))
+        }
+        // Owner 2026-10-05 (blind set 2 #9, #17): a sentence carrying a
+        // specific found nowhere in her material ("equal parts", "dread") is
+        // removed. Hook and close keep their line; the reviewer cap counts it.
+        const novel = dropNovelSentences(bp.script as Array<{ line?: unknown }>, lateAllowedText)
+        if (novel.removed.length || novel.kept.length) {
+          if (novel.removed.length) bp.script = novel.beats
+          console.log(JSON.stringify({ event: 'novel_detail_removed', removed: novel.removed.length, kept_in_hook_or_close: novel.kept.length, sentences: novel.removed.map((x) => x.slice(0, 80)) }))
         }
       }
       // ⚖️ 5. THE SELF-REVIEW (owner 2026-10-04; batch part-10: "no generic

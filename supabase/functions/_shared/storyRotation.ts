@@ -190,3 +190,41 @@ export function gateStories<T extends StoryCandidate>(
   }
   return { kept, offProduct, resting, sensitive, offTopic }
 }
+
+/**
+ * ONE STORY PER SCRIPT, AND NOT THE ONE SHE JUST TOLD (owner 2026-10-05).
+ * Blind set 2: the grocery-bag story reached 5 of 6 bean scripts and the
+ * supplier story 4 — ledger counts 27 and 85 uses in two days. Her ANSWERS
+ * are reserved ahead of `gateStories`, so a story she typed once never rested.
+ * Also, the same story stored twice (two ids) dodged rest-by-id.
+ * Keeps the first story-kind row that is not resting (by id or by its text's
+ * twin); drops every other story-kind row. Non-story rows pass untouched.
+ */
+export function oneStory<T extends StoryCandidate>(
+  rows: readonly T[],
+  opts: { recent?: ReadonlyMap<string, number> | null; last?: ReadonlySet<string> | null; idsByText?: ReadonlyMap<string, string[]> | null } = {},
+): { rows: T[]; dropped: T[]; kept: T | null } {
+  const recent = opts.recent ?? new Map<string, number>()
+  const last = opts.last ?? new Set<string>()
+  const key = (t: unknown) => [...contentTerms(t)].sort().slice(0, 12).join(' ')
+  const resting = (item: T) => {
+    const ids = [String(item.id ?? ''), ...(opts.idsByText?.get(key(item.text)) ?? [])].filter(Boolean)
+    const uses = ids.reduce((a, id) => a + (recent.get(id) ?? 0), 0)
+    return uses >= STORY_REST_AFTER || ids.some((id) => last.has(id))
+  }
+  const stories = rows.filter((r) => STORY_KINDS.has(String(r?.kind ?? '')))
+  const kept = stories.find((s) => !resting(s)) ?? null
+  const dropped = stories.filter((s) => s !== kept)
+  return { rows: rows.filter((r) => !STORY_KINDS.has(String(r?.kind ?? '')) || r === kept), dropped, kept }
+}
+
+/** Ids of rows whose text is the same story, so a twin rests with it. */
+export function storyTwins<T extends StoryCandidate>(rows: readonly T[]): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const r of rows) {
+    if (!STORY_KINDS.has(String(r?.kind ?? ''))) continue
+    const k = [...contentTerms(r.text)].sort().slice(0, 12).join(' ')
+    out.set(k, [...(out.get(k) ?? []), String(r.id ?? '')].filter(Boolean))
+  }
+  return out
+}

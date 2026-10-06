@@ -9,7 +9,9 @@ const EDGE = readFileSync(resolve(__dirname, '../../../../supabase/functions/gen
 describe('what the plan card shows is what the writer gets (round 2, 2.4)', () => {
   it('sends the exact on-list and the server uses it verbatim', () => {
     expect(PAGE).toMatch(/use_knowledge_ids: ids[\s\S]{0,40}\(usedKnowledgeIds \?\? idsAtWrite\.current\)/)
-    expect(EDGE).toMatch(/const speakable = chosenRows \?\?/)
+    expect(EDGE).toMatch(/const speakableAll = chosenRows \?\?/)
+    // one-story cut (owner 2026-10-05) never touches a list she picked herself
+    expect(EDGE).toMatch(/const storyCut = trialOn && !chosenRows/)
   })
   it('seeds once per item set, measured against her paragraph only', () => {
     expect(PAGE).toMatch(/seededFor\.current === sig/)

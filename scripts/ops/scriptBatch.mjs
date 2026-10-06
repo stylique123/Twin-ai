@@ -14,6 +14,8 @@ import { readFileSync } from 'node:fs'
 import { combineReads, FLAG_KEYS } from './judgeScore.mjs'
 import { createClient } from '@supabase/supabase-js'
 import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.mjs'
+import { findNovelDetails, novelCounts } from './.novelDetail.bundle.mjs'
+import { storyCraft } from './.storyCraft.bundle.mjs'
 
 const URL_ = process.env.SUPABASE_URL
 const ANON = process.env.SUPABASE_ANON_KEY
@@ -109,6 +111,9 @@ function scenarios(products, brandId, brandName) {
   for (let r = 0; r < 4; r++) out.push({ group: 'fresh', label: `idea again ${r}`, body: { reference_note: 'my morning routine at the roastery', goal: 'personal_brand', door: 'idea' } })
   if (firstNamed) for (let r = 0; r < 4; r++) out.push({ group: 'fresh', label: `product again ${r}`, product: firstNamed.name, body: { selected_product_id: firstNamed.id, goal: 'sell', door: 'product', reference_note: firstNamed.name } })
   for (let r = 0; r < 3; r++) out.push({ group: 'fresh', label: `brand again ${r}`, body: { selected_product_id: `brand:${brandId}`, goal: 'followers', door: 'product', reference_note: brandName } })
+  // J. Thin input (owner 2026-10-05, blind set 3): almost nothing typed.
+  // Each should either ask her or stay inside what is on file.
+  for (const [note, goal] of [['', 'educate'], ['coffee', 'sell'], ['tips', 'personal_brand'], ['cart', 'leads'], ['?', 'entertain'], ['beans', 'conversations']]) out.push({ group: 'thin', label: `thin "${note}"`, body: { reference_note: note, goal, door: 'idea' } })
   // Lengths rotate the way creators pick them.
   return out.map((s, n) => ({ ...s, n, body: { ...s.body, target_seconds: [30, 45, 60][n % 3] } }))
 }
@@ -294,6 +299,14 @@ const JUDGE_SCHEMA = {
 // more. One read cannot show a ±1 change. Each script is read JUDGE_READS
 // times (default 3) and the scores are averaged; the first read's notes stay.
 const JUDGE_READS = Math.max(1, Math.min(5, Number(process.env.JUDGE_READS ?? 3) || 3))
+/** FNV-1a with a final avalanche, so neighbouring n do not cycle. */
+function styleHash(str) {
+  let h = 2166136261
+  for (const c of str) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b) >>> 0; h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35) >>> 0; h ^= h >>> 16
+  return h >>> 0
+}
+
 async function judge(bp, sc, ctx) {
   const reads = (await Promise.all(Array.from({ length: JUDGE_READS }, () => judgeOnce(bp, sc, ctx).catch(() => null))))
     .filter((r) => r && Number.isFinite(Number(r.overall)))
@@ -309,7 +322,16 @@ async function judge(bp, sc, ctx) {
   // score used everywhere is computed in code with caps, plus its noise.
   out.overall_model = avg('overall')
   out.overall_model_reads = reads.map((r) => Number(r.overall))
-  const c = combineReads(reads)
+  // Owner 2026-10-05: specifics (ratios, durations, time words, emotions…)
+  // found nowhere in her material are counted in code and capped.
+  const scriptLines = (Array.isArray(bp?.script) ? bp.script : []).map((b) => String(b?.line ?? '')).filter(Boolean)
+  const novel = findNovelDetails(scriptLines, `${ctx.allowedText}\n${sc.body.reference_note ?? ''}\n${JSON.stringify(sc.body.readiness_answers ?? {})}`)
+  const invented_detail = novel.reduce((a, f) => a + f.novel.length, 0)
+  // Story craft (owner brief 2026-10-05), measured: stories stitched, her
+  // wording kept, tellings, and whether the close follows from the story.
+  out.story_craft = storyCraft(scriptLines, ctx.stories ?? [])
+  out.novel_details = { count: invented_detail, by_kind: novelCounts(novel), found: novel.flatMap((f) => f.novel.map((n) => n.text)) }
+  const c = combineReads(reads, { invented_detail })
   if (c) Object.assign(out, c)
   out.allowed_text_chars = ctx.allowedText.length
   out.allowed_text_truncated = ctx.allowedText.length > 6000
@@ -419,7 +441,7 @@ async function main() {
   if (!process.argv.includes('--no-intake')) await intakeProducts(token, admin, owner, v?.id ?? null, b0?.id ?? null)
   const { data: products } = await admin.from('product_entities').select('id, name, type, relationship, offer, creator_summary, knowledge').eq('owner_id', owner).is('archived_at', null)
   const { data: brands } = await admin.from('brands').select('*').eq('owner_id', owner).limit(1)
-  const { data: know } = await admin.from('creator_knowledge_writable').select('text, basis, evidence').eq('owner_id', owner).limit(400)
+  const { data: know } = await admin.from('creator_knowledge_writable').select('text, basis, evidence, kind').eq('owner_id', owner).limit(400)
   const { data: kAll } = await admin.from('creator_knowledge').select('text, basis, kind, sensitive').eq('owner_id', owner).limit(600)
   const ctx = {
     allowedText: [...(know ?? []).map((k) => `${k.text} ${k.evidence ?? ''}`), ...(products ?? []).map((p) => `${p.name ?? ''} ${p.offer ?? ''} ${p.creator_summary ?? ''}`), brands?.[0]?.name ?? '',
@@ -428,6 +450,7 @@ async function main() {
       JSON.stringify(brands?.[0] ?? {}).slice(0, 3000), RICH_ANSWER.claims].join('\n'),
     inferredTopics: (kAll ?? []).filter((k) => k.basis !== 'stated' && k.kind === 'topic').map((k) => String(k.text ?? '')).slice(0, 20),
     sensitiveFacts: (kAll ?? []).filter((k) => k.sensitive === true).map((k) => String(k.text ?? '')).slice(0, 20),
+    stories: (know ?? []).filter((k) => ['experience', 'story'].includes(k.kind)).map((k) => String(k.text ?? '')),
     statedFacts: (know ?? []).filter((k) => k.basis === 'stated').map((k) => String(k.text ?? '')).filter((t) => t.length > 20),
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
@@ -513,7 +536,11 @@ async function main() {
       for (let round = 0; round < 3 && r.status === 409 && r.json?.code === 'READINESS_INCOMPLETE' && Array.isArray(r.json.questions); round++) {
         asked = [...(asked ?? []), ...r.json.questions.map((q) => q.question)]
         // Three kinds of creator: a full answer, two words, or "nothing specific".
-        const style = ['rich', 'short', 'none'][sc.n % 3]
+        // ⚠️ BLIND SET 2 (owner 2026-10-05): style by n % 3 gave every
+        // entertain script "none" — a confound. Now drawn per script from a
+        // hash of the batch label and n: varied, reproducible, logged, and
+        // every answer is labelled simulated in the results.
+        const style = ['rich', 'short', 'none'][styleHash(`${BATCH}#${sc.n}`) % 3]
         // ⚠️ A REAL CREATOR ANSWERS ON TOPIC (batch part-13): one shipping
         // sentence answered every question, about stale beans or roasters
         // alike, so the writer was handed off-topic "answers". A rich answer is
@@ -566,7 +593,7 @@ async function main() {
       if (sc.expectRefusal && r.status === 400) a.findings = [{ k: 'refused_as_expected', d: String(r.json?.error ?? '').slice(0, 200) }]
       for (const x of a.findings) tally[x.k] = (tally[x.k] ?? 0) + 1
       await admin.from('script_batch_results').insert({
-        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, body },
+        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
         // Scored after the viewer panel has remade it (see scoreAfterPanel).

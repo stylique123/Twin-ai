@@ -1,7 +1,7 @@
 // Item 32: one stored story reached 8 consecutive scripts (production
 // creator_knowledge.used_count = 8, 2026-09-22), once on an unrelated product.
 import { describe, expect, it } from 'vitest'
-import { gateStories, recentSupplyCounts, contentTerms, lastSupplied } from '../storyRotation'
+import { gateStories, recentSupplyCounts, contentTerms, lastSupplied, oneStory, storyTwins } from '../storyRotation'
 
 const SNAP = { id: 'snap', kind: 'experience', text: "I bought a bulk roll of snap fasteners without checking they'd hold on my fabric" }
 const PEONY = { id: 'peony', kind: 'experience', text: 'A bride ordered 50 peony candles for her wedding' }
@@ -71,5 +71,24 @@ describe('coffee report 1.1: sensitive, back-to-back, off-topic', () => {
     expect(gateStories([batch], { topicText: 'get people to try our subscription' }).offTopic.map((x) => x.id)).toEqual(['b'])
     expect(gateStories([batch], { topicText: '' }).offTopic.map((x) => x.id)).toEqual(['b'])
     expect(gateStories([batch], {}).kept.map((x) => x.id)).toEqual(['b'])
+  })
+})
+
+describe('oneStory (owner 2026-10-05, blind set 2)', () => {
+  const mom1 = { id: 'm1', kind: 'experience', text: 'Someone told me they could taste the difference between my roast and the grocery store bag their mom always bought' }
+  const mom2 = { id: 'm2', kind: 'experience', text: 'Someone told me they could taste the difference between my roast and the grocery store bag their mom always bought' }
+  const supplier = { id: 's1', kind: 'experience', text: 'I bought green beans from a new supplier without testing a sample and the lot was tossed' }
+  const claim = { id: 'c1', kind: 'claim', text: 'Dark roasting burns off caffeine' }
+  it('keeps one story and every non-story row', () => {
+    const r = oneStory([mom1, supplier, claim])
+    expect(r.rows.map((x) => x.id)).toEqual(['m1', 'c1'])
+  })
+  it('rests a story told twice recently, and its stored twin with it', () => {
+    const r = oneStory([mom2, supplier, claim], { recent: new Map([['m1', 2]]), idsByText: storyTwins([mom1, mom2, supplier]) })
+    expect(r.kept?.id).toBe('s1')
+  })
+  it('drops all stories when every one is resting', () => {
+    const r = oneStory([mom1, supplier, claim], { last: new Set(['m1', 's1']) })
+    expect(r.rows.map((x) => x.id)).toEqual(['c1'])
   })
 })
