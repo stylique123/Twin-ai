@@ -90,9 +90,10 @@ export function findNovelDetails(lines: readonly string[], material: string): No
     for (const sentence of line.match(/[^.!?]+[.!?]*/g) ?? []) {
       // "If you brew at home every morning…" describes the viewer, not her.
       const aboutViewer = /^\s*(?:(?:so|and|but|now),?\s+)?(?:if|when|whether|do|does|did|are|have|what|how)\s+you\b|^\s*you(?:'re|r)?\b/i.test(sentence)
-        || /\b(?:you|your)\b/i.test(sentence) && !/\b(?:I|my|me|we|our)\b/.test(sentence)
       const novel = extractSpecifics(sentence)
         .filter((s) => !(aboutViewer && (s.kind === 'duration' || s.kind === 'time')))
+        // "…what you brew every morning": the viewer's routine, not her claim.
+        .filter((s) => !(s.kind === 'duration' && /^every\s/i.test(s.text) && /\b(?:you|your)\b/i.test(sentence) && !/\b(?:I|my|me|we|our)\b/.test(sentence)))
         .filter((s) => !isSupported(s, material))
       if (novel.length) out.push({ line: i, sentence: sentence.trim(), novel })
     }
