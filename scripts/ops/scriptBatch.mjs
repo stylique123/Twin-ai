@@ -70,6 +70,21 @@ const RICH_ANSWER = {
   goal: 'sell',
 }
 
+// SIMULATED moments for the ceiling test. Fictional, written for the test
+// account's niche; never a real creator's words.
+const CEILING = [
+  { goal: 'sell', product: 'Signature', note: 'SIMULATED: The first time I roasted this blend, I pulled it two minutes early because I was scared of burning it. It tasted like peanuts. I tried again the next morning and let it go until the second crack just started — that is the cup I sell now. A customer at the farmers market tasted it black and bought three bags on the spot.' },
+  { goal: 'educate', product: 'Signature', note: 'SIMULATED: People ask me why their beans go flat after a week. I tell them it is the bag, not the beans. I store mine in the bag with the valve, squeeze the air out, and keep it out of the fridge. When I started doing that my own coffee stopped tasting like cardboard by day five.' },
+  { goal: 'personal_brand', product: null, note: 'SIMULATED: I started roasting in my garage with a popcorn popper. My neighbor came over because she thought something was on fire. I gave her the first cup and she said it was the best coffee she had had in years. That was the day I decided to try selling it.' },
+  { goal: 'entertain', product: null, note: 'SIMULATED: My dog sits by the roaster every morning because he thinks the first crack is someone knocking at the door. Every single batch, he barks at it. I have started timing my roasts by the bark.' },
+  { goal: 'conversations', product: null, note: 'SIMULATED: I think dark roast is overrated. Not because it is bad, but because most people drink it to cover up stale beans. Fresh medium roast tastes sweeter than anything I ever got from a dark bag at the grocery store.' },
+  { goal: 'leads', product: 'Cart', note: 'SIMULATED: When I set up my first cart I bought a two-group espresso machine before I knew my menu. I ended up only selling drip and cold brew the first summer. Now when people book a call with me, we write the menu first and buy the gear second.' },
+  { goal: 'sell', product: 'Cart', note: 'SIMULATED: A woman booked a call with me after watching one video. She had a trailer and no plan. We spent the hour on three drinks and one market. Two months later she sent me a photo of her line on opening day.' },
+  { goal: 'educate', product: 'Cart', note: 'SIMULATED: The mistake I see most is people pricing drinks off the coffee shop down the street. I priced my first latte at three dollars and lost money on every cup once I added the milk and the cup and the lid. Now I add up every piece before I set a price.' },
+  { goal: 'personal_brand', product: 'Single-Origin', note: 'SIMULATED: I almost did not buy this lot. The sample came in a plain paper bag and I left it on the shelf for a week. When I finally roasted it, the whole kitchen smelled like blueberries. I ordered the rest that afternoon.' },
+  { goal: 'conversations', product: 'Signature', note: 'SIMULATED: I get asked if I should add a flavored version of my blend. I keep saying no. I want the bag to taste like the coffee, not like vanilla syrup. But I go back and forth on it every holiday season.' },
+]
+
 function scenarios(products, brandId, brandName) {
   const out = []
   const named = products.filter((p) => p.name)
@@ -114,6 +129,14 @@ function scenarios(products, brandId, brandName) {
   // J. Thin input (owner 2026-10-05, blind set 3): almost nothing typed.
   // Each should either ask her or stay inside what is on file.
   for (const [note, goal] of [['', 'educate'], ['coffee', 'sell'], ['tips', 'personal_brand'], ['cart', 'leads'], ['?', 'entertain'], ['beans', 'conversations']]) out.push({ group: 'thin', label: `thin "${note}"`, body: { reference_note: note, goal, door: 'idea' } })
+  // K. Ceiling test (owner plan C2, 2026-10-06): the same kinds of request
+  // given rich material — a complete moment in her voice, every one SIMULATED
+  // and labelled so. If these rate ~7 the limit is material; ~5, craft.
+  for (const c of CEILING) {
+    const prod = products.find((p) => p.name && c.product && p.name.toLowerCase().includes(c.product.toLowerCase()))
+    out.push({ group: 'ceiling', label: `ceiling ${c.goal}`, product: prod?.name ?? null, simulatedMaterial: true,
+      body: { ...(prod ? { selected_product_id: prod.id, door: 'product' } : { door: 'idea' }), goal: c.goal, reference_note: c.note } })
+  }
   // Lengths rotate the way creators pick them.
   return out.map((s, n) => ({ ...s, n, body: { ...s.body, target_seconds: [30, 45, 60][n % 3] } }))
 }
@@ -646,7 +669,7 @@ async function main() {
       if (sc.expectRefusal && r.status === 400) a.findings = [{ k: 'refused_as_expected', d: String(r.json?.error ?? '').slice(0, 200) }]
       for (const x of a.findings) tally[x.k] = (tally[x.k] ?? 0) + 1
       await admin.from('script_batch_results').insert({
-        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
+        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, simulated_material: sc.simulatedMaterial ?? false, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
         // Scored after the viewer panel has remade it (see scoreAfterPanel).

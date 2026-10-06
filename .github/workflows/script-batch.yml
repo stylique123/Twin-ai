@@ -15,7 +15,7 @@ on:
         required: false
         default: '0'
       group:
-        description: 'Only these groups, comma-separated (product, business, idea, reference, adversarial, repeat, options, fresh); empty = all'
+        description: 'Only these groups, comma-separated (product, business, idea, reference, adversarial, repeat, options, fresh, thin, ceiling); empty = all'
         required: false
         default: ''
       judge_only:
