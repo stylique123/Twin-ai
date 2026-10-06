@@ -9,6 +9,7 @@ import { db } from '../db.js'
 import { syncShotListSpokenText } from '../generated/shotListSync.js'
 import { rewriteIsSafe, guardScript, isPrivate } from '../generated/privacyGuard.js'
 import { enforceScriptRules } from '../generated/scriptRules.js'
+import { findNovelDetails } from '../generated/novelDetail.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { noteKey } from './librarian.js'
@@ -162,8 +163,18 @@ export async function runAudienceTests(log: Log): Promise<void> {
       unpicked: Array.isArray(rc.unpicked) ? rc.unpicked.filter((x): x is string => typeof x === 'string') : [],
       followAllowed: rc.follow_allowed === true,
     }
-    const safe = (t: string) => rewriteIsSafe(t, { allowedText, excludedTexts: privateFacts })
-      && enforceScriptRules([{ line: t }], ruleOpts).removed.length === 0
+    // ⚖️ WS1 (owner 2026-10-05): a viewer gap ("name the gear") must not be
+    // filled with an invented detail. A rewritten or added line may carry no
+    // specific (ratio, duration, time word, relative, emotion, event) that is
+    // not already in the script or her facts.
+    let novelRefused = 0
+    const safe = (t: string) => {
+      const ok = rewriteIsSafe(t, { allowedText, excludedTexts: privateFacts })
+        && enforceScriptRules([{ line: t }], ruleOpts).removed.length === 0
+      if (!ok) return false
+      if (findNovelDetails([t], allowedText).length) { novelRefused++; return false }
+      return true
+    }
     let refused = 0
     const objections = (Array.isArray(notes) ? notes : [])
       // Only her own questions or her exact sub-niche's: other accounts' objections are not her viewers'.
@@ -264,7 +275,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       tested = next; r = again; origin = nextOrigin; added = nextAdded; addsLeft -= adds.length
       noteGaps(r.fixes)
     }
-    if (refused) log('warn', 'audience_rewrite_refused', { event: 'audience_rewrite_refused', generation_id: g.id, refused })
+    if (refused) log('warn', 'audience_rewrite_refused', { event: 'audience_rewrite_refused', generation_id: g.id, refused, novel_detail: novelRefused })
     const lineChanges = origin.flatMap((o, i) => (o !== null && tested.lines[i] !== s.lines[o] ? [{ line: o, before: s.lines[o], after: tested.lines[i] }] : []))
     const lineAdds = origin.flatMap((o, i) => {
       if (o !== null) return []
