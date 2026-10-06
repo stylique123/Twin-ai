@@ -10,7 +10,7 @@
 // found nowhere is NOVEL: removed from the script, and counted for the
 // reviewer's caps.
 
-export type SpecificKind = 'number' | 'ratio' | 'duration' | 'time' | 'relative' | 'named' | 'emotion' | 'event'
+export type SpecificKind = 'number' | 'ratio' | 'duration' | 'time' | 'relative' | 'named' | 'emotion' | 'event' | 'method'
 export interface Specific { kind: SpecificKind; text: string }
 
 const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|hundred|thousand|half|double|triple|dozen'
@@ -24,6 +24,9 @@ const PATTERNS: Array<[SpecificKind, RegExp]> = [
   // burned, so I started roasting my own" — an origin she never told. A
   // first-person past event is a specific too: its verb and object must be hers.
   ['event', /\bI\s+(?:started|began|decided|quit|left|moved|opened|launched|built|switched|learned|realized|bought|sold|spent|tried|grew up|used to)\s+(?:to\s+|a\s+|an\s+|the\s+|my\s+|our\s+)?[a-z]+(?:\s+[a-z]+){0,2}/g],
+  // Blind set 3 T2: "pour it over ice or blend it with milk" for a product
+  // with nothing on file. How to use or make a thing is a specific too.
+  ['method', /\b(?:pour(?:ed|ing)? (?:it )?over ice|blend(?:ed)? (?:it )?with|dilut(?:e|ed|ing) (?:it )?with|cut (?:it )?with (?:water|milk)|steep(?:ed|ing)? (?:it )?(?:for|overnight)|mix(?:ed)? (?:it )?with|shake (?:it )?with)\b/gi],
   ['emotion', /\b(?:dread|terrified|terrifying|panic(?:ked)?|devastated|heartbroken|thrilled|ecstatic|overwhelmed|stressed|anxious|scared|ashamed|embarrassed|in tears|cried|crying|shaking)\b/gi],
 ]
 // Named items: two or more Capitalised words not at the start of the sentence.
@@ -64,6 +67,10 @@ function isSupported(s: Specific, material: string): boolean {
     const digits = t.match(/\d[\d,.]*/)?.[0]?.replace(/,/g, '')
     if (digits && m.includes(digits)) return true
   }
+  if (s.kind === 'method') {
+    const verb = t.split(' ')[0]!.replace(/(?:ed|ing|e)$/, '')
+    return m.includes(` ${verb}`) && /(ice|milk|water|overnight)/.test(m)
+  }
   if (s.kind === 'event') {
     const words = t.split(' ').slice(1)
     const verb = words[0] ?? ''
@@ -100,7 +107,7 @@ export function findNovelDetails(lines: readonly string[], material: string): No
 
 /** Counts by kind, for the reviewer's caps and the weekly numbers. */
 export function novelCounts(findings: readonly NovelFinding[]): Record<SpecificKind, number> {
-  const c: Record<SpecificKind, number> = { number: 0, ratio: 0, duration: 0, time: 0, relative: 0, named: 0, emotion: 0, event: 0 }
+  const c: Record<SpecificKind, number> = { number: 0, ratio: 0, duration: 0, time: 0, relative: 0, named: 0, emotion: 0, event: 0, method: 0 }
   for (const f of findings) for (const s of f.novel) c[s.kind]++
   return c
 }
