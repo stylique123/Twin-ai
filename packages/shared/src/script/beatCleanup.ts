@@ -87,5 +87,28 @@ export function stripProfileLabels(line: string, labels: readonly string[], topi
       }
     }
   }
+  // Blind set 3 (owner 2026-10-06): a SINGLE label slipped through ("everyday
+  // people", "everyday beginners" in 5 scripts). A label's describing word
+  // (from a short list, never a noun like "coffee") is dropped before any noun.
+  for (const l of ls) {
+    const first = l.split(/\s+/)[0] ?? ''
+    if (l.split(/\s+/).length >= 2 && LABEL_MODIFIERS.has(first)) {
+      out = out.replace(new RegExp(`\\b${first}\\s+(?=[a-z])`, 'gi'), '')
+    }
+  }
   return out.replace(/\b(people just starting out)(?:,?\s+(?:and|or)\s+people just starting out)+/gi, '$1')
+}
+
+const LABEL_MODIFIERS = new Set(['everyday', 'ordinary', 'regular', 'average', 'aspiring', 'busy', 'budget-conscious', 'eco-conscious', 'health-conscious', 'time-strapped'])
+
+/**
+ * Blind set 3 #4 (owner 2026-10-06): "no numbers, just first steps" was her
+ * note TO Twin inside an answer, and it was said on camera. A clause that
+ * instructs the writer is cut from the line.
+ */
+const WRITER_NOTE = /(?:^|[,;—–-]\s*|\.\s+)(?:no numbers|keep it (?:general|short|simple|vague)|don'?t mention [^,.;]+|nothing specific)(?:,?\s*just [^,.;]+)?[.!]?/gi
+export function dropWriterNotes(line: string): string {
+  const out = line.replace(WRITER_NOTE, (m) => (/^\.\s+/.test(m) ? '.' : '')).replace(/\s+([.,!?])/g, '$1').replace(/\s{2,}/g, ' ').trim()
+  const ended = out && !/[.!?]$/.test(out) && /[.!?]$/.test(line.trim()) ? `${out}.` : out
+  return ended.length >= 8 ? ended : line
 }

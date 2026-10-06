@@ -782,6 +782,7 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per script (trial): empty bridges and stray follow closers removed after writing. Visible in the stored script.',
   },
+  thin_subject_asked: { kind: 'counter_ephemeral', why: 'Per request: one word or a symbol typed, so the subject is asked for. Durable as the readiness question shown.' },
   self_review_skipped: { kind: 'counter_ephemeral', why: 'Per script: no time left for the optional editor pass before the 150s edge limit.' },
   model_call_ms: { kind: 'counter_ephemeral', why: 'Per model call: how long it took and which step. Read from logs to find what spends the 150s edge limit.' },
   close_fixed: { kind: 'counter_ephemeral', why: 'Per script (trial): hedged CTA removed or the sell/leads close rewritten from her offer. Visible in the stored script.' },
