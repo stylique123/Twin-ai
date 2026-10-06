@@ -97,4 +97,14 @@ describe('any first-person past action (set 4 #13, #5)', () => {
     expect(novelCounts(findNovelDetails(['I got completely stuck trying to choose an espresso machine.'], HER)).event).toBe(1)
     expect(novelCounts(findNovelDetails(['I ordered a full lot of green beans and loaded the whole order in.'], HER)).event).toBe(1)
   })
+
+  it('holds general mechanism and look claims she never made (set 4 #2, #4, T3, T5)', () => {
+    expect(novelCounts(findNovelDetails(['Most cups end up bitter simply because boiling water scorches the grounds.'], HER)).claim).toBeGreaterThan(0)
+    expect(novelCounts(findNovelDetails(['Up close, fresh roasted beans come out with an even matte finish.'], HER)).claim).toBe(1)
+    expect(novelCounts(findNovelDetails(['An even roast shows a smooth, uniform surface without yellow spots.'], HER)).claim).toBeGreaterThan(0)
+  })
+  it('keeps a question to the viewer and a claim her material makes', () => {
+    expect(novelCounts(findNovelDetails(['Is your bag shiny or matte?'], HER)).claim).toBe(0)
+    expect(novelCounts(findNovelDetails(['Dark roast scorches the beans.'], HER + ' Dark roasting can scorch the beans.')).claim).toBe(0)
+  })
 })
