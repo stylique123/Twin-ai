@@ -62,7 +62,7 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
-import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose } from '../_shared/ctaAllocation.ts'
+import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose, offerIsSpeakable } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
@@ -6235,7 +6235,19 @@ function parseRepairRewrites(raw: unknown): Array<{ index?: unknown; line?: unkn
   } catch { return [] }
 }
 
+// ⚠️ BLIND SET 3 (2026-10-06): 12 of 74 requests hit the 150s edge limit and
+// nothing said which step spent the time. Every model call now logs how long
+// it took and which prompt it was, so a timeout's last lines name the step.
 async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
+  const t0 = Date.now()
+  try {
+    return await callModelInner(apiKey, system, prompt, schema, record)
+  } finally {
+    console.log(JSON.stringify({ event: 'model_call_ms', ms: Date.now() - t0, step: system.slice(0, 48).replace(/\s+/g, ' '), prompt_chars: prompt.length }))
+  }
+}
+
+async function callModelInner(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
   // on BOTH attempts (edge logs showed repeated 500s at ~70-91s → "We hit a snag"
@@ -9738,6 +9750,18 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           const n = Number((k as { times_seen?: unknown }).times_seen)
           return `  * ${k.text}${Number.isFinite(n) && n > 1 ? ` — covered in ${Math.trunc(n)} of their videos` : ''}`
         }).join('\n'))
+    }
+    // ⚖️ STORY CRAFT (owner brief 2026-10-05; trial): one spine. When one
+    // story is kept, the writer tells it ONCE in her words, bridges it to the
+    // viewer, and earns the ask from what it meant. Blind set 2: stories
+    // stitched (#3), told twice (#3), embellished (#2), asks bolted on (#12).
+    if (storyCut?.kept) {
+      const told = String(storyCut.kept.text ?? '').trim()
+      knowledgeParts.push(`\nTHE ONE STORY IN THIS VIDEO (her words): "${told.slice(0, 600)}"\n`
+        + '- Tell it ONCE, in one or two beats, keeping her own wording and every detail she gave. Add no detail she did not give: no time words ("recently", "early on"), no relatives, no feelings, no numbers.\n'
+        + '- Do not tell any other story. Do not repeat this one in the hook and again later.\n'
+        + '- After it, one bridge line that turns it to the viewer ("If you…").\n'
+        + '- The close follows from what the story meant: a question about the same experience, or her offer when the goal sells. Never a generic "follow for more".\n')
     }
     const knowledgeBlock = knowledgeParts.join('\n')
     // ⚠️ THE SHAPE BLOCK, COMPUTED HERE AND ABSENT BY DEFAULT. Two independent
@@ -15503,7 +15527,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const offerText = typeof productOffer === 'string' ? productOffer.trim() : ''
         const pName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
         let offerFixed = false
-        if ((goalNow === 'sell' || goalNow === 'leads') && pName && offerText.split(/\s+/).length >= 4) {
+        // ⚠️ BLIND SET 3 #1, #3: a price list ("12oz bag — $18\n5lb bulk bag —
+        // $65 Includes: …") was pasted in as the spoken close. Only an offer
+        // written as one spoken sentence is rewritten into the close.
+        const offerIsSentence = offerIsSpeakable(offerText)
+        if ((goalNow === 'sell' || goalNow === 'leads') && pName && offerIsSentence && offerText.split(/\s+/).length >= 4) {
           const lastIdx = beats.map((b, i) => (typeof b.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0).at(-1)
           if (lastIdx !== undefined && !beats.some((b) => closeDescribesOffer(b.line, pName, offerText))) {
             const her = pickHerCta(goalNow, { typed: brief.defaultCta, recurring: heardCtasWithoutCommercialTerms((vp as Record<string, unknown>)?.recurring_ctas), topic: pName })?.text ?? ''

@@ -1,3 +1,6 @@
+// GENERATED FROM packages/shared/src/script/novelDetail.ts — DO NOT EDIT.
+// Run: node scripts/ci/generate_shared_pilot_core.mjs
+// Edit the source instead. CI regenerates this file and fails on a diff.
 // EVERY SPECIFIC IN A SCRIPT TRACES TO HER MATERIAL (owner WS1, 2026-10-05).
 //
 // ⚠️ Blind set 2 still carried invented details the reviewer never listed:

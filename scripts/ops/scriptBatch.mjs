@@ -121,7 +121,12 @@ function scenarios(products, brandId, brandName) {
 // The writer allows 12 builds a minute per account: every call (including the
 // angle read) waits its turn, ~5.5s apart, and a 'too many in a row' is retried.
 let lastStart = 0
+// ⚠️ BLIND SET 3: the batch outlived its one-hour access token and every
+// later call (the six thin-input requests) came back 401. The session is
+// re-read before each call; supabase-js refreshes it when it has expired.
+let AUTH = null
 async function call(token, body, tries = 0) {
+  if (AUTH) { try { const { data } = await AUTH.auth.getSession(); token = data?.session?.access_token ?? token } catch { /* keep the old one */ } }
   const wait = lastStart + 5_500 - Date.now()
   lastStart = Math.max(Date.now(), lastStart + 5_500)
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
@@ -227,11 +232,21 @@ async function intakeProducts(token, admin, owner, voiceId, brandId) {
 // her information, outside information, invention, value, whether it moves a
 // viewer to buy or try, whether it sounds like her, and the scenes.
 const GEMINI = process.env.GEMINI_API_KEY ?? ''
+const ANTHROPIC = process.env.ANTHROPIC_API_KEY ?? ''
+/** Gemini's schema (type: 'OBJECT') as standard JSON Schema (type: 'object'). */
+function toJsonSchema(s) {
+  if (Array.isArray(s)) return s.map(toJsonSchema)
+  if (!s || typeof s !== 'object') return s
+  return Object.fromEntries(Object.entries(s).map(([k, v]) => [k, k === 'type' && typeof v === 'string' ? v.toLowerCase() : toJsonSchema(v)]))
+}
 // Owner 2026-10-03: Flash is the primary reviewer (rubric-following, cheap, and
 // not bound by the Pro preview's Tier 1 daily cap); Pro is the fallback. Pro
 // calls are kept for the voice/DNA profile, where nuance needs it.
 const ROUTING = (() => { try { return JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses } catch { return null } })()
 const JUDGE_MODEL = process.env.JUDGE_MODEL || ROUTING?.search?.model || null
+// WS1 (owner): a second judge from a different model family/tier, one read,
+// scored by the same code caps, so agreement can be checked against the owner.
+const JUDGE2_MODEL = process.env.JUDGE2_MODEL || null
 const JUDGE_FALLBACK = process.env.JUDGE_FALLBACK_MODEL || ROUTING?.profile?.model || null
 const JUDGE_SYSTEM = [
   'You are the best short-form content creator, script writer, scene director and editor alive, reviewing a script an AI wrote FOR a specific creator.',
@@ -333,12 +348,17 @@ async function judge(bp, sc, ctx) {
   out.novel_details = { count: invented_detail, by_kind: novelCounts(novel), found: novel.flatMap((f) => f.novel.map((n) => n.text)) }
   const c = combineReads(reads, { invented_detail })
   if (c) Object.assign(out, c)
+  if (JUDGE2_MODEL) {
+    const r2 = await judgeOnce(bp, sc, ctx, JUDGE2_MODEL).catch(() => null)
+    const c2 = r2 && Number.isFinite(Number(r2.overall)) ? combineReads([r2], { invented_detail }) : null
+    out.judge2 = c2 ? { model: JUDGE2_MODEL, overall: c2.overall, craft: c2.craft, caps_applied: c2.caps_applied, overall_model: Number(r2.overall) } : { model: JUDGE2_MODEL, error: r2?.error ?? 'no read' }
+  }
   out.allowed_text_chars = ctx.allowedText.length
   out.allowed_text_truncated = ctx.allowedText.length > 6000
   return out
 }
 
-async function judgeOnce(bp, sc, ctx) {
+async function judgeOnce(bp, sc, ctx, only = null) {
   if (!GEMINI || !JUDGE_MODEL || !bp) return null
   const product = sc.product ? ctx.products.find((p) => p.name === sc.product) : null
   const input = [
@@ -360,9 +380,34 @@ async function judgeOnce(bp, sc, ctx) {
   // reviews (429). Retry once, then fall back to the writer-class Flash model;
   // the model that judged is recorded so scores are compared like for like.
   let last = null
-  for (const [model, wait] of [[JUDGE_MODEL, 0], [JUDGE_MODEL, 20000], [JUDGE_FALLBACK, 0], [JUDGE_FALLBACK, 30000]]) {
+  for (const [model, wait] of (only ? [[only, 0], [only, 20000]] : [[JUDGE_MODEL, 0], [JUDGE_MODEL, 20000], [JUDGE_FALLBACK, 0], [JUDGE_FALLBACK, 30000]])) {
     if (!model) continue
     if (wait) await new Promise((r) => setTimeout(r, wait))
+    // A judge from a different model family (owner WS1): Claude, through the
+    // Anthropic API, when the repo has ANTHROPIC_API_KEY. Same prompt, same
+    // schema (as a forced tool), same code caps.
+    if (String(model).startsWith('claude-')) {
+      if (!ANTHROPIC) return { error: 'ANTHROPIC_API_KEY not set', judge_model: model }
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          signal: AbortSignal.timeout(150_000),
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model, max_tokens: 4000, temperature: 0, system: JUDGE_SYSTEM,
+            tools: [{ name: 'score', description: 'Record the review.', input_schema: toJsonSchema(JUDGE_SCHEMA) }],
+            tool_choice: { type: 'tool', name: 'score' },
+            messages: [{ role: 'user', content: input }],
+          }),
+        })
+        const j = await res.json()
+        const call = (j?.content ?? []).find((c) => c.type === 'tool_use')
+        if (call?.input) return { ...call.input, judge_model: model }
+        last = { error: `${res.status} ${JSON.stringify(j).slice(0, 200)}`, judge_model: model }
+        if (res.status !== 429 && res.status < 500) return last
+      } catch (e) { last = { error: String(e).slice(0, 200), judge_model: model } }
+      continue
+    }
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI}`, {
         signal: AbortSignal.timeout(150_000),
@@ -433,6 +478,7 @@ async function main() {
   const { data: s, error } = await auth.auth.signInWithPassword({ email: process.env.HEARTBEAT_USER_EMAIL, password: process.env.HEARTBEAT_USER_PASSWORD })
   if (error || !s?.session) throw new Error(`sign-in failed: ${error?.message}`)
   const token = s.session.access_token
+  AUTH = auth
   const owner = s.user.id
   const admin = createClient(URL_, SERVICE)
 

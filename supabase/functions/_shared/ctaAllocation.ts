@@ -73,6 +73,12 @@ export function closeDescribesOffer(line: unknown, name: unknown, offer: unknown
   return own.filter((w) => l.includes(w)).length >= 2
 }
 
+/** An offer written as one spoken sentence, not a price list (blind set 3 #1, #3). */
+export function offerIsSpeakable(offer: unknown): boolean {
+  const o = String(offer ?? '').trim()
+  return o.length > 0 && o.length <= 220 && !/\n/.test(o) && !/\s[—–-]\s*\$\d/.test(o) && !/\bIncludes:/i.test(o)
+}
+
 /** The close rewritten from her offer, in her ask's place. */
 export function offerClose(name: string, offer: string, how: string): string {
   const o = offer.trim().replace(/[.\s]+$/, '')

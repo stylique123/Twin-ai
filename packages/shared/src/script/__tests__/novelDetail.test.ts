@@ -61,3 +61,18 @@ describe('dropNovelSentences (trial removal)', () => {
     expect(r.kept.length).toBe(2)
   })
 })
+
+describe('first-person events (blind set 2 #4)', () => {
+  it('flags an origin she never told', () => {
+    expect(novelCounts(findNovelDetails(['Grocery store coffee tasted burned, so I started roasting my own.'], HER)).event).toBe(1)
+  })
+  it('keeps an event she did tell', () => {
+    expect(novelCounts(findNovelDetails(['I bought a batch of green beans from a new supplier without testing a sample.'], HER + ' I bought a batch of green beans from a new supplier without testing a small sample first.')).event).toBe(0)
+  })
+})
+
+describe('advice to the viewer (blind set 3 log)', () => {
+  it('does not flag a routine word in a line addressed to the viewer', () => {
+    expect(findNovelDetails(['Match your grinder to what you actually brew every morning, not what looks complicated.'], HER)).toEqual([])
+  })
+})

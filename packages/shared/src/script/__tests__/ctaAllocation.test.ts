@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ctaJob, looksLikeCta, pickHerCta, ctaFitsTopic, isHedgedCta, closeDescribesOffer, offerClose } from '../ctaAllocation.js'
+import { ctaJob, looksLikeCta, pickHerCta, ctaFitsTopic, isHedgedCta, closeDescribesOffer, offerClose, offerIsSpeakable } from '../ctaAllocation.js'
 
 const HERS = [
   "If you're just here for the beans, you'll find a link to my website in my bio.",
@@ -56,5 +56,12 @@ describe('closing-ask fixes (owner 2026-10-05, blind set 2)', () => {
   })
   it('rewrites the close from her offer', () => {
     expect(offerClose(name, offer, 'DM me to book it.')).toBe('Coffee Cart Launch Call: a 60-minute 1:1 video call for $75 to plan your equipment, menu, and first market. DM me to book it.')
+  })
+})
+
+describe('a price list is never spoken as the close (blind set 3 #1, #3)', () => {
+  it('only a one-sentence offer is speakable', () => {
+    expect(offerIsSpeakable('12oz bag — $18\n5lb bulk bag — $65\nIncludes: 12oz bag: one 12oz bag, whole bean or ground.')).toBe(false)
+    expect(offerIsSpeakable('A 60-minute 1:1 video call for $75 to plan your coffee cart: equipment, menu, and first market.')).toBe(true)
   })
 })
