@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripEmptyBridge, cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../beatCleanup.js'
+import { stripClaimIntensifiers, stripEmptyBridge, cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../beatCleanup.js'
 
 describe('blind set 1 leftovers (owner 2026-10-05)', () => {
   it.each([
@@ -79,5 +79,10 @@ describe('a standalone bridge beat (set 4 T3)', () => {
   it('drops a middle beat that is only "And this is where it clicks."', () => {
     const r = cleanBeats([{ line: 'If your coffee tastes burnt, try this.' }, { line: 'Most cups end up bitter for one reason.' }, { line: 'And this is where it clicks.' }, { line: 'Tell me what brewer you use.' }], 'personal_brand')
     expect(r.beats.map((b) => b.line)).not.toContain('And this is where it clicks.')
+  })
+
+  it('removes intensifiers on factual effect claims only (B6a)', () => {
+    expect(stripClaimIntensifiers('It hits your hopper fresh, which completely changes your whole morning cup.')).toBe('It hits your hopper fresh, which changes your whole morning cup.')
+    expect(stripClaimIntensifiers('Every batch tasting different used to completely stress me out.')).toBe('Every batch tasting different used to completely stress me out.')
   })
 })

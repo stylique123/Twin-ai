@@ -23,12 +23,23 @@ export function stripEmptyBridge(line: string): string {
   return rest.split(/\s+/).length >= 4 ? rest[0]!.toUpperCase() + rest.slice(1) : line
 }
 
+// Owner plan B6a: "completely changes how your cup extracts", "completely
+// changes your whole morning cup" (set 4 #3). An intensifier attached to a
+// factual effect claim is removed; emphasis on her feelings ("completely
+// stressed me out") is her voice and stays.
+const CLAIM_INTENSIFIER = /\b(?:completely|totally|entirely|literally|dramatically|drastically|instantly)\s+(?=(?:changes?|changed|transforms?|transformed|ruins?|ruined|eliminates?|removes?|destroys?|kills?|fixes|fixed|doubles?|guarantees?|unlocks?)\b)/gi
+
+/** Remove an intensifier sitting on a factual effect claim. */
+export function stripClaimIntensifiers(line: string): string {
+  return line.replace(CLAIM_INTENSIFIER, '')
+}
+
 /** Clean every beat; drop a trailing follow-ask on a non-follow video. */
 export function cleanBeats<T extends { line?: unknown }>(beats: readonly T[], goal: string): { beats: T[]; changed: number } {
   let changed = 0
   let out = beats.map((b) => {
     if (typeof b.line !== 'string') return b
-    const line = stripEmptyBridge(b.line)
+    const line = stripClaimIntensifiers(stripEmptyBridge(b.line))
     if (line !== b.line) { changed++; return { ...b, line } }
     return b
   })
