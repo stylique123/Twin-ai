@@ -110,6 +110,9 @@ function scenarios(products, brandId, brandName) {
   for (let r = 0; r < 4; r++) out.push({ group: 'fresh', label: `idea again ${r}`, body: { reference_note: 'my morning routine at the roastery', goal: 'personal_brand', door: 'idea' } })
   if (firstNamed) for (let r = 0; r < 4; r++) out.push({ group: 'fresh', label: `product again ${r}`, product: firstNamed.name, body: { selected_product_id: firstNamed.id, goal: 'sell', door: 'product', reference_note: firstNamed.name } })
   for (let r = 0; r < 3; r++) out.push({ group: 'fresh', label: `brand again ${r}`, body: { selected_product_id: `brand:${brandId}`, goal: 'followers', door: 'product', reference_note: brandName } })
+  // J. Thin input (owner 2026-10-05, blind set 3): almost nothing typed.
+  // Each should either ask her or stay inside what is on file.
+  for (const [note, goal] of [['', 'educate'], ['coffee', 'sell'], ['tips', 'personal_brand'], ['cart', 'leads'], ['?', 'entertain'], ['beans', 'conversations']]) out.push({ group: 'thin', label: `thin "${note}"`, body: { reference_note: note, goal, door: 'idea' } })
   // Lengths rotate the way creators pick them.
   return out.map((s, n) => ({ ...s, n, body: { ...s.body, target_seconds: [30, 45, 60][n % 3] } }))
 }
@@ -295,6 +298,14 @@ const JUDGE_SCHEMA = {
 // more. One read cannot show a ±1 change. Each script is read JUDGE_READS
 // times (default 3) and the scores are averaged; the first read's notes stay.
 const JUDGE_READS = Math.max(1, Math.min(5, Number(process.env.JUDGE_READS ?? 3) || 3))
+/** FNV-1a with a final avalanche, so neighbouring n do not cycle. */
+function styleHash(str) {
+  let h = 2166136261
+  for (const c of str) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b) >>> 0; h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35) >>> 0; h ^= h >>> 16
+  return h >>> 0
+}
+
 async function judge(bp, sc, ctx) {
   const reads = (await Promise.all(Array.from({ length: JUDGE_READS }, () => judgeOnce(bp, sc, ctx).catch(() => null))))
     .filter((r) => r && Number.isFinite(Number(r.overall)))
@@ -520,7 +531,11 @@ async function main() {
       for (let round = 0; round < 3 && r.status === 409 && r.json?.code === 'READINESS_INCOMPLETE' && Array.isArray(r.json.questions); round++) {
         asked = [...(asked ?? []), ...r.json.questions.map((q) => q.question)]
         // Three kinds of creator: a full answer, two words, or "nothing specific".
-        const style = ['rich', 'short', 'none'][sc.n % 3]
+        // ⚠️ BLIND SET 2 (owner 2026-10-05): style by n % 3 gave every
+        // entertain script "none" — a confound. Now drawn per script from a
+        // hash of the batch label and n: varied, reproducible, logged, and
+        // every answer is labelled simulated in the results.
+        const style = ['rich', 'short', 'none'][styleHash(`${BATCH}#${sc.n}`) % 3]
         // ⚠️ A REAL CREATOR ANSWERS ON TOPIC (batch part-13): one shipping
         // sentence answered every question, about stale beans or roasters
         // alike, so the writer was handed off-topic "answers". A rich answer is
@@ -573,7 +588,7 @@ async function main() {
       if (sc.expectRefusal && r.status === 400) a.findings = [{ k: 'refused_as_expected', d: String(r.json?.error ?? '').slice(0, 200) }]
       for (const x of a.findings) tally[x.k] = (tally[x.k] ?? 0) + 1
       await admin.from('script_batch_results').insert({
-        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, body },
+        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
         // Scored after the viewer panel has remade it (see scoreAfterPanel).
