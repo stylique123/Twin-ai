@@ -216,11 +216,22 @@ export function oneStory<T extends StoryCandidate>(
 
 /** Ids of rows whose text is the same story, so a twin rests with it. */
 export function storyTwins<T extends StoryCandidate>(rows: readonly T[]): Map<string, string[]> {
+  // Blind set 3: "start small from home", "messy", "no clean formula" were
+  // three stored paraphrases of one answer, so resting one id left two to
+  // tell. A twin is any story sharing at least 45% of its words (Jaccard).
+  const stories = rows.filter((r) => STORY_KINDS.has(String(r?.kind ?? '')))
+  const terms = stories.map((r) => contentTerms(r.text))
   const out = new Map<string, string[]>()
-  for (const r of rows) {
-    if (!STORY_KINDS.has(String(r?.kind ?? ''))) continue
-    const k = [...contentTerms(r.text)].sort().slice(0, 12).join(' ')
-    out.set(k, [...(out.get(k) ?? []), String(r.id ?? '')].filter(Boolean))
-  }
+  stories.forEach((_r, i) => {
+    const k = [...terms[i]!].sort().slice(0, 12).join(' ')
+    const ids = stories.filter((_, j) => {
+      const a = terms[i]!, b = terms[j]!
+      let inter = 0
+      for (const w of a) if (b.has(w)) inter++
+      const union = a.size + b.size - inter
+      return union > 0 && inter / union >= 0.45
+    }).map((x) => String(x.id ?? '')).filter(Boolean)
+    out.set(k, [...new Set([...(out.get(k) ?? []), ...ids])])
+  })
   return out
 }

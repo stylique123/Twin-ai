@@ -76,3 +76,12 @@ describe('advice to the viewer (blind set 3 log)', () => {
     expect(findNovelDetails(['Match your grinder to what you actually brew every morning, not what looks complicated.'], HER)).toEqual([])
   })
 })
+
+describe('usage methods (blind set 3 T2)', () => {
+  it('flags a serving method she never gave', () => {
+    expect(novelCounts(findNovelDetails(['You just pour it over ice or blend it with milk however you love your morning drink.'], HER)).method).toBe(2)
+  })
+  it('keeps a method she did give', () => {
+    expect(novelCounts(findNovelDetails(['Pour it over ice.'], HER + ' Pour it over ice and add milk.')).method).toBe(0)
+  })
+})

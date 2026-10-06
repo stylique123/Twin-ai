@@ -70,6 +70,7 @@ import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from 
 import { dropNovelSentences } from '../_shared/novelDetail.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
+import { originConflict } from '../_shared/factConflicts.ts'
 import { EXPIRY_DAYS as SPEC_EXPIRY_DAYS } from '../_shared/questionSpecs.ts'
 import { specById, fillSlots, planQuestions, wordingPrompt, validateQuestion, slotFitPrompt, nearDuplicate, type Asked as SpecAsked } from '../_shared/questionSpecs.ts'
 import { renderGrainRule, grainKept } from '../_shared/grainRule.ts'
@@ -7576,6 +7577,34 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       console.log(JSON.stringify({ event: 'knowledge_off_ask', held_back: rel.dropped.length, kept: knowledgeRows.length, examples: rel.dropped.slice(0, 3).map((r) => String(r.text ?? '').slice(0, 60)) }))
     }
   }
+  // ⚖️ CONFLICTING FACTS ARE HELD, NEVER CHOSEN (owner 2026-10-06). Facts
+  // about this product that state different origins are all kept from the
+  // writer; she is asked which is current (below), and her answer marks the
+  // others superseded (0282).
+  // ⚖️ A SCANNED TOPIC IS NOT HER CLAIM (owner 2026-10-06, sheet #25). "Building
+  // and operating a … coffee cart business" was a scan's topic guess; she
+  // offers cart planning calls, she does not run a cart. A topic row that
+  // states a role or a business she runs is held unless she confirmed it.
+  {
+    let rolesHeld = 0
+    for (let i = knowledgeRows.length - 1; i >= 0; i--) {
+      const k = knowledgeRows[i] as { kind?: unknown; text?: unknown; creator_confirmed_at?: unknown }
+      if (String(k.kind ?? '') !== 'topic' || k.creator_confirmed_at) continue
+      if (/\b(?:operat(?:e|es|ing)|run(?:s|ning)?|own(?:s|ing)?|found(?:ed|ing)?|manag(?:e|es|ing)|building and operating|starting and operating)\b[^.]{0,80}\b(?:business|company|shop|cart|caf[eé]|bakery|studio|brand|store|roastery)\b/i.test(String(k.text ?? ''))) { knowledgeRows.splice(i, 1); rolesHeld++ }
+    }
+    if (rolesHeld) console.log(JSON.stringify({ event: 'topic_role_held', held: rolesHeld }))
+  }
+  let originConflictFound: { values: string[]; ids: string[] } | null = null
+  if (ownedEntity) {
+    const pName = String((ownedEntity as { name?: unknown }).name ?? '')
+    const c = originConflict(knowledgeRows as Array<{ id?: unknown; text?: unknown }>, pName)
+    if (c) {
+      const held = new Set(c.rows)
+      for (let i = knowledgeRows.length - 1; i >= 0; i--) if (held.has(knowledgeRows[i] as never)) knowledgeRows.splice(i, 1)
+      originConflictFound = { values: c.values, ids: c.rows.map((r) => String(r.id ?? '')).filter(Boolean) }
+      console.log(JSON.stringify({ event: 'fact_conflict_held', attribute: 'origin', values: c.values, held: c.rows.length }))
+    }
+  }
   // ⚖️ ITEM 26: set when a multi-product reference is built for ONE chosen
   // subject. Saved on the blueprint so the result screen says so in one line.
   let referenceScopeNote: string | null = null
@@ -8189,6 +8218,35 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     ? String(body.goal ?? '').trim()
     : ''
   const readyMissing: Array<{ field: string; question: string }> = []
+  // ⚖️ ASK FOR NEW MATERIAL WHEN IT RUNS OUT (owner 2026-10-06, plan A4/B2).
+  // Three cart answers were stretched over six scripts. For a story-led goal
+  // about a product, when every story about it is resting (told in 2 of her
+  // last 5, twins included), she is asked for one new moment instead of the
+  // writer recycling or inventing one. One question, skippable (trial).
+  if (trialOn && ownedEntity && ['personal_brand', 'entertain', 'conversations'].includes(String(body.goal ?? '')) && !herSaid(answers.story)) {
+    const storyRows = (knowledgeRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? '')))
+    const twins = storyTwins(storyRows)
+    const fresh = oneStory(storyRows, { recent: recentStorySupply, last: lastStorySupply, idsByText: twins }).kept
+    if (!fresh) {
+      const name = String((ownedEntity as { name?: unknown }).name ?? 'this')
+      readyMissing.push({ field: 'story', question: `Tell me one moment with ${name} you haven't shared yet — what happened?` })
+      console.log(JSON.stringify({ event: 'new_story_asked', stories: storyRows.length }))
+    }
+  }
+  if (originConflictFound) {
+    const said = String(answers.origin ?? '').toLowerCase()
+    const picked = originConflictFound.values.find((v) => said.includes(v))
+    if (!picked) {
+      const name = String((ownedEntity as { name?: unknown } | null)?.name ?? 'this coffee')
+      readyMissing.push({ field: 'origin', question: `Your notes give ${name} more than one origin (${originConflictFound.values.map((v) => v[0]!.toUpperCase() + v.slice(1)).join(', ')}). Which is it now?` })
+    } else {
+      // Her answer settles it: the facts naming another origin are retired.
+      const stale = (await admin.from('creator_knowledge').select('id, text').in('id', originConflictFound.ids)).data ?? []
+      const retire = stale.filter((r) => !String(r.text ?? '').toLowerCase().includes(picked)).map((r) => r.id)
+      if (retire.length) await admin.from('creator_knowledge').update({ superseded_at: new Date().toISOString(), superseded_reason: `she said the origin is ${picked}` }).in('id', retire).eq('owner_id', ownerId)
+      console.log(JSON.stringify({ event: 'fact_conflict_settled', attribute: 'origin', picked, retired: retire.length }))
+    }
+  }
   // ⚠️ THE GOAL IS NOT ASKED HERE ANY MORE — the remix card's three intent chips
   // ask it in plain English before the build starts, and asking it again put one
   // question on the card twice: a chip row, and a text box in marketing language.
@@ -8540,6 +8598,11 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   }
   if (herSaid(answers.angle)) {
     brief.idea = [brief.idea, String(answers.angle)].filter(Boolean).join(' — ').slice(0, 400)
+  }
+  // Her new moment (asked when every story for this product was resting)
+  // is the material this video is built on.
+  if (herSaid(answers.story)) {
+    brief.idea = [brief.idea, String(answers.story)].filter(Boolean).join(' — ').slice(0, 600)
   }
   if (Object.keys(stable).length && voice?.id) {
     const { error: briefErr } = await admin
