@@ -14067,13 +14067,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const d = shouldExtendScript(beats, integrityOpts.targetSec, integrityOpts.wpm, 0, plannedForLate)
           // Owner plan B2: thin material makes a SHORTER script, not a padded one (trial).
           if (!d.extend || (trialOn && suppliedKnowledgeIds.length < 3)) return null
-          const raw = await callModel(
+          // T6 (set 4): an unbounded lengthen call ran 79s and pushed the request past 150s.
+          const lateBudgetMs = Math.min(25_000, 150_000 - 40_000 - (Date.now() - reqStartedAt))
+          if (lateBudgetMs < 8_000) { console.log(JSON.stringify({ event: 'extension_skipped', elapsed_ms: Date.now() - reqStartedAt })); return null }
+          const raw = await withDeadline(lateBudgetMs, callModel(
             apiKey,
             'You lengthen single script lines using only facts you are given.'
             + ' You never invent a new fact, product, number, name or experience. You return JSON only.',
             buildExtensionPrompt(beats, d, knownText),
             EXTENSION_SCHEMA,
-          )
+          )).catch(() => null)
+          if (!raw) return null
           const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }>; inserts?: Array<{ section?: unknown; line?: unknown }> }
           const ext = acceptExtension(beats, parsed?.rewrites, d, integrityOpts, parsed?.inserts)
           if (!ext.accepted) return null
@@ -14094,14 +14098,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           let extensionReason = 'call_failed'
           let wordsAfter = extendDecision.words
           let invented: string[] = []
-          try {
-            const raw = await callModel(
+          const extBudgetMs = Math.min(25_000, 150_000 - 40_000 - (Date.now() - reqStartedAt))
+          if (extBudgetMs < 8_000) console.log(JSON.stringify({ event: 'extension_skipped', elapsed_ms: Date.now() - reqStartedAt }))
+          else try {
+            const raw = await withDeadline(extBudgetMs, callModel(
               apiKey,
               'You lengthen single script lines using only facts you are given.'
               + ' You never invent a new fact, product, number, name or experience. You return JSON only.',
               buildExtensionPrompt(integrity.beats, extendDecision, knownText),
               EXTENSION_SCHEMA,
-            )
+            ))
             const parsed = JSON.parse(raw) as { rewrites?: Array<{ index?: unknown; line?: unknown }>; inserts?: Array<{ section?: unknown; line?: unknown }> }
             const ext = acceptExtension(integrity.beats, parsed?.rewrites, extendDecision, integrityOpts, parsed?.inserts)
             extensionReason = ext.reason
