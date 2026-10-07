@@ -14404,6 +14404,18 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             event: 'personal_use_gate', flagged: flagged.length, repaired, dropped, failed: unsafeBeats.length,
           }))
           personalUseGateAudit = { flagged: flagged.length, repaired, dropped }
+          // ⚠️ CEILING C6 (2026-10-07): one middle line claiming use failed the
+          // whole build, which reads as a crash. A middle beat that is nothing
+          // but the claim is removed when the hook stays and 3 spoken beats
+          // remain; only otherwise is the build refused.
+          if (unsafeBeats.length > 0 && !unsafeBeats.includes(0) && Array.isArray(declared)) {
+            const left = gateBeats.filter((b, i) => !unsafeBeats.includes(i) && String(b?.line ?? '').trim().split(/\s+/).length >= 3)
+            if (left.length >= 3) {
+              for (const i of [...unsafeBeats].sort((a, b) => b - a)) (declared as unknown[]).splice(i, 1)
+              console.warn(JSON.stringify({ event: 'personal_use_beat_dropped', beats: unsafeBeats.length }))
+              unsafeBeats.length = 0
+            }
+          }
           if (unsafeBeats.length > 0) {
             // ⚠️ THE RESCUE PATH WOULD SAVE THE UNREPAIRED SCRIPT. Clear it so the
             // refusal is a refusal: refunded, and nothing with the claim is stored.
