@@ -145,14 +145,15 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // ⚠️ AUDIT 2026-10-01 (D): what she has actually said, so a viewer can never
     // credit a confident detail that traces to nothing (an invented "scorching",
     // invented gram weights). The same store the writer's fact guards read.
-    const facts: string[] = await db.from('creator_knowledge').select('text')
+    const excludedIds = (((g.blueprint as { rule_context?: { excluded_ids?: unknown } } | null)?.rule_context?.excluded_ids) ?? []) as unknown[]
+    const facts: string[] = await db.from('creator_knowledge').select('id, text')
       .eq('owner_id', g.user_id).eq('sensitive', false).is('creator_excluded_at', null).is('superseded_at', null)
       // ⚠️ SET 5 / STORY-LOAD (2026-10-07): an idea script picked up another
       // product's origin ("Colombia") here. A product's own facts reach the
       // panel through `productFacts`; this list is the facts about HER only.
       .is('product_entity_id', null)
       .in('basis', ['stated', 'demonstrated']).order('times_seen', { ascending: false }).limit(40)
-      .then((r) => (r.data ?? []).map((k: { text?: string | null }) => String(k.text ?? '')).filter(Boolean), () => [])
+      .then((r) => (r.data ?? []).filter((k: { id?: string }) => !excludedIds.includes(String(k.id ?? ''))).map((k: { text?: string | null }) => String(k.text ?? '')).filter(Boolean), () => [])
     const bpIn = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
     const family = typeof bpIn.script_family === 'string' ? bpIn.script_family : null
     const shape = family ? FAMILY_SHAPE[family as keyof typeof FAMILY_SHAPE] ?? null : null
