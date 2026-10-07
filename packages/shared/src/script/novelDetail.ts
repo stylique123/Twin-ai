@@ -10,7 +10,7 @@
 // found nowhere is NOVEL: removed from the script, and counted for the
 // reviewer's caps.
 
-export type SpecificKind = 'number' | 'ratio' | 'duration' | 'time' | 'relative' | 'named' | 'emotion' | 'event' | 'method' | 'claim'
+export type SpecificKind = 'number' | 'ratio' | 'duration' | 'time' | 'relative' | 'named' | 'emotion' | 'event' | 'method' | 'claim' | 'reason' | 'embellish'
 export interface Specific { kind: SpecificKind; text: string }
 
 const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|hundred|thousand|half|double|triple|dozen'
@@ -36,6 +36,13 @@ const PATTERNS: Array<[SpecificKind, RegExp]> = [
   // flavors": general mechanism and "how it looks" claims nothing of hers
   // backs. Held until a verified-claims library exists (owner plan B6b).
   ['claim', /\b(?:scorch(?:es|ed|ing)?|extract(?:s|ion|ed|ing)?|burn(?:s|ed|ing)? (?:off|away)|oxidi[sz]\w*|degrad\w*|oils?|oily|matte|shiny|glossy|uniform\w*|yellow spots?|boiling|caffeine)\b/gi],
+  // Paired 14A "bake beans dark to hide age", C8 "you absorb their scale…":
+  // a REASON she never gave for why something is so.
+  ['reason', /\b(?:to (?:hide|mask|cover(?: up)?|disguise)|in order to|so that they|because (?:they|it|commercial|grocery|big|most))\b(?:\s+[a-z']+){1,4}/gi],
+  // C7 "her line stretching across the parking lot", C10 "holiday blends
+  // sell out instantly", C2 "taste just like roast day": vivid outcomes and
+  // absolutes added to make a line land.
+  ['embellish', /\b(?:stretch(?:ed|ing)? (?:across|around|down)(?:\s+[a-z]+){1,3}|sells? out (?:instantly|immediately|in (?:minutes|hours|seconds))|(?:taste|tastes|tasting) (?:just )?like (?:roast day|the day it was roasted)|flew off the shelves?|went viral|line out the door)\b/gi],
   ['emotion', /\b(?:dread|terrified|terrifying|panic(?:ked)?|devastated|heartbroken|thrilled|ecstatic|overwhelmed|stressed|anxious|scared|ashamed|embarrassed|in tears|cried|crying|shaking)\b/gi],
 ]
 // Named items: two or more Capitalised words not at the start of the sentence.
@@ -91,6 +98,11 @@ function isSupported(s: Specific, material: string): boolean {
     const content = rest.filter((w) => w.length > 3 && !['your', 'their', 'with', 'from', 'that', 'this', 'completely', 'really', 'just', 'very', 'even', 'before', 'after'].includes(w))
     return m.includes(` ${stem}`) && (content.length === 0 || content.some((w) => m.includes(w.replace(/(?:ing|ed|s)$/, ''))))
   }
+  if (s.kind === 'reason' || s.kind === 'embellish') {
+    // Supported only when the words it adds are hers.
+    const words = t.split(' ').filter((w) => w.length > 3 && !['hide', 'mask', 'cover', 'disguise', 'order', 'because', 'that', 'they', 'just', 'like', 'stretching', 'stretched', 'stretch', 'across', 'around', 'down', 'sell', 'sells', 'tastes', 'taste', 'tasting'].includes(w))
+    return words.length > 0 && words.every((w) => m.includes(w.replace(/(?:ing|ed|es|s)$/, '')))
+  }
   if (s.kind === 'claim') {
     const stem = t.split(' ')[0]!.replace(/(?:es|ed|ing|ion|s)$/, '').slice(0, 6)
     return m.includes(stem)
@@ -126,7 +138,7 @@ export function findNovelDetails(lines: readonly string[], material: string): No
 
 /** Counts by kind, for the reviewer's caps and the weekly numbers. */
 export function novelCounts(findings: readonly NovelFinding[]): Record<SpecificKind, number> {
-  const c: Record<SpecificKind, number> = { number: 0, ratio: 0, duration: 0, time: 0, relative: 0, named: 0, emotion: 0, event: 0, method: 0, claim: 0 }
+  const c: Record<SpecificKind, number> = { number: 0, ratio: 0, duration: 0, time: 0, relative: 0, named: 0, emotion: 0, event: 0, method: 0, claim: 0, reason: 0, embellish: 0 }
   for (const f of findings) for (const s of f.novel) c[s.kind]++
   return c
 }
