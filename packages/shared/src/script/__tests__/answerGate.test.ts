@@ -106,3 +106,29 @@ describe('owner review 2026-10-05: no false filler, no ordinary-word privacy, of
     expect(gateAnswer('I was alone in my roastery at 5am when the batch caught.', {}).hold.length).toBeGreaterThan(0)
   })
 })
+
+describe('brief v2 2.1: a direction about the script is never stored as something she lived', () => {
+  it('an answer that is only directions is not stored', () => {
+    const g = gateAnswer('Keep it simple. No complicated numbers.', {})
+    expect(g.outcome).toBe('direction')
+    expect(g.keptText).toBe('')
+    expect(g.directions).toHaveLength(2)
+  })
+  it('directions are cut out of a real moment before it is stored', () => {
+    const g = gateAnswer('The first market I did, the grinder jammed at 7am. Keep it light, no fancy numbers.', {})
+    expect(g.outcome).toBe('answered')
+    expect(g.keptText).toBe('The first market I did, the grinder jammed at 7am.')
+    expect(g.directions).toEqual(['Keep it light, no fancy numbers.'])
+    expect(gateAnswer('Start small from home and learn as you go. No numbers, just first steps.', {}).keptText).toBe('Start small from home and learn as you go.')
+  })
+  it('real moments and her advice are not mistaken for directions', () => {
+    for (const t of [
+      'No one told me it would smell like this.',
+      'I keep my beans in a jar by the window.',
+      'Use a scale every time, it changed my mornings.',
+      'Make sure you preheat the cup, I learned that the hard way.',
+    ]) expect(gateAnswer(t, {}).outcome, t).toBe('answered')
+    expect(gateAnswer("Don't mention the price, focus on the story.", {}).outcome).toBe('direction')
+    expect(gateAnswer('The video should be about my first market.', {}).outcome).toBe('direction')
+  })
+})

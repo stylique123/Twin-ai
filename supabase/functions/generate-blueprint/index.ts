@@ -6516,7 +6516,7 @@ async function handle(req: Request): Promise<Response> {
       const gate = herAnswer ? gateAnswer(herAnswer, slot, { known }) : null
       // "Nothing like that happened" is an answer: the slot is done, no fact is stored.
       const outcome = (b as { nothing?: unknown }).nothing === true ? 'nothing'
-        : b.skip === true || !herAnswer ? 'skipped' : (gate?.outcome === 'filler' ? 'filler' : 'answered')
+        : b.skip === true || !herAnswer ? 'skipped' : (gate?.outcome === 'filler' || gate?.outcome === 'direction' ? 'filler' : 'answered')
       if (typeof b.ask_id === 'string') await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
       let savedId: string | null = null
       if (outcome === 'answered' && gate) {
@@ -8534,15 +8534,16 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // claims or commercial terms are stored HELD (basis 'inferred') until she
   // says yes. What she typed still shapes THIS video — she said it for it.
   const objectiveGate = objectiveAnswer ? gateAnswer(objectiveAnswer.text, {}, { known: await knownForGate(admin, ownerId) }) : null
-  if (objectiveAnswer && objectiveGate && objectiveGate.outcome === 'filler') {
-    console.log(JSON.stringify({ event: 'objective_answer_not_stored', why: 'filler', question_id: objectiveAnswer.questionId }))
+  if (objectiveAnswer && objectiveGate && (objectiveGate.outcome === 'filler' || objectiveGate.outcome === 'direction')) {
+    // A direction about the script ("keep it simple") is not something she lived (brief v2 2.1).
+    console.log(JSON.stringify({ event: 'objective_answer_not_stored', why: objectiveGate.outcome, question_id: objectiveAnswer.questionId }))
   } else if (objectiveAnswer && objectiveGate) {
     const { error: objErr } = await admin.from('creator_knowledge').insert({
       owner_id: ownerId,
       voice_id: voice?.id ?? null,
       kind: 'experience',
       // Only the claim sentences are held; the rest of her answer is hers now.
-      text: objectiveGate.hold.length && objectiveGate.keptText ? clipAtSentence(objectiveGate.keptText) : objectiveAnswer.text,
+      text: (objectiveGate.hold.length || objectiveGate.directions?.length) && objectiveGate.keptText ? clipAtSentence(objectiveGate.keptText) : objectiveAnswer.text,
       basis: objectiveGate.hold.length && !objectiveGate.keptText ? 'inferred' : 'stated',
       sensitive: objectiveGate.sensitive,
       source: 'asked',
