@@ -534,7 +534,7 @@ async function main() {
   if (!process.argv.includes('--no-intake')) await intakeProducts(token, admin, owner, v?.id ?? null, b0?.id ?? null)
   const { data: products } = await admin.from('product_entities').select('id, name, type, relationship, offer, creator_summary, knowledge').eq('owner_id', owner).is('archived_at', null)
   const { data: brands } = await admin.from('brands').select('*').eq('owner_id', owner).limit(1)
-  const { data: know } = await admin.from('creator_knowledge_writable').select('text, basis, evidence, kind').eq('owner_id', owner).limit(400)
+  const { data: know } = await admin.from('creator_knowledge_writable').select('id, text, basis, evidence, kind').eq('owner_id', owner).limit(400)
   const { data: kAll } = await admin.from('creator_knowledge').select('text, basis, kind, sensitive').eq('owner_id', owner).limit(600)
   const ctx = {
     allowedText: [...(know ?? []).map((k) => `${k.text} ${k.evidence ?? ''}`), ...(products ?? []).map((p) => `${p.name ?? ''} ${p.offer ?? ''} ${p.creator_summary ?? ''}`), brands?.[0]?.name ?? '',
@@ -544,6 +544,7 @@ async function main() {
     inferredTopics: (kAll ?? []).filter((k) => k.basis !== 'stated' && k.kind === 'topic').map((k) => String(k.text ?? '')).slice(0, 20),
     sensitiveFacts: (kAll ?? []).filter((k) => k.sensitive === true).map((k) => String(k.text ?? '')).slice(0, 20),
     stories: (know ?? []).filter((k) => ['experience', 'story'].includes(k.kind)).map((k) => String(k.text ?? '')),
+    storyIds: (know ?? []).filter((k) => ['experience', 'story'].includes(k.kind)).map((k) => String(k.id ?? '')).filter(Boolean),
     statedFacts: (know ?? []).filter((k) => k.basis === 'stated').map((k) => String(k.text ?? '')).filter((t) => t.length > 20),
     identityText: [...(know ?? []).filter((k) => k.basis === 'stated').map((k) => k.text), ...(products ?? []).map((p) => p.creator_summary ?? '')].join('\n'),
     productNames: (products ?? []).map((p) => p.name).filter(Boolean),
@@ -614,6 +615,9 @@ async function main() {
   async function runOne(sc) {
     {
       const body = { ...sc.body, idempotency_key: `${BATCH}-${sc.n}`, ...(Number(process.env.BATCH_DRAFTS) > 1 ? { drafts: Number(process.env.BATCH_DRAFTS) } : {}) }
+      // Story-load (owner 2026-10-07): both arms see NO stored story, so the
+      // only difference between them is the story given in the note.
+      if (sc.group === 'storyload') body.exclude_knowledge_ids = ctx.storyIds
       // The angle, picked from the same read the card shows.
       if (sc.anglePick !== undefined && body.reference_note) {
         // Same subject line the app builds for a non-idea mode (V2Building angleSubject).
@@ -634,7 +638,9 @@ async function main() {
         // entertain script "none" — a confound. Now drawn per script from a
         // hash of the batch label and n: varied, reproducible, logged, and
         // every answer is labelled simulated in the results.
-        const style = ['rich', 'short', 'none'][styleHash(`${BATCH}#${sc.pairKey ?? sc.n}`) % 3]
+        // Story-load answers "nothing specific" and picks no product: its
+        // material must be the note alone.
+        const style = sc.group === 'storyload' ? 'none' : ['rich', 'short', 'none'][styleHash(`${BATCH}#${sc.pairKey ?? sc.n}`) % 3]
         // ⚠️ A REAL CREATOR ANSWERS ON TOPIC (batch part-13): one shipping
         // sentence answered every question, about stale beans or roasters
         // alike, so the writer was handed off-topic "answers". A rich answer is
