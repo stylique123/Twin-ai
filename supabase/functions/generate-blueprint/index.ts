@@ -15888,6 +15888,21 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
       } catch { /* resting a repeat never fails a build */ }
     }
+    // Ceiling C10 / paired 10B (owner 2026-10-07): a conversations script
+    // read out the price list. Off the selling goals, a middle line quoting a
+    // price is dropped (trial), never below 3 spoken beats.
+    if (trialOn && !/^(?:sell|leads|launch|restock)$/i.test(String(body.goal ?? ''))) {
+      const bpp = blueprint as { script?: Array<{ line?: unknown }> }
+      if (Array.isArray(bpp.script)) {
+        const PRICE_LINE = /(?:\$|£|€)\s?\d|\b\d+\s?(?:dollars?|bucks)\b|\b(?:seventy|sixty|eighteen|sixty-five|seventy-five)[- ]?(?:five )?dollars\b/i
+        const pitch = bpp.script.map((b, i) => (i > 0 && i < bpp.script!.length - 1 && PRICE_LINE.test(String(b?.line ?? '')) ? i : -1)).filter((i) => i >= 0)
+        const left = bpp.script.filter((b, i) => !pitch.includes(i) && String(b?.line ?? '').trim().split(/\s+/).length >= 3)
+        if (pitch.length && left.length >= 3) {
+          bpp.script = bpp.script.filter((_, i) => !pitch.includes(i))
+          console.log(JSON.stringify({ event: 'pitch_line_dropped', lines: pitch.length }))
+        }
+      }
+    }
     // Owner 2026-10-06: scripts that follow the blueprint rate higher (set 4
     // by hand: 5.6 vs 3.5). Compliance is computed on every script; on the
     // trial, a hook whose subject never comes back by line 3 is swapped for

@@ -792,6 +792,7 @@ const EVENTS = {
   note_moment_spine: { kind: 'counter_ephemeral', why: 'Per script (trial): her note held a first-person moment and was made the spine.' },
   personal_use_beat_dropped: { kind: 'counter_ephemeral', why: 'Per script: a middle beat that only claimed personal use of an unconfirmed product was removed instead of failing the build (ceiling C6).' },
   line_rested: { kind: 'counter_ephemeral', why: 'Per script (trial): sentences dropped because she said them in two of her last five scripts.' },
+  pitch_line_dropped: { kind: 'counter_ephemeral', why: 'Per script (trial): a price line removed from a non-selling script.' },
   blueprint_compliance: { kind: 'counter_ephemeral', why: 'Per script: blueprint compliance (5 code checks) and whether the hook was swapped for a paid-off option.' },
   self_review_skipped: { kind: 'counter_ephemeral', why: 'Per script: no time left for the optional editor pass before the 150s edge limit.' },
   script_below_floor: { kind: 'counter_ephemeral', why: 'Per script: fewer spoken lines than a body, payoff and close; refunded and failed.' },
