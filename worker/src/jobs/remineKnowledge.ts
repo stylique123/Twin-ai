@@ -30,6 +30,7 @@
 import { db, type Job } from '../db.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { knowledgeRowsFrom } from '../knowledgeRows.js'
+import { extractPassages, type Segment } from '../generated/passages.js'
 import { EXTRACTOR_VERSION, voiceNeedsRemine } from '../extractorVersion.js'
 import { extractKnowledgeFromAudio, extractTargetedKnowledge } from '../voice.js'
 import { questionsFor } from '../targetedQuestions.js'
@@ -57,7 +58,7 @@ export const REMINE_TRANSCRIPTS_MAX = 40
  *  unless you page until one comes back short. */
 const PAGE = 20
 
-interface StoredTranscript { text: string; url: string | null }
+interface StoredTranscript { text: string; url: string | null; segments: Segment[] }
 
 /** The creator's own stored speech, oldest first, paged to the bound above. */
 async function ownTranscripts(ownerId: string, voiceId: string, soleVoice: boolean): Promise<StoredTranscript[]> {
@@ -75,7 +76,7 @@ async function ownTranscripts(ownerId: string, voiceId: string, soleVoice: boole
     // owner, where nobody else can own it.
     const q = db
       .from('transcripts')
-      .select('text, source_url')
+      .select('text, source_url, segments')
       .eq('owner_id', ownerId)
       // ⚠️ `subject = 'own'` IS THE WHOLE FILTER THAT MATTERS. The same table
       // holds `ingest` rows — OTHER PEOPLE'S reference videos. Re-mining those
@@ -94,17 +95,17 @@ async function ownTranscripts(ownerId: string, voiceId: string, soleVoice: boole
       unscoped = true
       ;({ data, error } = await db
         .from('transcripts')
-        .select('text, source_url')
+        .select('text, source_url, segments')
         .eq('owner_id', ownerId)
         .eq('subject', 'own')
         .order('created_at', { ascending: true })
         .range(from, to))
     }
     if (error) throw new Error(`remine_knowledge: could not read own transcripts: ${error.message}`)
-    const page = (data ?? []) as Array<{ text?: unknown; source_url?: unknown }>
+    const page = (data ?? []) as Array<{ text?: unknown; source_url?: unknown; segments?: unknown }>
     for (const r of page) {
       const text = typeof r.text === 'string' ? r.text.trim() : ''
-      if (text.length > 20) out.push({ text, url: typeof r.source_url === 'string' ? r.source_url : null })
+      if (text.length > 20) out.push({ text, url: typeof r.source_url === 'string' ? r.source_url : null, segments: Array.isArray(r.segments) ? (r.segments as Segment[]) : [] })
     }
     // A short page is the end of the data; a full one is not evidence of more,
     // so the loop simply continues to its own bound.
@@ -189,6 +190,21 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
   // who sells nothing.
   const hasProduct = await ownerHasLiveProduct(ownerId)
   const texts = stored.map((t) => t.text)
+  // M2 SHADOW (extraction audit 2026-10-07): cut whole passages from the timed
+  // transcripts and log COUNTS only, to check the extractor against the hand
+  // audit before anything stores or reads a passage. Never fails the re-mine.
+  try {
+    const tally = { transcripts: stored.length, lyrics: 0, not_her: 0, too_short: 0, no_segments: 0, passages: 0, stories: 0, complete: 0 }
+    for (const t of stored) {
+      if (!t.segments.length) { tally.no_segments++; continue }
+      const r = extractPassages(t.segments)
+      if (r.skipped) { tally[r.skipped]++; continue }
+      tally.passages += r.passages.length
+      tally.stories += r.passages.filter((p) => p.kind === 'story').length
+      tally.complete += r.passages.filter((p) => p.complete).length
+    }
+    console.log(JSON.stringify({ event: 'passages_shadow', voice_id: voiceId, ...tally }))
+  } catch { /* shadow only */ }
   const [general, targeted] = await Promise.all([
     extractKnowledgeFromAudio(handle, platform, texts),
     extractTargetedKnowledge(handle, platform, texts, questionsFor(hasProduct)),
