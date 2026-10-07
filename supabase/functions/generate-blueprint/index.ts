@@ -15421,7 +15421,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
         // The worker's test-viewer rewrite runs after this function; it reads
         // these so it holds its rewrites to the same rules (S1).
-        bt.rule_context = { unpicked: namesNotPicked, follow_allowed: followOk }
+        // Owner 2026-10-07: the practice-viewer rewrite runs later and must not
+        // bring back a fact this request excluded.
+        bt.rule_context = { unpicked: namesNotPicked, follow_allowed: followOk, excluded_ids: uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids) }
         if (ruled.removed.length) {
           const emptied = ruled.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
           bp.script = ruled.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
