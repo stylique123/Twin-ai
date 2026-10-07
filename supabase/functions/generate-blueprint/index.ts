@@ -11097,7 +11097,7 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // older stored story rated 4.25 (C1, C3). On the trial, a first-person
         // moment in her note is the spine; stored stories may only support it.
         const noteHasMoment = trialOn
-          && /\b(?:I|we)\s+(?:\w+ly\s+)?(?:got|went|had|made|took|lost|threw|sold|bought|tossed|ordered|skipped|almost|started|tried|spent|learned|realized|pulled|priced|decided|[a-z]{3,}ed)\b|\b(?:a customer|a woman|a man|someone|my \w+) (?:told|asked|said|booked|sent)\b/i.test(reference_note)
+          && /\b(?:I|we)\s+(?:\w+ly\s+)?(?:got|went|had|made|took|lost|threw|sold|bought|tossed|ordered|skipped|almost|started|tried|spent|learned|realized|pulled|priced|decided|found|felt|ran|came|left|kept|knew|thought|told|saw|gave|began|built|paid|broke|fell|met|sent|said|was|were|[a-z]{3,}ed)\b|\b(?:a customer|a woman|a man|someone|my \w+) (?:told|asked|said|booked|sent)\b/i.test(reference_note)
           && (reference_note.match(/[.!?](\s|$)/g) ?? []).length >= 2
         if (noteHasMoment) console.log(JSON.stringify({ event: 'note_moment_spine' }))
         const momentInstruction = noteHasMoment
