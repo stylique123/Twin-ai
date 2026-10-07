@@ -44,6 +44,12 @@ export function extractPassages(segments: readonly Segment[]): PassageResult {
   const lines = segs.map((s) => s.text.trim().toLowerCase().replace(/[^a-z' ]/g, ''))
   const distinct = new Set(lines).size
   if (lines.length >= 8 && distinct / lines.length < 0.6) return { skipped: 'lyrics', passages: [] }
+  // Sung lines are short and slow: median under 8 words a line and under 2.3
+  // words a second across the clip (talking to camera runs near 3).
+  const perLine = segs.map((s) => words(s.text).length).sort((a, b) => a - b)
+  const median = perLine[Math.floor(perLine.length / 2)]
+  const span = Math.max(1, segs[segs.length - 1].end - segs[0].start)
+  if (segs.length >= 8 && median < 8 && total / span < 2.3) return { skipped: 'lyrics', passages: [] }
 
   // Not her talking: almost no first-person words.
   const fp = (all.match(FIRST_PERSON) ?? []).length
