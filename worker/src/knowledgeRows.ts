@@ -61,6 +61,9 @@ export interface KnowledgeRowInput {
   voiceId: string
   /** The URLs the transcripts came from, indexed as the prompt numbered them. */
   urls: readonly string[]
+  /** The transcripts themselves, parallel to `urls`. When given, a transcript
+   *  item's cited video must actually contain it (M1 audit 2026-10-07). */
+  texts?: readonly string[]
   /** How many rows this run may write. `KNOWLEDGE_ROWS_PER_SCAN` at both callers
    *  today; an argument because a bound owned by two files is a bound that
    *  eventually disagrees with itself. */
@@ -70,7 +73,7 @@ export interface KnowledgeRowInput {
 }
 
 export function knowledgeRowsFrom(
-  { items, ownerId, voiceId, urls, cap, version }: KnowledgeRowInput,
+  { items, ownerId, voiceId, urls, texts, cap, version }: KnowledgeRowInput,
 ): KnowledgeRow[] {
   // A recorded optional line, or null. Blank and whitespace-only collapse to
   // null so an extractor that emits "" for a field it had nothing for cannot
@@ -108,10 +111,12 @@ export function knowledgeRowsFrom(
       // can go and watch it. Out-of-range or unparseable yields null rather
       // than a wrong URL, because pointing at the wrong video is worse than
       // pointing at none.
-      source_url: (() => {
-        const i = Number(r.source_video)
-        return Number.isInteger(i) && i >= 1 && i <= urls.length ? urls[i - 1] : null
-      })(),
+      //
+      // ⚠️ CAPTIONS ARE NUMBERED OVER THE CAPTION LIST, NOT THE VIDEOS, so a
+      // caption item has no URL here rather than a borrowed one. A transcript
+      // item must share words with the video it cites; otherwise it goes to the
+      // video that does contain it, or to none.
+      source_url: r.__source === 'caption' ? null : attributedUrl(r, urls, texts),
       last_observed_at: new Date().toISOString(),
       // ⚖️ THE TWO HALVES THE EXTRACTOR USED TO DROP. Both are OPTIONAL and
       // both normalise an absent/blank/whitespace value to null: "nobody
@@ -169,4 +174,29 @@ export function knowledgeRowsFrom(
 /** Links, hashtags and @handles out; whitespace collapsed. */
 export function stripChrome(t: string): string {
   return t.replace(/https?:\/\/\S+|www\.\S+|[#@][\w.]+/gi, '').replace(/\s+/g, ' ').trim()
+}
+
+const CONTENT_STOP = new Set('this that with your from have they them their there what when where which about would could just really very will into than then also because been were here like know want need make made does thing things actually always never right time first even still much more some only every people'.split(' '))
+const contentWords = (s: string): Set<string> =>
+  new Set((s.toLowerCase().match(/[a-z]{4,}/g) ?? []).filter((w) => !CONTENT_STOP.has(w)).map((w) => w.slice(0, 5)))
+const overlap = (a: Set<string>, b: Set<string>): number => { let n = 0; for (const w of a) if (b.has(w)) n++; return n }
+
+/** The video a transcript item was read out of: the cited one when it really
+ *  contains the item, else the one that best does (3+ shared words), else null.
+ *  Without `texts` it trusts the citation, as before. */
+export function attributedUrl(
+  r: { text?: unknown; evidence?: unknown; source_video?: unknown },
+  urls: readonly string[],
+  texts?: readonly string[],
+): string | null {
+  const i = Number(r.source_video)
+  const cited = Number.isInteger(i) && i >= 1 && i <= urls.length ? i - 1 : -1
+  if (!texts || texts.length !== urls.length) return cited >= 0 ? urls[cited] || null : null
+  const want = contentWords(`${String(r.text ?? '')} ${String(r.evidence ?? '')}`)
+  const need = Math.min(3, Math.max(1, Math.ceil(want.size / 3)))
+  const bags = texts.map(contentWords)
+  if (cited >= 0 && overlap(want, bags[cited]) >= need) return urls[cited] || null
+  let best = -1, bestN = 0
+  bags.forEach((b, k) => { const n = overlap(want, b); if (n > bestN) { best = k; bestN = n } })
+  return best >= 0 && bestN >= Math.max(need, 3) ? urls[best] || null : null
 }

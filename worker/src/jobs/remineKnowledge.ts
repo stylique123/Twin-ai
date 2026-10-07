@@ -215,6 +215,7 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
     ownerId,
     voiceId,
     urls: stored.map((t) => t.url ?? ''),
+    texts: stored.map((t) => t.text),
     cap: KNOWLEDGE_ROWS_PER_SCAN,
     version: EXTRACTOR_VERSION,
   })

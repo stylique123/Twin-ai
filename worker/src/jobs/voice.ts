@@ -302,7 +302,12 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   }
 
   const settled = await mapWithConcurrency(urls, TRANSCRIBE_CONCURRENCY, transcribeOne)
-  for (const t of settled) if (t !== null) transcripts.push(t)
+  // ⚠️ M1 AUDIT 2026-10-07: at least 5 of 12 speaking videos had facts filed
+  // under the wrong video. The prompt numbers SURVIVING transcripts, but the
+  // row builder looked the number up in every attempted URL, so one failed
+  // video shifted every later fact by one. Each transcript keeps its own URL.
+  const transcriptUrls: string[] = []
+  settled.forEach((t, i) => { if (t !== null) { transcripts.push(t); transcriptUrls.push(urls[i]) } })
 
   if (!transcripts.length) {
     // Nothing usable — leave the caption voice in place. Not a hard failure.
@@ -492,7 +497,8 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       items: raw,
       ownerId,
       voiceId,
-      urls,
+      urls: transcriptUrls,
+      texts: transcripts,
       cap: KNOWLEDGE_ROWS_PER_SCAN,
       version: EXTRACTOR_VERSION,
     })
