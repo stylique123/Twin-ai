@@ -32,6 +32,12 @@ describe('extractPassages', () => {
     expect(r.skipped).toBe('lyrics')
   })
 
+  it('skips slow, short sung lines even in the first person', () => {
+    const song = ['I remember the night', 'you held me so close', 'I knew it was over', 'we danced in the rain', 'my heart in your hands', 'I let you go slow', 'the lights on the bay', 'I sing it again', 'you never came home', 'I wait by the door']
+    const r = extractPassages(song.map((l, i) => ({ start: i * 3.5, end: i * 3.5 + 3, text: l })))
+    expect(r.skipped).toBe('lyrics')
+  })
+
   it('skips speech with no first person', () => {
     const r = extractPassages(Array.from({ length: 6 }, (_, i) => seg(i * 3, `The weather service says rain will move across the region by evening ${i}`)))
     expect(r.skipped).toBe('not_her')
