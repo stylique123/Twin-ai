@@ -139,13 +139,13 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // term, no private fact's wording, no quantity that was not there.
     const privateFacts: string[] = await db.from('creator_knowledge').select('text, evidence')
       // ⚠️ AUDIT 2026-10-01 (B3): facts she switched off are refused too, not only private ones.
-      .eq('owner_id', g.user_id).or('sensitive.eq.true,creator_excluded_at.not.is.null').limit(200)
+      .eq('owner_id', g.user_id).or('sensitive.eq.true,creator_excluded_at.not.is.null,superseded_at.not.is.null').limit(200)
       .then((r) => (r.data ?? []).map((k: { text?: string | null; evidence?: string | null }) => `${k.text ?? ''}. ${k.evidence ?? ''}`), () => [])
     // ⚠️ AUDIT 2026-10-01 (D): what she has actually said, so a viewer can never
     // credit a confident detail that traces to nothing (an invented "scorching",
     // invented gram weights). The same store the writer's fact guards read.
     const facts: string[] = await db.from('creator_knowledge').select('text')
-      .eq('owner_id', g.user_id).eq('sensitive', false).is('creator_excluded_at', null)
+      .eq('owner_id', g.user_id).eq('sensitive', false).is('creator_excluded_at', null).is('superseded_at', null)
       .in('basis', ['stated', 'demonstrated']).order('times_seen', { ascending: false }).limit(40)
       .then((r) => (r.data ?? []).map((k: { text?: string | null }) => String(k.text ?? '')).filter(Boolean), () => [])
     const bpIn = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
@@ -498,7 +498,7 @@ export async function runPanelAnswers(log: Log): Promise<void> {
     const answers = pending.map(({ q }) => ({ question: String(q.question ?? ''), answer: String(q.answer), beat: Number(q.beat ?? -1) }))
     const herWords = answers.map((a) => a.answer).join(' ')
     const privateFacts: string[] = await db.from('creator_knowledge').select('text, evidence')
-      .eq('owner_id', t.owner_id).or('sensitive.eq.true,creator_excluded_at.not.is.null').limit(200)
+      .eq('owner_id', t.owner_id).or('sensitive.eq.true,creator_excluded_at.not.is.null,superseded_at.not.is.null').limit(200)
       .then((r) => (r.data ?? []).map((k: { text?: string | null; evidence?: string | null }) => `${k.text ?? ''}. ${k.evidence ?? ''}`), () => [])
     const model = modelForTask('read')
     const drafted = applyLineRewrites(s.lines, await geminiJson(ANSWER_REWRITE_SYSTEM, answerRewritePrompt(s, answers), SCRIPT_REWRITE_SCHEMA, 30_000, 0, model), herWords)
