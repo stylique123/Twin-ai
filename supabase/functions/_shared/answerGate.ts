@@ -13,13 +13,17 @@
 //   commercial terms (numbers of bags, free shipping, prices, codes) are saved
 //   HELD: not used on camera until she taps yes on the exact claim.
 // · a slot that expires (a launch limit) is saved with that expiry.
+// · a direction about the script ("keep it simple, no complicated numbers")
+//   is not something she lived: it is never saved as an experience or fact
+//   (owner brief v2, 2.1 — the stored note was read aloud). It still shapes
+//   THIS video through the request; it is just not stored.
 
 import { unconfirmedRoleClaims } from './roleClaims.ts'
 import type { Slot as SpecSlot } from './questionSpecs.ts'
 import { EXPIRY_DAYS } from './questionSpecs.ts'
 import { isPrivate } from './privacyGuard.ts'
 
-export type AnswerOutcome = 'answered' | 'filler'
+export type AnswerOutcome = 'answered' | 'filler' | 'direction'
 
 // The WHOLE answer must be a shrug or pure praise. "No one told me it would
 // smell like this" starts with "no" and is a real moment (owner review 2026-10-05).
@@ -42,6 +46,21 @@ export function isFillerAnswer(answer: string): boolean {
 // "10 bags a week" are not offers (owner review 2026-10-05).
 const COMMERCIAL = /\b(free shipping|ships? free|shipping (is|was)? ?(free|included|\$\s?\d)|discount|\d+\s?% off|on sale|coupon|promo code|use code|code [A-Z0-9]{3,}\b|guarantee\w*|refund|money back|\$\s?\d+(\.\d\d)?|£\s?\d+|€\s?\d+|only \d+\s+(bags?|units?|spots?|seats?|pieces?|left|available|made)\b|\d+\s+(bags?|units?|spots?|seats?|pieces?)\s+(left|available|only)\b|limited to \d+)/i
 
+// A sentence that tells the writer HOW to write, not what happened.
+const DIRECTION = new RegExp([
+  String.raw`^(?:please\s+)?(?:just\s+)?(?:keep|make)\s+(?:it|this|things|the (?:script|video|tone))\b`,
+  String.raw`^(?:please\s+)?(?:don'?t|do not|no need to|avoid|never)\s+(?:mention|say|talk about|use|include|bring up|get into|go into|name|list|sound)\b`,
+  String.raw`^(?:and\s+)?(?:no|without|skip the|less|fewer|not too many)\s+(?:complicated |fancy |big |hard |real |technical |confusing )?(?:numbers|jargon|stats|math|technical (?:stuff|terms|details|words))\b`,
+  String.raw`^(?:please\s+)?(?:focus|lean)\s+(?:on|into)\b`,
+  String.raw`\b(?:the|this|my) (?:script|video)\s+(?:should|needs to|must|has to)\b`,
+  String.raw`\b(?:in|for) (?:the|this) (?:script|video)\b.*\b(?:mention|say|talk about|use|include)\b`,
+].join('|'), 'i')
+
+/** A direction about the script, not something she lived or knows. */
+export function isDirection(sentence: string): boolean {
+  return DIRECTION.test(sentence.trim())
+}
+
 export interface GatedAnswer {
   outcome: AnswerOutcome
   sensitive: boolean
@@ -52,6 +71,8 @@ export interface GatedAnswer {
   /** The rest of her answer, saved as hers now. */
   keptText: string
   expiresAt: string | null
+  /** Directions about the script: used for this video, never stored. */
+  directions?: string[]
 }
 
 const sentences = (t: string) => (t.match(/[^.!?]+[.!?]*/g) ?? [t]).map((x) => x.trim()).filter(Boolean)
@@ -67,7 +88,9 @@ export function gateAnswer(answer: string, slot: { expires?: boolean }, opts: { 
   const hold: string[] = []
   const held: string[] = []
   const kept: string[] = []
+  const directions: string[] = []
   for (const sentence of sentences(answer)) {
+    if (isDirection(sentence)) { directions.push(sentence); continue }
     const roles = unconfirmedRoleClaims(sentence, opts.known ?? '')
     const offers = sentence.match(new RegExp(COMMERCIAL.source, 'gi')) ?? []
     if (!roles.length && !offers.length) { kept.push(sentence); continue }
@@ -75,11 +98,16 @@ export function gateAnswer(answer: string, slot: { expires?: boolean }, opts: { 
     for (const c of roles) hold.push(`You run a ${c.replace(/^(my|our)\s+/, '')}`)
     for (const x of offers) hold.push(x.trim())
   }
+  if (directions.length && !held.length && !kept.length) {
+    return { outcome: 'direction', sensitive: false, hold: [], heldText: '', keptText: '', expiresAt: null, directions }
+  }
   return {
     outcome: 'answered',
+    directions,
     sensitive: isPrivate(answer),
     hold: [...new Set(hold)],
     heldText: held.join(' '),
+    // Directions are cut out of what is stored.
     keptText: kept.join(' '),
     expiresAt: slot.expires ? new Date(now + EXPIRY_DAYS * 86_400_000).toISOString() : null,
   }
