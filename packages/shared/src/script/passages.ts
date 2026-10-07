@@ -9,8 +9,11 @@
 //     speech, is treated as song lyrics or someone else talking and yields nothing
 //   - a passage is a run of segments with no pause longer than PAUSE_SEC,
 //     merged until it reaches MIN_WORDS and capped at MAX_WORDS
-//   - a passage is a story when it has a first-person event; complete when it
-//     also has a turn and an outcome
+//   - a passage is a story when it has a first-person event; complete only when
+//     storyParts finds all three of an anchor (a specific time/place or a
+//     first-person past event), a turn after it, and a resolution or lesson
+//     after the turn. Second-person advice, tip lists, product descriptions and
+//     hypotheticals are never complete (item 3.1: 8 marked complete, 5 real).
 
 export interface Segment { start: number; end: number; text: string }
 export interface Passage {
@@ -28,9 +31,44 @@ const MAX_WORDS = 220
 
 const FIRST_PERSON = /\b(?:I|I'm|I've|I'd|my|me|we|our)\b/g
 const EVENT = /\b(?:I|we)\s+(?:\w+ly\s+)?(?:got|went|had|made|took|lost|threw|sold|bought|started|tried|spent|learned|realized|opened|called|found|was|were|[a-z]{3,}ed)\b/i
-const TURN = /\b(?:but|then|until|so I|that'?s when|turned out|realized|decided|instead)\b/i
-const OUTCOME = /\b(?:now|since then|ever since|ended up|in the end|finally|today|that'?s why|which is why|so that'?s)\b/i
 const PROCESS = /\b(?:first|then|step|every (?:batch|morning|time)|I (?:roast|brew|test|weigh|cool|bag|ship|pack|measure))\b/i
+
+// Anchor: a specific time or place, or a first-person past event.
+const ANCHOR = /\b(?:last (?:spring|summer|fall|autumn|winter|year|month|week|weekend|christmas|saturday|sunday)|that (?:morning|night|day|week|weekend|summer|winter|spring|fall|saturday|sunday)|(?:one|on a) (?:morning|night|day|saturday|sunday|friday)|the (?:first|second|last|very first) (?:\w+ ){0,3}(?:I|we) (?:did|had|made|ran|opened|sold|tried|went|got|bought|booked)|when (?:I|we) (?:first )?(?:\w+ed|opened|started|got|had|went|was|were|began|took|made|sold|bought)|(?:a few|two|three|four|five|six|\d+) (?:years|months|weeks) ago|back in (?:\d{4}|the day|college)|in (?:19|20)\d\d)\b/i
+// Turn: something went wrong, changed or surprised.
+const TURN_WORD = /\b(?:but|then|until|turned out|it turns out|realized|that'?s when|instead|suddenly|except|out of nowhere)\b/gi
+// Resolution or lesson in her own words.
+const RESOLUTION = /\b(?:now (?:I|we)|these days|since then|ever since|from then on|ended up|in the end|finally|that'?s why|which is why|so that'?s|I learned|we learned|the lesson|taught me|I never (?:\w+ )?again|I (?:always|still) |best (?:thing|mistake))/gi
+const HYPOTHETICAL = /(?:^\s*(?:so,?\s*)?(?:if|imagine|what if|say)\b|\b(?:let'?s say|imagine (?:you|if)|picture this|what if you|suppose you)\b)/i
+const TIP_LIST = /\b(?:tip (?:number )?(?:one|two|three|\d)|(?:number|step) (?:one|two|three)|(?:three|five) (?:things|tips|ways|mistakes)|secondly|thirdly)\b/i
+const YOU = /\b(?:you|your|you'?re|you'?ll|yourself)\b/gi
+const I_WORDS = /\b(?:I|I'm|I've|I'd|my|me|we|our)\b/g
+
+/** The three parts of a complete story, in order: an anchor, a turn after it, a resolution after the turn. */
+export function storyParts(text: string): { anchor: boolean; turn: boolean; resolution: boolean } {
+  const t = text.replace(/\s+/g, ' ')
+  const youN = (t.match(YOU) ?? []).length
+  const iN = (t.match(I_WORDS) ?? []).length
+  // Advice, tip lists and hypotheticals are never stories, whatever words they use.
+  const never = HYPOTHETICAL.test(t) || TIP_LIST.test(t) || youN > iN || iN === 0
+  const a = never ? null : ANCHOR.exec(t)
+  if (!a) return { anchor: false, turn: false, resolution: false }
+  const after = (re: RegExp, from: number) => {
+    re.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = re.exec(t))) if (m.index >= from) return m.index + m[0].length
+    return -1
+  }
+  const turnAt = after(TURN_WORD, a.index + a[0].length)
+  const resAt = turnAt < 0 ? -1 : after(RESOLUTION, turnAt)
+  return { anchor: true, turn: turnAt >= 0, resolution: resAt >= 0 }
+}
+
+export function isCompleteStory(text: string): boolean {
+  if (!EVENT.test(text)) return false
+  const p = storyParts(text)
+  return p.anchor && p.turn && p.resolution
+}
 
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean)
 
@@ -66,7 +104,7 @@ export function extractPassages(segments: readonly Segment[]): PassageResult {
       end: cur[cur.length - 1].end,
       text,
       kind: story ? 'story' : PROCESS.test(text) ? 'process' : 'other',
-      complete: story && TURN.test(text) && OUTCOME.test(text),
+      complete: story && isCompleteStory(text),
     })
     cur = []
   }
@@ -82,7 +120,7 @@ export function extractPassages(segments: readonly Segment[]): PassageResult {
   if (passages.length > 1 && words(passages[passages.length - 1].text).length < MIN_WORDS) {
     const tail = passages.pop()!
     const last = passages[passages.length - 1]
-    passages[passages.length - 1] = { ...last, end: tail.end, text: `${last.text} ${tail.text}`, complete: last.complete || tail.complete }
+    passages[passages.length - 1] = { ...last, end: tail.end, text: `${last.text} ${tail.text}`, complete: last.kind === 'story' && isCompleteStory(`${last.text} ${tail.text}`) }
   }
   return { skipped: null, passages }
 }
