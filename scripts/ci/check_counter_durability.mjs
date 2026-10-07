@@ -790,6 +790,7 @@ const EVENTS = {
   thin_subject_asked: { kind: 'counter_ephemeral', why: 'Per request: one word or a symbol typed, so the subject is asked for. Durable as the readiness question shown.' },
   panel_cleanup: { kind: 'counter_ephemeral', why: 'Per script: the viewer-panel rewrite shipped a line the writer cleanup removes (follow closer, stored note, repeated ask); cleaned again.' },
   note_moment_spine: { kind: 'counter_ephemeral', why: 'Per script (trial): her note held a first-person moment and was made the spine.' },
+  provenance: { kind: 'counter_ephemeral', why: 'Per script (trial): ids of the facts, stories and lessons the writer was shown and which fed each sentence (ids only, brief v2 1.4). Edge logs only, 24h.' },
   personal_use_beat_dropped: { kind: 'counter_ephemeral', why: 'Per script: a middle beat that only claimed personal use of an unconfirmed product was removed instead of failing the build (ceiling C6).' },
   line_rested: { kind: 'counter_ephemeral', why: 'Per script (trial): sentences dropped because she said them in two of her last five scripts.' },
   pitch_line_dropped: { kind: 'counter_ephemeral', why: 'Per script (trial): a price line removed from a non-selling script.' },
