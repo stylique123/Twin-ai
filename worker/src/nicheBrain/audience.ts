@@ -147,6 +147,10 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // invented gram weights). The same store the writer's fact guards read.
     const facts: string[] = await db.from('creator_knowledge').select('text')
       .eq('owner_id', g.user_id).eq('sensitive', false).is('creator_excluded_at', null).is('superseded_at', null)
+      // ⚠️ SET 5 / STORY-LOAD (2026-10-07): an idea script picked up another
+      // product's origin ("Colombia") here. A product's own facts reach the
+      // panel through `productFacts`; this list is the facts about HER only.
+      .is('product_entity_id', null)
       .in('basis', ['stated', 'demonstrated']).order('times_seen', { ascending: false }).limit(40)
       .then((r) => (r.data ?? []).map((k: { text?: string | null }) => String(k.text ?? '')).filter(Boolean), () => [])
     const bpIn = (g.blueprint && typeof g.blueprint === 'object' ? g.blueprint : {}) as Record<string, unknown>
