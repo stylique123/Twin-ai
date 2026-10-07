@@ -107,4 +107,15 @@ describe('any first-person past action (set 4 #13, #5)', () => {
     expect(novelCounts(findNovelDetails(['Is your bag shiny or matte?'], HER)).claim).toBe(0)
     expect(novelCounts(findNovelDetails(['Dark roast scorches the beans.'], HER + ' Dark roasting can scorch the beans.')).claim).toBe(0)
   })
+
+  it('flags reasons and embellishments she never gave (paired 14A, C7, C10, C2)', () => {
+    const n = (l: string) => findNovelDetails([l], 'Someone told me they could taste the difference between my coffee and the store bag.').flatMap((f) => f.novel.map((x) => x.kind))
+    expect(n('Most brands bake their green beans dark on purpose to hide age.')).toContain('reason')
+    expect(n('She sent me a photo of her line stretching across the parking lot.')).toContain('embellish')
+    expect(n('Holiday blends sell out instantly.')).toContain('embellish')
+    expect(n('Sealed tight, every brew will taste just like roast day.')).toContain('embellish')
+  })
+  it('keeps a reason she gave herself', () => {
+    expect(findNovelDetails(['People drink dark roast to cover up stale beans.'], HER + ' Most people drink dark roast to cover up stale beans.').flatMap((f) => f.novel.map((x) => x.kind))).not.toContain('reason')
+  })
 })
