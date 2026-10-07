@@ -51,6 +51,10 @@ const STOP: ReadonlySet<string> = new Set([
   'products', 'shop', 'store', 'brand', 'made', 'best', 'great', 'perfect',
 ])
 
+// Words every coffee (or any small-business) story shares; they say nothing
+// about whether a story is about THIS video's topic.
+const TOPIC_GENERIC: ReadonlySet<string> = new Set(['small', 'start', 'starting', 'home', 'coffee', 'thing', 'people', 'time', 'first', 'really', 'want', 'good', 'help', 'need'])
+
 /** Content words of a text: lower-case, length > 3, not a stop word, with a
  *  trailing plural `s` folded so "candles" meets "candle". */
 export function contentTerms(text: unknown): Set<string> {
@@ -178,7 +182,17 @@ export function gateStories<T extends StoryCandidate>(
     if (productTerms.size > 0) {
       if (!overlaps(productTerms)) { offProduct.push(item); continue }
     } else if (topicTerms !== null) {
-      if (topicTerms.size === 0 || !overlaps(topicTerms)) { offTopic.push(item); continue }
+      // Paired set pair 17 (2026-10-07): "my small batch roasting routine"
+      // let a cart story through on the one word "small". With a topic of 3+
+      // words, a story must share 2 of them, generic words not counted.
+      const specific = [...topicTerms].filter((w) => !TOPIC_GENERIC.has(w))
+      const need = specific.length >= 3 ? 2 : 1
+      const stem = (w: string) => w.slice(0, 5)
+      const topicStems = new Set(specific.map(stem))
+      const ownStems = new Set([...own].filter((w) => !TOPIC_GENERIC.has(w)).map(stem))
+      let shared = 0
+      for (const st of ownStems) if (topicStems.has(st)) shared++
+      if (topicTerms.size === 0 || shared < need) { offTopic.push(item); continue }
     }
     const id = String(item.id ?? '').trim()
     if (id !== '' && ((recent.get(id) ?? 0) >= STORY_REST_AFTER || last.has(id))) { resting.push(item); continue }

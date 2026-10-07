@@ -100,4 +100,14 @@ describe('storyTwins groups paraphrases (blind set 3: one cart answer in six scr
     const r = oneStory([b], { recent: new Map([['a', 2]]), idsByText: storyTwins([a, b]) })
     expect(r.kept).toBeNull()
   })
+
+  it('a topic of 3+ words needs 2 shared specific words (paired pair 17)', () => {
+    const rows = [
+      { id: 'a', kind: 'experience', text: 'People keep asking how to start a coffee cart. Start small from home and learn as you go.' },
+      { id: 'b', kind: 'experience', text: 'I roast in small batches and every batch tastes different depending on humidity and bean age.' },
+    ]
+    const g = gateStories(rows, { topicText: 'my small batch roasting routine' })
+    expect(g.kept.map((r) => r.id)).toEqual(['b'])
+    expect(g.offTopic.map((r) => r.id)).toEqual(['a'])
+  })
 })
