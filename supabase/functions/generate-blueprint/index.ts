@@ -11084,6 +11084,17 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         const creatorHasExperience = knowledgeRows.some(
           (k) => String(k?.kind) === 'experience' && String(k?.basis) === 'stated')
         const premiseInstruction = premiseInstructionInline(ref?.text ?? null, creatorHasExperience)
+        // Ceiling test (owner 2026-10-07): with a complete moment typed in her
+        // note, scripts that used it rated 6.9 and those that ignored it for an
+        // older stored story rated 4.25 (C1, C3). On the trial, a first-person
+        // moment in her note is the spine; stored stories may only support it.
+        const noteHasMoment = trialOn
+          && /\b(?:I|we)\s+(?:\w+ly\s+)?(?:got|went|had|made|took|lost|threw|sold|bought|tossed|ordered|skipped|almost|started|tried|spent|learned|realized|pulled|priced|decided|[a-z]{3,}ed)\b|\b(?:a customer|a woman|a man|someone|my \w+) (?:told|asked|said|booked|sent)\b/i.test(reference_note)
+          && (reference_note.match(/[.!?](\s|$)/g) ?? []).length >= 2
+        if (noteHasMoment) console.log(JSON.stringify({ event: 'note_moment_spine' }))
+        const momentInstruction = noteHasMoment
+          ? '\n\nHER MOMENT FOR THIS VIDEO: the creator\'s note above contains a moment she lived, in her own words. Tell THAT moment as the script\'s one story (setup, what went wrong or surprised her, what she did, how it ended), keeping her wording. Do not swap in a different stored story; a stored fact may only support it. Add nothing to it that she did not say.'
+          : ''
         // ⚠️ FIX 12 (Wave 4). SAME `creatorHasExperience` READ, DIFFERENT
         // QUESTION: `premiseInstruction` above asks whether the REFERENCE's own
         // premise demands narrator experience; this asks whether the CREATOR's
@@ -11553,13 +11564,13 @@ ${fenced('reference shape', renderShapeDigest(referenceShapeDigest(ref.text)))}
 - Transcript excerpt (${referenceVerbatimChars} of ${(ref.text ?? '').length} characters, because of that choice):
 ${fenced('reference transcript', referenceVerbatimChars > 0 ? clip(ref.text ?? '', referenceVerbatimChars) : '(withheld at this setting — work from the measured shape above)')}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${PACING_RULE}${availabilityBlock}${productModeBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${momentInstruction}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${PACING_RULE}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
         : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note:
-${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${PACING_RULE}${availabilityBlock}${productModeBlock}
+${fenced("creator's note", reference_note || '(none provided)')}${premiseInstruction ? `\n\n${premiseInstruction}` : ''}${momentInstruction}${recurrenceInstruction}${subjectSourceInstruction ? `\n\n${subjectSourceInstruction}` : ''}${renderDesiredFormatsInline(briefListInline(briefRaw, 'desiredFormats'), briefTextInline(briefRaw, 'formatExploration'))}${renderOnCameraInline(briefTextInline(briefRaw, 'onCamera'))}${renderVideoIntentInline(intent)}${containerBlock}${ownVisualBlock}${vocabBlock}${brainBlock}${grainBlock}${PACING_RULE}${availabilityBlock}${productModeBlock}
 
 ${decompositionInstruction}`
 
