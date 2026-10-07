@@ -8543,7 +8543,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       voice_id: voice?.id ?? null,
       kind: 'experience',
       // Only the claim sentences are held; the rest of her answer is hers now.
-      text: (objectiveGate.hold.length || objectiveGate.directions?.length) && objectiveGate.keptText ? clipAtSentence(objectiveGate.keptText) : objectiveAnswer.text,
+      text: objectiveGate.keptText && (objectiveGate.hold.length || objectiveGate.directions?.length) ? clipAtSentence(objectiveGate.keptText) : objectiveAnswer.text,
       basis: objectiveGate.hold.length && !objectiveGate.keptText ? 'inferred' : 'stated',
       sensitive: objectiveGate.sensitive,
       source: 'asked',
