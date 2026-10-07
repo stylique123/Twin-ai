@@ -8224,12 +8224,19 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     ? String(body.goal ?? '').trim()
     : ''
   const readyMissing: Array<{ field: string; question: string }> = []
+  // ⚖️ SKIP ALWAYS WORKS (owner 2026-10-07; story-load: 7 of 16 requests
+  // re-asked the same question three rounds running after "Nothing specific,
+  // keep it general"). A question she declined is answered, never asked again.
+  const declined = (f: string): boolean => {
+    const v = (answers as Record<string, unknown> | null | undefined)?.[f]
+    return typeof v === 'string' && v.trim() !== '' && isNonAnswer(v)
+  }
   // ⚖️ ASK FOR NEW MATERIAL WHEN IT RUNS OUT (owner 2026-10-06, plan A4/B2).
   // Three cart answers were stretched over six scripts. For a story-led goal
   // about a product, when every story about it is resting (told in 2 of her
   // last 5, twins included), she is asked for one new moment instead of the
   // writer recycling or inventing one. One question, skippable (trial).
-  if (trialOn && ownedEntity && ['personal_brand', 'entertain', 'conversations'].includes(String(body.goal ?? '')) && !herSaid(answers.story)) {
+  if (trialOn && ownedEntity && ['personal_brand', 'entertain', 'conversations'].includes(String(body.goal ?? '')) && !herSaid(answers.story) && !declined('story')) {
     const storyRows = (knowledgeRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? '')))
     const twins = storyTwins(storyRows)
     const fresh = oneStory(storyRows, { recent: recentStorySupply, last: lastStorySupply, idsByText: twins }).kept
@@ -8377,14 +8384,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     && knowledgeRows.some((k) => String((k as { text?: unknown }).text ?? '').toLowerCase().replace(/\s+/g, ' ').trim() === claimNorm)
   const emptyProductAnswered = readySaysWhatItIs(answers.claims) && filledProductSlots(String(answers.claims)).length > 0 && !claimIsUnrelatedStoredFact
   const askAboutEmptyProduct = trialOn && !readyPromoting && !!ownedEntity && !readyEntityKnows && readyFacts.length === 0
-    && !emptyProductAnswered && !readyNeedsPick
+    && !emptyProductAnswered && !readyNeedsPick && !declined('claims')
   if (askAboutEmptyProduct) {
     const pn = String((ownedEntity as { name?: unknown })?.name ?? '').trim() || 'it'
     readyMissing.push({ field: 'claims', question: `What is ${pn}? Tell me one of: what it is or is made from, the size, the price, or how to use it.` })
     if (readyPresent(answers.claims)) console.log(JSON.stringify({ event: 'empty_product_answer_fills_no_slot', answer: String(answers.claims).slice(0, 80) }))
   }
   if (readyPromoting && readyFacts.length === 0 && !readySaysWhatItIs(answers.claims)
-    && !readyEntityKnows && !readyNeedsPick) {
+    && !readyEntityKnows && !readyNeedsPick && !declined('claims')) {
     readyMissing.push({
       field: 'claims',
       question: READY_OBJECTIVE_QUESTIONS[readyObjective] ?? readyClaimsQuestion(readyOffer),
