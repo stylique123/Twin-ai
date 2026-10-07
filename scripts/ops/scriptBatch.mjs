@@ -145,8 +145,10 @@ function scenarios(products, brandId, brandName) {
   try { loaded = JSON.parse(process.env.STORYLOAD_JSON || '[]') } catch { loaded = [] }
   loaded.forEach((c, i) => {
     const prod = products.find((p) => p.name && c.product && p.name.toLowerCase().includes(String(c.product).toLowerCase()))
-    out.push({ group: 'storyload', label: `story ${c.story ?? i + 1} ${c.goal}`, product: prod?.name ?? null,
-      body: { ...(prod ? { selected_product_id: prod.id, door: 'product' } : { door: 'idea' }), goal: c.goal, reference_note: String(c.note ?? '') } })
+    // Paired (owner 2026-10-07): the same request with the story and without
+    // it (only the bare topic), so a high score can be credited to the story.
+    for (const arm of ['story', 'nostory']) out.push({ group: 'storyload', label: `story ${c.story ?? i + 1} ${c.goal} ${arm}`, pairKey: `story-${i + 1}`, product: prod?.name ?? null,
+      body: { ...(prod ? { selected_product_id: prod.id, door: 'product' } : { door: 'idea' }), goal: c.goal, reference_note: arm === 'story' ? String(c.note ?? '') : String(c.topic ?? '') } })
   })
   // L. Paired test (owner 2026-10-06): 20 requests, each written twice from the
   // same facts and the same simulated answers — once with the trial checks
