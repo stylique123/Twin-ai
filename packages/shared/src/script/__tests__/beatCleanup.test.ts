@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripClaimIntensifiers, stripEmptyBridge, cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../beatCleanup.js'
+import { dropRepeatedAsk, stripClaimIntensifiers, stripEmptyBridge, cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../beatCleanup.js'
 
 describe('blind set 1 leftovers (owner 2026-10-05)', () => {
   it.each([
@@ -84,5 +84,11 @@ describe('a standalone bridge beat (set 4 T3)', () => {
   it('removes intensifiers on factual effect claims only (B6a)', () => {
     expect(stripClaimIntensifiers('It hits your hopper fresh, which completely changes your whole morning cup.')).toBe('It hits your hopper fresh, which changes your whole morning cup.')
     expect(stripClaimIntensifiers('Every batch tasting different used to completely stress me out.')).toBe('Every batch tasting different used to completely stress me out.')
+  })
+
+  it('drops a repeated ask in one line (paired 10A/10B)', () => {
+    expect(dropRepeatedAsk('Tell me below. What would you do — tell me in the comments?')).toBe('What would you do — tell me in the comments?')
+    expect(dropRepeatedAsk('Would you practice first? Tell me in the comments. What would you do — tell me in the comments?')).toBe('Would you practice first? What would you do — tell me in the comments?')
+    expect(dropRepeatedAsk('Keep it simple. Tell me what you brew.')).toBe('Keep it simple. Tell me what you brew.')
   })
 })
