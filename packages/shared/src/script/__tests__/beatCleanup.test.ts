@@ -67,6 +67,9 @@ describe('single profile labels (blind set 3: 14, 17, 18, T2, T4)', () => {
 })
 
 describe('dropWriterNotes (blind set 3 #4)', () => {
+  it('drops "no complicated numbers, just real first steps" (set 5 M2)', () => {
+    expect(dropWriterNotes('The first thing I would do is start small from home and learn as you go. No complicated numbers, just real first steps.')).toBe('The first thing I would do is start small from home and learn as you go.')
+  })
   it('cuts her note to the writer from a spoken line', () => {
     expect(dropWriterNotes("The first thing I'd do is start small from home and learn as you go — no numbers, just first steps.")).toBe("The first thing I'd do is start small from home and learn as you go.")
   })

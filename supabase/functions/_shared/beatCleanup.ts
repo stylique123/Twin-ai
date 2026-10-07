@@ -146,7 +146,7 @@ const LABEL_MODIFIERS = new Set(['everyday', 'ordinary', 'regular', 'average', '
  * note TO Twin inside an answer, and it was said on camera. A clause that
  * instructs the writer is cut from the line.
  */
-const WRITER_NOTE = /(?:^|[,;—–-]\s*|\.\s+)(?:no numbers|keep it (?:general|short|simple|vague)|don'?t mention [^,.;]+|nothing specific)(?:,?\s*just [^,.;]+)?[.!]?/gi
+const WRITER_NOTE = /(?:^|[,;—–-]\s*|\.\s+)(?:no (?:complicated |fancy |big |hard |real )?numbers|keep it (?:general|short|simple|vague)|don'?t mention [^,.;]+|nothing specific)(?:,?\s*just [^,.;]+)?[.!]?/gi
 export function dropWriterNotes(line: string): string {
   const out = line.replace(WRITER_NOTE, (m) => (/^\.\s+/.test(m) ? '.' : '')).replace(/\s+([.,!?])/g, '$1').replace(/\s{2,}/g, ' ').trim()
   const ended = out && !/[.!?]$/.test(out) && /[.!?]$/.test(line.trim()) ? `${out}.` : out
