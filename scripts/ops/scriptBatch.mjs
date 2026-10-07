@@ -138,6 +138,16 @@ function scenarios(products, brandId, brandName) {
     out.push({ group: 'ceiling', label: `ceiling ${c.goal}`, product: prod?.name ?? null, simulatedMaterial: true,
       body: { ...(prod ? { selected_product_id: prod.id, door: 'product' } : { door: 'idea' }), goal: c.goal, reference_note: c.note } })
   }
+  // M. Story-load test (owner 2026-10-07): her own complete stories, reshaped
+  // (roles instead of names, nothing added), given as the note. Passed in at
+  // dispatch (STORYLOAD_JSON), never committed. ~7 means plumbing is the gap.
+  let loaded = []
+  try { loaded = JSON.parse(process.env.STORYLOAD_JSON || '[]') } catch { loaded = [] }
+  loaded.forEach((c, i) => {
+    const prod = products.find((p) => p.name && c.product && p.name.toLowerCase().includes(String(c.product).toLowerCase()))
+    out.push({ group: 'storyload', label: `story ${c.story ?? i + 1} ${c.goal}`, product: prod?.name ?? null,
+      body: { ...(prod ? { selected_product_id: prod.id, door: 'product' } : { door: 'idea' }), goal: c.goal, reference_note: String(c.note ?? '') } })
+  })
   // L. Paired test (owner 2026-10-06): 20 requests, each written twice from the
   // same facts and the same simulated answers — once with the trial checks
   // (enforced) and once with them off — for a blind side-by-side rating.
