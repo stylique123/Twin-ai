@@ -71,6 +71,11 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'script/questionLadder.ts': {
+    symbols: ['ladderTemplate', 'angleTemplate', 'validateLadderQuestion', 'LADDER'],
+    why: 'Create flow spec v4 Part 7: the story question engine core (ladder, anchored templates, validation). '
+      + 'Pure and tested; the panel-A route of the new Create flow reads it. Changes when that route ships (next PRs).',
+  },
   'script/factClass.ts': {
     symbols: ['classifyFactRules'],
     why: 'Relevance-and-classification brief, item 1: the rules-first fact classifier, SHADOW ONLY by owner decision. '
