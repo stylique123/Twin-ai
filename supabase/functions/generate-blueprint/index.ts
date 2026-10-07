@@ -69,6 +69,7 @@ import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../_shared/beatCleanup.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
+import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -15855,6 +15856,26 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // saved, shown and charged as a success. A script the checks have left with
     // fewer than two spoken lines is not a script: it fails like any other
     // failed build — refunded, recorded, and answered with what to add.
+    // Owner 2026-10-07: a sentence said in two of her last five scripts rests
+    // (paired set: the three cart lines in 7–10 of 37 scripts). Trial only.
+    if (trialOn) {
+      try {
+        const { data: prior } = await admin.from('generations').select('blueprint').eq('user_id', user.id)
+          .order('created_at', { ascending: false }).limit(5)
+        const recentScripts = (prior ?? []).map((g) => {
+          const sc = (g as { blueprint?: { script?: unknown } }).blueprint?.script
+          return Array.isArray(sc) ? (sc as Array<{ line?: unknown }>).map((b) => String(b?.line ?? '')).join(' ') : ''
+        }).filter(Boolean)
+        const bpr = blueprint as { script?: Array<{ line?: unknown }> }
+        if (Array.isArray(bpr.script) && recentScripts.length >= 2) {
+          const rr = restRepeatedLines(bpr.script, recentScripts)
+          if (rr.removed.length) {
+            bpr.script = rr.beats
+            console.log(JSON.stringify({ event: 'line_rested', removed: rr.removed.length }))
+          }
+        }
+      } catch { /* resting a repeat never fails a build */ }
+    }
     // Owner 2026-10-06: scripts that follow the blueprint rate higher (set 4
     // by hand: 5.6 vs 3.5). Compliance is computed on every script; on the
     // trial, a hook whose subject never comes back by line 3 is swapped for
