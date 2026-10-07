@@ -793,6 +793,7 @@ const EVENTS = {
   personal_use_beat_dropped: { kind: 'counter_ephemeral', why: 'Per script: a middle beat that only claimed personal use of an unconfirmed product was removed instead of failing the build (ceiling C6).' },
   line_rested: { kind: 'counter_ephemeral', why: 'Per script (trial): sentences dropped because she said them in two of her last five scripts.' },
   pitch_line_dropped: { kind: 'counter_ephemeral', why: 'Per script (trial): a price line removed from a non-selling script.' },
+  passages_shadow: { kind: 'counter_ephemeral', why: 'Per re-mine (M2 shadow): passage extractor counts (lyrics/not-her/short skips, passages, stories, complete) to check against the hand audit. Counts only, no text.' },
   blueprint_compliance: { kind: 'counter_ephemeral', why: 'Per script: blueprint compliance (5 code checks) and whether the hook was swapped for a paid-off option.' },
   self_review_skipped: { kind: 'counter_ephemeral', why: 'Per script: no time left for the optional editor pass before the 150s edge limit.' },
   script_below_floor: { kind: 'counter_ephemeral', why: 'Per script: fewer spoken lines than a body, payoff and close; refunded and failed.' },
