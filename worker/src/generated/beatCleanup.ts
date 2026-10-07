@@ -1,3 +1,6 @@
+// GENERATED FROM packages/shared/src/script/beatCleanup.ts — DO NOT EDIT.
+// Run: node scripts/ci/generate_shared_pilot_core.mjs
+// Edit the source instead. CI regenerates this file and fails on a diff.
 // LEFTOVERS THE OWNER FOUND IN BLIND SET 1 (2026-10-05), removed after writing.
 //
 // · An empty bridge opening a beat — "And this is the part people miss." /

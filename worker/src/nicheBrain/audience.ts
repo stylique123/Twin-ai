@@ -10,6 +10,7 @@ import { syncShotListSpokenText } from '../generated/shotListSync.js'
 import { rewriteIsSafe, guardScript, isPrivate } from '../generated/privacyGuard.js'
 import { enforceScriptRules } from '../generated/scriptRules.js'
 import { findNovelDetails } from '../generated/novelDetail.js'
+import { cleanBeats, dropEchoCloser, dropWriterNotes } from '../generated/beatCleanup.js'
 import { geminiJson, geminiEmbed } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { noteKey } from './librarian.js'
@@ -380,6 +381,20 @@ export async function runAudienceTests(log: Log): Promise<void> {
             next.opening_hook = { hook: want, source: 'audience_top', replaced: line.slice(0, 300) }
             openingSwapped = true
           }
+        }
+      }
+      // ⚠️ PAIRED SET 2026-10-07: "stick around" (8A, 8B, 15B), stored notes
+      // ("no numbers, just first steps", 12A, 19A) and repeated asks (10A, 10B)
+      // reached the shipped script through this rewrite, which runs after the
+      // writer's cleanup. The same cleanup now runs on what the panel ships.
+      if (Array.isArray(next.script)) {
+        const lines = (next.script as Array<Record<string, unknown>>)
+          .map((b) => (typeof b?.line === 'string' ? { ...b, line: dropWriterNotes(b.line) } : b))
+          .filter((b) => typeof b?.line !== 'string' || String(b.line).trim() !== '')
+        const cleaned = dropEchoCloser(cleanBeats(lines, ruleOpts.followAllowed ? 'followers' : 'other').beats)
+        if (JSON.stringify(cleaned) !== JSON.stringify(next.script)) {
+          next.script = cleaned
+          log('info', 'panel_cleanup', { event: 'panel_cleanup', generation_id: g.id })
         }
       }
       // ⚠️ AUDIT 2026-10-03 (Part 12): one camera per scene, decided from what

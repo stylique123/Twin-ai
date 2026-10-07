@@ -34,12 +34,31 @@ export function stripClaimIntensifiers(line: string): string {
   return line.replace(CLAIM_INTENSIFIER, '')
 }
 
+// Paired set 10A/10B: "Tell me below. What would you do — tell me in the
+// comments?" Two sentences in one line repeating the same 4-word ask: the
+// earlier one is dropped, the question kept.
+export function dropRepeatedAsk(line: string): string {
+  const sents = line.match(/[^.!?]+[.!?]*/g)?.map((x) => x.trim()).filter(Boolean) ?? []
+  if (sents.length < 2) return line
+  const grams = (t: string) => {
+    const w = t.toLowerCase().replace(/[^a-z' ]+/g, ' ').split(/\s+/).filter(Boolean)
+    const g = new Set<string>()
+    for (let i = 0; i + 3 < w.length; i++) g.add(w.slice(i, i + 4).join(' '))
+    return g
+  }
+  const keep = sents.filter((x, i) => {
+    const mine = grams(x)
+    return !sents.slice(i + 1).some((later) => [...grams(later)].some((g) => mine.has(g)) || /^(?:tell me (?:below|in the comments)|comment below)[.!]?$/i.test(x))
+  })
+  return keep.length && keep.length < sents.length ? keep.join(' ') : line
+}
+
 /** Clean every beat; drop a trailing follow-ask on a non-follow video. */
 export function cleanBeats<T extends { line?: unknown }>(beats: readonly T[], goal: string): { beats: T[]; changed: number } {
   let changed = 0
   let out = beats.map((b) => {
     if (typeof b.line !== 'string') return b
-    const line = stripClaimIntensifiers(stripEmptyBridge(b.line))
+    const line = dropRepeatedAsk(stripClaimIntensifiers(stripEmptyBridge(b.line)))
     if (line !== b.line) { changed++; return { ...b, line } }
     return b
   })
