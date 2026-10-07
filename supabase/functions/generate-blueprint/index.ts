@@ -56,6 +56,7 @@ import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
 import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandTruth.ts'
 import { businessFactLines, businessFactProvenanceCounts, guessedMark } from '../_shared/brandTruthPrompt.ts'
 import { lexicalFloor } from '../_shared/repetition.ts'
+import { selectLessons } from '../_shared/lessonSelect.ts'
 import { shouldAsk, readVerdict } from '../_shared/advisoryRead.ts'
 import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phraseOverlap.ts'
 import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPOSURE, type ReferenceUseLevel } from '../_shared/referenceExposure.ts'
@@ -7259,13 +7260,24 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       .map((k) => `${String(k.text ?? '')}. ${String(k.evidence ?? '')}`), () => [])
   // ⚖️ WHAT SHE HAS TAUGHT TWIN (0250): her ratings, test viewers and hook
   // picks, learned by the worker. Fail-open: a failed read writes as before.
-  const lessonRows: Array<{ id: string; kind: string; text: string; phrase: string | null; weight: number }> = await admin
-    .from('creator_lessons').select('id, kind, text, phrase, weight')
-    .eq('owner_id', ownerId).eq('active', true).limit(80)
-    .then((r) => (Array.isArray(r.data) ? r.data : []), () => [])
+  // ⚠️ BRIEF 1.2: on the test account 2,378 of 2,511 active lessons were from
+  // AI test viewers. Under `trialOn` the read takes `*` (so `synthetic` is used
+  // when 0283 is applied, and its absence is not an error), newest first and
+  // wider, and `selectLessons` puts her own lessons first and caps the panel.
+  type LessonRow = { id: string; kind: string; text: string; phrase: string | null; weight: number; source?: string | null; source_id?: string | null; synthetic?: boolean | null; created_at?: string | null; updated_at?: string | null }
+  const lessonRows: LessonRow[] = await (trialOn
+    ? admin.from('creator_lessons').select('*').eq('owner_id', ownerId).eq('active', true).order('updated_at', { ascending: false }).limit(400)
+    : admin.from('creator_lessons').select('id, kind, text, phrase, weight').eq('owner_id', ownerId).eq('active', true).limit(80))
+    .then((r) => (Array.isArray(r.data) ? r.data as LessonRow[] : []), () => [])
   // ⚖️ FACT-SCOPING: a lesson quoting private material (a generated hook about
   // the move, say) is a door like any other; the same rule closes it.
-  const lessonsInPrompt = orderLessons(lessonRows.filter((l) => !isPrivate(l.text)))
+  let lessonPool = lessonRows.filter((l) => !isPrivate(l.text))
+  if (trialOn) {
+    const picked = selectLessons(lessonPool, { capAudience: 5, max: 40 })
+    lessonPool = picked.lessons
+    console.log(JSON.stringify({ event: 'lessons_in_prompt', in_by_source: picked.report.in_by_source, dropped: picked.report.dropped }))
+  }
+  const lessonsInPrompt = orderLessons(lessonPool)
   const lessonsBlock = lessonsPromptBlock(lessonsInPrompt)
   // ⚠️ HER CORRECTIONS, BINDING (script batch audit 2026-10-03, parts 3 and 11).
   // Every active avoid phrase is something she rejected in her own words. A
