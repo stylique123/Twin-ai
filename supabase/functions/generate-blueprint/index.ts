@@ -11096,9 +11096,16 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         // note, scripts that used it rated 6.9 and those that ignored it for an
         // older stored story rated 4.25 (C1, C3). On the trial, a first-person
         // moment in her note is the spine; stored stories may only support it.
+        // Owner 2026-10-07: no verb list (it missed "found", "felt" and will
+        // miss the next one). A note she typed that is 2+ sentences, in her own
+        // voice (I / my / we), and is neither a question nor an instruction to
+        // Twin, is her moment. The honesty checks guard everything else.
+        const noteSentences = (reference_note.match(/[.!?](\s|$)/g) ?? []).length
+        const noteIsAsk = /\?\s*$/.test(reference_note.trim())
+          || /^(?:please\s+)?(?:make|write|create|do|give|tell|show|help|explain|list|use|turn)\b/i.test(reference_note.trim())
         const noteHasMoment = trialOn
-          && /\b(?:I|we)\s+(?:\w+ly\s+)?(?:got|went|had|made|took|lost|threw|sold|bought|tossed|ordered|skipped|almost|started|tried|spent|learned|realized|pulled|priced|decided|found|felt|ran|came|left|kept|knew|thought|told|saw|gave|began|built|paid|broke|fell|met|sent|said|was|were|[a-z]{3,}ed)\b|\b(?:a customer|a woman|a man|someone|my \w+) (?:told|asked|said|booked|sent)\b/i.test(reference_note)
-          && (reference_note.match(/[.!?](\s|$)/g) ?? []).length >= 2
+          && noteSentences >= 2 && !noteIsAsk
+          && /\b(?:I|I'm|I've|I'd|my|me|we|our)\b/.test(reference_note)
         if (noteHasMoment) console.log(JSON.stringify({ event: 'note_moment_spine' }))
         const momentInstruction = noteHasMoment
           ? '\n\nHER MOMENT FOR THIS VIDEO: the creator\'s note above contains a moment she lived, in her own words. Tell THAT moment as the script\'s one story (setup, what went wrong or surprised her, what she did, how it ended), keeping her wording. Do not swap in a different stored story; a stored fact may only support it. Add nothing to it that she did not say.'
