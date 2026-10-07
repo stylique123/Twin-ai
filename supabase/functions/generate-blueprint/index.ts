@@ -6543,7 +6543,7 @@ async function handle(req: Request): Promise<Response> {
     // Her facts, scoped: this product's or unscoped, never sensitive.
     const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
     let fq = sb.from('creator_knowledge').select('text, kind, source, source_ref, last_observed_at, sensitive, product_entity_id')
-      .eq('owner_id', user.id).is('creator_excluded_at', null).limit(400)
+      .eq('owner_id', user.id).is('creator_excluded_at', null).is('superseded_at', null).limit(400)
     if (pid) fq = fq.or(`product_entity_id.eq.${pid},product_entity_id.is.null`)
     const [{ data: rowsAll }, { data: herBrands }, { data: herEntities }] = await Promise.all([
       fq,
@@ -7109,7 +7109,7 @@ async function knownForGate(sb: ReturnType<typeof createClient>, ownerId: string
   const [{ data: br }, { data: en }, { data: kn }] = await Promise.all([
     sb.from('brands').select('name').eq('owner_id', ownerId),
     sb.from('product_entities').select('name').eq('owner_id', ownerId),
-    sb.from('creator_knowledge').select('text').eq('owner_id', ownerId).eq('basis', 'stated').neq('kind', 'topic').limit(200),
+    sb.from('creator_knowledge').select('text').eq('owner_id', ownerId).eq('basis', 'stated').neq('kind', 'topic').is('superseded_at', null).limit(200),
   ])
   return [...(br ?? []), ...(en ?? []), ...(kn ?? [])].map((x) => String((x as { name?: unknown; text?: unknown }).name ?? (x as { text?: unknown }).text ?? '')).join(' ')
 }
@@ -7238,7 +7238,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     .slice(0, 60)
   if (optInIds.length) {
     const optIn = await readKnowledge((cols) => admin.from('creator_knowledge').select(cols)
-      .eq('owner_id', ownerId).in('id', optInIds))
+      .eq('owner_id', ownerId).in('id', optInIds).is('superseded_at', null))
     askedRows.push(...optIn.rows)
   }
   // What the final guard must never let through: private rows she did not
