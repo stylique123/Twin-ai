@@ -69,7 +69,7 @@ import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose,
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
-import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../_shared/beatCleanup.ts'
+import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
@@ -15743,7 +15743,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         let labelled = 0
         const relabelled = dropEchoCloser(cleaned.beats).map((b) => {
           if (typeof b.line !== 'string') return b
-          const line = dropWriterNotes(stripProfileLabels(b.line, labels, topics))
+          const line = dropStockCloser(dropWriterNotes(stripProfileLabels(b.line, labels, topics)))
           if (line !== b.line) { labelled++; return { ...b, line } }
           return b
         })
