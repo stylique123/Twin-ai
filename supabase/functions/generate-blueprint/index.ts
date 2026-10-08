@@ -52,6 +52,7 @@ import {
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
 import { buildProvenance } from '../_shared/provenance.ts'
+import { dropInventedCauses, isSubjectOnlyTopic, subjectsLine } from '../_shared/inventedCause.ts'
 import { checkSupport } from '../_shared/supportCheck.ts'
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
 import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandTruth.ts'
@@ -9780,7 +9781,13 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // Set 4 #18: "no numbers, just first steps" was her note TO Twin stored
     // inside a fact, and the writer said it. Notes are cut from the fact text
     // before the writer sees it (trial).
+    // Brief 2.8b (trial): a scan topic is a subject she talks about, never a
+    // claim. It leaves the facts list and is shown on its own "she talks about" line.
+    const subjectTopics = trialOn
+      ? ((storyCut ? storyCut.rows : speakableAll) as typeof speakableAll).filter((k) => isSubjectOnlyTopic(k as { kind?: unknown }))
+      : []
     const speakable = ((storyCut ? storyCut.rows : speakableAll) as typeof speakableAll)
+      .filter((k) => !subjectTopics.includes(k))
       .map((k) => (trialOn && typeof (k as { text?: unknown }).text === 'string' ? { ...k, text: dropWriterNotes(String((k as { text?: unknown }).text)) } : k)) as typeof speakableAll
     if (storyCut?.dropped.length) console.log(JSON.stringify({ event: 'one_story', kept: storyCut.kept ? String(storyCut.kept.text ?? '').slice(0, 60) : null, dropped: storyCut.dropped.length }))
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
@@ -9896,6 +9903,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           return `  * (${k.kind}) ${tag}${k.text}${mark}${ev ? `\n      HER WORDS: "${ev}"` : ''}`
         }).join('\n'))
     }
+    if (subjectTopics.length) knowledgeParts.push(subjectsLine(subjectTopics as Array<{ text?: unknown }>))
     if (coveredRows.length) {
       // ⚠️ THIS LEAKED. The first version said only "do not repeat", and a run
       // produced the spoken line "megapixel count. We've had a video on this,
@@ -15817,6 +15825,21 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           bp.script = relabelled
           console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed, labels: labelled, echo_closer: echoDropped }))
         }
+        // Brief 2.8a: a cause she never gave ("because the weather shifts") is cut,
+        // clause only. Support = everything the writer was given. Counts only.
+        try {
+          const causeSupport = [
+            String(reference_note ?? ''),
+            ...Object.values({ ...(answers ?? {}), ...(body.readiness_answers ?? {}) }).filter((v) => typeof v === 'string'),
+            ...provenanceSupply.map((k) => String(k.text ?? '')),
+            ...lessonsInPrompt.map((k) => String((k as { text?: unknown }).text ?? '')),
+          ].join('\n')
+          const causes = dropInventedCauses(bp.script as Array<{ line?: unknown }>, causeSupport)
+          if (causes.cut) {
+            bp.script = causes.beats
+            console.log(JSON.stringify({ event: 'invented_causes_cut', cut: causes.cut }))
+          }
+        } catch { /* the cause cut never fails a build */ }
         // Owner 2026-10-08: no story supplied → no narrated past event.
         {
           const hasStory = noteMomentForVideo || provenanceSupply.some((k) => STORY_KINDS.has(String(k.kind ?? '')))

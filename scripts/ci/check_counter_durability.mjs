@@ -778,6 +778,10 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per tap: she turned a fact private or back on. Durable as creator_knowledge.sensitive / creator_confirmed_at.',
   },
+  invented_causes_cut: {
+    kind: 'counter_ephemeral',
+    why: 'Per script (trial): unsupported cause clauses removed after writing. Visible in the stored script.',
+  },
   leftovers_cleaned: {
     kind: 'counter_ephemeral',
     why: 'Per script (trial): empty bridges and stray follow closers removed after writing. Visible in the stored script.',
