@@ -911,7 +911,7 @@ export default function Result() {
   // ⚠️ AUDIT 2026-09-30: the shot list repeated every spoken line under "What
   // to say", printing the script twice. The scene cards already carry the
   // framing for her talking shots, so this list is only the extra clips.
-  const extraClips = shotRows.filter((r) => r.shot_type !== 'talking_head')
+  const extraClips = shotRows.filter((r) => r.shot_type !== 'talking_head' && r.shot_type !== 'close_up')
   const hookAdded = shotRows.length > b.shot_list.length ? 1 : 0
   const sceneCount = updatedScript.length + hookAdded
   const hookShown = (chosenHook ?? '').trim() !== ''
@@ -1547,7 +1547,7 @@ export default function Result() {
               <div className="grid grid-cols-1 gap-4">
                 {extraClips.map((s, i) => {
                   const isBroll = s.shot_type === 'b_roll'
-                  const isTalkingHead = s.shot_type === 'talking_head'
+                  const isTalkingHead = s.shot_type === 'talking_head' || s.shot_type === 'close_up'
                   const isReplicate = s.b_roll_type === 'replicate'
 
                   return (
@@ -1922,7 +1922,7 @@ export default function Result() {
                 <div className="grid grid-cols-1 gap-4">
                   {extraClips.map((s, i) => {
                     const isBroll = s.shot_type === 'b_roll'
-                    const isTalkingHead = s.shot_type === 'talking_head'
+                    const isTalkingHead = s.shot_type === 'talking_head' || s.shot_type === 'close_up'
                     const isReplicate = s.b_roll_type === 'replicate'
 
                     return (

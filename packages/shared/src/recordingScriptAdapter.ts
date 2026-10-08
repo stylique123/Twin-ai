@@ -63,7 +63,7 @@ export function isBrollShot(
 ): boolean {
   if (!shot) return false
   if (shot.shot_type === 'b_roll') return true
-  if (shot.shot_type === 'talking_head' || shot.shot_type === 'cover_frame') return false
+  if (shot.shot_type === 'talking_head' || shot.shot_type === 'cover_frame' || shot.shot_type === 'close_up') return false
   return BROLL_HINT.test(shot.shot || '') || BROLL_HINT.test(shot.framing || '')
 }
 

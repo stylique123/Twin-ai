@@ -223,7 +223,7 @@ export interface Blueprint {
     shot: string
     framing: string
     notes: string
-    shot_type?: 'talking_head' | 'b_roll' | 'cover_frame'
+    shot_type?: 'talking_head' | 'b_roll' | 'cover_frame' | 'close_up'
     b_roll_type?: 'stock' | 'replicate' | 'none'
     b_roll_visual?: string
     spoken_text?: string
