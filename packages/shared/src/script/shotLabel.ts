@@ -26,6 +26,7 @@
 const BY_TYPE: Record<string, string> = {
   talking_head: 'You, on camera',
   cover_frame: 'The still for the thumbnail',
+  close_up: 'Close on your hands',
   b_roll: 'Cutaway',
 }
 

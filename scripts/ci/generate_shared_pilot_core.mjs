@@ -135,6 +135,8 @@ const SOURCES = [
   ['packages/shared/src/script/scriptRules.ts', 'supabase/functions/_shared/scriptRules.ts'],
   // The shown half of each beat: the job, its default shot, and the audit (owner spec 2026-10-01).
   ['packages/shared/src/script/shownJob.ts', 'supabase/functions/_shared/shownJob.ts'],
+  // Show-it beat + close_up shots (trial, 2026-10-08): one decision, both sides.
+  ['packages/shared/src/script/showItBeat.ts', 'supabase/functions/_shared/showItBeat.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'supabase/functions/_shared/scriptFamily.ts'],
   ['packages/shared/src/script/ideaQuestions.ts', 'supabase/functions/_shared/ideaQuestions.ts'],
   ['packages/shared/src/script/factPurpose.ts', 'supabase/functions/_shared/factPurpose.ts'],

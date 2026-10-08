@@ -10,7 +10,7 @@
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
 import { referencePointsFromTranscriptStructure, referenceUrlKey } from '../_shared/transcriptReferencePoints.ts'
-import { renderDirectionGuidance, cleanActionPosing,
+import { renderDirectionGuidance, cleanActionPosing, CATEGORY_DEMO,
   type ProductKind as ProductKindInline,
   type Showability as ShowabilityInline,
   type ObjectShape as ObjectShapeInline } from '../_shared/performanceDirection.ts'
@@ -65,6 +65,8 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
+import { enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
+  CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
 import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose, offerIsSpeakable } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
@@ -5788,6 +5790,8 @@ const blueprintSchema = obj(
   ],
 )
 
+const SHOT_TYPE_LINE_INLINE = `- shot_type: specify either 'talking_head' (camera on creator speaking) or 'cover_frame' (the thumbnail image/first frame). There is no third option: Twin does not plan overlay or cutaway footage, so never invent a shot the creator has no way to supply.`
+const SHOT_LIST_LINE_INLINE = 'Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.'
 const SYSTEM = `You are TwinAI's reference engine and a world-class short-form retention strategist. You turn a proven viral video reference into a personalized, shootable blueprint in the creator's OWN voice, engineered with real audience psychology so the finished video actually holds attention and gets shared.
 
 WRITING STYLE (non-negotiable):
@@ -6642,6 +6646,8 @@ async function handle(req: Request): Promise<Response> {
   // for one request (`trial_off: true`) so enforced and plain scripts are
   // compared from the same facts. Real creators never have the trial.
   let trialOn = isHeartbeat
+  // SOFTWARE (trial 2026-10-08): the ~25s target for app/software/course/community videos, set once the product is known.
+  let softwareTargetSec: number | null = null
   const reqStartedAt = Date.now()
 
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
@@ -11741,7 +11747,16 @@ ${fenced('claims this creator may NOT make', forbidden)}
     // place the three-rung ladder exists on this side. `ref.duration_sec` is
     // deliberately not passed: it prefills the picker on the client and decides
     // nothing here.
-    const lengthResolved = resolveTargetInline(body.target_seconds, null)
+    // SOFTWARE (trial 2026-10-08): an app, software, course or community video
+    // is short and payoff-first — about 25 seconds — unless she picked a length.
+    if (trialOn) {
+      const t = trialSoftwareTarget((ownedEntity as { type?: unknown } | null)?.type, body.target_seconds)
+      if (t !== null) {
+        softwareTargetSec = t
+        console.log(JSON.stringify({ event: 'software_target_applied', target_sec: t }))
+      }
+    }
+    const lengthResolved = resolveTargetInline(body.target_seconds, softwareTargetSec)
     lengthTarget = lengthResolved.targetSec
     lengthTargetSource = lengthResolved.source
     lengthBeatsAllowed = planLengthInline(lengthTarget, substanceBudgetComputed)
@@ -11774,7 +11789,7 @@ ${fenced('claims this creator may NOT make', forbidden)}
       && typeof substanceBudgetComputed.beats === 'number'
       && substanceBudgetComputed.beats > FREE_BEATS_INLINE
     const availableBeats = countedSomething ? substanceBudgetComputed.beats : null
-    const durationBrief_ = durationBriefInline(body.target_seconds, null, availableBeats)
+    const durationBrief_ = durationBriefInline(body.target_seconds, softwareTargetSec, availableBeats)
     const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
     // ⚠️ ITEMS 1 AND 4: THE GOAL'S STRUCTURE, STATED TO THE WRITER — and checked
     // after generation by the same module (`goalFidelity.ts`), so the prompt and
@@ -11803,6 +11818,10 @@ This is the video's position. Every field below must serve it. If the reference'
     // reads them rather than adding a column. When showability is NEVER — seven
     // products in production — the taxonomy returns body-and-face cues only, so
     // the model has somewhere real to go instead of a prop.
+    // SOFTWARE (trial 2026-10-08): a course or a community is shown like
+    // software — payoff first, short, the ask answering the sign-up doubt.
+    const softwareBlockTrial = trialOn && trialSoftwareBlockExtends((ownedEntity as { type?: unknown } | null)?.type) && CATEGORY_DEMO.software
+      ? `\n${CATEGORY_DEMO.software}` : ''
     const directionGuidance = renderDirectionGuidance({
       kind: (ownedEntity as { type?: string | null } | null)?.type as ProductKindInline ?? null,
       showability: (ownedEntity as { showability?: string | null } | null)?.showability as ShowabilityInline ?? null,
@@ -11828,7 +11847,7 @@ This is the video's position. Every field below must serve it. If the reference'
     const familyHookRule = renderFamilyHookRule(family)
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
-${directionGuidance}
+${directionGuidance}${softwareBlockTrial}
 
 ${familyHookRule}
 
@@ -11872,13 +11891,19 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // numbers say it is worth it. Each draft opens from a DIFFERENT hook source
     // on the material board; one Flash read picks the one a real viewer of her
     // audience would watch to the end. Any failure falls back to draft one.
+    // SHOW IT (trial 2026-10-08): a third shot type, `close_up`, for a beat
+    // whose job is showing — the back camera on her hands, the product or its
+    // screen. Real creators keep the two-type prompt.
+    const writerSystem = trialOn
+      ? SYSTEM.replace(SHOT_TYPE_LINE_INLINE, CLOSE_UP_SHOT_RULE).replace(SHOT_LIST_LINE_INLINE, CLOSE_UP_SHOT_LIST_RULE)
+      : SYSTEM
     const draftCount = isHeartbeat ? Math.max(1, Math.min(3, Number((body as { drafts?: unknown }).drafts ?? 1) || 1)) : 1
     let raw: string
     if (draftCount > 1) {
       const hookSources = knowledgeRoute?.hookSources ?? []
       const variants = Array.from({ length: draftCount }, (_, k) => k === 0 ? userPrompt
         : `${userPrompt}\n\nDRAFT ${k + 1}: write a genuinely different version — a different hook and a different way into the same material${hookSources[k] ? `; open from ${SOURCE_USE_INLINE[hookSources[k]] ?? hookSources[k]}` : ''}. Same facts, same rules.`)
-      const drafts = await Promise.allSettled(variants.map((v, k) => callModel(apiKey, SYSTEM, v, blueprintSchema,
+      const drafts = await Promise.allSettled(variants.map((v, k) => callModel(apiKey, writerSystem, v, blueprintSchema,
         k === 0 ? attemptRecorder(admin, ownerId, scriptRunId) : undefined)))
       const ok = drafts.map((d) => (d.status === 'fulfilled' ? d.value : null))
       const usable = ok.map((t, k) => ({ t, k })).filter((x): x is { t: string; k: number } => typeof x.t === 'string')
@@ -11908,7 +11933,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       console.log(JSON.stringify({ event: 'drafts_picked', drafts: draftCount, usable: usable.length, picked: pick.k, said: pickSaid }))
       raw = pick.t
     } else {
-      raw = await callModel(apiKey, SYSTEM, userPrompt, blueprintSchema,
+      raw = await callModel(apiKey, writerSystem, userPrompt, blueprintSchema,
         attemptRecorder(admin, ownerId, scriptRunId))
     }
 
@@ -12973,7 +12998,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // `under_words` is no longer automatically a fault — a script that ran out
       // of substance is SUPPOSED to come in short — so it is read together with
       // `length_beats_allowed`, never alone.
-      duration_contract: durationAuditInline(declared, body.target_seconds, null),
+      duration_contract: durationAuditInline(declared, body.target_seconds, softwareTargetSec),
       // ⚠️ FIX 7. Beats whose words don't fit the beat_plan's own target_sec,
       // matched by position (one beat plan entry per script entry). Detection
       // only -- target_sec reaches nothing downstream today, so there is
@@ -14078,7 +14103,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         bpAny.script = tagStorySources(bpAny.script as IntegrityBeat[], suppliedStories)
         const integrityOpts = {
           knownText,
-          targetSec: resolveTargetInline(body.target_seconds, null).targetSec,
+          targetSec: resolveTargetInline(body.target_seconds, softwareTargetSec).targetSec,
           // ⚠️ NO MEASURED PACE IS STORED PER CREATOR TODAY; the budget uses the
           // recorder's natural 150 wpm. The parameter exists so a stored pace
           // plugs in here without a second rule.
@@ -15908,10 +15933,44 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           console.warn(JSON.stringify({ event: 'role_claim_dropped', lines: flagged.length, rewritten, dropped: drop.size, claims: flagged.flatMap((x) => x.claims).slice(0, 4) }))
         }
       }
+      // SHOW IT (trial 2026-10-08): on the FINAL beats and cameras, a sales
+      // video for a showable product she has must show it. One existing beat
+      // (never the hook or the ask) is retagged — job, back camera, direction —
+      // and its spoken line is never touched. Counts only in the log.
+      if (trialOn && Array.isArray(bp.script)) {
+        try {
+          const ent = ownedEntity as { name?: unknown } | null
+          const enforced = enforceShowItBeat(bp.script as Array<Record<string, unknown>>, {
+            entity: ownedEntity as Record<string, unknown> | null,
+            goal: String(body.goal ?? ''),
+            words: productWords(ent?.name, knowledgeFacts(ownedEntity).map((f) => f.value)),
+          })
+          bp.script = enforced.script
+          console.log(JSON.stringify({ event: 'show_it_enforced', retagged: enforced.retagged, reason: enforced.reason }))
+        } catch { /* enforcing never fails a generation */ }
+      }
       // The shot list quotes and films the script that ships.
       if (Array.isArray(bp.shot_list) && Array.isArray(bp.script)) {
         const synced = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>)
         bp.shot_list = carryBeatActions(synced.shots as Array<Record<string, unknown>>, bp.script as Array<Record<string, unknown>>)
+      }
+      // The shown audit, re-measured on the script that SHIPS (the earlier one
+      // runs before the late guards rewrite or drop beats).
+      if (Array.isArray(bp.script)) {
+        try {
+          const beatsF = bp.script as Array<Record<string, unknown>>
+          const showF = String((ownedEntity as { showability?: unknown } | null)?.showability ?? '')
+          const goalF = String(body.goal ?? '')
+          const sellsF = !!ownedEntity && (showF === 'ALWAYS' || showF === 'SOMETIMES') && (goalF === 'sell' || goalF === 'leads' || goalF === '')
+          const auditF = auditShownScript(beatsF, { sellsShowable: sellsF })
+          const prev = (bp as { shown_audit?: unknown }).shown_audit
+          if (prev && typeof prev === 'object') (bp as { shown_audit?: unknown }).shown_audit = { ...prev, showsInUse: auditF.showsInUse, jobs: auditF.jobs }
+          console.log(JSON.stringify({ event: 'shown_script_audit_final', shows_in_use: auditF.showsInUse, showing_framed_like_talk: auditF.showingFramedLikeTalk }))
+        } catch { /* measuring never fails a generation */ }
+      }
+      // close_up (trial): every shot of a showing beat is the back camera on her hands, the product or its screen.
+      if (trialOn && Array.isArray(bp.shot_list) && Array.isArray(bp.script)) {
+        bp.shot_list = applyCloseUpShots(bp.shot_list as Array<Record<string, unknown>>, bp.script as Array<Record<string, unknown>>).shots
       }
     } catch (e) { console.warn('blueprint finish failed', String((e as Error)?.message ?? e).slice(0, 120)) }
     // ⚖️ THE ARC, CHECKED: where the product first appears, against the row.

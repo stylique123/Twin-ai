@@ -103,7 +103,7 @@ describe('the row exists before the call, or it cannot describe a failure', () =
 
   it('is actually passed a recorder on the generation path', () => {
     // A classifier nothing calls is the defect this record exists to remove.
-    expect(EDGE).toMatch(/callModel\(apiKey, SYSTEM, userPrompt, blueprintSchema,\s*\n?\s*attemptRecorder\(admin, ownerId, scriptRunId\)\)/)
+    expect(EDGE).toMatch(/callModel\(apiKey, writerSystem, userPrompt, blueprintSchema,\s*\n?\s*attemptRecorder\(admin, ownerId, scriptRunId\)\)/)
   })
 
   it('links the generation only when one exists', () => {
