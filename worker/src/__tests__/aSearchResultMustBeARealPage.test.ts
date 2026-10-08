@@ -102,8 +102,11 @@ describe('findProductOnWeb', () => {
 
 describe('extractProduct wiring (source anchors)', () => {
   const src = readFileSync(join(__dirname, '..', 'jobs', 'extractProduct.ts'), 'utf8')
-  it('runs only with no url and no images (or after a shop miss), and marks facts web_search', () => {
-    expect(src).toMatch(/imagePaths\.length === 0 && \(\(!url && webSearchAsked\) \|\| shopMissed\)/)
+  it('runs only with no url and no images when she asked, and marks facts web_search', () => {
+    expect(src).toMatch(/imagePaths\.length === 0 && !url && webSearchAsked\)/)
+    // Plan v3 Part 2: a link she gave that missed is "read failed", never a name search.
+    expect(src).not.toMatch(/\|\| shopMissed\)/)
+    expect(src).toContain("event: 'product_read_failed'")
     expect(src).toMatch(/webMatch \? 'web_search' : sourceFor/)
   })
   it('logs both outcomes and never rethrows from the search', () => {
