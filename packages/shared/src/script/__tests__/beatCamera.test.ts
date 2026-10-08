@@ -34,7 +34,7 @@ describe('decideBeatCameras', () => {
       { section: 'CTA', line: 'Close', camera: 'front, then back' },
     ]
     const r = decideBeatCameras(script)
-    expect(r.script.map((b) => b.camera)).toEqual(['front', 'back', 'front', undefined, 'front'])
+    expect(r.script.map((b) => (b as { camera?: unknown }).camera)).toEqual(['front', 'back', 'front', undefined, 'front'])
     expect(r.missing).toBe(2)
     expect(r.changed).toBe(3)
     expect(r.back).toBe(1)
@@ -78,6 +78,6 @@ describe('jobFirst (trial): the beat purpose decides the camera', () => {
   })
   it('passes the option through decideBeatCameras', () => {
     const s = [{ section: 'hook', shown_job: 'reveal', line: 'a' }, { section: 'body', shown_job: 'claim', line: 'b', direction: 'show the label' }, { section: 'cta', line: 'c' }]
-    expect(decideBeatCameras(s, o).script.map((b) => b.camera)).toEqual(['back', 'front', 'front'])
+    expect(decideBeatCameras(s, o).script.map((b) => (b as { camera?: unknown }).camera)).toEqual(['back', 'front', 'front'])
   })
 })
