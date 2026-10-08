@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { dropRepeatedAsk, stripClaimIntensifiers, stripEmptyBridge, cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes } from '../beatCleanup.js'
+import { dropRepeatedAsk, stripClaimIntensifiers, stripEmptyBridge, cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../beatCleanup.js'
 
 describe('blind set 1 leftovers (owner 2026-10-05)', () => {
   it.each([
@@ -93,5 +93,18 @@ describe('a standalone bridge beat (set 4 T3)', () => {
     expect(dropRepeatedAsk('Tell me below. What would you do — tell me in the comments?')).toBe('What would you do — tell me in the comments?')
     expect(dropRepeatedAsk('Would you practice first? Tell me in the comments. What would you do — tell me in the comments?')).toBe('Would you practice first? What would you do — tell me in the comments?')
     expect(dropRepeatedAsk('Keep it simple. Tell me what you brew.')).toBe('Keep it simple. Tell me what you brew.')
+  })
+})
+
+describe('brief v2 2.15: stock closers are cut', () => {
+  it('cuts the closer as a sentence or a clause, keeps the rest', () => {
+    expect(dropStockCloser('We figured it out. That is the whole story.')).toBe('We figured it out.')
+    expect(dropStockCloser("So I am in the clear, and that is honestly everything there is to say on it.")).toBe('So I am in the clear.')
+    expect(dropStockCloser('Clarity beats worry every time. That is the entire lesson.')).toBe('Clarity beats worry every time.')
+    expect(dropStockCloser("That's really everything there is to it.")).toBe("That's really everything there is to it.")
+  })
+  it('leaves real lines alone', () => {
+    for (const t of ['That is the whole reason I roast at home.', 'This is the story of my first market.', "That's it for the cart, now the beans."])
+      expect(dropStockCloser(t)).toBe(t)
   })
 })
