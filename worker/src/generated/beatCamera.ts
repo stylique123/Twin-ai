@@ -61,6 +61,22 @@ const BACK_ACTION = new RegExp([
   String.raw`\b(?:texture|label|side profile|the beans|the grounds|the ingredients)\b`,
 ].join('|'), 'i')
 
+/** Jobs her face carries: under `jobFirst` a word in the direction cannot flip them. */
+const FRONT_JOBS = new Set(['talk', 'claim', 'story_emotion'])
+/** Jobs a hook may open on the back camera for. */
+const SHOW_FIRST_JOBS = new Set(['reveal', 'demo', 'sensory'])
+
+export interface CameraOpts {
+  /**
+   * TRIAL 2026-10-08 (blueprint gap report, item 4): the beat's shown_job
+   * decides first. Talk, claim and story beats stay on her face whatever the
+   * direction's words say; showing beats go to the back camera; a hook whose
+   * job is a reveal may open on the back camera. Beats with no job fall back
+   * to the word rules below.
+   */
+  jobFirst?: boolean
+}
+
 const FACE_TO_LENS = /\b(?:eye contact|to (?:the )?(?:lens|camera)|into (?:the )?(?:lens|camera)|at (?:the )?(?:lens|camera)|lean(?:s|ing)? in|open palms?|talking head|nods?|smiles? at)\b/i
 
 const text = (v: unknown) => (typeof v === 'string' ? v : '')
@@ -69,8 +85,18 @@ const text = (v: unknown) => (typeof v === 'string' ? v : '')
  * The one camera for this beat. `index`/`total` let the first and last spoken
  * beats count as hook and close when the section name says neither.
  */
-export function cameraForBeat(beat: CameraBeat, index = -1, total = -1): BeatCamera {
+export function cameraForBeat(beat: CameraBeat, index = -1, total = -1, opts: CameraOpts = {}): BeatCamera {
   const section = text(beat.section)
+  if (opts.jobFirst) {
+    const j = text(beat.shown_job).trim().toLowerCase().replace(/[\s-]+/g, '_')
+    const isAsk = /\b(cta|call to action|close|closing|outro|ask|sign[- ]?off)\b/i.test(section) || j === 'cta'
+    const isLast = total > 0 && index === total - 1
+    // A hook that IS the first look at the thing may open on the back camera.
+    if (!isAsk && !isLast && (index === 0 || /\bhook\b/i.test(section))) return SHOW_FIRST_JOBS.has(j) ? 'back' : 'front'
+    if (isAsk || isLast) return 'front'
+    if (FRONT_JOBS.has(j)) return 'front'
+    if (BACK_JOBS.has(j) || j === 'reveal') return 'back'
+  }
   if (FRONT_SECTION.test(section)) return 'front'
   if (index === 0) return 'front'
   if (total > 0 && index === total - 1) return 'front'
@@ -100,13 +126,13 @@ export interface CameraDecision<T> {
 }
 
 /** Decide every spoken beat's camera. Returns new beat objects; never mutates. */
-export function decideBeatCameras<T extends CameraBeat>(script: readonly T[]): CameraDecision<T> {
+export function decideBeatCameras<T extends CameraBeat>(script: readonly T[], opts: CameraOpts = {}): CameraDecision<T> {
   const spoken = script.map((b, i) => (text(b?.line).trim() ? i : -1)).filter((i) => i >= 0)
   let changed = 0, missing = 0, front = 0, back = 0
   const out = script.map((b, i) => {
     const pos = spoken.indexOf(i)
     if (pos < 0 || !b || typeof b !== 'object') return b
-    const cam = cameraForBeat(b, pos, spoken.length)
+    const cam = cameraForBeat(b, pos, spoken.length, opts)
     const had = text(b.camera).trim().toLowerCase()
     if (had !== 'front' && had !== 'back') missing += 1
     if (had !== cam) changed += 1

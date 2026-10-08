@@ -14638,7 +14638,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // beat's one camera is now decided from what it does (beatCamera), before
       // the shot list carries it.
       if (Array.isArray(script)) {
-        const cams = decideBeatCameras(script as Array<Record<string, unknown>>)
+        const cams = decideBeatCameras(script as Array<Record<string, unknown>>, { jobFirst: trialOn })
         ;(blueprint as { script?: unknown }).script = cams.script
         console.log(JSON.stringify({ event: 'beat_camera_decided', beats: cams.front + cams.back, back: cams.back, changed: cams.changed, missing: cams.missing }))
       }
