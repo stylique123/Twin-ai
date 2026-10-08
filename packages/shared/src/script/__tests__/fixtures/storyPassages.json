@@ -1,0 +1,155 @@
+{
+  "note": "FICTIONAL fixture. Maya's Coffee is invented; no real transcripts. label: complete | not_complete.",
+  "passages": [
+    {
+      "id": 1,
+      "label": "complete",
+      "type": "story",
+      "text": "The first market I did for Maya's Coffee was in a church parking lot. I brought forty bags and a folding table. But it rained the whole morning and I sold three bags. I learned to always pack a canopy, and now I never set up without one."
+    },
+    {
+      "id": 2,
+      "label": "complete",
+      "type": "story",
+      "text": "Last spring I ordered twenty pounds of green beans from a new importer. I roasted the whole batch the night before a market. Then I tasted it and it was sour and flat. I ended up giving it away, and now I cup every new lot before I roast a full batch."
+    },
+    {
+      "id": 3,
+      "label": "complete",
+      "type": "story",
+      "text": "When I opened the little shop on Fifth Street I thought the espresso machine was the whole business. Turned out nobody came in for espresso, they came in for the pour overs. So that's why the menu today is mostly filter coffee."
+    },
+    {
+      "id": 4,
+      "label": "complete",
+      "type": "story",
+      "text": "Two years ago we tried shipping coffee in clear bags because they looked pretty on the shelf. Until a customer emailed that her beans tasted stale in a week. That's when I realized light was killing the flavor. Since then every bag we ship is foil lined."
+    },
+    {
+      "id": 5,
+      "label": "complete",
+      "type": "story",
+      "text": "That Saturday I had a line of twenty people and my grinder just died. I was panicking. But a regular ran home and brought me his hand grinder, and we ground every cup by hand. The lesson for me was that the people at that market are the business."
+    },
+    {
+      "id": 6,
+      "label": "complete",
+      "type": "story",
+      "text": "Back in 2021 I was roasting in my garage with a popcorn popper. I burned out three of them in one month. Then my neighbor said she had an old drum roaster in her basement. I bought it for sixty dollars and I still roast on it every Tuesday."
+    },
+    {
+      "id": 7,
+      "label": "complete",
+      "type": "story",
+      "text": "The very first wholesale account I got was a bakery downtown. I priced my beans way too low because I was scared to lose them. Then I did the math and realized I was paying them to take my coffee. I raised the price, they stayed, and I learned to price from my costs first."
+    },
+    {
+      "id": 8,
+      "label": "complete",
+      "type": "story",
+      "text": "One morning I left the roaster running while I answered the phone. I came back and the whole room was smoke. It turned out the batch was fine but the chaff tray caught fire. Ever since that day I never walk away from the drum, not even for a minute."
+    },
+    {
+      "id": 9,
+      "label": "not_complete",
+      "type": "advice",
+      "text": "You should always rest your beans for at least two days after roasting. Your coffee will taste brighter and your customers will notice. Don't skip it just because you're in a hurry, it really makes a difference to you and them."
+    },
+    {
+      "id": 10,
+      "label": "not_complete",
+      "type": "advice",
+      "text": "If you want better coffee at home, buy a burr grinder. Your blade grinder makes dust and boulders. You will taste the difference on the first cup, I promise, and you won't go back."
+    },
+    {
+      "id": 11,
+      "label": "not_complete",
+      "type": "tips",
+      "text": "Three tips for your first farmers market. Tip number one, bring change. Second, bring more cups than you think. Third, put your prices on a big sign so nobody has to ask. That's it, now go sell some coffee."
+    },
+    {
+      "id": 12,
+      "label": "not_complete",
+      "type": "tips",
+      "text": "Here are five things I wish I knew. Number one, rest your beans. Number two, weigh everything. Number three, label your roast dates. Number four, keep a log. Number five, taste every batch before it ships."
+    },
+    {
+      "id": 13,
+      "label": "not_complete",
+      "type": "product",
+      "text": "Our Sunrise blend is a medium roast with notes of milk chocolate and orange. It comes in a twelve ounce foil bag with a one way valve. We roast it every Monday and ship it out by Wednesday, and it's our best seller."
+    },
+    {
+      "id": 14,
+      "label": "not_complete",
+      "type": "product",
+      "text": "This is the new cold brew pack. Each pouch makes about a liter. The beans are a coarse grind of our Colombian and Ethiopian lots, and the pouches are compostable. We think it's the easiest cold brew you can make."
+    },
+    {
+      "id": 15,
+      "label": "not_complete",
+      "type": "hypothetical",
+      "text": "Imagine you open a coffee cart tomorrow. You'd need a permit, a generator and a way to keep milk cold. If it rains you lose the day. So before you buy anything, make a list of what the first month would cost you."
+    },
+    {
+      "id": 16,
+      "label": "not_complete",
+      "type": "hypothetical",
+      "text": "If I ever opened a second shop I would put it near the college. Students drink more coffee than anyone. I would probably keep it small, maybe six seats, and I'd run it with a part timer."
+    },
+    {
+      "id": 17,
+      "label": "not_complete",
+      "type": "half_story_no_turn",
+      "text": "Last summer I started roasting a Guatemalan lot for the shop. I roasted it medium and sold it in our twelve ounce bags. Customers bought it every week and I reordered twice over the season. It was a good summer for the shop."
+    },
+    {
+      "id": 18,
+      "label": "not_complete",
+      "type": "half_story_no_turn",
+      "text": "When I opened Maya's Coffee I had one table, one roaster and one grinder. I worked every day from six to two. I roasted on Mondays and Thursdays and sold at the market on weekends, and my sister helped with the bags."
+    },
+    {
+      "id": 19,
+      "label": "not_complete",
+      "type": "half_story_no_turn",
+      "text": "The first market I did was the Riverside market downtown. I set up next to a bread stand and a flower stall. I brought my pour over kit and two kinds of beans. I was there from seven in the morning to noon."
+    },
+    {
+      "id": 20,
+      "label": "not_complete",
+      "type": "story_no_resolution",
+      "text": "Last winter I tried a natural process Ethiopian for the holiday blend. I roasted three test batches. But every one came out tasting like fermented fruit and I could not figure out why. I'm still not sure what went wrong with it."
+    },
+    {
+      "id": 21,
+      "label": "not_complete",
+      "type": "story_no_resolution",
+      "text": "Two years ago we got a huge order from an office for their holiday party. I roasted for two days straight. Then the day before delivery they called and cancelled the whole thing. I had sixty bags sitting in the hallway."
+    },
+    {
+      "id": 22,
+      "label": "not_complete",
+      "type": "other",
+      "text": "I really love what I do. Coffee is about people and mornings and slowing down a little. My favorite part of the day is the first cup, before anyone else is awake, when it's just me and the roaster."
+    },
+    {
+      "id": 23,
+      "label": "not_complete",
+      "type": "process",
+      "text": "First I weigh the green beans, then I charge the drum at four hundred degrees. I watch the color and listen for first crack. Then I drop the beans into the cooling tray and stir them until they're cool to touch."
+    },
+    {
+      "id": 24,
+      "label": "not_complete",
+      "type": "advice",
+      "text": "Here's the thing about pricing your coffee. Your costs are green beans, bags, labels, your time and your gas. If you don't count your time you're not running a business, you're running a hobby. Price from your costs, not from what the shop down the street charges."
+    },
+    {
+      "id": 25,
+      "label": "not_complete",
+      "type": "hypothetical",
+      "text": "Let's say a cafe wants to carry your beans. You'd want a minimum order and a delivery day. And then what if they pay late? You need terms written down, because otherwise you are the bank."
+    }
+  ]
+}
