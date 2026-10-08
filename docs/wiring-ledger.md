@@ -89,3 +89,36 @@ No private text here. Examples use fictional accounts (Maya's Coffee, FlowDesk).
 | APP | 3 | 0 | — | 2 | 0/16 |
 
 Software-like scripts (APP, DIGITAL_PRODUCT, COURSE, COMMUNITY) with a showing beat: 3 of 58 (5%). Teleprompter and shot-list agreement is not measured yet; that comes with plan 3.1.
+
+## Planned rows from master plan v3.1, Part 8 (status: planned)
+| Source | Item | Belongs in |
+|---|---|---|
+| 8.1-1 | Leak and cleanup list: origin check for everyone, profile-label leaks, brand-name-only-when-relevant, idea scripts naming a product, scan topics as claims, invented causes made general, padding, conversations arc, held bridge/teaser and CTA changes (tested against the rated library first) | W3, re-checked in Phase R |
+| 8.1-2 | Hard-limit regression tests (street address, precise location, deleted posts, minors' identifying details still cut) | Phase R |
+| 8.1-3 | Ask-first rate re-measured cleanly after the skip fix; repeated-ask check | Phase R, W1 |
+| 8.1-4 | Latency budget (about 95 s per script) and real step events on wait screens | W5, W8 |
+| 8.1-5 | Reference, Idea and Suggest modes evaluated in the hold-out; Reference: shape kept, words new | Phase 6, before B4/B14 |
+| 8.1-6 | Option dependency split (needs her moment / her facts / general knowledge) | Phase 4.3 (minimal), W8 |
+| 8.1-7 | Phase 5 specifics: stance profile, idea ledger, 30–50 sourced claim library, origin tags and claim ids, mix dial, labeled sets | Phase 5 |
+| 8.1-8 | Coffee-specific word lists in the claim check replaced by a general check; non-coffee fixtures per rule | Phase 6, rollout |
+| 8.1-9 | Roadmap gates A–E (frozen hold-out, second-account sentinel started early, gradual rollout with kill switch, scheduling/AI edit after rollout, beta) | Gates A–E |
+| 8.1-10 | Beta readiness checklist | Gate E |
+| 8.1-11 | Policy text for counsel, data deletion path, consent record for test creators | Gate E, owner |
+| 8.1-12 | Side-by-side sheet of 3 reshaped stories (local only) and the 30-story human check | Phase 2.4 |
+| 8.1-13 | Create flow v4 details (angle screen, panels, preflight, durable job, take, flow state, skip caution outcomes, script_kind) | W8 |
+| 8.1-15 | Scheduling and AI-edit audit now, fixes after rollout | Gate D |
+| 8.1-16 | Persona and reviewer v2, second judge from a different model family | W5, parked |
+
+## Reverse coverage check (8.4), 2026-10-08
+Compared against the scratchpad backlog, the parked list, open GitHub issues (7) and TODO/FIXME markers in source (0 real ones).
+
+| Found | Status | Added to |
+|---|---|---|
+| **Heartbeat `reference` check fails with HTTP 409 since 2026-10-02** (issue #1076, 28 comments). A real Reference-mode generation on a frozen store returns nothing usable | open, not in the plan | **Phase R, first item** (and 8.1-5) |
+| #203 VPS container restart loop (blocks the Phase 8 render deploy) | open, video editor track | parked (editor track) |
+| #193 / #204 pre-beta private speech eval (~12 consented users) | open, editor gate | Gate E checklist |
+| #206 Phase 8 EditPlan → FFmpeg render | open, editor track | parked (editor track) |
+| #302 / #303 speech detector accuracy | open, editor track | parked (editor track) |
+| Question ladder (#1148), complete-story detection (#1164), `storeGap`: built, no caller | orphan rows (capped at 3) | W1, Phase 2.2, Phase 4.3 |
+| Held stashes `cta` and `bridges` | parked | W3 (tested against the rated library) |
+| No-story present-tense scenes and invented specifics | parked | W2 |
