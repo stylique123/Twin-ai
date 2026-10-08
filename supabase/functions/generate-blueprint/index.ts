@@ -70,6 +70,7 @@ import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
+import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
@@ -8762,6 +8763,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   let suppliedKnowledgeIds: string[] = []
   // Brief 1.4: what the writer was shown, for the ids-only provenance log.
   let provenanceSupply: Array<{ id?: unknown; kind?: unknown; text?: unknown }> = []
+  // No-story trial rule: set where the note moment is read; story items read from provenanceSupply.
+  let noteMomentForVideo = false
   let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
   // Everything the writer was given, kept for the figure audit (Sunflower #23).
   let writerMaterial = ''
@@ -11132,9 +11135,16 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
           && noteSentences >= 2 && !noteIsAsk
           && /\b(?:I|I'm|I've|I'd|my|me|we|our)\b/.test(reference_note)
         if (noteHasMoment) console.log(JSON.stringify({ event: 'note_moment_spine' }))
+        noteMomentForVideo = noteHasMoment
+        // Owner 2026-10-08 (trial): with no story supplied, the writer narrated
+        // invented past events ("When the city knocked…"). Say so explicitly.
+        const noStorySupplied = trialOn && !noteHasMoment
+          && !provenanceSupply.some((k) => STORY_KINDS.has(String(k.kind ?? '')))
         const momentInstruction = noteHasMoment
           ? '\n\nHER MOMENT FOR THIS VIDEO: the creator\'s note above contains a moment she lived, in her own words. Tell THAT moment as the script\'s one story (setup, what went wrong or surprised her, what she did, how it ended), keeping her wording. Do not swap in a different stored story; a stored fact may only support it. Add nothing to it that she did not say.'
-          : ''
+          : noStorySupplied
+            ? '\n\nNo personal story was given for this video. Do not narrate any specific past event, visit, conversation or result as if it happened. Speak in general terms, give her known facts, or ask the viewer.'
+            : ''
         // ⚠️ FIX 12 (Wave 4). SAME `creatorHasExperience` READ, DIFFERENT
         // QUESTION: `premiseInstruction` above asks whether the REFERENCE's own
         // premise demands narrator experience; this asks whether the CREATOR's
@@ -15756,6 +15766,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         } else if (cleaned.changed || labelled || echoDropped) {
           bp.script = relabelled
           console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed, labels: labelled, echo_closer: echoDropped }))
+        }
+        // Owner 2026-10-08: no story supplied → no narrated past event.
+        {
+          const hasStory = noteMomentForVideo || provenanceSupply.some((k) => STORY_KINDS.has(String(k.kind ?? '')))
+          if (!hasStory) {
+            const ev = dropInventedEvents(bp.script as Array<{ line?: unknown }>, { hasStory })
+            if (ev.dropped) bp.script = ev.beats
+            if (ev.dropped || ev.would_stub) console.log(JSON.stringify({ event: 'no_story_events_dropped', dropped: ev.dropped, would_stub: ev.would_stub }))
+          }
         }
         // Owner 2026-10-05 (blind set 2 #9, #17): a sentence carrying a
         // specific found nowhere in her material ("equal parts", "dread") is
