@@ -65,7 +65,8 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
-import { enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
+import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
+import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
 import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose, offerIsSpeakable } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
@@ -7591,6 +7592,26 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // decline because the lookup above is skipped, so this reads as belt and
   // braces. It states at the point of use that a decline yields no subject, and
   // the next person to add a fallback has to delete an explicit `null` to do it.
+  // SHOWABILITY INFERRED (trial 2026-10-08): most rows are born UNKNOWN (no
+  // capability flag answered), so the show-it beat never applied. On the trial
+  // only, UNKNOWN is replaced IN MEMORY by a read of the product itself; the row
+  // is never written. Screen kinds keep UNKNOWN: their show is the screen, and
+  // NEVER would remove it. Counts only in the log.
+  chosenEntity = (() => {
+    const e = chosenEntity
+    if (!trialOn || !e || typeof e !== 'object') return e
+    const row = e as Record<string, unknown>
+    if (String(row.showability ?? 'UNKNOWN').toUpperCase() !== 'UNKNOWN') return e
+    if (SHOW_SCREEN_KINDS.has(String(row.type ?? '').toUpperCase())) return e
+    try {
+      const to = inferShowabilityFromProduct({
+        type: row.type, name: row.name, offer: row.offer,
+        facts: [row.creator_summary, ...knowledgeFacts(e).map((f) => f.value)],
+      })
+      console.log(JSON.stringify({ event: 'showability_inferred', from: 'UNKNOWN', to }))
+      return to === 'UNKNOWN' ? e : { ...row, showability: to }
+    } catch { return e }
+  })()
   const ownedEntity = declinedAProduct ? null : chosenEntity
   // Owner 2026-10-05 (blind set 2 #13, #15): scanned rows must share a
   // distinctive word with THIS product and ask, or they stay out (trial).
