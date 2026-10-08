@@ -66,6 +66,7 @@ import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
+import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -15996,6 +15997,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           bp.script = enforced.script
           console.log(JSON.stringify({ event: 'show_it_enforced', retagged: enforced.retagged, reason: enforced.reason }))
         } catch { /* enforcing never fails a generation */ }
+      }
+      // SOFTWARE CLOSE (trial, measure only): does the last line answer cost, sign-up or time?
+      if (trialOn && Array.isArray(bp.script) && SHOW_SCREEN_KINDS.has(String((ownedEntity as { type?: unknown } | null)?.type ?? '').toUpperCase())) {
+        try {
+          const sc = auditSoftwareClose((bp.script as Array<{ line?: unknown }>).map((b) => b?.line))
+          console.log(JSON.stringify({ event: 'software_close_audit', ok: sc.ok, answers: sc.answers }))
+        } catch { /* measuring never fails a generation */ }
       }
       // The shot list quotes and films the script that ships.
       if (Array.isArray(bp.shot_list) && Array.isArray(bp.script)) {

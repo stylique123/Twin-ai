@@ -137,6 +137,7 @@ const SOURCES = [
   ['packages/shared/src/script/shownJob.ts', 'supabase/functions/_shared/shownJob.ts'],
   // Show-it beat + close_up shots (trial, 2026-10-08): one decision, both sides.
   ['packages/shared/src/script/showItBeat.ts', 'supabase/functions/_shared/showItBeat.ts'],
+  ['packages/shared/src/script/softwareClose.ts', 'supabase/functions/_shared/softwareClose.ts'],
   // Showability inferred from the product itself (trial, in memory only).
   ['packages/shared/src/script/inferShowability.ts', 'supabase/functions/_shared/inferShowability.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'supabase/functions/_shared/scriptFamily.ts'],
