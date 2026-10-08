@@ -831,6 +831,7 @@ const EVENTS = {
   showability_inferred: { kind: 'counter_ephemeral', why: 'Trial: an UNKNOWN showability replaced in memory by the value inferred from type/name/facts/offer (from, to only); never written to product_entities.' },
   show_it_enforced: { kind: 'counter_ephemeral', why: 'Trial: whether the final script had a beat retagged as the show-it beat (0|1) and why not; the retagged job/camera is stored on blueprint.script[].shown_job and camera.' },
   software_close_audit: { kind: 'counter_ephemeral', why: 'Trial, measure only: whether a software-kind script\'s last line answers cost, sign-up or time (ok + which). Recomputable from blueprint.script.' },
+  product_read_failed: { kind: 'counter_ephemeral', why: 'A link she gave could not be read (product not on her shop); no name search runs. Durable trace: product_entities.lookup_candidates and the job result lookup.read_failed.' },
   feature_fired: { kind: 'counter_ephemeral', why: 'Plan Part 0 fire counter: one line per wired plan feature per generation (feature + counts only). Batch reports count it per feature; the durable record is the wiring ledger.' },
   shown_script_audit_final: { kind: 'counter_ephemeral', why: 'The shown audit re-measured on the script that ships (after late guards); showsInUse is stored on blueprint.shown_audit.' },
   software_target_applied: { kind: 'counter_ephemeral', why: 'Trial: the 25s target applied to an app/software/course/community video with no picked length; the target lands in duration_contract.' },
