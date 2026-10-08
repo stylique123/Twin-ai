@@ -824,6 +824,7 @@ const EVENTS = {
   niche_reddit: { kind: 'counter_ephemeral', why: 'One sub-niche read from the top Reddit threads of the year (questions, complaints, buying asks, debates, phrases); durable in public.niche_reddit.items/threads, a failure in niche_reddit.failure.' },
   niche_research: { kind: 'counter_ephemeral', why: 'One sub-niche researched by grounded search (dates, news, products, competitors, questions); durable in public.niche_research.items/sources.' },
   knowledge_scoped_by_id: { kind: 'counter_ephemeral', why: 'Facts held back because they carry another product id (0260); the durable effect is which facts the writer was given (script_attempts selection).' },
+  showability_inferred: { kind: 'counter_ephemeral', why: 'Trial: an UNKNOWN showability replaced in memory by the value inferred from type/name/facts/offer (from, to only); never written to product_entities.' },
   show_it_enforced: { kind: 'counter_ephemeral', why: 'Trial: whether the final script had a beat retagged as the show-it beat (0|1) and why not; the retagged job/camera is stored on blueprint.script[].shown_job and camera.' },
   shown_script_audit_final: { kind: 'counter_ephemeral', why: 'The shown audit re-measured on the script that ships (after late guards); showsInUse is stored on blueprint.shown_audit.' },
   software_target_applied: { kind: 'counter_ephemeral', why: 'Trial: the 25s target applied to an app/software/course/community video with no picked length; the target lands in duration_contract.' },
