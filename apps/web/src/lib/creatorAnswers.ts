@@ -134,6 +134,7 @@ export async function answerQuestion(
       voice_id: voiceId,
       kind: built.row.kind,
       text: built.row.text,
+      evidence: built.row.evidence,
       basis: built.row.basis,
       source: built.row.source,
       confidence: built.row.confidence,

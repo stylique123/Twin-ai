@@ -15,7 +15,7 @@
 // one because a select failed would re-ask something the creator already
 // declined, which is precisely how an optional prompt earns being ignored.
 import { useEffect, useState } from 'react'
-import { nextQuestionByDeficit, creatorQuestionsFor, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
+import { nextQuestionByDeficit, creatorQuestionsFor, ANSWER_INPUT_MAX, ANSWER_MAX, type CreatorQuestion } from '@twinai/shared'
 import { loadVoiceNiche } from '../lib/voiceNicheLoad'
 import { loadOwnSells } from '../lib/ownSellsLoad'
 import { loadQuestionsPut, answerQuestion, skipQuestion, markQuestionShown, loadKnowledgeCounts } from '../lib/creatorAnswers'
@@ -24,7 +24,7 @@ import { cn } from '../lib/cn'
 const REFUSAL: Record<string, string> = {
   empty: 'Add a sentence first.',
   too_short: 'A few more words — the detail is the part we cannot get from your videos.',
-  too_long: `Keep it under ${ANSWER_MAX} characters. One sharp sentence beats a paragraph.`,
+  too_long: `Keep it under ${ANSWER_INPUT_MAX} characters, with a first sentence under ${ANSWER_MAX}. One sharp sentence beats a paragraph.`,
   not_saved: 'We could not save that just now. Your script is safe — try again in a moment.',
 }
 
@@ -103,7 +103,7 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
 
   if (!question) return null
 
-  const over = text.trim().length > ANSWER_MAX
+  const over = text.trim().length > ANSWER_INPUT_MAX
 
   const submit = async () => {
     setBusy(true)
@@ -155,9 +155,9 @@ export function CreatorQuestionCard({ voiceId = null }: { voiceId?: string | nul
           {problem ?? 'Only you can answer this — your videos cannot.'}
         </p>
         {/* Shown only once it matters, so a counter is not nagging from word one. */}
-        {text.trim().length > ANSWER_MAX - 60 && (
+        {text.trim().length > ANSWER_INPUT_MAX - 60 && (
           <span className={cn('shrink-0 text-[11px] tabular-nums', over ? 'text-coral' : 'text-stone')}>
-            {text.trim().length}/{ANSWER_MAX}
+            {text.trim().length}/{ANSWER_INPUT_MAX}
           </span>
         )}
       </div>
