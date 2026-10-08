@@ -38,8 +38,54 @@ No private text here. Examples use fictional accounts (Maya's Coffee, FlowDesk).
 | 2.2 | Complete-story detection | `script/passages.ts` `isCompleteStory` | **no caller** | — | none | 0 | built (orphan) |
 | 4.3 | Question ladder (story ladder, templates) | `script/questionLadder.ts` (#1148) | **no caller** | — | none | 0 | built (orphan) |
 | 4.3 | `storeGap` (gap → question) | `questionDeficit.ts` | **no caller** | — | none | 0 | built (orphan) |
-| 0.1 | Shared item attributes and slot map | — | — | — | — | — | planned |
-| 0.2 | Adapters (creator knowledge and product facts) | — | — | — | — | — | planned |
-| 0.5 | Disconnect-test harness and `feature_fired` counters | — | — | — | — | — | planned |
+| 0.1/0.2 | Item format, slot map, adapters (counts per slot) | `script/itemFormat.ts` `slotCoverage` | `index.ts` after the speakable set (`feature_fired` `item_slots`) | trialOn, log only | `check_wiring_ledger.mjs` row 0.1 | not yet counted | wired |
+| 0.5 | Disconnect gate | `scripts/ci/check_wiring_ledger.mjs` + `wiring-ledger.json` | `pr-checks.yml` | CI | selftest (5 cases) | 13 rows pass | wired |
 
-**Open gap on every row:** no feature has a disconnect test yet, so nothing is "proven." Building that harness is Phase 0.5, next.
+**Disconnect gate:** every wired row is now in `scripts/ci/wiring-ledger.json`, and CI fails if one is unplugged (import, call, flag argument or event). This is a static check on the real consumer file. Runtime proof is the fire count per batch, so a row becomes **proven** only after a batch counts it.
+
+## 0.3 Field-reader audit (2026-10-08)
+**Product facts.** All 15 stored fields reach the writer, but only generically, through `placeFacts` (`index.ts`). None is grouped by slot yet; that is plan 1.6.
+
+| Field | Rows | Read by name anywhere in the edge? |
+|---|---|---|
+| feature | 191 | no |
+| description | 43 | no |
+| claim | 40 | yes |
+| price | 38 | yes (CTA price) |
+| category | 36 | no |
+| name | 32 | yes |
+| cta | 27 | yes |
+| guarantee | 20 | no |
+| benefit | 18 | no |
+| audience | 11 | yes |
+| object_shape | 10 | yes (showability) |
+| use_case | 6 | no |
+| page_section | 5 | yes (screen answer) |
+| integration | 3 | no |
+| plan | 1 | no |
+
+**Creator knowledge.** All 9 kinds reach the writer through the speakable set:
+- experience 256 and example 63 (slot: story)
+- opinion 471 (stance)
+- framework 213 (process)
+- claim 220 (proof, unconfirmed)
+- fact 84 (context)
+- product 312 (what it is)
+- covered 597 and topic 147 (context, subject-only on the trial)
+
+**Fields the plan needs that don't exist yet:** problem, process_step, faq, proof_number, testimonial, screen, terms, includes, comparison, show_action. That is plan 1.1.
+
+**No orphan fields:** every stored field has a reader.
+
+## 0.6 Baselines (batch scripts from the last 3 days, before #1177 was live)
+| Category | Scripts | With a showing beat | Showing beats on the back camera | Talk, claim or story beats on the back camera | Non-talk shots / all shots |
+|---|---|---|---|---|---|
+| All | 324 | 97 (30%) | 50/153 (33%) | 113 of 1402 beats | 14/1730 (0.8%) |
+| PHYSICAL_PRODUCT | 81 | 53 (65%) | 33/93 | 40 | 12/453 |
+| SERVICE | 48 | 3 (6%) | 0/3 | 6 | 1/260 |
+| COURSE | 23 | 1 (4%) | 1/1 | 16 | 0/117 |
+| COMMUNITY | 17 | 2 (12%) | 0/2 | 8 | 0/88 |
+| DIGITAL_PRODUCT | 15 | 0 | — | 5 | 0/73 |
+| APP | 3 | 0 | — | 2 | 0/16 |
+
+Software-like scripts (APP, DIGITAL_PRODUCT, COURSE, COMMUNITY) with a showing beat: 3 of 58 (5%). Teleprompter and shot-list agreement is not measured yet; that comes with plan 3.1.
