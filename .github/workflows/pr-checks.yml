@@ -792,6 +792,12 @@ jobs:
         run: |
           node scripts/ci/check_symbol_readers.mjs --selftest
           node scripts/ci/check_symbol_readers.mjs
+      # PLAN PART 0: a feature in the wiring ledger that is unplugged from its
+      # caller, loses its flag argument or stops emitting its event fails here.
+      - name: Wiring ledger (a feature nobody calls is not built)
+        run: |
+          node scripts/ci/check_wiring_ledger.mjs --selftest
+          node scripts/ci/check_wiring_ledger.mjs
       # ⚠️ THE COST MODEL HAS A CALLER NOW. renderCost.ts was written, exported,
       # tested and called by nothing — the same defect as a column nobody reads.
       # The selftest runs the caller with no database, including the re-key trap
