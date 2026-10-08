@@ -104,6 +104,16 @@ export type ExtractionSource = (typeof EXTRACTION_SOURCES)[number]
 export const EXTRACTED_FIELDS = [
   'name', 'category', 'description', 'audience', 'feature', 'use_case',
   'integration', 'benefit', 'claim', 'price', 'plan', 'guarantee', 'cta',
+  // ⚠️ PLAN v3 1.1 (2026-10-08). The extractor prompt already asked for these
+  // two and this list dropped them on save, so a screen she could film or what
+  // the product physically is never reached the store.
+  'object_shape', 'page_section',
+  // Plan v3 1.1: what a page says beyond "feature", one field per job in a
+  // script — the hook (problem), the show (process_step, show_action, screen),
+  // the objection (faq), the close (terms, includes) and proof that waits for
+  // her (proof_number, testimonial, comparison).
+  'problem', 'process_step', 'faq', 'proof_number', 'testimonial', 'screen',
+  'terms', 'includes', 'comparison', 'show_action',
 ] as const
 export type ExtractedField = (typeof EXTRACTED_FIELDS)[number]
 
@@ -115,6 +125,9 @@ export type ExtractionTrust = 'usable' | 'needs_confirmation'
  *  something measurable about the world. */
 const RISKY_FIELDS: ReadonlySet<ExtractedField> = new Set([
   'benefit', 'claim', 'price', 'plan', 'guarantee',
+  // A number, someone else's words, a rival named, or a promise in the small
+  // print: none is spoken until she confirms it (plan v3 1.6).
+  'proof_number', 'testimonial', 'comparison', 'terms',
 ])
 
 /** A number that asserts a magnitude. Deliberately not "any digit" — "Version 2",
