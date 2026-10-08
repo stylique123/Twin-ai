@@ -237,7 +237,10 @@ const SCHEMA = {
               // water, because nothing told it what the product physically IS.
               // These are extracted the same way every other fact is and stored
               // in the same `knowledge` blob — no new column, no second call.
-              'object_shape', 'page_section'],
+              'object_shape', 'page_section',
+              // Plan v3 1.1.
+              'problem', 'process_step', 'faq', 'proof_number', 'testimonial', 'screen',
+              'terms', 'includes', 'comparison', 'show_action'],
           },
           value: { type: 'string' },
         },
@@ -285,6 +288,19 @@ const SYSTEM = [
   'month", "lesson list: 12 lessons on home roasting", "dashboard screenshot: a',
   'roast log with temperature graph". Pages under "ALSO FROM THE SAME SITE" count.',
   'If you saw no pricing page, no screenshot and no lesson list, report none.',
+  '',
+  'Report these ONLY when the page states them, one fact each, in the page\'s own words:',
+  '`problem`: the problem or frustration the page says the product solves.',
+  '`process_step`: one step of how it works or how to use it, in order ("1. grind 18g").',
+  '`faq`: one question the page answers, as "Q: … A: …".',
+  '`proof_number`: one stated number about results or users ("4,000 roasters").',
+  '`testimonial`: one quote from a named or described customer, with who said it.',
+  '`screen`: one screen or view of an app or course the page SHOWS, as "name: what it shows".',
+  '`terms`: a trial, refund, cancellation, shipping or guarantee term.',
+  '`includes`: one thing that comes with it ("what\'s in the box", modules, bonuses).',
+  '`comparison`: a comparison the page makes with another product or way of doing it.',
+  '`show_action`: one thing a person could physically do with it on camera that the page',
+  'describes (pour, open, apply, wear). Never one the page does not describe.',
 ].join('\n')
 
 /**
