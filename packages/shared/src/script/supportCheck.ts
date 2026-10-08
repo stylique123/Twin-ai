@@ -29,7 +29,9 @@ export interface SupportResult {
   }
 }
 
-export const SUPPORT_MIN_OVERLAP = 0.6
+// 0.6 -> 0.5 after calibration on the AI rater's tagged rows (brief v2 2.17):
+// recall 9/10 tagged rows, 5.3% of sentences flagged in rows scored >= 6.5.
+export const SUPPORT_MIN_OVERLAP = 0.5
 export const SUPPORT_STRUCTURE_MAX_WORDS = 8
 
 const NUMBER_WORDS = new Set(['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
@@ -40,7 +42,7 @@ const DURATION_WORDS = new Set(['minute', 'minutes', 'hour', 'hours', 'day', 'da
   'week', 'weeks', 'month', 'months', 'year', 'years', 'decade', 'decades'])
 const CONNECTIVE = provenanceWords('here what happened happen thing story deal part wait now okay real truth point turn out know tell look listen why how this that guess thought next')
 const CTA_WORDS = provenanceWords('order ordering shop grab link bio dm message visit buy get yours tap click comment follow book reserve try today now head check pick')
-const CTA_RE = /\b(order|shop|grab|link in (?:my |the )?bio|dm|message me|visit|buy|get yours|tap|click|comment|book|reserve|head to|pick up)\b/i
+const CTA_RE = /\b(order|shop|grab|link in (?:my |the )?bio|dm|message me|send me a (?:message|dm)|reach out|visit|buy|get yours|tap|click|comment|book|reserve|head to|pick up)\b/i
 
 function rawNumbers(text: string): string[] {
   const out: string[] = []
@@ -96,7 +98,8 @@ export function checkSupport(input: SupportInput): SupportResult {
     supported: 0, question: 0, structure: 0, close: 0, unsupported: 0,
     by_reason: { number: 0, name: 0, cause: 0, comparative: 0, low_overlap: 0 },
   }
-  let closeUsed = false
+  let closeSentences = 0
+  let closeAt = -1
   const perSentence = (input.sentences ?? []).map((raw, i): SupportSentence => {
     const s = String(raw ?? '').trim()
     const sw = provenanceWords(s)
@@ -108,13 +111,25 @@ export function checkSupport(input: SupportInput): SupportResult {
     if (s.endsWith('?')) return done('question')
     if (wordCount(s) <= SUPPORT_STRUCTURE_MAX_WORDS && rawNumbers(s).length === 0 && properNouns(s).length === 0
       && !causeClause(s) && !comparativeSpan(s) && allIn(sw, CONNECTIVE)) return done('structure')
-    if (!closeUsed && offerWords.size > 0 && CTA_RE.test(s)) {
+    // The close may be two sentences: the offer restated ("<offer>: a 60-minute
+    // call for $75…") and the bare ask ("Send me a message if you want it.").
+    // Either counts, at most two sentences, adjacent, once per script.
+    if (closeSentences < 2 && offerWords.size > 0 && (closeAt < 0 || closeAt === i - 1)) {
       const content = new Set([...sw].filter((w) => !CTA_WORDS.has(w)))
       let hit = 0
       for (const w of content) if (offerWords.has(w)) hit++
       const ratio = content.size === 0 ? 0 : hit / content.size
-      if (ratio >= SUPPORT_MIN_OVERLAP && numbersSupported(s, offerText) && namesSupported(s, offerWords)) {
-        closeUsed = true
+      const restatesOffer = content.size > 0 && ratio >= SUPPORT_MIN_OVERLAP && numbersSupported(s, offerText) && namesSupported(s, offerWords)
+      const isBareAsk = (t: string) => {
+        const c = [...provenanceWords(t)].filter((w) => !CTA_WORDS.has(w))
+        return CTA_RE.test(t) && c.length <= 3 && rawNumbers(t).length === 0 && properNouns(t).length === 0
+      }
+      const next = String(input.sentences?.[i + 1] ?? '').trim()
+      const first = closeAt < 0 && restatesOffer && (CTA_RE.test(s) || (next !== '' && isBareAsk(next)))
+      const second = closeAt === i - 1 && isBareAsk(s)
+      if (first || second) {
+        closeSentences++
+        closeAt = i
         return done('close')
       }
     }
@@ -139,7 +154,11 @@ export function checkSupport(input: SupportInput): SupportResult {
     if (cc !== null && !allIn(provenanceWords(cc), best.words)) reasons.push('cause')
     const cp = comparativeSpan(s)
     if (cp !== null && !allIn(provenanceWords(cp), best.words)) reasons.push('comparative')
-    if (best.ratio < SUPPORT_MIN_OVERLAP) reasons.push('low_overlap')
+    // At least two shared content words when the sentence has three or more,
+    // so one common word ("tastes") cannot carry a whole claim.
+    let shared = 0
+    for (const w of sw) if (best.words.has(w)) shared++
+    if (best.ratio < SUPPORT_MIN_OVERLAP || (sw.size >= 3 && shared < 2)) reasons.push('low_overlap')
     return reasons.length ? done('unsupported', reasons, best.ids) : done('supported', [], best.ids)
   })
   return { perSentence, counts }
