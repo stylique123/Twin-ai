@@ -50,7 +50,7 @@ describe('checkSupport (brief 2.17, shadow)', () => {
     expect(one("So here's the thing.").type).toBe('structure')
   })
   it('a short line with a claim is not structure', () => {
-    expect(one('It tastes like burnt toast.').type).toBe('unsupported')
+    expect(one('It smells like burnt rubber.').type).toBe('unsupported')
   })
   it('a CTA restating the offer is the close', () => {
     expect(one('Order the Harbor Blend 12oz bag with free shipping this week.').type).toBe('close')
@@ -84,5 +84,23 @@ describe('checkSupport (brief 2.17, shadow)', () => {
   })
   it('empty input is safe', () => {
     expect(checkSupport({}).perSentence).toEqual([])
+  })
+})
+
+describe('the close may be the offer restated plus a bare ask (calibration: close never fired)', () => {
+  const offerText = "Maya's Roast Call: a 30-minute 1:1 video call for $40 to plan your first bag order."
+  it('offer sentence then ask sentence are both the close', () => {
+    const r = checkSupport({
+      sentences: ["Maya's Roast Call: a 30-minute 1:1 video call for $40 to plan your first bag order.", 'Send me a message if you want it.'],
+      items: [], offerText,
+    })
+    expect(r.perSentence.map((x) => x.type)).toEqual(['close', 'close'])
+  })
+  it('a third close sentence is not a close', () => {
+    const r = checkSupport({
+      sentences: ["Maya's Roast Call: a 30-minute 1:1 video call for $40.", 'Send me a message if you want it.', 'Book it today.'],
+      items: [], offerText,
+    })
+    expect(r.counts.close).toBe(2)
   })
 })
