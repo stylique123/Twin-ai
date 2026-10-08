@@ -192,6 +192,8 @@ const SOURCES = [
   ['packages/shared/src/script/ideaQuestions.ts', 'worker/src/generated/ideaQuestions.ts'],
   ['packages/shared/src/script/factPurpose.ts', 'worker/src/generated/factPurpose.ts'],
   ['packages/shared/src/script/creatorLessons.ts', 'supabase/functions/_shared/creatorLessons.ts'],
+  // Which lessons reach the writer: human first, test viewers capped, synthetic dropped (brief 1.2).
+  ['packages/shared/src/script/lessonSelect.ts', 'supabase/functions/_shared/lessonSelect.ts'],
   ['packages/shared/src/postQuestions.ts', 'worker/src/generated/postQuestions.ts'],
   // Her corrections reach storage (worker) and are enforced on the script (edge) — batch audit 2026-10-03.
   ['packages/shared/src/script/corrections.ts', 'worker/src/generated/corrections.ts'],

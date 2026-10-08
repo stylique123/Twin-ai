@@ -48,7 +48,27 @@ async function file(owner: string, l: CreatorLesson, sourceId: string): Promise<
     p_owner: owner, p_kind: l.kind, p_text: text, p_phrase: l.phrase, p_source: l.source,
     p_source_id: sourceId, p_weight: l.weight,
   })
+  // Only a NEW row: a twin may be a lesson she taught herself.
+  if (!error && !twin && await fromBatch(sourceId)) await markSynthetic(owner, text)
   return !error
+}
+
+// ⚠️ BRIEF 1.2: the batch harness (scripts/ops/scriptBatch.mjs) generates on
+// the heartbeat account; its audience tests and angle picks are learned here
+// minutes later. A lesson from such a generation is SYNTHETIC (0283). Tolerant:
+// before 0283 is applied the update errors and is ignored.
+const batchGen = new Map<string, boolean>()
+async function fromBatch(generationId: string): Promise<boolean> {
+  if (!batchGen.has(generationId)) {
+    const { data } = await db.from('generations').select('is_heartbeat').eq('id', generationId).maybeSingle()
+    batchGen.set(generationId, (data as { is_heartbeat?: boolean } | null)?.is_heartbeat === true)
+  }
+  return batchGen.get(generationId)!
+}
+async function markSynthetic(owner: string, text: string): Promise<void> {
+  try {
+    await db.from('creator_lessons').update({ synthetic: true }).eq('owner_id', owner).eq('text', text)
+  } catch { /* column not applied yet */ }
 }
 
 export async function runLessonLearner(log: Log): Promise<void> {
