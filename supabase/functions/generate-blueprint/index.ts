@@ -52,6 +52,7 @@ import {
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
 import { buildProvenance } from '../_shared/provenance.ts'
+import { checkSupport } from '../_shared/supportCheck.ts'
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
 import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandTruth.ts'
 import { businessFactLines, businessFactProvenanceCounts, guessedMark } from '../_shared/brandTruthPrompt.ts'
@@ -15941,6 +15942,20 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         })
         console.log(JSON.stringify({ event: 'provenance', ...prov }))
       } catch { /* provenance never fails a build */ }
+      // Brief 2.17: sentence-level support check, SHADOW — counts only, never text.
+      try {
+        const sc = (blueprint as { script?: Array<{ line?: unknown }> }).script
+        const spoken = (Array.isArray(sc) ? sc.map((b) => String(b?.line ?? '')) : [])
+          .flatMap((l) => l.match(/[^.!?]+[.!?]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
+        const supportItems: Array<{ id: string; text: unknown; kind: string }> = [
+          ...provenanceSupply.map((k, n) => ({ id: String(k.id ?? `k${n}`), text: k.text, kind: String(k.kind ?? 'fact') })),
+          ...lessonsInPrompt.map((k, n) => ({ id: String((k as { id?: unknown }).id ?? `l${n}`), text: (k as { text?: unknown }).text, kind: 'lesson' })),
+          { id: 'reference_note', text: reference_note, kind: 'note' },
+          ...Object.entries({ ...(answers ?? {}), ...(body.readiness_answers ?? {}) }).map(([k, v]) => ({ id: `answer:${k}`, text: v, kind: 'answer' })),
+        ]
+        const sup = checkSupport({ sentences: spoken, items: supportItems, offerText: typeof readyOffer === 'string' ? readyOffer : '' })
+        console.log(JSON.stringify({ event: 'support_check', unsupported: sup.counts.unsupported, by_reason: sup.counts.by_reason, total: spoken.length }))
+      } catch { /* the support check never fails a build */ }
     }
     // Ceiling C10 / paired 10B (owner 2026-10-07): a conversations script
     // read out the price list. Off the selling goals, a middle line quoting a
