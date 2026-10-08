@@ -50,3 +50,34 @@ describe('batch part-13: her face to the lens is the front camera', () => {
     expect(cameraForBeat({ section: 'Proof', line: 'x', action_posing: 'Turn the bag to show the label' }, 2, 5)).toBe('back')
   })
 })
+
+describe('jobFirst (trial): the beat purpose decides the camera', () => {
+  const o = { jobFirst: true }
+  it('keeps a claim on her face even when the direction names the label', () => {
+    const b = { section: 'body', shown_job: 'claim', line: 'x', direction: 'Point at the label' }
+    expect(cameraForBeat(b, 1, 4)).toBe('back')
+    expect(cameraForBeat(b, 1, 4, o)).toBe('front')
+  })
+  it('keeps a story beat on her face', () => {
+    expect(cameraForBeat({ section: 'story', shown_job: 'story_emotion', line: 'x', direction: 'pouring the beans that morning' }, 2, 5, o)).toBe('front')
+  })
+  it('sends a demo beat to the back camera with no action words', () => {
+    expect(cameraForBeat({ section: 'body', shown_job: 'demo', line: 'x', direction: 'Smile at the lens' }, 1, 4, o)).toBe('back')
+  })
+  it('lets a reveal hook open on the back camera, but not a talk hook', () => {
+    expect(cameraForBeat({ section: 'hook', shown_job: 'reveal', line: 'x' }, 0, 4, o)).toBe('back')
+    expect(cameraForBeat({ section: 'hook', shown_job: 'talk', line: 'x' }, 0, 4, o)).toBe('front')
+    expect(cameraForBeat({ section: 'hook', shown_job: 'reveal', line: 'x' }, 0, 4)).toBe('front')
+  })
+  it('keeps the ask and the last beat on her face', () => {
+    expect(cameraForBeat({ section: 'cta', shown_job: 'demo', line: 'x' }, 3, 4, o)).toBe('front')
+    expect(cameraForBeat({ section: 'body', shown_job: 'demo', line: 'x' }, 3, 4, o)).toBe('front')
+  })
+  it('falls back to the word rules when there is no job', () => {
+    expect(cameraForBeat({ section: 'body', line: 'x', direction: 'Pour the beans' }, 1, 4, o)).toBe('back')
+  })
+  it('passes the option through decideBeatCameras', () => {
+    const s = [{ section: 'hook', shown_job: 'reveal', line: 'a' }, { section: 'body', shown_job: 'claim', line: 'b', direction: 'show the label' }, { section: 'cta', line: 'c' }]
+    expect(decideBeatCameras(s, o).script.map((b) => b.camera)).toEqual(['back', 'front', 'front'])
+  })
+})
