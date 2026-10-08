@@ -11789,7 +11789,11 @@ ${fenced('claims this creator may NOT make', forbidden)}
       && typeof substanceBudgetComputed.beats === 'number'
       && substanceBudgetComputed.beats > FREE_BEATS_INLINE
     const availableBeats = countedSomething ? substanceBudgetComputed.beats : null
-    const durationBrief_ = durationBriefInline(body.target_seconds, softwareTargetSec, availableBeats)
+    // The software default rides the stored-default rung; say why it is short,
+    // never that it is her usual length (she has not made it before).
+    const durationBrief_ = softwareTargetSec != null && body.target_seconds == null
+      ? durationBriefInline(body.target_seconds, softwareTargetSec, availableBeats).replace('it is the length they usually make', 'short videos work best for showing software')
+      : durationBriefInline(body.target_seconds, softwareTargetSec, availableBeats)
     const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
     // ⚠️ ITEMS 1 AND 4: THE GOAL'S STRUCTURE, STATED TO THE WRITER — and checked
     // after generation by the same module (`goalFidelity.ts`), so the prompt and
