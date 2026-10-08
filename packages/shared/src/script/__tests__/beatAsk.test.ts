@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   askProblems, askIsUsable, askIsGeneric, fillScaffold, scaffoldWithoutAnswer,
-  resolveAskAnswer, ANSWER_SLOT, ASK_MAX_CHARS, ANSWER_MAX_CHARS,
+  resolveAskAnswer, ANSWER_SLOT, ASK_MAX_CHARS, ANSWER_MAX_CHARS, ANSWER_INPUT_MAX_CHARS, clipAtSentence,
 } from '../beatAsk'
 
 /** The refusal that shipped as spoken dialogue in three of six scenes. */
@@ -210,6 +210,72 @@ describe('the answer limit is one rule, not two', () => {
   it('matches the limit the knowledge schema enforces', async () => {
     const { ANSWER_MAX } = await import('../../creatorQuestions')
     expect(ANSWER_MAX_CHARS).toBe(ANSWER_MAX)
+  })
+
+  it('the accepted-input limit is pinned too (M8: answers stored whole)', async () => {
+    const { ANSWER_INPUT_MAX } = await import('../../creatorQuestions')
+    expect(ANSWER_INPUT_MAX_CHARS).toBe(ANSWER_INPUT_MAX)
+    expect(ANSWER_INPUT_MAX_CHARS).toBe(2000)
+  })
+})
+
+// ⚖️ M8 / brief 3.10: HER WORDS ARE NOT LOST. A long multi-sentence answer is
+// accepted; the spoken line is its leading WHOLE sentences, never a mid-cut.
+const MAYA_LONG = [
+  "At Maya's Coffee we roast every bean on Tuesday mornings before the shop opens.",
+  'The first batch always goes to the regulars who wait outside in the cold.',
+  'I started doing that after a snowstorm when only three people showed up.',
+  'Those three people still come every single week, and they bring friends now.',
+  'That is why I never discount the beans, because the ritual is the product.',
+  'Every new barista learns the Tuesday roast before they learn the espresso machine.',
+  'We tried opening on Sundays once and it felt like a different shop entirely.',
+  'So we closed Sundays again and the regulars thanked us for it, honestly.',
+].join(' ')
+
+describe('clipAtSentence — cut only at a sentence end', () => {
+  it('fixture is a 600-ish char multi-sentence answer', () => {
+    expect(MAYA_LONG.length).toBeGreaterThan(550)
+    expect(MAYA_LONG.length).toBeLessThanOrEqual(ANSWER_INPUT_MAX_CHARS)
+  })
+  it('keeps short text as-is', () => {
+    expect(clipAtSentence('We roast on Tuesdays.')).toBe('We roast on Tuesdays.')
+  })
+  it('keeps leading whole sentences within the cap', () => {
+    const c = clipAtSentence(MAYA_LONG)!
+    expect(c.length).toBeLessThanOrEqual(ANSWER_MAX_CHARS)
+    expect(c).toMatch(/[.!?]$/)
+    expect(MAYA_LONG.startsWith(c)).toBe(true)
+    expect(MAYA_LONG.charAt(c.length)).toBe(' ')
+  })
+  it('returns null when the first sentence alone is over the cap', () => {
+    expect(clipAtSentence(`${'word '.repeat(60)}end. Short one.`)).toBeNull()
+    expect(clipAtSentence('x'.repeat(ANSWER_MAX_CHARS + 1))).toBeNull()
+  })
+  it('does not treat a decimal point as a sentence end', () => {
+    const t = `Our cold brew costs 4.50 dollars ${'and it sells out '.repeat(15)}daily. Done.`
+    expect(clipAtSentence(t)).toBeNull()
+  })
+})
+
+describe('a 600-char answer is accepted, spoken as whole sentences', () => {
+  const scaffold = 'Here is the truth. ' + ANSWER_SLOT + '. And it changed everything.'
+  const ask = "What do you do every Tuesday at Maya's Coffee before opening?"
+  it('fillScaffold accepts it and never cuts mid-sentence', () => {
+    const line = fillScaffold(scaffold, MAYA_LONG)!
+    expect(line).not.toBeNull()
+    expect(line).toContain(clipAtSentence(MAYA_LONG)!.replace(/\.$/, ''))
+    expect(line).not.toContain('regulars thanked us')
+  })
+  it('resolveAskAnswer (no scaffold) uses the clipped whole sentences', () => {
+    const r = resolveAskAnswer(ask, undefined, MAYA_LONG)
+    expect(r.state).toBe('answered')
+    expect(r.line).toBe(clipAtSentence(MAYA_LONG))
+    expect(r.line.length).toBeLessThanOrEqual(ANSWER_MAX_CHARS)
+  })
+  it('an answer over the input max is still refused', () => {
+    const huge = 'We roast on Tuesdays. '.repeat(100)
+    expect(huge.trim().length).toBeGreaterThan(ANSWER_INPUT_MAX_CHARS)
+    expect(resolveAskAnswer(ask, scaffold, huge)).toEqual({ line: '', state: 'unanswered' })
   })
 })
 

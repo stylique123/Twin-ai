@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
-  ANSWER_MAX, ANSWER_MIN, ASKED_SOURCE, CREATOR_QUESTIONS,
+  ANSWER_MAX, ANSWER_INPUT_MAX, ANSWER_MIN, ASKED_SOURCE, CREATOR_QUESTIONS,
   answerToKnowledge, askedProgress, nextQuestion,
 } from '../creatorQuestions'
 import { SPOKEN_SOURCES, wasSpoken } from '../knowledgeSelection'
@@ -58,6 +58,41 @@ describe('an answer becomes a stated row, or is refused with a reason', () => {
     // a wrong row is worse than a missing one.
     const r = answerToKnowledge(q, 'x'.repeat(ANSWER_MAX + 1))
     expect(r).toEqual({ ok: false, reason: 'too_long' })
+  })
+
+  // ⚖️ M8: HER WORDS ARE STORED WHOLE. A long multi-sentence answer is
+  // accepted; `text` is its leading whole sentences, `evidence` the whole.
+  it('accepts a 600-char multi-sentence answer: text <= cap at a sentence end, evidence whole', () => {
+    const whole = [
+      "At Maya's Coffee we roast every bean on Tuesday mornings before the shop opens.",
+      'The first batch always goes to the regulars who wait outside in the cold.',
+      'I started doing that after a snowstorm when only three people showed up.',
+      'Those three people still come every single week, and they bring friends now.',
+      'That is why I never discount the beans, because the ritual is the product.',
+      'Every new barista learns the Tuesday roast before they learn the espresso machine.',
+      'We tried opening on Sundays once and it felt like a different shop entirely.',
+      'So we closed Sundays again and the regulars thanked us for it, honestly.',
+    ].join(' ')
+    expect(whole.length).toBeGreaterThan(550)
+    const r = answerToKnowledge(q, whole)
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.row.text.length).toBeLessThanOrEqual(ANSWER_MAX)
+    expect(r.row.text).toMatch(/[.!?]$/)
+    expect(whole.startsWith(r.row.text)).toBe(true)
+    expect(r.row.evidence).toBe(whole)
+  })
+
+  it('a short answer stores text and evidence identically', () => {
+    const r = answerToKnowledge(q, "Maya's Coffee never discounts beans.")
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.row.text).toBe("Maya's Coffee never discounts beans.")
+    expect(r.row.evidence).toBe(r.row.text)
+  })
+
+  it('refuses beyond ANSWER_INPUT_MAX, and a first sentence over the cap', () => {
+    expect(ANSWER_INPUT_MAX).toBe(2000)
+    expect(answerToKnowledge(q, 'We roast. '.repeat(250))).toEqual({ ok: false, reason: 'too_long' })
+    expect(answerToKnowledge(q, `${'word '.repeat(60)}end. Short.`)).toEqual({ ok: false, reason: 'too_long' })
   })
 
   it('respects the schema cap exactly', () => {

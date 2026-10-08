@@ -31,6 +31,35 @@ export const ASK_MAX_CHARS = 160
  *  and this text goes into their script and their permanent knowledge. */
 export const ANSWER_MAX_CHARS = 240
 
+/** ⚖️ HER WORDS ARE KEPT WHOLE (M8 / brief 3.10). An answer up to this long is
+ *  ACCEPTED: the whole of it is stored as evidence, and only the spoken line /
+ *  knowledge text is cut to ANSWER_MAX_CHARS — at a sentence end, never mid-word.
+ *  Pinned to creatorQuestions' ANSWER_INPUT_MAX by the parity test. */
+export const ANSWER_INPUT_MAX_CHARS = 2000
+
+/**
+ * The longest run of WHOLE sentences that fits in `max`, or null when even the
+ * first sentence does not fit.
+ *
+ * ⚖️ CUT ONLY AT A SENTENCE END. A sentence cut in half can invert its meaning,
+ * so this never cuts mid-sentence or mid-word; when no sentence end fits, the
+ * caller refuses rather than truncating.
+ */
+export function clipAtSentence(t: unknown, max = ANSWER_MAX_CHARS): string | null {
+  const x = String(t ?? '').replace(/\s+/g, ' ').trim()
+  if (x.length <= max) return x
+  let end = -1
+  const re = /[.!?]+["'”’)]*(?=\s|$)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(x)) !== null) {
+    const stop = m.index + m[0].length
+    if (stop > max) break
+    end = stop
+  }
+  if (end <= 0) return null
+  return x.slice(0, end).trim()
+}
+
 /**
  * ⚠️ AN ASK THAT COULD BE SENT TO ANY CREATOR IN THE NICHE IS MALFORMED.
  * "Tell me about yourself" produces the same nothing the placeholder did. The
@@ -156,14 +185,18 @@ export type AskState = 'unanswered' | 'answered' | 'skipped'
 export function fillScaffold(scaffold: unknown, answer: unknown): string | null {
   const s = String(scaffold ?? '')
   const a = String(answer ?? '').trim()
-  if (a === '' || a.length > ANSWER_MAX_CHARS) return null
+  if (a === '' || a.length > ANSWER_INPUT_MAX_CHARS) return null
   if (s.split(ANSWER_SLOT).length - 1 !== 1) return null
+  // A long answer is spoken as its leading whole sentences; null only when the
+  // first sentence alone is too long to say.
+  const spoken = clipAtSentence(a, ANSWER_MAX_CHARS)
+  if (spoken === null) return null
 
   // ⚠️ THE JOIN IS TIDIED, BECAUSE A CREATOR TYPES LIKE A PERSON. They may end
   // with a full stop or not, capitalise or not; the scaffold already carries the
   // sentence punctuation around the slot. Doubling it produces "I quit.. And
   // that was the moment", which reads as a typo in their own script.
-  const trimmed = a.replace(/[.\s]+$/, '')
+  const trimmed = spoken.replace(/[.\s]+$/, '')
   const filled = s.replace(ANSWER_SLOT, trimmed)
   return filled.replace(/\s+/g, ' ').trim()
 }
@@ -242,8 +275,10 @@ export function resolveAskAnswer(
   }
 
   // No usable scaffold: the creator's own words ARE the line.
-  if (a.length > ANSWER_MAX_CHARS) return { line: '', state: 'unanswered' }
-  return { line: a, state: 'answered' }
+  if (a.length > ANSWER_INPUT_MAX_CHARS) return { line: '', state: 'unanswered' }
+  const spoken = clipAtSentence(a, ANSWER_MAX_CHARS)
+  if (spoken === null) return { line: '', state: 'unanswered' }
+  return { line: spoken, state: 'answered' }
 }
 
 /**

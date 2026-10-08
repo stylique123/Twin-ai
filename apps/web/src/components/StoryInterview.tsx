@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CREATOR_QUESTIONS, OPENING_THREE, ANSWER_MAX, suggestStoryAnswers, anchorAllToSubNiche,
+  CREATOR_QUESTIONS, OPENING_THREE, ANSWER_INPUT_MAX, suggestStoryAnswers, anchorAllToSubNiche,
   creatorQuestionsFor, openingQuestionsFor, type SellsKind,
   type CreatorQuestion, type StorySuggestion,
 } from '@twinai/shared'
@@ -274,7 +274,7 @@ export function StoryInterview({
         await skipQuestion(q.id)
         continue
       }
-      if (answer.length > ANSWER_MAX) {
+      if (answer.length > ANSWER_INPUT_MAX) {
         nextProblems[q.id] = 'Shorter is better — one real moment beats a paragraph.'
         continue
       }

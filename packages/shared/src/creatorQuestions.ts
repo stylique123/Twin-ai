@@ -1,3 +1,4 @@
+import { clipAtSentence } from './script/beatAsk'
 // THE ONE SOURCE BETTER THAN A TRANSCRIPT IS THE CREATOR ANSWERING A QUESTION.
 //
 // ── WHY THIS EXISTS ───────────────────────────────────────────────────────
@@ -73,6 +74,11 @@ export interface CreatorQuestion {
  *  meaning ("I never recommend X unless the client has…"), and a distillate that
  *  says the opposite of what the creator said is worse than no row at all. */
 export const ANSWER_MAX = 240
+
+/** ⚖️ THE LONGEST ANSWER ACCEPTED (M8). Longer than ANSWER_MAX is no longer
+ *  refused: the row's `text` is its leading whole sentences (<= ANSWER_MAX) and
+ *  `evidence` holds the whole answer. Pinned to beatAsk's ANSWER_INPUT_MAX_CHARS. */
+export const ANSWER_INPUT_MAX = 2000
 
 /** Below this an answer is a gesture, not a position. "Yes", "consistency",
  *  "hard work" — true, useless to a writer, and indistinguishable from a
@@ -207,6 +213,9 @@ export interface AskedKnowledgeRow {
   times_seen: 1
   /** Which question produced it — the provenance a creator can act on. */
   source_ref: string
+  /** Her whole answer, in her own words (up to ANSWER_INPUT_MAX). `text` is
+   *  its leading whole sentences when the answer is longer than ANSWER_MAX. */
+  evidence: string
 }
 
 /** Turn an answer into a row, or refuse and say why.
@@ -221,12 +230,17 @@ export function answerToKnowledge(
   const text = String(answer ?? '').trim().replace(/\s+/g, ' ')
   if (!text) return { ok: false, reason: 'empty' }
   if (text.length < ANSWER_MIN) return { ok: false, reason: 'too_short' }
-  if (text.length > ANSWER_MAX) return { ok: false, reason: 'too_long' }
+  if (text.length > ANSWER_INPUT_MAX) return { ok: false, reason: 'too_long' }
+  // Cut only at a sentence end; a first sentence that alone exceeds the cap is
+  // still refused rather than cut mid-sentence.
+  const stored = clipAtSentence(text, ANSWER_MAX)
+  if (stored === null) return { ok: false, reason: 'too_long' }
   return {
     ok: true,
     row: {
       kind: question.kind,
-      text,
+      text: stored,
+      evidence: text,
       basis: 'stated',
       source: ASKED_SOURCE,
       confidence: 0.9,

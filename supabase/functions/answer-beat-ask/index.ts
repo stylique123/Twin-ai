@@ -25,7 +25,7 @@
 // Deploy:  supabase functions deploy answer-beat-ask
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
-import { resolveAskAnswer, askPeers, ANSWER_MAX_CHARS } from '../_shared/beatAsk.ts'
+import { resolveAskAnswer, askPeers, clipAtSentence, ANSWER_MAX_CHARS, ANSWER_INPUT_MAX_CHARS } from '../_shared/beatAsk.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
 const cors = {
@@ -97,11 +97,11 @@ Deno.serve(async (req: Request) => {
   if (rawAnswer !== undefined && rawAnswer !== null && typeof rawAnswer !== 'string') {
     return json({ error: 'answer must be a string, null, or omitted' }, 400)
   }
-  // ⚠️ REFUSED, NOT TRUNCATED, exactly like fillScaffold's own rule — a
-  // sentence cut at the limit can invert what the creator said, and this text
-  // is about to become both a spoken line and a permanent knowledge row.
-  if (typeof rawAnswer === 'string' && rawAnswer.trim().length > ANSWER_MAX_CHARS) {
-    return json({ error: `Answer is too long (max ${ANSWER_MAX_CHARS} characters).` }, 400)
+  // ⚖️ HER WORDS ARE KEPT WHOLE (M8). Up to ANSWER_INPUT_MAX_CHARS is accepted;
+  // the spoken line and knowledge text are her leading WHOLE sentences (never a
+  // mid-sentence cut), and the whole answer is stored as evidence.
+  if (typeof rawAnswer === 'string' && rawAnswer.trim().length > ANSWER_INPUT_MAX_CHARS) {
+    return json({ error: `Answer is too long (max ${ANSWER_INPUT_MAX_CHARS} characters).` }, 400)
   }
 
   // Owner-checked in the same query, like generate-thumbnail / start-editor-v2:
@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
     // to fill (too long past the pre-check above racing a stale scaffold, or
     // a scaffold with more than one slot slipping past the writer's own
     // check) — refuse rather than silently store nothing.
-    return json({ error: "That answer couldn't be turned into a line — try shortening it." }, 400)
+    return json({ error: `That answer couldn't be turned into a line — keep the first sentence under ${ANSWER_MAX_CHARS} characters.` }, 400)
   }
 
   const nextBeat: ScriptBeat = {
@@ -168,11 +168,15 @@ Deno.serve(async (req: Request) => {
   // SCRIPT. The line above already landed — a failed or duplicate knowledge
   // insert must not turn a successful answer into an error response.
   if (resolution.state === 'answered') {
+    const whole = (rawAnswer as string).trim().replace(/\s+/g, ' ')
     const { error: knowledgeError } = await admin.from('creator_knowledge').insert({
       owner_id: user.id,
       voice_id: gen.brand_voice_id ?? null,
       kind: ASKED_KIND,
-      text: (rawAnswer as string).trim(),
+      // creator_knowledge.text stays <= 240 (DB constraint): leading whole
+      // sentences. `resolveAskAnswer` already proved the first one fits.
+      text: clipAtSentence(whole, ANSWER_MAX_CHARS) ?? whole.slice(0, ANSWER_MAX_CHARS),
+      evidence: whole,
       basis: 'stated',
       source: 'asked',
       confidence: 0.9,
