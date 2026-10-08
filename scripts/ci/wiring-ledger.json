@@ -1,0 +1,21 @@
+{
+  "_why": "Plan Part 0: every wired feature is listed with its consumer file, the symbol it must import and call there, and the event it must emit. check_wiring_ledger.mjs fails when any row is unplugged. Rows with status 'orphan' are allowed to have no caller but are counted.",
+  "rows": [
+    { "id": "3.1a", "feature": "Camera follows beat purpose", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "decideBeatCameras", "mustContain": ["jobFirst: trialOn"], "event": "beat_camera_decided" },
+    { "id": "3.1b", "feature": "Close-up shot type", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "applyCloseUpShots" },
+    { "id": "3.3", "feature": "Show-it beat enforced", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "enforceShowItBeat", "event": "show_it_enforced" },
+    { "id": "3.3b", "feature": "Final shown audit", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "auditShownScript", "event": "shown_script_audit_final" },
+    { "id": "1.3", "feature": "Physical showable by default", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "inferShowabilityFromProduct", "event": "showability_inferred" },
+    { "id": "3.4a", "feature": "Software 25s target", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "trialSoftwareTarget", "event": "software_target_applied" },
+    { "id": "3.4b", "feature": "Software close measured", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "auditSoftwareClose", "event": "software_close_audit" },
+    { "id": "0.1", "feature": "Item format slot coverage", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "slotCoverage", "event": "feature_fired" },
+    { "id": "guard.closer", "feature": "Stock closer dropped", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "dropStockCloser" },
+    { "id": "guard.cause", "feature": "Invented causes cut", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "dropInventedCauses", "event": "invented_causes_cut" },
+    { "id": "guard.events", "feature": "No-story invented events dropped", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "dropInventedEvents", "event": "no_story_events_dropped" },
+    { "id": "guard.hardlimit", "feature": "Hard limits only", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "isHardLimit" },
+    { "id": "prov", "feature": "Provenance log", "consumer": "supabase/functions/generate-blueprint/index.ts", "symbol": "buildProvenance", "event": "provenance" },
+    { "id": "2.2a", "feature": "Complete-story detection", "status": "orphan", "symbol": "isCompleteStory" },
+    { "id": "4.3a", "feature": "Question ladder", "status": "orphan", "symbol": "questionLadder" },
+    { "id": "4.3b", "feature": "storeGap", "status": "orphan", "symbol": "storeGap" }
+  ]
+}
