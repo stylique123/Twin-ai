@@ -12,7 +12,7 @@
 //
 // Pure; no I/O. Mirrored into supabase/functions/_shared by the generator.
 
-import { provenanceWords } from './provenance.ts'
+import { provenanceWords } from './provenance.js'
 
 const MARKER = /\b(because(?:\s+of)?|since|due\s+to|so\s+that|which\s+is\s+why|that'?s\s+why|thanks\s+to|caused\s+by)\b/gi
 
