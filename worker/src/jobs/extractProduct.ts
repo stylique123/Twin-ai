@@ -416,7 +416,15 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // leaves the old path (her own sentence, or the shop's front page) in place.
   let webMatch: WebProductMatch | null = null
   const shopMissed = shopBase !== '' && !shopProduct
-  if (existingName && imagePaths.length === 0 && ((!url && webSearchAsked) || shopMissed)) {
+  // ⚠️ PLAN v3 PART 2: A LINK SHE GAVE THAT TWIN COULD NOT READ IS "READ FAILED",
+  // NEVER A NAME SEARCH. A common name pulls the wrong company. The web search
+  // runs only when she asked for it and gave no link; a missed shop is logged
+  // and left for her to fix.
+  if (shopMissed && url) {
+    lookup.read_failed = { reason: 'not_found_on_her_link', name_search: false }
+    console.log(JSON.stringify({ event: 'product_read_failed', entity_id: entityId, reason: 'not_found_on_her_link' }))
+  }
+  if (existingName && imagePaths.length === 0 && !url && webSearchAsked) {
     webMatch = await searchWebForProduct(entityId, existingName, lookup)
     if (webMatch) {
       url = webMatch.url
