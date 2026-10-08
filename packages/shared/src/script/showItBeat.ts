@@ -87,7 +87,8 @@ export function enforceShowItBeat<T extends ShowItBeatIn>(
   const e = opts.entity
   if (!e) return same('no_entity')
   const kind = String(e.type ?? '').toUpperCase()
-  if (kind !== 'PHYSICAL_PRODUCT' && !SCREEN_KINDS.has(kind)) return same('not_showable_kind')
+  // Physical only for now: a screen beat waits until she has named a screen she can show.
+  if (kind !== 'PHYSICAL_PRODUCT') return same('not_showable_kind')
   const show = String(e.showability ?? '').toUpperCase()
   if (show !== 'ALWAYS' && show !== 'SOMETIMES') return same('not_showable')
   if (ownsEntity(e) !== true) return same('not_owned')

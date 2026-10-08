@@ -64,7 +64,7 @@ describe('enforceShowItBeat', () => {
     expect(r.reason).toBe('no_candidate')
   })
 
-  it('gives screen products app_payoff, not demo', () => {
+  it('does not enforce a screen beat yet; the job for a screen kind is app_payoff', () => {
     const app = { type: 'APP', showability: 'SOMETIMES', relationship: 'OWN_PRODUCT', name: "Maya's Coffee Tracker" }
     const s = [
       { section: 'Hook', line: 'I stopped guessing my brew times.', shown_job: 'talk' },
@@ -72,7 +72,8 @@ describe('enforceShowItBeat', () => {
       { section: 'CTA', line: 'Try it tonight.', shown_job: 'cta' },
     ]
     const r = enforceShowItBeat(s, { entity: app, goal: 'leads', words: productWords(app.name) })
-    expect(r.script[1]).toMatchObject({ shown_job: 'app_payoff', camera: 'back', direction: SHOWN_JOB_SHOT.app_payoff })
+    expect(r.reason).toBe('not_showable_kind')
+    expect(r.script[1]).toMatchObject({ shown_job: 'talk' })
     expect(showJobFor('COURSE')).toBe('app_payoff')
     expect(showJobFor('PHYSICAL_PRODUCT')).toBe('demo')
   })
