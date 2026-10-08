@@ -132,6 +132,15 @@ export interface StoryGateResult<T> {
  *  joked or cited is her visit story and is private. */
 export const SENSITIVE = /\b(postpartum|post-partum|depress\w*|anxiety|panic attacks?|mental health|therapist|in therapy|therapy (session|sessions|for|appointment)|miscarr\w*|pregnan\w*|infertil\w*|cancer|diagnos\w*|illness|surgery|hospital\w*|disorder|addict\w*|rehab|suicid\w*|divorc\w*|custody|funeral|passed away|died|death|grief|abus\w*|police|arrest\w*|lawsuit|sued|lawyer|attorney|code enforcement|evict\w*|shut (us|me|it) down|fined|citation|violation|illegal\w*|bankrupt\w*|foreclos\w*|laid off|lost my job|got fired|unemploy\w*|in debt|my debt|debts|ivf|fertility|my ex|ex-?husband|ex-?wife|ex-?boyfriend|ex-?girlfriend|break-?up|sober|sobriety|relapse\w*|jail|prison|immigra\w*|deport\w*|visa status|home address|my address|salary|neighbou?r complain\w*|(my|our) (son|daughter|kid|kids|child|children)'?s? school|court (date|dates|hearing|order|case)|went to court|in court|to court|courthouse|courtroom|summons|subpoena\w*|(face|faced|facing|pay|paid|paying|issued|hefty|huge|heavy|daily|steep) fines?|officers?|(the|our|my|visiting) (city |health |code |fire |building |county )?inspectors?|inspectors? (walked|walks|walking|came|comes|showed up|shows up|visited|visits|stopped by|joked|told|said|cited|wrote|shut|is coming|came back|coming back)|inspection officer|surprise inspection|failed (an |my |the |our )?inspection|enforcement|animal control|ticketed|probation|parole|cease and desist|(in|from) (my|our) bank|bank (account|balance)|overdra(ft|wn)\w*|(i|we) (was|were) broke|flat broke|dead broke|couldn'?t (pay|afford) (the |my |our )?(rent|bills?|mortgage)|behind on (my |the |our )?(rent|bills|payments)|permit(s|ting|ted)?|zoning|landlord|licen[cs]e (was |got )?(denied|revoked|suspended)|the city (sent|shut|told|fined|made)|food stamps|payday loans?|credit card debt|my doctor|medical (bills?|debt|leave|condition)|medications?|chemo\w*|emergency room)\b/i
 
+/**
+ * HARD LIMITS ONLY (owner brief v2, Part 1 item 6, 2026-10-07): street address
+ * and precise location, and minors' identifying details. Her town is not
+ * private, and a topic alone (health, money, permits, inspections,
+ * enforcement) never excludes a fact. Used instead of SENSITIVE behind the
+ * trial flag; things she switched off or never said are handled elsewhere.
+ */
+export const HARD_LIMIT = /\b(home address|my address|our address|street address|where (?:i|we) live exactly|\d{1,5}\s+(?:[A-Z][a-z]+\s){1,3}(?:street|avenue|ave|road|rd|lane|boulevard|blvd)\b|gps|coordinates|(?:my|our) (?:son|daughter|kid|kids|child|children)'?s? (?:school|teacher|class|full name)|(?:my|our) (?:son|daughter|kid|kids|child|children) (?:goes|go|attends|attend) to)\b/i
+
 /** The ids supplied in the creator's single most recent generation. */
 export function lastSupplied(rows: readonly LedgerRow[] | null | undefined): Set<string> {
   const list = Array.isArray(rows) ? rows : []
@@ -162,14 +171,17 @@ export function gateStories<T extends StoryCandidate>(
     /** What this video is about when no product is chosen. Rule 5 applies
      *  only when it is given (null keeps the old behaviour). */
     topicText?: string | null
+    /** Trial: only HARD_LIMIT keeps a story out; topic alone never does. */
+    hardLimitsOnly?: boolean
   },
 ): StoryGateResult<T> {
+  const SENS = opts.hardLimitsOnly ? HARD_LIMIT : SENSITIVE
   const productTerms = contentTerms(opts.productText ?? '')
   const recent = opts.recent ?? new Map<string, number>()
   const last = opts.last ?? new Set<string>()
   const chosen = String(opts.chosenText ?? '')
   const chosenTerms = contentTerms(chosen)
-  const raisedSensitive = SENSITIVE.test(chosen)
+  const raisedSensitive = SENS.test(chosen)
   const topicTerms = opts.topicText == null ? null : contentTerms(opts.topicText)
   const kept: T[] = []
   const offProduct: T[] = []
@@ -179,7 +191,7 @@ export function gateStories<T extends StoryCandidate>(
   for (const item of ranked) {
     const own = contentTerms(`${String(item?.text ?? '')} ${String(item?.evidence ?? '')}`)
     const overlaps = (terms: Set<string>) => { for (const w of own) if (terms.has(w)) return true; return false }
-    if (SENSITIVE.test(`${String(item?.text ?? '')} ${String(item?.evidence ?? '')}`)
+    if (SENS.test(`${String(item?.text ?? '')} ${String(item?.evidence ?? '')}`)
       && !(raisedSensitive && overlaps(chosenTerms))) { sensitive.push(item); continue }
     if (!STORY_KINDS.has(String(item?.kind ?? ''))) { kept.push(item); continue }
     if (productTerms.size > 0) {

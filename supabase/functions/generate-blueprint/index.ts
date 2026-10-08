@@ -26,7 +26,7 @@ import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
 import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS, oneStory, storyTwins } from '../_shared/storyRotation.ts'
-import { scrubPrivate, scrubLike, isPrivate, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
+import { scrubPrivate, scrubLike, isPrivate, isHardLimit, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
 import { SHOWN_JOB_RULE, normalizeShownJob, auditShownScript, referenceShownKept } from '../_shared/shownJob.ts'
@@ -7245,12 +7245,17 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   }
   // What the final guard must never let through: private rows she did not
   // switch on, and the facts she tapped out on the plan screen.
-  const guardExcludedTexts: string[] = await admin.from('creator_knowledge').select('id, text, evidence, sensitive')
+  const guardExcludedTexts: string[] = await admin.from('creator_knowledge').select('id, text, evidence, sensitive, creator_excluded_at')
     .eq('owner_id', ownerId)
     .or(`sensitive.eq.true,creator_excluded_at.not.is.null,id.in.(${(Array.isArray(body.exclude_knowledge_ids) ? body.exclude_knowledge_ids : []).map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).join(',') || '00000000-0000-0000-0000-000000000000'})`)
     .limit(200)
     .then((r) => (Array.isArray(r.data) ? r.data : [])
       .filter((k) => !(Array.isArray(body.use_knowledge_ids) && body.use_knowledge_ids.map(String).includes(String(k.id))))
+      // Owner brief v2 Part 1 item 6: on the trial, a row flagged private by
+      // topic alone is not banned; only a hard limit or her own switch-off is.
+      .filter((k) => !(trialOn && k.sensitive === true && !k.creator_excluded_at
+        && !(Array.isArray(body.exclude_knowledge_ids) && body.exclude_knowledge_ids.map(String).includes(String(k.id)))
+        && !isHardLimit(`${String(k.text ?? '')} ${String(k.evidence ?? '')}`)))
       .map((k) => `${String(k.text ?? '')}. ${String(k.evidence ?? '')}`), () => [])
   // ⚖️ WHAT SHE HAS TAUGHT TWIN (0250): her ratings, test viewers and hook
   // picks, learned by the worker. Fail-open: a failed read writes as before.
@@ -9555,6 +9560,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         topicText: ownedEntity ? null
           : [reference_note, ...Object.values(brief ?? {}), ...Object.values(answers ?? {})]
           .filter((v): v is string => typeof v === 'string').join(' '),
+        // Owner brief v2 Part 1 item 6: on the trial, only hard limits keep a story out.
+        hardLimitsOnly: trialOn,
       })
     if (storyGate.offProduct.length || storyGate.resting.length || storyGate.sensitive.length || storyGate.offTopic.length) {
       console.warn(JSON.stringify({
@@ -15313,7 +15320,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // A role she claims ("I run a cart") must be in something she STATED —
         // not a topic guessed from a caption (owner retest 2026-10-01).
         const identityText = lateIdentityText
-        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true, identityText })
+        const guarded = guardScript(bp.script as Array<{ line?: unknown }>, { allowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true, identityText , hardLimitsOnly: trialOn })
         if (guarded.removed.length) {
           const emptied = guarded.beats.filter((b) => typeof b.line === 'string' && !b.line.trim())
           bp.script = guarded.beats.filter((b) => !(typeof b.line === 'string' && !b.line.trim()))
@@ -15361,7 +15368,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (Array.isArray(bh.hook_options)) {
           const opts = bh.hook_options.filter((h): h is string => typeof h === 'string')
           const safeOpts = opts.filter((h) =>
-            !guardScript([{ line: h }], { allowedText: '', excludedTexts: guardExcludedTexts }).removed.some((r) => r.reason === 'private' || r.reason === 'excluded')
+            !guardScript([{ line: h }], { allowedText: '', excludedTexts: guardExcludedTexts , hardLimitsOnly: trialOn }).removed.some((r) => r.reason === 'private' || r.reason === 'excluded')
             && enforceScriptRules([{ line: h }], { unpicked: namesNotPicked, followAllowed: String(body.outcome ?? '') === 'follow' }).removed.length === 0)
           // ⚠️ AUDIT 2026-10-01 (S3): when EVERY option failed, all of them
           // used to be kept. An empty list is the honest answer.
@@ -15400,7 +15407,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           if (typeof t !== 'string' || !t.trim()) return t
           const kept: string[] = []
           for (const sent of t.split(/(?<=[.!?])\s+/)) {
-            const priv = guardScript([{ line: sent }], { allowedText: '', excludedTexts: guardExcludedTexts }).removed
+            const priv = guardScript([{ line: sent }], { allowedText: '', excludedTexts: guardExcludedTexts , hardLimitsOnly: trialOn }).removed
               .find((r) => r.reason === 'private' || r.reason === 'excluded')
             const rule = enforceScriptRules([{ line: sent }], { unpicked: namesNotPicked, followAllowed: followOk }).removed[0]
             if (priv || rule) { textCuts.push({ field, reason: String(priv?.reason ?? rule?.reason), sentence: sent }); continue }
@@ -15600,7 +15607,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       const followOk = String(body.outcome ?? '') === 'follow'
       // The same guards that ran above, re-run on anything written here.
       const reguard = (beats: Array<Record<string, unknown>>): { beats: Array<Record<string, unknown>>; removed: number } => {
-        const g = guardScript(beats as Array<{ line?: unknown }>, { allowedText: lateAllowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true, identityText: lateIdentityText })
+        const g = guardScript(beats as Array<{ line?: unknown }>, { allowedText: lateAllowedText, excludedTexts: guardExcludedTexts, figuresMustBeBacked: true, identityText: lateIdentityText , hardLimitsOnly: trialOn })
         const c = enforceCorrections(g.beats, herRejected, herWords)
         const o = stripForeignOffer(c.beats, foreignOffer)
         const r = enforceScriptRules(o.beats, { unpicked: namesNotPicked, followAllowed: followOk })

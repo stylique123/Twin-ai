@@ -3,7 +3,7 @@
 // and the real stored facts they came from. They must never survive the guard
 // unless she allowed them for that video.
 import { describe, it, expect } from 'vitest'
-import { guardScript, scrubPrivate, isPrivate, privateSqlPattern, statedQuantities, PRIVATE, scrubLike } from '../privacyGuard'
+import { guardScript, scrubPrivate, isPrivate, privateSqlPattern, statedQuantities, PRIVATE, scrubLike, isHardLimit } from '../privacyGuard'
 
 const STORED = {
   police: 'Faced neighbor complaints, police visits, and code enforcement threats over coffee roasting smells at home, forcing a move.',
@@ -106,5 +106,26 @@ describe('scrubLike (blind set 3 T5: private relocation story in her voice profi
   })
   it('leaves unrelated lines alone', () => {
     expect(scrubLike(['I roast in small batches from home.'], priv)).toEqual(['I roast in small batches from home.'])
+  })
+})
+
+describe('owner brief v2 Part 1 item 6: hard limits only, behind the trial flag', () => {
+  const beats = [
+    { line: 'Animal control showed up at the door the other day.' },
+    { line: 'The code enforcement officer inspected the roastery today. He said we did everything right.' },
+    { line: 'Maya roasts at 412 Cedar Lane Road every Tuesday.' },
+    { line: "Our daughter's school sent a note home." },
+    { line: 'It is a ten minute drive to the market in town.' },
+  ]
+  it('topic alone (inspections, enforcement, animal control) is never cut in hard-limits mode', () => {
+    const g = guardScript(beats, { allowedText: '', excludedTexts: [], hardLimitsOnly: true })
+    const cut = g.removed.filter((r) => r.reason === 'private').map((r) => r.beat)
+    expect(cut).toEqual([2, 3])
+    expect(isHardLimit('the city inspector came by')).toBe(false)
+    expect(isHardLimit('our address is on the bag')).toBe(true)
+  })
+  it('the default (everyone else) is unchanged', () => {
+    const g = guardScript(beats, { allowedText: '', excludedTexts: [] })
+    expect(g.removed.filter((r) => r.reason === 'private').map((r) => r.beat)).toEqual(expect.arrayContaining([0, 1]))
   })
 })
