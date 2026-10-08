@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0283_lessons_synthetic':
+    'One boolean column (default false) on creator_lessons; applied live by hand 2026-10-08 (owner rule). Readers tolerate its absence. No staging-only surface.',
   '0282_superseded_facts':
     'Three nullable columns on creator_knowledge and the writer view replaced in place with one more filter; applied live by hand 2026-10-06 (owner rule). No staging-only surface.',
   '0281_one_private_list':
