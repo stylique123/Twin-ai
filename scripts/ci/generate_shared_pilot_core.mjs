@@ -145,6 +145,7 @@ const SOURCES = [
   ['packages/shared/src/script/roleClaims.ts', 'supabase/functions/_shared/roleClaims.ts'],
   ['packages/shared/src/script/answerGate.ts', 'supabase/functions/_shared/answerGate.ts'],
   ['packages/shared/src/script/beatCleanup.ts', 'supabase/functions/_shared/beatCleanup.ts'],
+  ['packages/shared/src/script/noStoryEvents.ts', 'supabase/functions/_shared/noStoryEvents.ts'],
   ['packages/shared/src/script/novelDetail.ts', 'supabase/functions/_shared/novelDetail.ts'],
   ['packages/shared/src/script/blueprintCompliance.ts', 'supabase/functions/_shared/blueprintCompliance.ts'],
   ['packages/shared/src/script/lineRepeat.ts', 'supabase/functions/_shared/lineRepeat.ts'],

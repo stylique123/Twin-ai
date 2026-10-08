@@ -782,6 +782,7 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per script (trial): empty bridges and stray follow closers removed after writing. Visible in the stored script.',
   },
+  no_story_events_dropped: { kind: 'counter_ephemeral', why: 'Per script (trial): with no story supplied, sentences narrating an invented past event were removed (counts only). Visible in the stored script.' },
   cleanup_would_stub: { kind: 'counter_ephemeral', why: 'Per script: a clean-up would have left fewer than three spoken beats, so it was not applied.' },
   new_story_asked: { kind: 'counter_ephemeral', why: 'Per request: every story about this product is resting, so she is asked for one new moment. Durable as the readiness question shown.' },
   topic_role_held: { kind: 'counter_ephemeral', why: 'Per request: scanned topic rows that state a role or business she runs, held until she confirms. Rows stay in creator_knowledge.' },
