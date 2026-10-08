@@ -51,6 +51,7 @@ import {
   evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
+import { buildProvenance } from '../_shared/provenance.ts'
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
 import { projectBrandTruth, validateBrandTruthSnapshot } from '../_shared/brandTruth.ts'
 import { businessFactLines, businessFactProvenanceCounts, guessedMark } from '../_shared/brandTruthPrompt.ts'
@@ -8741,6 +8742,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // on the way. A counter read into a literal before its value is computed stores
   // nothing; `beat_audit` paid for that lesson.
   let suppliedKnowledgeIds: string[] = []
+  // Brief 1.4: what the writer was shown, for the ids-only provenance log.
+  let provenanceSupply: Array<{ id?: unknown; kind?: unknown; text?: unknown }> = []
   let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
   // Everything the writer was given, kept for the figure audit (Sunflower #23).
   let writerMaterial = ''
@@ -9744,6 +9747,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       routeAvail.product = ownedEntity ? 1 : 0
       routeAvail.brand = confirmedBrand ? 1 : 0
     }
+    provenanceSupply = speakable as Array<{ id?: unknown; kind?: unknown; text?: unknown }>
     suppliedKnowledgeIds = speakable
       .map((k) => String((k as { id?: unknown }).id ?? '').trim())
       .filter((id) => id !== '')
@@ -15904,6 +15908,20 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           }
         }
       } catch { /* resting a repeat never fails a build */ }
+    }
+    // Brief 1.4: provenance, ids only — never text. Trial (test account) only.
+    if (trialOn) {
+      try {
+        const sc = (blueprint as { script?: Array<{ line?: unknown }> }).script
+        const prov = buildProvenance({
+          facts: provenanceSupply.filter((k) => !STORY_KINDS.has(String(k.kind ?? ''))),
+          stories: provenanceSupply.filter((k) => STORY_KINDS.has(String(k.kind ?? ''))),
+          lessons: lessonsInPrompt,
+          notes: reference_note,
+          sentences: Array.isArray(sc) ? sc.map((b) => String(b?.line ?? '')) : [],
+        })
+        console.log(JSON.stringify({ event: 'provenance', ...prov }))
+      } catch { /* provenance never fails a build */ }
     }
     // Ceiling C10 / paired 10B (owner 2026-10-07): a conversations script
     // read out the price list. Off the selling goals, a middle line quoting a
