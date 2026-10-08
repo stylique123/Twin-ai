@@ -21,13 +21,19 @@
 // ⚖️ HER CONSENT WINS. A private term she typed for this video, or a fact she
 // switched back on, is in `allowedText` and is never removed.
 
-import { SENSITIVE } from './storyRotation.js'
+import { SENSITIVE, HARD_LIMIT } from './storyRotation.js'
 
 /** What counts as private. One source: the shared SENSITIVE list. */
 export const PRIVATE: RegExp = SENSITIVE
 
 export function isPrivate(text: string | null | undefined): boolean {
   return PRIVATE.test(String(text ?? ''))
+}
+
+/** Owner brief v2 (Part 1 item 6): only the hard limits. Trial only. */
+export { HARD_LIMIT }
+export function isHardLimit(text: string | null | undefined): boolean {
+  return HARD_LIMIT.test(String(text ?? ''))
 }
 
 /**
@@ -175,8 +181,9 @@ export function unbackedRole(sentence: string, identityText: string): string | n
  */
 export function guardScript<T extends GuardBeat>(
   beats: readonly T[],
-  opts: { allowedText: string; excludedTexts: readonly string[]; figuresMustBeBacked?: boolean; identityText?: string },
+  opts: { allowedText: string; excludedTexts: readonly string[]; figuresMustBeBacked?: boolean; identityText?: string; hardLimitsOnly?: boolean },
 ): { beats: T[]; removed: GuardRemoval[] } {
+  const PRIV = opts.hardLimitsOnly ? HARD_LIMIT : PRIVATE
   const allowedNorm = ` ${norm(opts.allowedText)} `
   const allowedRuns = runs(opts.allowedText)
   const banned = new Set<string>()
@@ -186,7 +193,7 @@ export function guardScript<T extends GuardBeat>(
   const bannedQty = new Set<number>()
   for (const t of opts.excludedTexts) for (const q of statedQuantities(t)) if (!allowedQty.has(q)) bannedQty.add(q)
   const privateAllowed = (s: string) => {
-    const m = s.match(new RegExp(PRIVATE.source, 'gi')) ?? []
+    const m = s.match(new RegExp(PRIV.source, 'gi')) ?? []
     return m.length > 0 && m.every((w) => allowedNorm.includes(` ${norm(w)} `))
   }
   const removed: GuardRemoval[] = []
@@ -195,7 +202,7 @@ export function guardScript<T extends GuardBeat>(
     if (!line) return b
     const kept: string[] = []
     for (const s of line.split(SENTENCES)) {
-      if (isPrivate(s) && !privateAllowed(s)) { removed.push({ beat: i, reason: 'private', sentence: s }); continue }
+      if (PRIV.test(s) && !privateAllowed(s)) { removed.push({ beat: i, reason: 'private', sentence: s }); continue }
       const hit = [...runs(s)].some((r) => banned.has(r)) || [...statedQuantities(s)].some((q) => bannedQty.has(q))
       if (hit) { removed.push({ beat: i, reason: 'excluded', sentence: s }); continue }
       // A figure (10 or more, or any number with a unit) that nothing she gave states.
