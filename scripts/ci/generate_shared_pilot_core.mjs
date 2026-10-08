@@ -161,6 +161,8 @@ const SOURCES = [
   ['packages/shared/src/script/scriptIntegrity.ts', 'supabase/functions/_shared/scriptIntegrity.ts'],
   // Provenance (brief 1.4): which knowledge ids fed each sentence. Ids only.
   ['packages/shared/src/script/provenance.ts', 'supabase/functions/_shared/provenance.ts'],
+  // Invented causes + subject-only topics (brief 2.8).
+  ['packages/shared/src/script/inventedCause.ts', 'supabase/functions/_shared/inventedCause.ts'],
   // Support check (brief 2.17): per-sentence support, shadow; counts logged only.
   ['packages/shared/src/script/supportCheck.ts', 'supabase/functions/_shared/supportCheck.ts'],
   // Goal fidelity: rebuttal framing, promotion gating, CTA-per-goal, shot-list
