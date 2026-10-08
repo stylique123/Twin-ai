@@ -138,6 +138,8 @@ const SOURCES = [
   // Show-it beat + close_up shots (trial, 2026-10-08): one decision, both sides.
   ['packages/shared/src/script/showItBeat.ts', 'supabase/functions/_shared/showItBeat.ts'],
   ['packages/shared/src/script/softwareClose.ts', 'supabase/functions/_shared/softwareClose.ts'],
+  // One item format + slot map (plan 0.1/0.2): edge and worker read facts the same way.
+  ['packages/shared/src/script/itemFormat.ts', 'supabase/functions/_shared/itemFormat.ts'],
   // Showability inferred from the product itself (trial, in memory only).
   ['packages/shared/src/script/inferShowability.ts', 'supabase/functions/_shared/inferShowability.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'supabase/functions/_shared/scriptFamily.ts'],
@@ -191,6 +193,7 @@ const SOURCES = [
   ['packages/shared/src/script/silentBeat.ts', 'worker/src/generated/silentBeat.ts'],
   ['packages/shared/src/script/shotListSync.ts', 'worker/src/generated/shotListSync.ts'],
   ['packages/shared/src/script/beatCamera.ts', 'worker/src/generated/beatCamera.ts'],
+  ['packages/shared/src/script/itemFormat.ts', 'worker/src/generated/itemFormat.ts'],
   ['packages/shared/src/script/storyRotation.ts', 'worker/src/generated/storyRotation.ts'],
   ['packages/shared/src/script/novelDetail.ts', 'worker/src/generated/novelDetail.ts'],
   ['packages/shared/src/script/beatCleanup.ts', 'worker/src/generated/beatCleanup.ts'],
