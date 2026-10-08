@@ -101,6 +101,7 @@ describe('brief v2 2.15: stock closers are cut', () => {
     expect(dropStockCloser('We figured it out. That is the whole story.')).toBe('We figured it out.')
     expect(dropStockCloser("So I am in the clear, and that is honestly everything there is to say on it.")).toBe('So I am in the clear.')
     expect(dropStockCloser('Clarity beats worry every time. That is the entire lesson.')).toBe('Clarity beats worry every time.')
+    expect(dropStockCloser('If you run a small setup, start here. That is honestly the whole lesson.')).toBe('If you run a small setup, start here.')
     expect(dropStockCloser("That's really everything there is to it.")).toBe("That's really everything there is to it.")
   })
   it('leaves real lines alone', () => {

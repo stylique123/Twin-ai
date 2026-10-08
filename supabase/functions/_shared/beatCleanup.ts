@@ -160,7 +160,7 @@ export function dropWriterNotes(line: string): string {
  * sentence; a line left with nothing keeps its original words (the 3-beat
  * floor is enforced by the caller).
  */
-const STOCK_CLOSER = /(?:,\s*|^|(?<=[.!?])\s+)(?:(?:and|so)\s+)?(?:that(?:'s| is)|this is)\s+(?:honestly\s+|really\s+|literally\s+|just\s+|basically\s+)?(?:the whole story|the entire (?:lesson|story)|(?:really\s+)?everything there is to (?:say|it|know)(?:\s+(?:on|about)\s+[^.!?]{0,20})?|all there is to (?:it|say))\s*([.!])?/gi
+const STOCK_CLOSER = /(?:,\s*|^|(?<=[.!?])\s+)(?:(?:and|so)\s+)?(?:that(?:'s| is)|this is)\s+(?:honestly\s+|really\s+|literally\s+|just\s+|basically\s+)?(?:the whole (?:story|lesson|point|thing)|the entire (?:lesson|story)|(?:really\s+)?everything there is to (?:say|it|know)(?:\s+(?:on|about)\s+[^.!?]{0,20})?|all there is to (?:it|say))\s*([.!])?/gi
 export function dropStockCloser(line: string): string {
   const out = line.replace(STOCK_CLOSER, (_m, end: string | undefined, offset: number) => (offset === 0 ? '' : (end ?? '.'))).replace(/\s+([.,!?])/g, '$1').replace(/([.!?])\1+/g, '$1').replace(/\s{2,}/g, ' ').trim()
   return out.length >= 3 ? out : line
