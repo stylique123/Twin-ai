@@ -139,7 +139,7 @@ export const SENSITIVE = /\b(postpartum|post-partum|depress\w*|anxiety|panic att
  * enforcement) never excludes a fact. Used instead of SENSITIVE behind the
  * trial flag; things she switched off or never said are handled elsewhere.
  */
-export const HARD_LIMIT = /\b(home address|my address|our address|street address|where (?:i|we) live exactly|\d{1,5}\s+(?:[A-Z][a-z]+\s){1,3}(?:street|avenue|ave|road|rd|lane|boulevard|blvd)\b|gps|coordinates|(?:my|our) (?:son|daughter|kid|kids|child|children)'?s? (?:school|teacher|class|full name)|(?:my|our) (?:son|daughter|kid|kids|child|children) (?:goes|go|attends|attend) to)\b/i
+export const HARD_LIMIT = /\b(home address|my address|our address|street address|where (?:i|we) live exactly|\d{1,5}\s+(?:[A-Z][a-z]+\s){1,3}(?:street|avenue|ave|road|rd|lane|boulevard|blvd)\b|gps|coordinates|(?:on|at) the corner of [A-Z0-9][\w.]*(?:\s\w+)? and [A-Z0-9]\w*|(?:my|our) (?:son|daughter|kid|child)(?:'s)? (?:name is|is named|called) [A-Z]\w+|(?:my|our) (?:son|daughter|kid|kids|child|children)'?s? (?:school|teacher|class|full name)|(?:my|our) (?:son|daughter|kid|kids|child|children) (?:goes|go|attends|attend) to)\b/i
 
 /** The ids supplied in the creator's single most recent generation. */
 export function lastSupplied(rows: readonly LedgerRow[] | null | undefined): Set<string> {

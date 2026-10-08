@@ -129,3 +129,29 @@ describe('owner brief v2 Part 1 item 6: hard limits only, behind the trial flag'
     expect(g.removed.filter((r) => r.reason === 'private').map((r) => r.beat)).toEqual(expect.arrayContaining([0, 1]))
   })
 })
+
+describe('owner brief v2: hard limits are still cut on the trial (advisor review of #1163)', () => {
+  const run = (line: string, excluded: string[] = []) =>
+    guardScript([{ line }], { allowedText: '', excludedTexts: excluded, hardLimitsOnly: true }).removed.map((r) => r.reason)
+  it('street address', () => {
+    expect(run('Maya roasts at 412 Cedar Lane Road every week.')).toEqual(['private'])
+    expect(run('Our address is printed on every bag.')).toEqual(['private'])
+  })
+  it('precise location', () => {
+    expect(run('We park on the corner of 5th and Main.')).toEqual(['private'])
+    expect(run('Here are the GPS coordinates of the cart.')).toEqual(['private'])
+  })
+  it("minors' identifying details", () => {
+    expect(run("Our daughter's school sent a note home.")).toEqual(['private'])
+    expect(run('My son goes to the school down the street.')).toEqual(['private'])
+    expect(run("My daughter's name is Lily and she helps label bags.")).toEqual(['private'])
+  })
+  it('a deleted post or switched-off fact is still cut by its wording', () => {
+    const deleted = 'The night the espresso machine flooded the whole garage floor'
+    expect(run('Then the espresso machine flooded the whole garage floor.', [deleted])).toEqual(['excluded'])
+  })
+  it('her town and a topic are not cut', () => {
+    expect(run('I roast in a small town in New Mexico.')).toEqual([])
+    expect(run('The health inspector came by and said we passed.')).toEqual([])
+  })
+})
