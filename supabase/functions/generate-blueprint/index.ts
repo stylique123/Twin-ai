@@ -67,6 +67,7 @@ import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
+import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage } from '../_shared/itemFormat.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -9791,6 +9792,19 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       .filter((k) => !subjectTopics.includes(k))
       .map((k) => (trialOn && typeof (k as { text?: unknown }).text === 'string' ? { ...k, text: dropWriterNotes(String((k as { text?: unknown }).text)) } : k)) as typeof speakableAll
     if (storyCut?.dropped.length) console.log(JSON.stringify({ event: 'one_story', kept: storyCut.kept ? String(storyCut.kept.text ?? '').slice(0, 60) : null, dropped: storyCut.dropped.length }))
+    // PLAN 0.1/0.2 (trial): the writer's material read through the one item
+    // format — counts per slot and the empty spoken slots. Counts only.
+    if (trialOn) {
+      try {
+        const oe = ownedEntity as { id?: unknown; knowledge?: unknown } | null
+        const facts = Array.isArray(oe?.knowledge) ? (oe!.knowledge as Array<Record<string, unknown>>) : []
+        const cov = slotCoverage([
+          ...speakable.map((k) => itemFromCreatorKnowledge(k as Record<string, unknown>)),
+          ...facts.map((f) => itemFromProductFact(f, oe?.id ? String(oe.id) : null)),
+        ])
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'item_slots', items: cov.items, by_slot: cov.bySlot, empty: cov.empty }))
+      } catch { /* measuring never fails a generation */ }
+    }
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
     // 0215 records them against this generation and rotates them to the back of
     // the next tie. An item with no id is one read before 0215 was applied — it
