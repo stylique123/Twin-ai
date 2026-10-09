@@ -97,6 +97,12 @@ function scenarios(products, brandId, brandName) {
       : ['sell', 'educate', 'leads', 'conversations', 'personal_brand', 'entertain']
     for (const goal of goals) out.push({ group: 'product', label: `${p.type}/${p.relationship}`, product: p.name, body: { selected_product_id: p.id, goal, door: 'product', reference_note: p.name }, anglePick: out.length % 3 })
   }
+  // A2. PLAN v3 3.3 MEASUREMENT: the show-it target is "showable physical
+  // products she owns, on sell / educate / leads". Short or empty simulated
+  // answers send most of those to a 409, so this group answers fully.
+  for (const p of named.filter((x) => x.type === 'PHYSICAL_PRODUCT' && x.relationship === 'OWN_PRODUCT')) {
+    for (const goal of ['sell', 'educate', 'leads']) out.push({ group: 'physical', label: `${p.type}/${p.relationship}`, product: p.name, body: { selected_product_id: p.id, goal, door: 'product', reference_note: p.name }, anglePick: out.length % 3, forceStyle: 'rich' })
+  }
   // B. The unnamed product.
   if (ghost) for (const goal of ['sell', 'educate']) out.push({ group: 'product', label: 'ghost product', body: { selected_product_id: ghost.id, goal, door: 'product', reference_note: '' }, expectRefusal: true })
   // C. The whole business.
@@ -640,7 +646,7 @@ async function main() {
         // every answer is labelled simulated in the results.
         // Story-load answers "nothing specific" and picks no product: its
         // material must be the note alone.
-        const style = sc.group === 'storyload' ? 'none' : ['rich', 'short', 'none'][styleHash(`${BATCH}#${sc.pairKey ?? sc.n}`) % 3]
+        const style = sc.forceStyle ?? (sc.group === 'storyload' ? 'none' : null) ?? ['rich', 'short', 'none'][styleHash(`${BATCH}#${sc.pairKey ?? sc.n}`) % 3]
         // ⚠️ A REAL CREATOR ANSWERS ON TOPIC (batch part-13): one shipping
         // sentence answered every question, about stale beans or roasters
         // alike, so the writer was handed off-topic "answers". A rich answer is
