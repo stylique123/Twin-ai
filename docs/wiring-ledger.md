@@ -122,3 +122,4 @@ Compared against the scratchpad backlog, the parked list, open GitHub issues (7)
 | Question ladder (#1148), complete-story detection (#1164), `storeGap`: built, no caller | orphan rows (capped at 3) | W1, Phase 2.2, Phase 4.3 |
 | Held stashes `cta` and `bridges` | parked | W3 (tested against the rated library) |
 | No-story present-tense scenes and invented specifics | parked | W2 |
+| 1.2 subpages by role + ld FAQ | worker/src/jobs/extractProduct.ts (`subpagesByRole`, `ldFaqLines`) | subpagesByRoleAndFaq.test.ts | `feature_fired subpages_by_role`, `ld_faq` (worker logs) | worker, unflagged (extraction only) | awaiting CI (Actions billing) |
