@@ -67,7 +67,7 @@ import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
-import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage } from '../_shared/itemFormat.ts'
+import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines } from '../_shared/itemFormat.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -10386,9 +10386,19 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     if (placedEntityFacts.pageKind === 'homepage' || placedEntityFacts.pageKind === 'collection') {
       claimLines.push('\n- NOTE: this product\'s link is the shop\'s ' + placedEntityFacts.pageKind + ' page, not the product\'s own page, so no price or product detail from that page is known to belong to it. Do not quote a price.')
     }
+    // PLAN 1.6 (trial): the same admitted facts, grouped by the job each does
+    // in a script (hook, what it is, what she can show, how it works, proof,
+    // questions, offer). Unconfirmed numbers and quotes never get here:
+    // factReachesWriter already holds them back.
+    const groupedProduct = trialOn
+      ? groupProductFactLines(knowledge.filter((f) => factReachesWriter(f as { field?: unknown; value?: unknown; trust?: unknown })) as Array<{ field?: unknown; value?: unknown }>)
+      : null
+    if (groupedProduct && groupedProduct.lines.length) {
+      console.log(JSON.stringify({ event: 'feature_fired', feature: 'grouped_product_facts', groups: groupedProduct.groups }))
+    }
     if (usableProductFacts.length > 0) {
       claimLines.push('\n- WHAT IS TRUE ABOUT THIS PRODUCT, read from its own pages and safe to state:\n'
-        + usableProductFacts.join('\n')
+        + (groupedProduct && groupedProduct.lines.length ? groupedProduct.lines.join('\n') : usableProductFacts.join('\n'))
         + '\n  Use these rather than inventing capabilities. Anything about this product NOT listed here is unverified — describe it in general terms or leave it out.')
     }
 

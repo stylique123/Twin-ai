@@ -110,3 +110,40 @@ export function slotCoverage(items: readonly (Item | null)[]): SlotCoverage {
   const spoken = SLOTS.filter((s) => s !== 'context')
   return { items: n, bySlot, filled: spoken.filter((s) => usable.has(s)), empty: spoken.filter((s) => !usable.has(s)) }
 }
+
+/** Plan 1.6: the writer's product block, grouped by the job each fact does. */
+const GROUP_ORDER: ReadonlyArray<[Slot, string]> = [
+  ['hook', 'HOOK MATERIAL (the problem, who it is for)'],
+  ['what_it_is', 'WHAT IT IS'],
+  ['show_it', 'WHAT SHE CAN SHOW (only these; never a screen or prop not listed)'],
+  ['process', 'HOW IT WORKS, IN ORDER'],
+  ['proof', 'PROOF (confirmed only)'],
+  ['objection', 'QUESTIONS PEOPLE ASK'],
+  ['close', 'THE OFFER AND TERMS'],
+  ['context', 'OTHER'],
+]
+
+export interface GroupedFacts { lines: string[]; groups: Partial<Record<Slot, number>> }
+
+/** Facts already admitted for the writer, as headed groups (same cap, same order of facts within a group). */
+export function groupProductFactLines(facts: ReadonlyArray<{ field?: unknown; value?: unknown }>, max = 24): GroupedFacts {
+  const bySlot = new Map<Slot, string[]>()
+  let n = 0
+  for (const f of facts) {
+    const value = str(f?.value)
+    if (!value || n >= max) continue
+    const slot = slotForProductField(f?.field)
+    if (!bySlot.has(slot)) bySlot.set(slot, [])
+    bySlot.get(slot)!.push(`    * ${str(f?.field) || 'fact'}: ${value}`)
+    n += 1
+  }
+  const lines: string[] = []
+  const groups: Partial<Record<Slot, number>> = {}
+  for (const [slot, head] of GROUP_ORDER) {
+    const rows = bySlot.get(slot)
+    if (!rows?.length) continue
+    groups[slot] = rows.length
+    lines.push(`  ${head}:`, ...rows)
+  }
+  return { lines, groups }
+}
