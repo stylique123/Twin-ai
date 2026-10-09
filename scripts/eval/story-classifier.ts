@@ -36,10 +36,15 @@ const txt = gj.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
 const labels = parseStoryLabels(JSON.parse(txt), items.map((t) => t.id))
 for (const l of labels) {
   const rule = isCompleteStory(items.find((t) => t.id === l.id)!.text)
-  console.log(`${l.id} model=${l.complete ? 'COMPLETE' : '-'} a=${+l.anchor} t=${+l.turn} r=${+l.resolution} rule=${rule ? 'COMPLETE' : '-'} key=${key.has(l.id) ? 'COMPLETE' : '-'}`)
+  const line = `${l.id} model=${l.complete ? 'COMPLETE' : '-'} a=${+l.anchor} t=${+l.turn} r=${+l.resolution} rule=${rule ? 'COMPLETE' : '-'} key=${key.has(l.id) ? 'COMPLETE' : '-'}`
+  console.log(line)
+  // Readable through the checks API (job logs are not): ids and booleans only.
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=story-eval::${line}`)
 }
 const s = scoreStoryLabels(labels, key)
-console.log(`model: n=${labels.length} tp=${s.tp} fp=${s.fp} fn=${s.fn} precision=${s.precision.toFixed(2)} recall=${s.recall.toFixed(2)} (model ${model})`)
+const summary = `model: n=${labels.length} tp=${s.tp} fp=${s.fp} fn=${s.fn} precision=${s.precision.toFixed(2)} recall=${s.recall.toFixed(2)} (model ${model})`
+console.log(summary)
+if (process.env.GITHUB_ACTIONS) console.log(`::notice title=story-eval-score::${summary}`)
 }
 
 main().catch((e) => { console.error(String(e)); process.exit(1) })
