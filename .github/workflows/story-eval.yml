@@ -1,0 +1,27 @@
+name: story-eval
+# Plan 2.3: score the model story classifier against a hand key. Reads
+# transcripts, writes nothing, prints ids and booleans only.
+on:
+  workflow_dispatch:
+    inputs:
+      owner_id: { description: 'Test account owner id', required: true }
+      complete_ids: { description: 'Comma list of 8-char transcript ids that are complete stories', required: true }
+      only_ids: { description: 'Optional comma list of ids to score', required: false, default: '' }
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci
+      - name: Label and score
+        run: npx tsx scripts/eval/story-classifier.ts
+        env:
+          OWNER_ID: ${{ inputs.owner_id }}
+          COMPLETE_IDS: ${{ inputs.complete_ids }}
+          ONLY_IDS: ${{ inputs.only_ids }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
