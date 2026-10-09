@@ -46,3 +46,24 @@ describe('item format and slot map', () => {
     expect(cov.empty).not.toContain('context')
   })
 })
+
+import { groupProductFactLines } from '../itemFormat.js'
+describe('groupProductFactLines (plan 1.6)', () => {
+  it('groups admitted facts by job, in script order, under the same cap', () => {
+    const g = groupProductFactLines([
+      { field: 'price', value: '$18 a bag' },
+      { field: 'feature', value: 'Roasted to order' },
+      { field: 'problem', value: 'Grocery beans taste burnt' },
+      { field: 'process_step', value: '1. Grind 18g' },
+      { field: 'faq', value: 'Q: Whole bean? A: Yes' },
+      { field: 'object_shape', value: 'bag' },
+    ])
+    expect(g.lines[0]).toMatch(/^  HOOK MATERIAL/)
+    expect(g.lines.findIndex((l) => l.includes('THE OFFER'))).toBeGreaterThan(g.lines.findIndex((l) => l.includes('QUESTIONS')))
+    expect(g.groups).toMatchObject({ hook: 1, what_it_is: 1, show_it: 1, process: 1, objection: 1, close: 1 })
+    expect(groupProductFactLines(Array.from({ length: 30 }, (_, i) => ({ field: 'feature', value: `f${i}` }))).groups.what_it_is).toBe(24)
+  })
+  it('skips empty values', () => {
+    expect(groupProductFactLines([{ field: 'feature', value: '  ' }]).lines).toEqual([])
+  })
+})
