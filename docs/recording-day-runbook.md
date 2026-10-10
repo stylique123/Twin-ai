@@ -48,7 +48,7 @@ Editor v2 is gated OFF in production. Both must be on:
 
 - `EDITOR_V2_START_ENABLED` — Supabase edge secrets.
 - `EDITOR_RENDER_ENABLED` — `/opt/twinai-worker.env` on the VPS
-  (`138.201.119.239`), applied by `docker restart twinai-worker`.
+  (`<VPS_HOST>`), applied by `docker restart twinai-worker`.
 
 ### What one recording actually settles
 

@@ -41,7 +41,7 @@ There are exactly four places code runs. Confusing them is the source of most
 | **Web** | React/Vite SPA (`apps/web`) | Vercel | Vercel on push |
 | **Shared** | `@twinai/shared` — types, contracts, the client API layer | *compiled into web*, not a service | n/a |
 | **Edge** | Deno functions (`supabase/functions/*`) | Supabase | `.github/workflows/deploy-edge.yml` |
-| **Worker** | Node process in the `twinai-worker` Docker container | **a VPS at 138.201.119.239** | `.github/workflows/deploy-worker.yml` |
+| **Worker** | Node process in the `twinai-worker` Docker container | **a VPS at <VPS_HOST>** | `.github/workflows/deploy-worker.yml` |
 
 **The worker is not on Render.** `docs/vps.md` still contains a stale line
 saying otherwise; the workflow is the authority. Worker environment lives in

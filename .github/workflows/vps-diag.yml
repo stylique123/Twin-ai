@@ -5,7 +5,8 @@ name: VPS diagnostic (read-only, fail-closed sign-off)
 # authority. (scripts/ci/check_vps_diag_authority.mjs enforces this in CI.)
 on: { workflow_dispatch: {} }
 env:
-  VPS_HOST: 138.201.119.239
+  VPS_HOST: ${{ secrets.VPS_HOST }}
+  VPS_USER: ${{ secrets.VPS_USER }}
   # The canonical five-type registry (worker/src/env.ts). The single-deploy CI
   # guard already enforces env.ts == this set; here we assert the RUNNING worker
   # matches it too.
@@ -14,6 +15,12 @@ jobs:
   diag:
     runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
+      - name: Server address and login come from repo secrets
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ]; then
+            echo "::error::Set the VPS_HOST and VPS_USER repository secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
       - uses: actions/checkout@v4
 
       # Expected values are derived from the repo (never hand-typed or caller
@@ -71,7 +78,7 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" \
-            root@"$VPS_HOST" bash -s > facts.env <<'DIAG'
+            "$VPS_USER@$VPS_HOST" bash -s > facts.env <<'DIAG'
           set -uo pipefail
           C=twinai-worker
           emit() { printf '%s=%q\n' "$1" "${2:-}"; }
@@ -380,7 +387,7 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" \
-            root@"$VPS_HOST" bash -s < scripts/vps/collect_resource_inventory.sh > raw-inventory.tsv
+            "$VPS_USER@$VPS_HOST" bash -s < scripts/vps/collect_resource_inventory.sh > raw-inventory.tsv
           echo "collected $(wc -l < raw-inventory.tsv) records"
           node scripts/ci/build_resource_inventory.mjs raw-inventory.tsv vps-resource-inventory.json
 

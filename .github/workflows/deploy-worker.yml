@@ -25,7 +25,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VPS_HOST: 138.201.119.239
+  VPS_HOST: ${{ secrets.VPS_HOST }}
+  VPS_USER: ${{ secrets.VPS_USER }}
 
 jobs:
   # Gate: never ship a worker that doesn't compile (main has no other guard —
@@ -46,6 +47,12 @@ jobs:
     needs: check
     runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
+      - name: Server address and login come from repo secrets
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ]; then
+            echo "::error::Set the VPS_HOST and VPS_USER repository secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
       - name: Deploy to VPS over SSH
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -67,7 +74,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts_vps"
           chmod 600 "$HOME/.ssh/known_hosts_vps"
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" root@"$VPS_HOST" 'bash -se' <<'REMOTE'
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" "$VPS_USER@$VPS_HOST" 'bash -se' <<'REMOTE'
             set -euo pipefail
             cd /opt/twinai-worker-src
             # Reset to the JUST-FETCHED main (FETCH_HEAD), not the remote-tracking
