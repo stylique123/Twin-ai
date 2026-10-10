@@ -98,7 +98,7 @@ export const EXTRACTED_FIELDS = [
   // the objection (faq), the close (terms, includes) and proof that waits for
   // her (proof_number, testimonial, comparison).
   'problem', 'process_step', 'faq', 'proof_number', 'testimonial', 'screen',
-  'terms', 'includes', 'comparison', 'show_action',
+  'terms', 'includes', 'comparison', 'show_action', 'urgency',
 ] as const
 export type ExtractedField = (typeof EXTRACTED_FIELDS)[number]
 
@@ -112,7 +112,7 @@ const RISKY_FIELDS: ReadonlySet<ExtractedField> = new Set([
   'benefit', 'claim', 'price', 'plan', 'guarantee',
   // A number, someone else's words, a rival named, or a promise in the small
   // print: none is spoken until she confirms it (plan v3 1.6).
-  'proof_number', 'testimonial', 'comparison', 'terms',
+  'proof_number', 'testimonial', 'comparison', 'terms', 'urgency',
 ])
 
 /** A number that asserts a magnitude. Deliberately not "any digit" — "Version 2",

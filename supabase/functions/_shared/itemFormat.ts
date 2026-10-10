@@ -47,7 +47,7 @@ const PRODUCT_SLOT: Record<string, Slot> = {
   name: 'what_it_is', category: 'what_it_is', description: 'what_it_is', feature: 'what_it_is',
   benefit: 'what_it_is', use_case: 'what_it_is', integration: 'what_it_is', problem: 'hook',
   audience: 'hook', claim: 'proof', proof_number: 'proof', testimonial: 'proof', comparison: 'proof',
-  price: 'close', plan: 'close', guarantee: 'close', cta: 'close', terms: 'close', faq: 'objection',
+  price: 'close', plan: 'close', guarantee: 'close', cta: 'close', terms: 'close', urgency: 'close', faq: 'objection',
   object_shape: 'show_it', show_action: 'show_it', screen: 'show_it', page_section: 'show_it',
   process_step: 'process', includes: 'what_it_is',
 }
