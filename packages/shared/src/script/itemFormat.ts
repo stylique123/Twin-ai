@@ -173,3 +173,63 @@ export function kindReadiness(kind: unknown, items: readonly (Item | null)[]): K
   const missing = needs.filter((s) => !have.has(s))
   return { kind: k, needs, missing, ready: missing.length === 0 }
 }
+
+/**
+ * Plan 1.5 / 4.3: THE NEED CHECK. One record per request saying, layer by
+ * layer, whether the writer has what it needs — persona, catalyst (her story),
+ * product slots, niche findings, pillar fit, urgency — and what to do about
+ * it. Measured and logged first; the question engine reads this record later.
+ * Counts and statuses only: no creator text goes into it.
+ */
+export interface NeedCheckInput {
+  voiceCard: boolean
+  exemplars: number
+  storyIds: readonly string[]
+  partialStory?: boolean
+  kind: unknown
+  productItems: readonly (Item | null)[]
+  nicheFindings: number
+  pillars: readonly string[]
+  pillarMatched: boolean
+  urgencyFact: boolean
+}
+
+export interface NeedCheck {
+  layers: {
+    persona: { status: 'ready' | 'thin' }
+    catalyst: { status: 'stored_fit' | 'partial' | 'none'; candidate_story_ids: string[] }
+    product: { status: 'complete' | 'missing'; missing: Slot[] }
+    niche: { status: 'fresh' | 'none'; findings: number }
+    pillar: { status: 'fits' | 'outside' | 'unknown' }
+    urgency: { status: 'live_fact' | 'none' }
+  }
+  decision: 'write' | 'pick' | 'ask'
+  ask: Array<'catalyst' | 'product_slot' | 'profile'>
+}
+
+export function needCheck(i: NeedCheckInput): NeedCheck {
+  const persona = i.voiceCard && i.exemplars >= 2 ? 'ready' : 'thin'
+  const ids = i.storyIds.slice(0, 3)
+  const catalyst = ids.length ? 'stored_fit' : i.partialStory ? 'partial' : 'none'
+  const kr = kindReadiness(i.kind, i.productItems)
+  const pillar = i.pillars.length === 0 ? 'unknown' : i.pillarMatched ? 'fits' : 'outside'
+  // Ranked by expected value (brief Part 2): story first, then a product slot
+  // the script can't do without, then one profile question. Max three.
+  const ask: NeedCheck['ask'] = []
+  if (catalyst !== 'stored_fit') ask.push('catalyst')
+  if (kr.missing.length) ask.push('product_slot')
+  if (persona === 'thin' || pillar === 'unknown') ask.push('profile')
+  const decision = ask.length ? 'ask' : catalyst === 'stored_fit' ? 'pick' : 'write'
+  return {
+    layers: {
+      persona: { status: persona },
+      catalyst: { status: catalyst, candidate_story_ids: ids },
+      product: { status: kr.missing.length ? 'missing' : 'complete', missing: kr.missing },
+      niche: { status: i.nicheFindings > 0 ? 'fresh' : 'none', findings: i.nicheFindings },
+      pillar: { status: pillar },
+      urgency: { status: i.urgencyFact ? 'live_fact' : 'none' },
+    },
+    decision,
+    ask: ask.slice(0, 3),
+  }
+}
