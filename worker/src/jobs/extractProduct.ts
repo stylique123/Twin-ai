@@ -14,7 +14,8 @@
 // decorative.
 import { safeFetch } from '../safeFetch.js'
 import { brandIsHers, IDENTITY_FIELDS } from './imageBrandCheck.js'
-import { subpageLinks, wantsSubpages } from '../productSubpages.js'
+import { subpagesByRole, wantsSubpages } from '../productSubpages.js'
+import { ldFaqLines } from '../ldFaq.js'
 import { db, type Job } from '../db.js'
 import { harvestSections } from '../pageSections.js'
 import { geminiJson, geminiGroundedSearch, type InlineImage } from '../gemini.js'
@@ -127,7 +128,9 @@ const pagePrices = new Map<string, string[]>()
 /** Customer reviews from the same page's product data (24-ideas #14). */
 const pageReviews = new Map<string, CustomerReviews>()
 /** Same-site pricing/features pages the fetched page links to, by URL. */
-const pageSubpages = new Map<string, string[]>()
+const pageSubpages = new Map<string, Array<{ role: string; url: string }>>()
+/** schema.org FAQPage questions on the same page (v3.1 1.2). */
+const pageFaq = new Map<string, string[]>()
 
 async function fetchPageText(url: string): Promise<string | null> {
   try {
@@ -147,7 +150,8 @@ async function fetchPageText(url: string): Promise<string | null> {
     const head = harvestHead(html)
     pagePrices.set(url, ldPriceLines(html))
     { const rv = ldReviews(html); if (rv) pageReviews.set(url, rv) }
-    pageSubpages.set(url, subpageLinks(html, url))
+    pageSubpages.set(url, subpagesByRole(html, url))
+    pageFaq.set(url, ldFaqLines(html))
 
     const prose = html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -467,10 +471,17 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // the section map and prices can come from where they really are.
   let text = mainText
   if (mainText && url && wantsSubpages((entity as { type?: string | null } | null)?.type)) {
-    for (const sub of pageSubpages.get(url) ?? []) {
+    const subs = pageSubpages.get(url) ?? []
+    for (const { role, url: sub } of subs) {
       const subText = await fetchPageText(sub)
-      if (subText) text = `${text}\n\nALSO FROM THE SAME SITE (${sub}):\n${subText.slice(0, 12_000)}`
+      if (subText) text = `${text}\n\nALSO FROM THE SAME SITE (${role}: ${sub}):\n${subText.slice(0, 8_000)}`
     }
+    console.log(JSON.stringify({ event: 'feature_fired', feature: 'subpages_by_role', roles: subs.map((s) => s.role) }))
+  }
+  const faq = url ? pageFaq.get(url) ?? [] : []
+  if (text && faq.length > 0) {
+    text = `${text}\n\nQUESTIONS FROM THE PAGE'S OWN DATA:\n${faq.join('\n')}`
+    console.log(JSON.stringify({ event: 'feature_fired', feature: 'ld_faq', count: faq.length }))
   }
   // ⚠️ THE UNREADABLE-PAGE BRANCH MUST NOT SWALLOW AN IMAGE-ONLY JOB. It writes
   // `knowledge: []` and returns, which for a creator who supplied photographs and
