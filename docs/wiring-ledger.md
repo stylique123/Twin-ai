@@ -173,3 +173,4 @@ Compared plan v3.10 against the scratchpad backlog, open GitHub issues (6, all e
 | Unreached-code triage list (costly lessons, contrarian stances, registry and objective pool, duration contract, DNA provenance for audience labels) | not in v3.10 | W1 to W3, one at a time with a paired test |
 | Usage ledger covers edge writer calls only; worker calls (extraction, re-mine, panel) and the traffic tag missing | partial | 11.1-2 |
 | `background` brief key stored with no reader | registered unwired | Phase 4.3 |
+| 11.1-2 usage ledger, worker side | worker/src/index.ts job loop → `withUsage` → `ai_usage_ledger` (one row per model per job, stage = job type, traffic test/real) | aiUsageLedger.test.ts | rows in `ai_usage_ledger` | all jobs; `TEST_OWNER_IDS` tags test traffic | built; 0286 applied |
