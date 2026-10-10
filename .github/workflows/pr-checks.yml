@@ -17,11 +17,12 @@ name: PR checks
 on:
   workflow_dispatch:
   pull_request:
-  push:
-    branches: [main]
+  # Plan 14.3-1 (CI minutes): no full re-run on push to main. Every change
+  # reaches main only through a PR whose required checks ran on its head; the
+  # post-merge re-run repeated the same suite (about 13 billed minutes per
+  # merge). `workflow_dispatch` still re-runs it on main by hand.
 
-# CI minutes: a new push to the same PR cancels the run it replaces. Runs on
-# main are never cancelled, so every merged commit is still checked.
+# CI minutes: a new push to the same PR cancels the run it replaces.
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
