@@ -339,6 +339,10 @@ export interface BriefAnswers {
   confirmedAudiencePain?: string | null
   /** The same for `dream_outcome`. */
   confirmedDreamOutcome?: string | null
+  /** Plan v3.10 (Part 16): 2 to 3 content pillars, in her words. Profile scope, asked once. */
+  contentPillars?: readonly string[] | null
+  /** Plan v3.10: her background in one or two sentences, in her words. */
+  background?: string | null
 }
 
 export interface BriefQuestion {
@@ -524,12 +528,15 @@ export const BRIEF_STORED_KEYS = [
   // compares on the text, because a re-scan that changes the sentence means she
   // agreed to something else and the new one has been confirmed by nobody.
   'confirmedAudiencePain', 'confirmedDreamOutcome',
+  // Plan v3.10 (Part 16, Need Check pillar layer): her pillars and background,
+  // asked once in onboarding. Read by generate-blueprint's Need Check.
+  'contentPillars', 'background',
 ] as const
 
 /** ⚠️ THE MULTI-SELECTS, NAMED ONCE. The CHECK admits arrays for exactly these
  *  keys and non-empty strings everywhere else; a list that disagrees with the
  *  constraint would fail at write time, in production, on somebody's onboarding. */
-export const BRIEF_ARRAY_KEYS = ['contentGoals', 'desiredFormats', 'commercialTies'] as const
+export const BRIEF_ARRAY_KEYS = ['contentGoals', 'desiredFormats', 'commercialTies', 'contentPillars'] as const
 
 /**
  * What is safe to WRITE — and the whole of the three-state discipline at the
@@ -569,7 +576,7 @@ export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unk
     if (!Array.isArray(v)) continue
     const clean = v.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
       .map((x) => x.trim())
-    if (clean.length > 0) out[k] = clean
+    if (clean.length > 0) out[k] = k === 'contentPillars' ? clean.slice(0, 3).map((x) => x.slice(0, 80)) : clean
   }
   // ⚠️ `onCamera` IS IN THIS LIST BECAUSE A KEY IN BRIEF_STORED_KEYS THAT THE
   // WRITE PATH DOES NOT NAME IS STORED IN NAME ONLY. The first version of this
@@ -584,7 +591,7 @@ export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unk
   // these two: #766 added the card, the draft field and the reader, and
   // `savePreScriptBrief` never named them, so every "Yes, that's them" since
   // has been discarded when the tab closed.
-  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind', 'defaultCta', 'onCamera', 'confirmedAudiencePain', 'confirmedDreamOutcome'] as const) {
+  for (const k of ['audienceKnowledge', 'formatExploration', 'ownProductKind', 'ownServiceKind', 'defaultCta', 'onCamera', 'confirmedAudiencePain', 'confirmedDreamOutcome', 'background'] as const) {
     const v = (answers as Record<string, unknown>)[k]
     if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim()
   }

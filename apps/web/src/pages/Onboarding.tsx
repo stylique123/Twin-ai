@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { trialUser } from '../components/ProductDetailsByKind'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
 import { asksForbiddenClaims, BRIEF_GOALS, type BriefWorkKind, type BriefGoal } from '../lib/api'
@@ -1565,6 +1566,8 @@ export function ConfirmStep({
         // a stored empty answer.
         confirmedAudiencePain: draft.confirmedAudiencePain ?? null,
         confirmedDreamOutcome: draft.confirmedDreamOutcome ?? null,
+        contentPillars: draft.contentPillars?.length ? draft.contentPillars : null,
+        background: draft.background?.trim() || null,
       })
       // THE ENTITY Q3 MINTED — written here, not asked anywhere.
       //
@@ -2331,6 +2334,7 @@ export function ProfileQuestion({ id, draft, onDraftChange, library = null }: {
    *  question (the same `sellsAnswerWithLibrary` Settings uses). Null = unknown. */
   library?: ReadonlyArray<LibraryProductView> | null
 }) {
+  const trialId = useAuth().session?.user.id ?? null
   if (!id) return null
   const set = (patch: Partial<OnboardingDraft>) => onDraftChange({ ...draft, ...patch })
   const note = (text: string) => <p className="mt-2 text-[11px] text-stone">{text}</p>
@@ -2394,6 +2398,36 @@ export function ProfileQuestion({ id, draft, onDraftChange, library = null }: {
             </div>
           )
         })}
+
+        {/* Plan v3.10 (Part 16): profile questions asked once — her pillars and
+            background. Trial account only (VITE_TRIAL_USER_ID). */}
+        {trialUser(trialId) && (
+          <div className="mt-5 rounded-card border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-stone">What are the 2 or 3 things you make videos about?</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <input
+                  key={i}
+                  className="rounded-md border border-white/15 bg-transparent px-2 py-1 text-sm"
+                  placeholder={i === 2 ? 'Optional' : `Topic ${i + 1}`}
+                  value={draft.contentPillars?.[i] ?? ''}
+                  onChange={(ev) => {
+                    const next = [...(draft.contentPillars ?? [])]
+                    next[i] = ev.target.value.slice(0, 80)
+                    set({ contentPillars: next.map((x) => x ?? '').filter((x, j) => x.trim() !== '' || j < next.length - 1) })
+                  }}
+                />
+              ))}
+            </div>
+            <p className="mt-4 text-xs font-medium uppercase tracking-wide text-stone">Your background, in a sentence or two</p>
+            <textarea
+              className="mt-2 w-full rounded-md border border-white/15 bg-transparent px-2 py-1 text-sm"
+              rows={2}
+              value={draft.background ?? ''}
+              onChange={(ev) => set({ background: ev.target.value.slice(0, 400) })}
+            />
+          </div>
+        )}
 
         {/* ⚖️ AUDIENCE AND DEPTH SIT SIDE BY SIDE BECAUSE THEY ARE ONE QUESTION
             IN TWO HALVES, and neither is answerable without the other in view.

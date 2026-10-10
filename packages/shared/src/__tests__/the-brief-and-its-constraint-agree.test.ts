@@ -51,11 +51,11 @@ describe('the two declarations of the brief agree', () => {
     // appeared in only one of the two would either skip validation entirely or
     // apply the string rule to an array. My first version of this assertion
     // counted one pattern twice and failed on the correct migration.
-    const scalarExcludes = /e\.key not in \('contentGoals', 'desiredFormats', 'commercialTies'\)/
-    const arraySelects = /e\.key in \('contentGoals', 'desiredFormats', 'commercialTies'\)/
+    const scalarExcludes = /e\.key not in \('contentGoals', 'desiredFormats', 'commercialTies', 'contentPillars'\)/
+    const arraySelects = /e\.key in \('contentGoals', 'desiredFormats', 'commercialTies', 'contentPillars'\)/
     expect(PREDICATE).toMatch(scalarExcludes)
     expect(PREDICATE).toMatch(arraySelects)
-    expect([...BRIEF_ARRAY_KEYS].sort()).toEqual(['commercialTies', 'contentGoals', 'desiredFormats'])
+    expect([...BRIEF_ARRAY_KEYS].sort()).toEqual(['commercialTies', 'contentGoals', 'contentPillars', 'desiredFormats'])
   })
 })
 

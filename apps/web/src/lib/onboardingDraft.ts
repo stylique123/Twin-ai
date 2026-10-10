@@ -58,6 +58,9 @@ export interface OnboardingDraft {
    *  because a rejected guess is not an answer about their audience. */
   confirmedAudiencePain: string | null
   confirmedDreamOutcome: string | null
+  /** Plan v3.10: 2 to 3 content pillars and her background, in her words (trial only). */
+  contentPillars: string[]
+  background: string
   /** Up to two, and `[]` is a real answer meaning "asked, chose nothing". */
   contentGoals: BriefGoal[]
   /**
@@ -154,8 +157,10 @@ export function emptyProfileAnswers(): Pick<OnboardingDraft,
   'audienceSeg' | 'audienceKnowledge' | 'contentGoals' | 'contentGoalsTouched' | 'desiredFormats' |
   'formatExploration' | 'commercialTies' | 'ownProductKind' | 'ownServiceKind' |
   'screenCapability' | 'productCapability' |
-  'confirmedAudiencePain' | 'confirmedDreamOutcome'> {
+  'confirmedAudiencePain' | 'confirmedDreamOutcome' | 'contentPillars' | 'background'> {
   return {
+    contentPillars: [],
+    background: '',
     audienceSeg: null,
     confirmedAudiencePain: null,
     confirmedDreamOutcome: null,
@@ -223,6 +228,9 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
         ? value.confirmedAudiencePain.slice(0, 400) : null,
       confirmedDreamOutcome: typeof value.confirmedDreamOutcome === 'string'
         ? value.confirmedDreamOutcome.slice(0, 400) : null,
+      contentPillars: Array.isArray(value.contentPillars)
+        ? value.contentPillars.filter((x): x is string => typeof x === 'string').slice(0, 3).map((x) => x.slice(0, 80)) : [],
+      background: typeof value.background === 'string' ? value.background.slice(0, 400) : '',
       audienceKnowledge: oneOf(value.audienceKnowledge, AUDIENCE_KNOWLEDGE),
       contentGoals: manyOf(value.contentGoals, BRIEF_GOALS),
       contentGoalsTouched: value.contentGoalsTouched === true,

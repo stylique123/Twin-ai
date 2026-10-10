@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0285_brief_pillars_background':
+    'Re-creates is_pre_script_brief with two more admitted keys (contentPillars array, background string); applied live by hand 2026-10-10 (owner rule). Widening only. No staging-only surface.',
   '0284_story_passages':
     'New service-role-only table (RLS on, no policies); applied live by hand 2026-10-10 (owner rule). Written only for owners in PASSAGE_STORE_OWNERS; nothing reads it yet. No staging-only surface.',
   '0283_lessons_synthetic':

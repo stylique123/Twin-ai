@@ -138,6 +138,15 @@
     "confirmedDreamOutcome": {
       "readBy": [],
       "unwiredReason": "The same, for generate-blueprint:5854 (`vp?.dream_outcome ?? dna.dream`). Blocked on the same provenance question and wired in the same change."
+    },
+    "contentPillars": {
+      "readBy": [
+        "supabase/functions/generate-blueprint/index.ts"
+      ]
+    },
+    "background": {
+      "readBy": [],
+      "unwiredReason": "Asked in onboarding (plan v3.10 Part 16) for the question engine (plan 4.3), which will read it to skip profile questions she has answered. Not yet built."
     }
   }
 }
