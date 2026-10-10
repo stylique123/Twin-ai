@@ -379,7 +379,12 @@ const JUDGE_SCHEMA = {
 // twice differed by 0.85 on average and up to 2.3; 11 of 20 moved a point or
 // more. One read cannot show a ±1 change. Each script is read JUDGE_READS
 // times (default 3) and the scores are averaged; the first read's notes stay.
-const JUDGE_READS = Math.max(1, Math.min(5, Number(process.env.JUDGE_READS ?? 3) || 3))
+// ⚖️ COST CONTROLS (plan v3.10 Part 11 rule 8): the practice viewers, the
+// reviewer reads and the lengthen pass are off in everyday test runs and on
+// at checkpoints. JUDGE_READS=0 skips the reviewer entirely.
+const JUDGE_READS = Math.max(0, Math.min(5, Number(process.env.JUDGE_READS ?? 3)))
+const PANEL_ON = process.env.BATCH_PANEL !== 'off'
+const LENGTHEN_ON = process.env.BATCH_LENGTHEN !== 'off'
 /** FNV-1a with a final avalanche, so neighbouring n do not cycle. */
 function styleHash(str) {
   let h = 2166136261
@@ -389,6 +394,7 @@ function styleHash(str) {
 }
 
 async function judge(bp, sc, ctx) {
+  if (JUDGE_READS === 0) return null
   const reads = (await Promise.all(Array.from({ length: JUDGE_READS }, () => judgeOnce(bp, sc, ctx).catch(() => null))))
     .filter((r) => r && Number.isFinite(Number(r.overall)))
   if (!reads.length) return judgeOnce(bp, sc, ctx)
@@ -634,7 +640,7 @@ async function main() {
   }
   async function runOne(sc) {
     {
-      const body = { ...sc.body, idempotency_key: `${BATCH}-${sc.n}`, ...(Number(process.env.BATCH_DRAFTS) > 1 ? { drafts: Number(process.env.BATCH_DRAFTS) } : {}) }
+      const body = { ...sc.body, ...(LENGTHEN_ON ? {} : { lengthen: false }), idempotency_key: `${BATCH}-${sc.n}`, ...(Number(process.env.BATCH_DRAFTS) > 1 ? { drafts: Number(process.env.BATCH_DRAFTS) } : {}) }
       // Story-load (owner 2026-10-07): both arms see NO stored story, so the
       // only difference between them is the story given in the note.
       if (sc.group === 'storyload') body.exclude_knowledge_ids = ctx.storyIds
@@ -722,6 +728,8 @@ async function main() {
       const compliance = a.text ? blueprintCompliance(a.text, String(body.goal ?? '')) : null
       if (compliance) { complianceTally.scripts++; if (compliance.compliant) complianceTally.compliant++; for (const k of ['hookPaid', 'body', 'oneSpine', 'closeFollows', 'arcFitsGoal']) if (!compliance[k]) complianceTally.fails[k] = (complianceTally.fails[k] ?? 0) + 1 }
       for (const x of a.findings) tally[x.k] = (tally[x.k] ?? 0) + 1
+      // Panel off: claim the script before the worker's panel poll can.
+      if (!PANEL_ON && r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: owner, status: 'failed', failure: 'skipped: test batch with the panel off', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
       await admin.from('script_batch_results').insert({
         batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, simulated_material: sc.simulatedMaterial ?? false, pair: sc.pairKey ?? null, compliance, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
@@ -736,6 +744,7 @@ async function main() {
   console.log('\nTALLY', JSON.stringify(tally, null, 1))
   console.log('BLUEPRINT COMPLIANCE', JSON.stringify(complianceTally))
   await scoreAfterPanel(admin, ctx)
+  await reportUsage(admin)
   await regressionReport(admin)
 }
 
@@ -750,9 +759,38 @@ async function main() {
 // keeps a rewrite only when it tests better). The reviewer used to score the
 // first draft, before that remake. Now each script is scored once its viewer
 // test is done (or failed, or after 20 minutes), from the blueprint as saved.
+// ⚖️ THE COST LINE (plan v3.10 Part 11 rules 1-2). Tokens per model, read
+// from each script's own `blueprint.ai_usage` (every Gemini call the edge
+// made). Printed as an annotation so it can be read without the log. The
+// reviewer's reads are this harness's own calls and are counted separately.
+function sumUsage(usages) {
+  const out = {}
+  for (const u of usages) for (const [model, v] of Object.entries(u ?? {})) {
+    const r = out[model] ??= { calls: 0, input: 0, output: 0 }
+    r.calls += Number(v?.calls ?? 0); r.input += Number(v?.input ?? 0); r.output += Number(v?.output ?? 0) + Number(v?.thinking ?? 0)
+  }
+  return out
+}
+async function reportUsage(admin) {
+  const { data: rows } = await admin.from('script_batch_results').select('generation_id').eq('batch', BATCH).gte('n', 0).not('generation_id', 'is', null)
+  const ids = (rows ?? []).map((r) => r.generation_id)
+  if (!ids.length) return
+  const { data: gens } = await admin.from('generations').select('blueprint').in('id', ids)
+  const total = sumUsage((gens ?? []).map((g) => g?.blueprint?.ai_usage))
+  const line = Object.entries(total).map(([m, r]) => `${m}: ${r.calls} calls, ${r.input} in, ${r.output} out`).join('; ')
+  console.log(`::notice title=batch-usage::${ids.length} scripts; ${line}; reviewer reads ${JUDGE_READS}/script; panel ${PANEL_ON ? 'on' : 'off'}; lengthen ${LENGTHEN_ON ? 'on' : 'off'}`)
+}
+
 async function scoreAfterPanel(admin, ctx) {
   const { data: rows } = await admin.from('script_batch_results').select('id, scenario, generation_id').eq('batch', BATCH).gte('n', 0).not('generation_id', 'is', null).is('judge', null)
   const ids = (rows ?? []).map((r) => r.generation_id)
+  if (!PANEL_ON && ids.length) {
+    // The worker's panel picks every generation with no audience_tests row;
+    // a row marked as skipped keeps it away (status must be done or failed).
+    const { data: g } = await admin.from('generations').select('id, user_id').in('id', ids)
+    await admin.from('audience_tests').upsert((g ?? []).map((x) => ({ generation_id: x.id, owner_id: x.user_id, status: 'failed', failure: 'skipped: test batch with the panel off', created_at: new Date().toISOString() })), { onConflict: 'generation_id', ignoreDuplicates: true })
+    console.log(`panel off: ${ids.length} scripts marked skipped`)
+  }
   const until = Date.now() + 20 * 60_000
   for (;;) {
     const { data: t } = await admin.from('audience_tests').select('generation_id, status').in('generation_id', ids)

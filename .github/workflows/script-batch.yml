@@ -34,6 +34,11 @@ on:
         description: 'Drafts per script, best one kept (1-3; test account only)'
         required: false
         default: '1'
+      cost_mode:
+        description: 'test = practice viewers, reviewer reads and lengthen pass off (default); checkpoint = all on'
+        type: choice
+        options: [test, checkpoint]
+        default: test
       intake:
         description: 'Also add products from URL / photo / name and test intake'
         type: boolean
@@ -64,6 +69,9 @@ jobs:
           BATCH_GROUP: ${{ inputs.group }}
           STORYLOAD_FILE_ID: ${{ inputs.storyload_file_id }}
           BATCH_DRAFTS: ${{ inputs.drafts }}
+          BATCH_PANEL: ${{ inputs.cost_mode == 'checkpoint' && 'on' || 'off' }}
+          BATCH_LENGTHEN: ${{ inputs.cost_mode == 'checkpoint' && 'on' || 'off' }}
+          JUDGE_READS: ${{ inputs.cost_mode == 'checkpoint' && '3' || '0' }}
           JUDGE_ONLY: ${{ inputs.judge_only }}
           JUDGE2_MODEL: ${{ inputs.judge2_model }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

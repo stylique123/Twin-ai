@@ -14213,12 +14213,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             return after.filter((_, i) => !bad.has(i))
           } catch { return after }
         }
+        // Plan v3.10 Part 11 rule 8: test traffic only (same gate as `drafts`).
+        const lengthenOff = isHeartbeat && (body as { lengthen?: unknown }).lengthen === false
         const plannedForLate = Array.isArray(bpAny.beat_plan)
           ? (bpAny.beat_plan as Array<{ beat?: unknown }>).map((p) => String(p?.beat ?? '')) : []
         lateExtend = async (beats: IntegrityBeat[]): Promise<IntegrityBeat[] | null> => {
           const d = shouldExtendScript(beats, integrityOpts.targetSec, integrityOpts.wpm, 0, plannedForLate)
           // Owner plan B2: thin material makes a SHORTER script, not a padded one (trial).
-          if (!d.extend || (trialOn && suppliedKnowledgeIds.length < 3)) return null
+          if (!d.extend || (trialOn && suppliedKnowledgeIds.length < 3) || lengthenOff) return null
           // T6 (set 4): an unbounded lengthen call ran 79s and pushed the request past 150s.
           const lateBudgetMs = Math.min(25_000, 150_000 - 40_000 - (Date.now() - reqStartedAt))
           if (lateBudgetMs < 8_000) { console.log(JSON.stringify({ event: 'extension_skipped', elapsed_ms: Date.now() - reqStartedAt })); return null }
@@ -14246,7 +14248,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const plannedSections = Array.isArray(bpAny.beat_plan)
           ? (bpAny.beat_plan as Array<{ beat?: unknown }>).map((p) => String(p?.beat ?? '')) : []
         const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords, plannedSections)
-        if (extendDecision.extend && !(trialOn && suppliedKnowledgeIds.length < 3)) {
+        // Plan v3.10 Part 11 rule 8: a test run may switch the lengthen pass off.
+        if (extendDecision.extend && lengthenOff) console.log(JSON.stringify({ event: 'feature_fired', feature: 'lengthen_off' }))
+        if (extendDecision.extend && !(trialOn && suppliedKnowledgeIds.length < 3) && !lengthenOff) {
           let extensionReason = 'call_failed'
           let wordsAfter = extendDecision.words
           let invented: string[] = []
