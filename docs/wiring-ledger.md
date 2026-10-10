@@ -109,6 +109,38 @@ Software-like scripts (APP, DIGITAL_PRODUCT, COURSE, COMMUNITY) with a showing b
 | 8.1-15 | Scheduling and AI-edit audit now, fixes after rollout | Gate D |
 | 8.1-16 | Persona and reviewer v2, second judge from a different model family | W5, parked |
 
+## Planned rows from master plan v3.10, Parts 11 to 16 (added 2026-10-10)
+| Source | Item | Status / belongs in |
+|---|---|---|
+| 11.1-1 | Every update reports spend (model cost, cost per script by stage, CI minutes) | standing rule; per-script tokens from `blueprint.ai_usage` (#1199) |
+| 11.1-2 | Usage ledger: every model call with model, stage, tokens, request id, traffic tag (test/audit/real) | partial: edge writer calls only (`_shared/aiUsage.ts`); worker calls and traffic tag planned |
+| 11.1-3 | Separate keys or projects for test and real traffic, budget alert, daily quota | owner (Google Cloud) |
+| 11.1-4 | Batch caps (daily about 40, per batch), above needs owner approval with cost | harness; only the approved 30-script physical batch |
+| 11.1-5 | Deploy check before any batch (worker and edge equal main) | harness runbook |
+| 11.1-6/7 | Frozen sets once per checkpoint; replay recorded outputs instead of live calls | Phase R, W10 |
+| 11.1-8 | Stage toggles off in tests (panel, reviewer, second judge, lengthen) | built: `cost_mode=test` (#1199) |
+| 11.1-9 | Dedupe and cache by input hash plus code version; incremental re-mine and re-scan | planned |
+| 11.1-10 | Cheapest suitable model per job; batch mode and context caching for backfills | planned |
+| 11.1-11 | Call budget per script; clean failure at the cap | planned |
+| 11.1-12 | Trim the writer prompt; tokens per script as a metric | planned (writer input contract) |
+| 11.2 | CI minutes: timeouts, cancel-in-progress, caching, path filters, heavy suites on main only | partial (#1190); target about 5 minutes per PR |
+| 12.4 / 13.4 | Preservation: run manifests, private archive table, nightly export | built (`test_run_manifests`, `test_run_files`); nightly export waits on owner destination |
+| 14.2 | Public-window rules (no creator material, row-id inputs, no generated output, no self-hosted runner) | standing rule; runner guard (#1190) |
+| 14.3-1 | Cut minutes per PR to about 5 | planned |
+| 14.3-2 | Self-hosted runner on a separate server, for the return to private | planned; not attached while public |
+| 14.3-3 | Sanitize fixtures to fictional examples (about 20 files) | in progress (#1194 first) |
+| 14.3-4 | Return to private: back up, switch, set `CI_RUNNER`, verify a check | owner, on the return date |
+| 15.1 | Creator Brain layers: persona card and blind "is this her?" test, catalyst, product, niche intelligence, synthesis log | after Phase 2 exits; Need Check record built (#1205) |
+| 15.2-1 | Content pillars asked at onboarding, planner checks fit | built (#1208), Need Check pillar layer |
+| 15.2-2 | Trend plus her own point of view, in her niche | after Phase 4 |
+| 15.3 | Niche sources: first-party questions, curated format library, Google Trends, YouTube API; Reddit or TikTok only licensed | research; counsel |
+| 15.4 | Ablation tests (about 20 paired requests per layer, keep a layer at about +0.4) | Phase 4 exit |
+| 16 | Need Check record (persona, catalyst, product, niche, pillar, urgency; write/pick/ask) | built, logged (#1205) |
+| 16-1.4 | Product details pop-up by kind (hold-up three-way, screens, steps, urgency, hesitation; three required) | built (#1206), trial only |
+| 16-2.2 | Passage store, verbatim, tagged Moment/Meaning/Detail | built (#1207), `PASSAGE_STORE_OWNERS` only |
+| 16-2.3 | Story classifier output becomes catalyst status (stored_fit/partial/none) | blocked on the owner's answer key |
+| 16-4.3 | Question engine on the Need Check (ranked, max 3, drop rules) | Phase 4.3 |
+
 ## Reverse coverage check (8.4), 2026-10-08
 Compared against the scratchpad backlog, the parked list, open GitHub issues (7) and TODO/FIXME markers in source (0 real ones).
 
@@ -129,3 +161,15 @@ Compared against the scratchpad backlog, the parked list, open GitHub issues (7)
 | 1.4 product details pop-up by kind | ProductLibrary card → `ProductDetailsByKind` (`productDetailsByKind`, `saveProductDetail`) | productDetailsByKind.test.ts | product_entities.knowledge facts with `origin=details_popup` | `VITE_TRIAL_USER_ID` only | built |
 | 2.2 passage store | worker/src/jobs/remineKnowledge.ts → `story_passages` (verbatim, `passageTags`) | passageTags.test.ts, passageStoreGate.test.ts | `feature_fired passage_store` (worker logs) | `PASSAGE_STORE_OWNERS` only (unset = off) | built; table applied (0284) |
 | Onboarding pillars + background (v3.10 Part 16) | Onboarding ProfileQuestion → brief `contentPillars`, `background`; edge Need Check pillar layer reads `contentPillars` | the-brief-and-its-constraint-agree.test.ts | `feature_fired need_check` layers.pillar | input shown to `VITE_TRIAL_USER_ID` only | built; 0285 applied |
+
+## Reverse coverage check (8.4), update 2026-10-10
+Compared plan v3.10 against the scratchpad backlog, open GitHub issues (6, all editor track, unchanged) and source TODOs.
+
+| Found | Status | Added to |
+|---|---|---|
+| Heartbeat Reference 409 (#1076) | **closed 2026-10-10**: five monitor-side causes fixed (#1196, #1200–#1202, #1204); Reference mode itself works | done |
+| Question events table: `left`, `skip_caution_shown`, `skip_choice` (owner decision 2026-10-07) | not in v3.10 | Phase 4.3 (question engine) |
+| Line-repeat rest (a sentence said in 2 of the last 5 scripts rests) | built earlier, not named in v3.10 | W3 cleanup list |
+| Unreached-code triage list (costly lessons, contrarian stances, registry and objective pool, duration contract, DNA provenance for audience labels) | not in v3.10 | W1 to W3, one at a time with a paired test |
+| Usage ledger covers edge writer calls only; worker calls (extraction, re-mine, panel) and the traffic tag missing | partial | 11.1-2 |
+| `background` brief key stored with no reader | registered unwired | Phase 4.3 |
