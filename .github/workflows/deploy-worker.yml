@@ -57,7 +57,13 @@ jobs:
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          # Trial owner lists (plan 11.1-2, 2.2): account ids only, from secrets so
+          # no id is ever committed. Allowlisted to uuid characters below.
+          TEST_OWNER_IDS_RAW: ${{ secrets.TEST_OWNER_IDS }}
+          PASSAGE_STORE_OWNERS_RAW: ${{ secrets.PASSAGE_STORE_OWNERS }}
         run: |
+          TEST_OWNER_IDS=$(printf '%s' "${TEST_OWNER_IDS_RAW:-}" | tr -cd '0-9a-fA-F,-' | cut -c1-400)
+          PASSAGE_STORE_OWNERS=$(printf '%s' "${PASSAGE_STORE_OWNERS_RAW:-}" | tr -cd '0-9a-fA-F,-' | cut -c1-400)
           if [ -z "$VPS_SSH_KEY" ]; then
             echo "::error::VPS_SSH_KEY secret is not set — add it in repo Settings → Secrets → Actions."
             exit 1
@@ -74,7 +80,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts_vps"
           chmod 600 "$HOME/.ssh/known_hosts_vps"
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" "$VPS_USER@$VPS_HOST" 'bash -se' <<'REMOTE'
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" "$VPS_USER@$VPS_HOST" "TEST_OWNER_IDS=$(printf %q "$TEST_OWNER_IDS") PASSAGE_STORE_OWNERS=$(printf %q "$PASSAGE_STORE_OWNERS") bash -se" <<'REMOTE'
             set -euo pipefail
             cd /opt/twinai-worker-src
             # Reset to the JUST-FETCHED main (FETCH_HEAD), not the remote-tracking
@@ -101,6 +107,11 @@ jobs:
             # (A stale override once kept retired types alive AND would silently
             # exclude newly-registered types like validate_source.)
             sed -i '/^WORKER_JOB_TYPES=/d' /opt/twinai-worker.env || true
+            # Trial owner lists from secrets: replaced when set, left alone when unset.
+            for k in TEST_OWNER_IDS PASSAGE_STORE_OWNERS; do
+              v="${!k:-}"
+              if [ -n "$v" ]; then sed -i "/^$k=/d" /opt/twinai-worker.env; printf '%s=%s\n' "$k" "$v" >> /opt/twinai-worker.env; echo "$k: set from secret"; fi
+            done
             echo "worker job types: code default (see worker/src/env.ts jobTypes)"
             docker rm -f twinai-revideo 2>/dev/null || true
             docker rmi -f twinai-revideo 2>/dev/null || true
