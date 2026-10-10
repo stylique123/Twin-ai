@@ -2,7 +2,7 @@
 //
 // EIGHT FIELDS RENDERED BLANK WHILE THEIR VALUES WERE PRINTED ONE LINE ABOVE.
 //
-// ⚠️⚠️ REPORTED LIVE ON @carlaangelfit. `WHO YOU'RE TALKING TO`, `WHAT IS YOUR
+// ⚠️⚠️ REPORTED LIVE ON A CREATOR'S ACCOUNT. `WHO YOU'RE TALKING TO`, `WHAT IS YOUR
 // OFFER CALLED`, `NICHE`, `TONE`, `PACING`, `HOOK STYLE` and `WHAT YOU PUSH
 // AGAINST` were all empty, while the summary directly above them read
 // "Fitness · Empathetic · 7 signature phrases · 4 recurring CTAs". A screen
@@ -21,36 +21,36 @@
 //   · audience and offer read the draft's own strings, which nothing filled
 //     from the profile at all
 //
-// ⚖️ SO THE FIXTURES HERE ARE HER REAL VALUES, TRUNCATED. A made-up profile
-// would pass against a component that hardcoded anything, and the point of this
-// file is that the values travel.
+// ⚖️ THE FIXTURE IS MADE UP BUT FULL-SIZED, with distinctive values in every
+// field, so a component that hardcoded or dropped a field still fails: the point
+// of this file is that the values travel.
 import { describe, it, expect, afterEach } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { ConfirmStep } from './Onboarding'
 import { emptyProfileAnswers, type OnboardingDraft } from '../lib/onboardingDraft'
 import type { VoiceProfile } from '@twinai/shared'
 
-// Her actual stored profile, read from production. Values shortened only where
-// length adds nothing.
-const HER_PROFILE: VoiceProfile = {
-  summary: 'Prenatal and postpartum strength coach',
-  niche: 'Prenatal, postpartum & mom fitness',
+// A made-up creator profile (Maya's Coffee) with the same shape as a real
+// stored one: every field filled, lists short.
+const SAMPLE_PROFILE: VoiceProfile = {
+  summary: 'Home barista teaching small-batch coffee',
+  niche: 'Small-batch coffee & home brewing',
   tone: 'Empowering, supportive, authoritative yet gentle, practical',
   pacing: 'Structured, deliberate, clear list-driven cadence',
-  hook_style: 'Shocking educational facts about pregnancy anatomy',
-  enemy: 'The fear-mongering myth that pregnant women are too fragile to lift weights',
-  audience: 'Pregnant women and postpartum moms regaining strength',
-  offer: 'Postpartum & pregnancy-safe workout programs and core guides',
-  pov: ['consistency > excuses', 'intention and grace'],
-  vocabulary: ['deep core', 'pelvic floor', 'train smart'],
-  recurring_ctas: ["comment the word 'CORE' and I'll send you a pregnancy-safe routine"],
+  hook_style: 'Surprising facts about what happens inside a coffee bean',
+  enemy: 'The myth that good coffee needs an expensive machine',
+  audience: 'New home brewers who want cafe-quality cups',
+  offer: 'Brewing guides and a monthly bean subscription',
+  pov: ['fresh beans > fancy gear', 'patience and practice'],
+  vocabulary: ['bloom', 'grind size', 'brew ratio'],
+  recurring_ctas: ["comment the word 'BREW' and I'll send you my ratio card"],
   dos: ['meet them where they are'],
-  donts: ['never shame moms for interrupted workouts'],
-  sample_hooks: ['Your core did not disappear'],
+  donts: ['never shame anyone for using pre-ground coffee'],
+  sample_hooks: ['Your coffee is not bitter, it is over-extracted'],
 }
 
 const draftOf = (patch: Partial<OnboardingDraft> = {}): OnboardingDraft => ({
-  version: 3, userId: 'u1', voiceId: 'v1', platform: 'instagram', handle: 'carlaangelfit',
+  version: 3, userId: 'u1', voiceId: 'v1', platform: 'instagram', handle: 'mayascoffee',
   profile: null, audience: '', product: '', goal: '', workKind: null,
   ...emptyProfileAnswers(),
   workKindOther: null, forbiddenClaims: null, q4: null, ownsEntity: null,
@@ -82,14 +82,14 @@ const someInputHas = (needle: string): boolean =>
 afterEach(() => cleanup())
 
 describe('a value printed on the screen also reaches its field', () => {
-  it('every one of the eight fields carries her real value', () => {
-    renderConfirm(draftOf({ profile: HER_PROFILE }))
+  it('every one of the eight fields carries its value', () => {
+    renderConfirm(draftOf({ profile: SAMPLE_PROFILE }))
     const expected: Array<[string, string]> = [
-      ['NICHE', 'Prenatal, postpartum & mom fitness'],
+      ['NICHE', 'Small-batch coffee & home brewing'],
       ['TONE', 'Empowering, supportive'],
       ['PACING', 'Structured, deliberate'],
-      ['HOOK STYLE', 'Shocking educational facts'],
-      ['WHAT YOU PUSH AGAINST', 'fear-mongering myth'],
+      ['HOOK STYLE', 'Surprising facts about'],
+      ['WHAT YOU PUSH AGAINST', 'good coffee needs'],
       // ⚠️ "WHO YOU'RE TALKING TO" AND "WHAT IS YOUR OFFER CALLED" ARE NO LONGER
       // ASKED HERE, so they are no longer expected. The audience question lives
       // on screen 2 as chips — where it has readers (`audienceSeg`,
@@ -113,34 +113,34 @@ describe('a value printed on the screen also reaches its field', () => {
       <ConfirmStep draft={draftOf({ profile: null })}
         onDraftChange={() => {}} onDone={async () => {}} onBack={() => {}} />,
     )
-    expect(someInputHas('Prenatal')).toBe(false)
+    expect(someInputHas('Small-batch')).toBe(false)
 
     rerender(
-      <ConfirmStep draft={draftOf({ profile: HER_PROFILE })}
+      <ConfirmStep draft={draftOf({ profile: SAMPLE_PROFILE })}
         onDraftChange={() => {}} onDone={async () => {}} onBack={() => {}} />,
     )
     expect(
-      someInputHas('Prenatal, postpartum & mom fitness'),
+      someInputHas('Small-batch coffee & home brewing'),
       'the profile landed and the fields under the summary stayed empty',
     ).toBe(true)
-    expect(someInputHas('fear-mongering myth')).toBe(true)
+    expect(someInputHas('good coffee needs')).toBe(true)
   })
 
   // ⚖️ AND A FULLER PROFILE REPLACING A THINNER ONE MUST ALSO LAND. A re-scan
   // writes a new object; freezing on the first one is the same defect wearing a
   // different sequence.
   it('a replacement profile lands too', () => {
-    const thin: VoiceProfile = { ...HER_PROFILE, enemy: '', pov: [] }
+    const thin: VoiceProfile = { ...SAMPLE_PROFILE, enemy: '', pov: [] }
     const { rerender } = render(
       <ConfirmStep draft={draftOf({ profile: thin })}
         onDraftChange={() => {}} onDone={async () => {}} onBack={() => {}} />,
     )
-    expect(someInputHas('fear-mongering myth')).toBe(false)
+    expect(someInputHas('good coffee needs')).toBe(false)
     rerender(
-      <ConfirmStep draft={draftOf({ profile: HER_PROFILE })}
+      <ConfirmStep draft={draftOf({ profile: SAMPLE_PROFILE })}
         onDraftChange={() => {}} onDone={async () => {}} onBack={() => {}} />,
     )
-    expect(someInputHas('fear-mongering myth')).toBe(true)
+    expect(someInputHas('good coffee needs')).toBe(true)
   })
 
   // ⚖️ THE CREATOR'S OWN ANSWER OUTRANKS THE INFERENCE, ALWAYS. Re-suggesting
@@ -152,16 +152,16 @@ describe('a value printed on the screen also reaches its field', () => {
   // same rule through the same code path.
   it('a saved draft answer is not overwritten by the profile', () => {
     renderConfirm(draftOf({
-      profile: { ...HER_PROFILE, niche: 'Prenatal, postpartum & mom fitness' },
+      profile: { ...SAMPLE_PROFILE, niche: 'Small-batch coffee & home brewing' },
     }))
-    expect(someInputHas('Prenatal, postpartum & mom fitness')).toBe(true)
+    expect(someInputHas('Small-batch coffee & home brewing')).toBe(true)
   })
 
   it('⚠️ neither the audience box nor the offer box is rendered any more', () => {
     // They were asked twice and answered by the scan. Screen 2 owns the
     // audience; the Product Library owns the offer.
     renderConfirm(draftOf({
-      profile: HER_PROFILE,
+      profile: SAMPLE_PROFILE,
       audience: 'first-time mums only',
       product: 'the 6-week core reset',
     }))
@@ -173,7 +173,7 @@ describe('a value printed on the screen also reaches its field', () => {
   // decision rather than as the eighth bug. A business goal is not readable
   // from someone's posts; the screen asks instead of guessing.
   it('the goal is left for the creator to state', () => {
-    renderConfirm(draftOf({ profile: HER_PROFILE }))
+    renderConfirm(draftOf({ profile: SAMPLE_PROFILE }))
     expect(valuesOnScreen().join(' | ')).not.toContain('goal')
   })
 })
@@ -203,9 +203,9 @@ describe('the summary line and the fields read the same object', () => {
     expect(src.slice(Math.max(0, at - 200), at)).toMatch(/const p = vp\b/)
   })
 
-  it('shows her niche in the summary while the NICHE field carries it', () => {
-    const { container } = renderConfirm(draftOf({ profile: HER_PROFILE }))
-    expect(container.textContent).toContain('Prenatal, postpartum & mom fitness · ')
-    expect(someInputHas('Prenatal, postpartum & mom fitness')).toBe(true)
+  it('shows the niche in the summary while the NICHE field carries it', () => {
+    const { container } = renderConfirm(draftOf({ profile: SAMPLE_PROFILE }))
+    expect(container.textContent).toContain('Small-batch coffee & home brewing · ')
+    expect(someInputHas('Small-batch coffee & home brewing')).toBe(true)
   })
 })
