@@ -85,10 +85,13 @@ export function stageOfCall(system: string, isBlueprint: boolean): string {
   const s = system.toLowerCase()
   if (/\beditor\b/.test(s)) return 'editor'
   if (/\b(judge|score|rate|rating|grade)\b/.test(s)) return 'judge'
-  if (/\b(viewer|audience panel)\b/.test(s)) return 'panel'
   if (/\b(lengthen|longer|extend)\b/.test(s)) return 'lengthen'
   if (/\b(rewrite|repair|fix)\b/.test(s)) return 'repair'
-  return isBlueprint ? 'writer' : 'other'
+  // The writer's own prompt talks about viewers, so the blueprint call is
+  // matched before the panel rule (physical30-a tagged the writer as panel).
+  if (isBlueprint) return 'writer'
+  if (/\b(viewer|audience panel)\b/.test(s)) return 'panel'
+  return 'other'
 }
 
 /** The current request's tally, or null outside one. */
