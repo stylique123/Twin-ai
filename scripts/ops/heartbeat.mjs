@@ -27,7 +27,7 @@
 //   · the run must never fall through to the PAID transcript path, because a
 //     monitor that can spend money spends it hourly, forever.
 
-import { ingestForHeartbeat } from './heartbeatIngest.mjs'
+import { ingestForHeartbeat, scriptText } from './heartbeatIngest.mjs'
 import {
   decideHeartbeat, runIsBad, INITIAL_PAGE_STATE, PAGE_IF_SLOWER_THAN_MS,
   wrongVoiceFinding, sponsoredSpokenAsLivedFinding, lengthBandFinding,
@@ -645,8 +645,8 @@ async function runVariant(mode) {
     // reported done while carrying a 400 — and duplicating that judgement here
     // is how the two copies come to disagree.
     return {
-      run: runFromAssess(Date.now(), mode, { ...json, durationMs }),
-      script: typeof json.script === 'string' ? json.script : '',
+      run: runFromAssess(Date.now(), mode, { ...json, script: scriptText(json), durationMs }),
+      script: scriptText(json),
       voiceId: json.voice_id ?? null,
     }
   } catch (e) {

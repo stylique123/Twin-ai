@@ -24,3 +24,15 @@ describe('the heartbeat reads its reference before asking for a script', () => {
     await expect(ingestForHeartbeat({ ...base, fetchImpl: async () => ({ ok: false, status: 500 }) as Response })).rejects.toThrow(/500/)
   })
 })
+
+// @ts-expect-error plain .mjs ops script, no types
+import { scriptText } from '../../../../scripts/ops/heartbeatIngest.mjs'
+
+describe('the heartbeat reads the script the writer actually returns', () => {
+  it('joins spoken lines from beats; accepts a plain string; empty otherwise', () => {
+    expect(scriptText({ script: [{ line: 'One notebook.' }, { line: '' }, { line: 'Dated pages.' }] })).toBe('One notebook.\nDated pages.')
+    expect(scriptText({ blueprint: { script: [{ line: 'Hi' }] } })).toBe('Hi')
+    expect(scriptText({ script: 'plain' })).toBe('plain')
+    expect(scriptText({})).toBe('')
+  })
+})

@@ -22,3 +22,16 @@ export async function ingestForHeartbeat({ url, supabaseUrl, anonKey, token, fet
   }
   throw new Error('ingest timed out')
 }
+
+/**
+ * ⚠️ 2026-10-10: THE WRITER RETURNS ITS SCRIPT AS BEATS, NOT A STRING. The
+ * policy (`runFromAssess`) reads `script` as text; handed the beat array it saw
+ * an empty string and called every successful run "no script produced". The
+ * spoken lines, joined, are the script.
+ */
+export function scriptText(json) {
+  const s = json?.script ?? json?.blueprint?.script
+  if (typeof s === 'string') return s
+  if (Array.isArray(s)) return s.map((b) => (typeof b === 'string' ? b : String(b?.line ?? ''))).filter((l) => l.trim()).join('\n')
+  return ''
+}
