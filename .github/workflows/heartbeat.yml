@@ -11,7 +11,8 @@
 # way before this was wired. This step going red now means one thing only: the
 # monitor could not run, and the issue it opened says so.
 #
-# ⚖️ HOURLY, AND NOT MORE OFTEN. Faster would not have found this outage sooner
+# ⚖️ HOURLY, AND NOT MORE OFTEN (owner 12 Oct: hourly runs are a free health check; one full
+# two-script run a day at HEARTBEAT_FULL_HOUR_UTC, default 06 UTC, or on manual dispatch). Faster would not have found this outage sooner
 # in any way that mattered (it lasted two days), and it would cost real
 # generations against real quota. The rate that matters is the ALERT rate, and
 # that is capped in the policy, not here.
