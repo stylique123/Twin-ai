@@ -43,19 +43,19 @@ describe('batch part-14: a CTA about one subject never closes a video about anot
 })
 
 describe('closing-ask fixes (owner 2026-10-05, blind set 2)', () => {
-  const name = 'Coffee Cart Launch Call'
+  const name = 'Brew Bar Setup Call'
   const offer = 'A 60-minute 1:1 video call for $75 to plan your equipment, menu, and first market.'
   it('does not reuse a hedged recurring CTA', () => {
     expect(isHedgedCta(HERS[0])).toBe(true)
     expect(pickHerCta('sell', { recurring: [HERS[0]!] })).toBeNull()
   })
   it('a selling close must describe the offer', () => {
-    expect(closeDescribesOffer('Book my Coffee Cart Launch Call through the link in my bio and let us build your setup.', name, offer)).toBe(false)
+    expect(closeDescribesOffer('Book my Brew Bar Setup Call through the link in my bio and let us build your setup.', name, offer)).toBe(false)
     expect(closeDescribesOffer("DM me and I'll help you pick the right coffee cart launch call.", name, offer)).toBe(false)
-    expect(closeDescribesOffer('I offer a Coffee Cart Launch Call: a 60-minute one-on-one video call for $75 to plan your equipment, menu, and first market.', name, offer)).toBe(true)
+    expect(closeDescribesOffer('I offer a Brew Bar Setup Call: a 60-minute one-on-one video call for $75 to plan your equipment, menu, and first market.', name, offer)).toBe(true)
   })
   it('rewrites the close from her offer', () => {
-    expect(offerClose(name, offer, 'DM me to book it.')).toBe('Coffee Cart Launch Call: a 60-minute 1:1 video call for $75 to plan your equipment, menu, and first market. DM me to book it.')
+    expect(offerClose(name, offer, 'DM me to book it.')).toBe('Brew Bar Setup Call: a 60-minute 1:1 video call for $75 to plan your equipment, menu, and first market. DM me to book it.')
   })
 })
 

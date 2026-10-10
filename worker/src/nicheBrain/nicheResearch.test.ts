@@ -16,6 +16,6 @@ describe('niche researcher (owner 2026-10-01: research every new niche)', () => 
   it('NONE means nothing, and the key matches the writer and the database', () => {
     expect(parseResearch('NONE')).toEqual([])
     expect(nicheKey('Micro Coffee-Roasting  Business!')).toBe('micro coffee roasting business')
-    expect(researchPrompt('postpartum fitness', 'Health', '2026-10-01')).toContain('postpartum fitness (part of Health)')
+    expect(researchPrompt('prenatal fitness', 'Health', '2026-10-01')).toContain('prenatal fitness (part of Health)')
   })
 })

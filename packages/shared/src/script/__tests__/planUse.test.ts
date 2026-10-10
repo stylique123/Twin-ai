@@ -7,7 +7,7 @@ const rows = [
   { id: 'b', kind: 'claim', source: 'transcript', text: 'Defines specialty coffee roasting as using only coffee beans that achieve cup scores above 80.' },
   { id: 'c', kind: 'claim', source: 'transcript', text: 'She only sources and roasts specialty coffee that has cup scores above 80.' },
   { id: 'd', kind: 'experience', source: 'transcript', text: 'She had 26 days to move Sunflower Coffee from her home to a commercial space to avoid fines or a court date.' },
-  { id: 'e', kind: 'experience', source: 'caption', text: 'Navigated commercial permitting and inspections as the first dedicated coffee roastery in Farmington.' },
+  { id: 'e', kind: 'experience', source: 'caption', text: 'Navigated commercial permitting and inspections as the first dedicated coffee roastery in Riverton.' },
   { id: 'f', kind: 'claim', source: 'transcript', text: 'Operates with zero inventory by roasting coffee strictly to order in small two-pound batches.' },
 ]
 

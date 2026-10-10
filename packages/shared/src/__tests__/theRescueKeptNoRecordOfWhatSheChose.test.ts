@@ -62,7 +62,7 @@ const record = loadRecorder()
 const RESCUE_INPUT = {
   generationId: 'g1', ownerId: 'o1',
   rawGoal: 'sell', rawFocus: 'product', rawReferenceUse: null,
-  selectedProductId: 'p1', niche: 'fitness', subNiche: 'postpartum',
+  selectedProductId: 'p1', niche: 'fitness', subNiche: 'prenatal',
   // The rescue path's honest nulls: the analysis that computes these threw.
   substanceBudgetBeats: null, referenceDurationSec: null, hadReference: false,
 }

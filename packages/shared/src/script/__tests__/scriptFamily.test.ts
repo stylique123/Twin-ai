@@ -4,7 +4,7 @@ import { scriptFamily, FAMILY_MOVES, HOOK_MOVES, renderFamilyHookRule, normalize
 describe('script family (owner brief 2026-10-01, by niche)', () => {
   it('reads the family from what she chose for THIS video', () => {
     expect(scriptFamily({ goal: 'sell', hasProduct: true, offerText: '20% off the fall blend' })).toBe('product')
-    expect(scriptFamily({ goal: 'sell', hasProduct: true, offerText: '6-week postpartum core coaching program' })).toBe('coach_expert')
+    expect(scriptFamily({ goal: 'sell', hasProduct: true, offerText: '6-week prenatal core coaching program' })).toBe('coach_expert')
     expect(scriptFamily({ goal: 'authority', focus: 'expertise' })).toBe('coach_expert')
     expect(scriptFamily({ goal: 'educate' })).toBe('educator')
     expect(scriptFamily({ goal: 'community', focus: 'story' })).toBe('community')

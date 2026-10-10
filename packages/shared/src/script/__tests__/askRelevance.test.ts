@@ -10,7 +10,7 @@ const rows = [
   { text: 'I love coffee mornings', source: 'asked' },
   ...['Coffee tasting notes explained', 'Coffee grinder settings', 'Coffee from Colombia', 'Coffee packaging day', 'Coffee shipping update', 'Coffee subscription'].map((text) => ({ text, source: 'caption' })),
 ]
-const ask = 'Coffee Cart Launch Call: a 60-minute video call to plan your coffee cart equipment, menu, and first market'
+const ask = 'Brew Bar Setup Call: a 60-minute video call to plan your coffee cart equipment, menu, and first market'
 
 describe('relevantToAsk (owner 2026-10-05: relevance by option and product)', () => {
   it('drops the coffee bar and the La Marzocco captions for a cart-call video', () => {

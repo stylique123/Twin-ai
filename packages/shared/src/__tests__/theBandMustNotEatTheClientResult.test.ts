@@ -63,7 +63,7 @@ describe('the band must not eat a question that is answerable at any size', () =
 
   it('a bucket with NO rewrite keeps the cautious wording — silence is not an exemption', () => {
     // `health` has an empty override table, so nothing has claimed an exemption.
-    const asks = onScreen('Strength training for postpartum women', null, 'under_1k')
+    const asks = onScreen('Strength training for prenatal women', null, 'under_1k')
     expect(askOf(asks, 'best_result')).toBe(UNDER_1K)
   })
 
@@ -95,7 +95,7 @@ describe('the band must not eat a question that is answerable at any size', () =
     const seen: string[] = []
     for (const niche of [
       'Business coaching for founders', 'Comedy sketches and reaction videos',
-      'Software engineering tutorials', 'Strength training for postpartum women',
+      'Software engineering tutorials', 'Strength training for prenatal women',
       'Leathercraft & Custom Bible Rebinding', null,
     ]) {
       for (const sells of [...SELLS_KINDS, 'none', null] as const) {

@@ -5,20 +5,20 @@ import {
 } from '../corrections'
 
 // Script batch audit 2026-10-03, parts 3 and 11: her corrections never reached storage.
-const NOTE = "This brings back the two-pound batches and cup-score claims I've excluded multiple times now. Grocery coffee isn't burnt, I didn't describe it that way. Don't say Hello I'm Savannah."
+const NOTE = "This brings back the two-pound batches and cup-score claims I've excluded multiple times now. Grocery coffee isn't burnt, I didn't describe it that way. Don't say Hello I'm Maya."
 const FACTS = [
   { id: '35d868c7', text: 'I roast in two-pound batches with zero inventory', creator_excluded_at: null },
   { id: '0cf64884', text: 'Every roast is a 2lb batch', creator_excluded_at: null },
   { id: '82087f3c', text: 'Our Ethiopia scored 88 on the cup score sheet', creator_excluded_at: null },
   { id: '6d39f81c', text: 'Grocery store coffee tastes burnt and overly acidic', creator_excluded_at: null },
-  { id: 'keep', text: 'I started roasting in my garage in Farmington', creator_excluded_at: null },
+  { id: 'keep', text: 'I started roasting in my garage in Riverton', creator_excluded_at: null },
   { id: 'gone', text: 'two-pound batches again', creator_excluded_at: '2026-09-29T00:00:00Z' },
 ]
 
 describe('her corrections reach storage', () => {
   it('reads only her own words as rejected terms', () => {
-    const terms = cleanCorrections({ rejects: ['two-pound batches', 'cup-score claims', 'burnt', "Hello I'm Savannah", 'made-up thing'] }, NOTE)
-    expect(terms).toEqual(['two-pound batches', 'cup-score claims', 'burnt', "Hello I'm Savannah"])
+    const terms = cleanCorrections({ rejects: ['two-pound batches', 'cup-score claims', 'burnt', "Hello I'm Maya", 'made-up thing'] }, NOTE)
+    expect(terms).toEqual(['two-pound batches', 'cup-score claims', 'burnt', "Hello I'm Maya"])
   })
   it('a term made only of framing words names nothing', () => {
     expect(cleanCorrections({ rejects: ['claims', 'that story'] }, 'not that story, no claims')).toEqual([])
@@ -41,10 +41,10 @@ describe('her corrections reach storage', () => {
 })
 
 describe('her corrections are enforced on the script', () => {
-  const terms = ['two-pound batches', 'scorching', 'roast date stamp', "Hello I'm Savannah", 'cup scores']
+  const terms = ['two-pound batches', 'scorching', 'roast date stamp', "Hello I'm Maya", 'cup scores']
   it('removes the sentence, not just reports it', () => {
     const r = enforceCorrections([
-      { line: "Hello, I am Savannah. Today we roast." },
+      { line: "Hello, I am Maya. Today we roast." },
       { line: 'Half the batch was scorching. So I slowed the drum.' },
       { line: 'Check the roast-date stamp on the bag. Fresh matters.' },
       { line: 'We roast in 2-pound batches. Every week.' },
@@ -58,8 +58,8 @@ describe('her corrections are enforced on the script', () => {
     expect(r.removed).toHaveLength(0)
   })
   it('scrubs her voice samples of what she rejected', () => {
-    const vp = { sample_hooks: ["Hello I'm Savannah and welcome back", 'Stop buying stale beans'], about: 'Roaster. Grades by cup scores. Farmington.' }
-    expect(scrubRejected(vp, terms)).toEqual({ sample_hooks: ['Stop buying stale beans'], about: 'Roaster. Farmington.' })
+    const vp = { sample_hooks: ["Hello I'm Maya and welcome back", 'Stop buying stale beans'], about: 'Roaster. Grades by cup scores. Riverton.' }
+    expect(scrubRejected(vp, terms)).toEqual({ sample_hooks: ['Stop buying stale beans'], about: 'Roaster. Riverton.' })
     expect(saysRejected('cup score of 86', 'cup scores')).toBe(true)
   })
 })

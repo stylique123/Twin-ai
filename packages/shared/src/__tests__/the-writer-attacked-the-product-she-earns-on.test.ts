@@ -1,15 +1,15 @@
 // IT WROTE FIVE HOOKS AGAINST THE PRODUCT SHE TAKES A COMMISSION ON.
 //
 // ⚠️⚠️ OBSERVED ON LIVE RUNS, TWICE, ON ONE AFFILIATE PRODUCT. Asked to explain
-// a postpartum support band she earns commission on — and then asked why she
+// a support band she earns commission on — and then asked why she
 // recommends it — the writer produced:
 //
-//   "a postpartum belly band will not heal your deep core"
+//   "a belly band will not heal your deep core"
 //   "wearing a belly band all day actually weakens your core"
 //   "stop wrapping your belly"  ·  "stop relying on waist wraps"
 //
 // One of those runs identified the subject in its own adaptation note as "a
-// commercial product showcase featuring branded postpartum support bands", and
+// commercial product showcase featuring branded support bands", and
 // then wrote a video telling viewers they do not need one. No disclosure, because
 // the product was not in the script it was arguing against.
 //

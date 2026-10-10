@@ -20,7 +20,7 @@ const THIN = 'Running a coffee roastery from my home is messy, and you just figu
 const STORE = [
   { id: 'cup', kind: 'claim', source: 'caption', text: 'Our Ethiopia scored 88 points at cupping' },
   { id: 'inv', kind: 'claim', source: 'transcript', text: 'We had zero inventory left after the holiday rush' },
-  { id: 'move', kind: 'experience', source: 'transcript', text: 'We relocated the whole business from Denver to Farmington' },
+  { id: 'move', kind: 'experience', source: 'transcript', text: 'We relocated the whole business from Denver to Riverton' },
   { id: 'num', kind: 'claim', source: 'caption', text: 'We roast 40 pounds a week' },
   { id: 'mine', kind: 'experience', source: 'asked', text: 'Roasting at home means I plan around my kitchen and my kids' },
 ]
