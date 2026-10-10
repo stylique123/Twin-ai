@@ -11,7 +11,7 @@ describe('extractor fields (plan 1.1)', () => {
     expect(read('object_shape', 'bag')).not.toBeNull()
   })
   it('keeps every new field', () => {
-    for (const f of ['problem', 'process_step', 'faq', 'proof_number', 'testimonial', 'screen', 'terms', 'includes', 'comparison', 'show_action']) {
+    for (const f of ['problem', 'process_step', 'faq', 'proof_number', 'testimonial', 'screen', 'terms', 'includes', 'comparison', 'show_action', 'urgency']) {
       expect(EXTRACTED_FIELDS).toContain(f)
       expect(read(f, 'something the page states')).not.toBeNull()
     }
@@ -27,5 +27,12 @@ describe('extractor fields (plan 1.1)', () => {
   })
   it('still rejects an unknown field', () => {
     expect(read('vibe', 'cozy')).toBeNull()
+  })
+})
+
+describe('urgency (plan v3.10 1.1)', () => {
+  it('is a field, and a stated limit always needs her confirmation before it is spoken', () => {
+    expect(EXTRACTED_FIELDS).toContain('urgency')
+    expect(read('urgency', 'cohort starts 3 November, 40 seats')?.trust).toBe('needs_confirmation')
   })
 })

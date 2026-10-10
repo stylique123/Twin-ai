@@ -244,7 +244,7 @@ const SCHEMA = {
               'object_shape', 'page_section',
               // Plan v3 1.1.
               'problem', 'process_step', 'faq', 'proof_number', 'testimonial', 'screen',
-              'terms', 'includes', 'comparison', 'show_action'],
+              'terms', 'includes', 'comparison', 'show_action', 'urgency'],
           },
           value: { type: 'string' },
         },
@@ -305,6 +305,8 @@ const SYSTEM = [
   '`comparison`: a comparison the page makes with another product or way of doing it.',
   '`show_action`: one thing a person could physically do with it on camera that the page',
   'describes (pour, open, apply, wear). Never one the page does not describe.',
+  '`urgency`: a REAL limit the page states: limited quantity, a deadline, a cohort start date',
+  'or seats left, with the date or number as written. Never infer scarcity; omit if not stated.',
 ].join('\n')
 
 /**
