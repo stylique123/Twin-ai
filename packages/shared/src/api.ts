@@ -2191,6 +2191,33 @@ export async function confirmProductFacts(
   return readEntityRow(data as ProductEntityRow)
 }
 
+/** Plan 1.4: store her answer to a product-details question as her own fact.
+ *  ⚖️ HER WORDS, SO USABLE: she typed it about her own product. One fact per
+ *  field from this form (`origin`): a new answer replaces her earlier one,
+ *  never a page fact. `user_confirmed` is the source that outranks every page.
+ *  An empty answer removes hers (urgency: empty means no scarcity wording). */
+export async function saveProductDetail(
+  entityId: string, field: string, value: string,
+): Promise<ProductEntityRecord | null> {
+  const { data: current, error: readErr } = await supabase
+    .from('product_entities').select('knowledge').eq('id', entityId).single()
+  if (readErr) throw readErr
+  const facts = Array.isArray((current as { knowledge?: unknown })?.knowledge)
+    ? ((current as { knowledge: unknown[] }).knowledge)
+    : []
+  const kept = facts.filter((raw) => {
+    const f = raw as { field?: unknown; origin?: unknown }
+    return !(f?.field === field && f?.origin === 'details_popup')
+  })
+  const v = value.trim().slice(0, 500)
+  const next = v ? [...kept, { field, value: v, source: 'user_confirmed', trust: 'usable', origin: 'details_popup', extractedAt: new Date().toISOString() }] : kept
+  const { data, error } = await supabase
+    .from('product_entities').update({ knowledge: next }).eq('id', entityId)
+    .select(ENTITY_COLUMNS).single()
+  if (error) throw error
+  return readEntityRow(data as ProductEntityRow)
+}
+
 /** THE PAGE TWIN FOUND ON THE WEB, IF IT IS STILL WAITING FOR HER ANSWER.
  *  A product whose link came from a grounded web search carries facts with
  *  `source: 'web_search'` read from that same link. Returns its host, or null. */
