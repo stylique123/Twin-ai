@@ -39,6 +39,7 @@ import { useEffect, useRef, useState } from 'react'
 import { isOutcomeClaim, setBrandForbiddenClaims, setProductForbiddenClaims, dismissProductSuggestion } from '@twinai/shared'
 // OfferEditor moved to components/ProductFields.tsx so the add form and the panel share it.
 import { OfferEditor, BlurText, StoryFields } from '../components/ProductFields'
+import { ProductDetailsByKind, trialUser } from '../components/ProductDetailsByKind'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadProductEntities, loadProductSuggestions, updateEntityPresentation, rowIsCreatorSupplied,
@@ -1780,6 +1781,14 @@ export default function ProductLibrary() {
             <p className="mt-4 text-xs text-stone">{FIXED_SHOW_NOTE[e.type] ?? ''}</p>
           )}
           </div>
+
+          {trialUser(session?.user?.id) && (
+            <ProductDetailsByKind
+              entity={e}
+              onUpdated={(u) => setEntities((prev) => (prev ?? []).map((x) => (x.id === u.id ? u : x)))}
+              onShowability={(v) => save(e.id, { showability: v })}
+            />
+          )}
 
           {/* ── WHAT IT LOOKS LIKE ───────────────────────────────────────
               ⚠️ THE PHOTOS WERE WRITE-ONCE AND INVISIBLE. They could be attached

@@ -126,3 +126,4 @@ Compared against the scratchpad backlog, the parked list, open GitHub issues (7)
 | Part 11 test cost controls | scripts/ops/scriptBatch.mjs (`cost_mode`, `reportUsage`); generate-blueprint `lengthenOff` (test traffic only) | n/a (harness) | `::notice batch-usage`; `feature_fired lengthen_off` | `cost_mode=test` default | built |
 | 1.1 urgency field | worker/src/jobs/extractProduct.ts schema + prompt | extractorFields11.test.ts | product_knowledge field counts | always needs confirmation | built |
 | 1.5 Need Check record | generate-blueprint trial block (`needCheck` from itemFormat) | needCheck.test.ts | `feature_fired need_check` (layers, decision, ask) | trial flag, log only | built |
+| 1.4 product details pop-up by kind | ProductLibrary card → `ProductDetailsByKind` (`productDetailsByKind`, `saveProductDetail`) | productDetailsByKind.test.ts | product_entities.knowledge facts with `origin=details_popup` | `VITE_TRIAL_USER_ID` only | built |
