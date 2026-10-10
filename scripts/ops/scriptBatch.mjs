@@ -86,6 +86,19 @@ const CEILING = [
   { goal: 'conversations', product: 'Signature', note: 'SIMULATED: I get asked if I should add a flavored version of my blend. I keep saying no. I want the bag to taste like the coffee, not like vanilla syrup. But I go back and forth on it every holiday season.' },
 ]
 
+let STORYLOAD = []
+/** Reads the story-load list from the private test_run_files row whose id was
+ *  dispatched (STORYLOAD_FILE_ID). Only ids travel through the workflow. */
+async function loadStoryload(admin) {
+  const id = Number(process.env.STORYLOAD_FILE_ID || 0)
+  if (!id) return []
+  const { data, error } = await admin.from('test_run_files').select('kind, content').eq('id', id).single()
+  if (error || !data || data.kind !== 'requests') throw new Error(`storyload: test_run_files row ${id} not found or not kind=requests`)
+  const list = JSON.parse(data.content)
+  if (!Array.isArray(list)) throw new Error('storyload: row content must be a JSON list')
+  return list
+}
+
 function scenarios(products, brandId, brandName) {
   const out = []
   const named = products.filter((p) => p.name)
@@ -146,10 +159,10 @@ function scenarios(products, brandId, brandName) {
   }
   // M. Story-load test (owner 2026-10-07): her own complete stories, reshaped
   // (roles instead of names, nothing added), given as the note. Passed in at
-  // dispatch (STORYLOAD_JSON), never committed. ~7 means plumbing is the gap.
-  let loaded = []
-  try { loaded = JSON.parse(process.env.STORYLOAD_JSON || '[]') } catch { loaded = [] }
-  loaded.forEach((c, i) => {
+  // ⚠️ PUBLIC REPO (2026-10-10): the stories are never a workflow input — inputs
+  // are kept with the run and anyone can read them. The dispatch passes the id
+  // of a private `test_run_files` row (kind 'requests'); see loadStoryload().
+  STORYLOAD.forEach((c, i) => {
     const prod = products.find((p) => p.name && c.product && p.name.toLowerCase().includes(String(c.product).toLowerCase()))
     // Paired (owner 2026-10-07): the same request with the story and without
     // it (only the bare topic), so a high score can be credited to the story.
@@ -580,6 +593,7 @@ async function main() {
   // --group=product,idea runs only those groups (the batch is run in themed parts).
   const only = (process.argv.find((a) => a.startsWith('--group=')) ?? '').slice(8).split(',').map((x) => x.trim()).filter(Boolean)
   if (only.includes('spec-questions')) { await specQuestionsProbe(token, admin, products ?? []); return }
+  STORYLOAD = await loadStoryload(admin)
   const list = scenarios(products ?? [], brands?.[0]?.id ?? '', brands?.[0]?.name ?? '')
     .filter((sc) => !only.length || only.includes(sc.group)).slice(0, LIMIT)
   console.log(`batch ${BATCH}: ${list.length} scenarios`)
