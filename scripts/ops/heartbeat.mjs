@@ -99,6 +99,14 @@ export const ASSESS_OPTIONS = Object.freeze({ allow_paid_transcript: false })
 // the app always sends a goal. The heartbeat now does too: a non-selling one,
 // so it checks that a script gets written, not which product it is about.
 export const HEARTBEAT_GOAL = 'educate'
+// The readiness gate asks a short request with nothing stored behind it for
+// "one real thing this video should say" (READINESS_INCOMPLETE missing=claims).
+// A creator answers on the card; the heartbeat answers the same field, with a
+// fixed, made-up answer that fits IDEA_SENTENCE. It is the monitor's input,
+// never anyone's real material.
+export const HEARTBEAT_ANSWERS = Object.freeze({
+  claims: 'I kept a work notebook, a home notebook and an ideas notebook, and lost track of all three. One notebook with dated pages means I always know where a thought went and I actually reread it on Sundays.',
+})
 // A goal alone is not enough: an account whose brief names an offer is asked
 // "which one is this video about?" whatever the goal. The heartbeat answers the
 // way a creator can — "None of these" (`selected_product_id: 'none'`).
@@ -598,10 +606,10 @@ async function runVariant(mode) {
     }
   }
   const body = mode === 'reference'
-    ? { reference_url: REFERENCE_URL, transcript_id, goal: HEARTBEAT_GOAL, selected_product_id: 'none', ...ASSESS_OPTIONS }
+    ? { reference_url: REFERENCE_URL, transcript_id, goal: HEARTBEAT_GOAL, selected_product_id: 'none', readiness_answers: HEARTBEAT_ANSWERS, ...ASSESS_OPTIONS }
     // ⚠️ AUDIT 2026-10-02: the writer reads `reference_note`; `idea` was never a
     // field it accepts, so every idea beat was a 400 "describe your idea".
-    : { reference_note: IDEA_SENTENCE, goal: HEARTBEAT_GOAL, selected_product_id: 'none', ...ASSESS_OPTIONS }
+    : { reference_note: IDEA_SENTENCE, goal: HEARTBEAT_GOAL, selected_product_id: 'none', readiness_answers: HEARTBEAT_ANSWERS, ...ASSESS_OPTIONS }
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-blueprint`, {
       method: 'POST',
