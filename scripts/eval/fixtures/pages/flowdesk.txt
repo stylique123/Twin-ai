@@ -1,0 +1,12 @@
+FlowDesk — the task board for small teams (fictional test page)
+Tired of losing tasks in chat threads and sticky notes? FlowDesk keeps every task in one board, so nothing slips.
+How it works
+1. Create a board for your team.
+2. Add a task and drag it into Today.
+3. Check it off and FlowDesk moves it to Done.
+Screens
+Board view: tasks in three columns, Today, This week and Done.
+Weekly report: a chart of tasks finished per person.
+FlowDesk vs spreadsheets: a spreadsheet needs you to update every row by hand; FlowDesk moves tasks for you.
+Pricing: $9 a month per team. 14-day free trial, cancel any time.
+Early-bird price ends 31 October: the first 200 teams keep $9 a month for life.
