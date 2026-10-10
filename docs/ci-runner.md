@@ -14,7 +14,7 @@ That is about 8,000 or more billed minutes a month. The Free plan includes 2,000
 
 ## What this change does
 
-1. Every job uses `runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}`. Nothing changes until the repo variable is set.
+1. Every job picks its runner with `(!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER`. On a **public** repo this is always `ubuntu-latest`, even if `CI_RUNNER` is set, so a fork PR can never reach a self-hosted machine. `scripts/ci/check_runner_guard.mjs` fails CI if any job uses another `runs-on`.
 2. PR checks: a new push to the same PR cancels the older run. Runs on `main` are never cancelled.
 
 ## Switching to a self-hosted runner (owner steps)
@@ -27,7 +27,7 @@ Minutes used on self-hosted runners are free.
 4. Re-run any red PR. To roll back, delete the variable.
 
 Notes:
-- The repo is private and only collaborators can open PRs, so a self-hosted runner is safe here. Do not use one if the repo becomes public.
+- Only for a private repo. The guard above ignores `CI_RUNNER` while the repo is public; keep the variable unset until it is private again.
 - Jobs run one at a time per runner. Register 2 runners on the same box to keep PR checks reasonably fast.
 
 ## Further cuts (need an owner decision)

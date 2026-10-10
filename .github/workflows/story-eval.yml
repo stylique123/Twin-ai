@@ -9,7 +9,7 @@ on:
       only_ids: { description: 'Optional comma list of ids to score', required: false, default: '' }
 jobs:
   eval:
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

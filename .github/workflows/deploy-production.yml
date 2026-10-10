@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       # ⚠️ ABSENT IS NOT "SKIP". A missing secret used to be the classic silent
       # failure here: `if: secrets.X != ''` reads as caution and produces a GREEN

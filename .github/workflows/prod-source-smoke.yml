@@ -52,7 +52,7 @@ concurrency:
 
 jobs:
   smoke:
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     environment: production
     timeout-minutes: 10
     env:

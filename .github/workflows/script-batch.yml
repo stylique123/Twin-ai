@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   batch:
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
