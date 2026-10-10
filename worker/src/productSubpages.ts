@@ -36,3 +36,33 @@ export function subpageLinks(html: string, pageUrl: string, max = 3): string[] {
 export function wantsSubpages(type: string | null | undefined): boolean {
   return ['DIGITAL_PRODUCT', 'SAAS', 'APP', 'COURSE', 'COMMUNITY', 'SERVICE'].includes(String(type ?? '').toUpperCase())
 }
+
+// v3.1 1.2 — UP TO FIVE PAGES, ONE PER ROLE. The first-three-matches rule
+// above could spend all three reads on /plans, /pricing and /prices. Each
+// role answers a different slot (offer, how it works, what she can show,
+// what's inside, what people ask), so take the first link for each role.
+const ROLES: Array<[string, RegExp]> = [
+  ['offer', /\/(?:pricing|prices|plans?|membership|join)(?:[/?#]|$)/i],
+  ['how', /\/(?:features?|how-it-works|product|tour)(?:[/?#]|$)/i],
+  ['screens', /\/(?:demo|app|dashboard|screenshots?|gallery)(?:[/?#]|$)/i],
+  ['inside', /\/(?:curriculum|courses?|lessons?|modules?|syllabus|members?|community)(?:[/?#]|$)/i],
+  ['questions', /\/(?:faqs?|reviews?|testimonials?|customers?|case-studies)(?:[/?#]|$)/i],
+]
+
+export function subpagesByRole(html: string, pageUrl: string, max = 5): Array<{ role: string; url: string }> {
+  let base: URL
+  try { base = new URL(pageUrl) } catch { return [] }
+  const strip = (h: string) => h.toLowerCase().replace(/^www\./, '')
+  const self = base.origin + base.pathname.replace(/\/$/, '')
+  const got = new Map<string, string>()
+  for (const m of html.matchAll(/<a\b[^>]*\bhref=["']([^"'#][^"']*)["']/gi)) {
+    let u: URL
+    try { u = new URL(m[1].replace(/&amp;/g, '&'), base) } catch { continue }
+    if (u.protocol !== 'https:' || strip(u.host) !== strip(base.host)) continue
+    const key = u.origin + u.pathname.replace(/\/$/, '')
+    if (key === self || [...got.values()].includes(key)) continue
+    const role = ROLES.find(([r, re]) => !got.has(r) && re.test(u.pathname))?.[0]
+    if (role) got.set(role, key)
+  }
+  return ROLES.filter(([r]) => got.has(r)).map(([r]) => ({ role: r, url: got.get(r)! })).slice(0, max)
+}

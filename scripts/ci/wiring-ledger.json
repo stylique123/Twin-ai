@@ -70,6 +70,13 @@
       "event": "feature_fired"
     },
     {
+      "id": "1.5",
+      "feature": "Readiness by kind (measured)",
+      "consumer": "supabase/functions/generate-blueprint/index.ts",
+      "symbol": "kindReadiness",
+      "event": "feature_fired"
+    },
+    {
       "id": "guard.closer",
       "feature": "Stock closer dropped",
       "consumer": "supabase/functions/generate-blueprint/index.ts",
