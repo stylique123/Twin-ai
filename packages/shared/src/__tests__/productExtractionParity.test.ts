@@ -48,7 +48,7 @@ describe('the classifier is byte-identical in both copies', () => {
   it('the job imports the mirror rather than reaching for @twinai/shared', () => {
     // An import that happens to resolve in the monorepo but not in the Docker
     // build is a green test and a broken image.
-    const job = readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8')
+    const job = (readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8') + readFileSync(join(REPO, 'worker/src/jobs/extractPrompt.ts'), 'utf8'))
     expect(job).toMatch(/from '\.\/productExtractionContract\.js'/)
     expect(job).not.toMatch(/@twinai\/shared/)
   })
@@ -59,14 +59,14 @@ describe('the extractor is never asked to grade itself', () => {
     // ⚠️ A model that has just read persuasive copy is the worst available judge
     // of whether that copy is persuasive. It reports values; the classifier
     // decides what may be said.
-    const job = readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8')
+    const job = (readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8') + readFileSync(join(REPO, 'worker/src/jobs/extractPrompt.ts'), 'utf8'))
     const schema = job.slice(job.indexOf('const SCHEMA'), job.indexOf('const SYSTEM'))
     expect(schema).not.toMatch(/trust/)
     expect(schema).toMatch(/enum: \['name', 'category'/)
   })
 
   it('every stored fact goes through readExtractedFact', () => {
-    const job = readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8')
+    const job = (readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8') + readFileSync(join(REPO, 'worker/src/jobs/extractPrompt.ts'), 'utf8'))
     expect(job).toMatch(/readExtractedFact\(\{/)
     // Nothing may be pushed onto the stored array without being graded.
     expect(job).not.toMatch(/facts\.push\((?!f\))/)
@@ -76,7 +76,7 @@ describe('the extractor is never asked to grade itself', () => {
     // ⚠️ A creator-supplied URL is untrusted input and this process holds
     // service-role credentials. file://, and http:// to a private address, are
     // refused rather than fetched.
-    const job = readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8')
+    const job = (readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8') + readFileSync(join(REPO, 'worker/src/jobs/extractPrompt.ts'), 'utf8'))
     expect(job).toMatch(/\^https:\\\/\\\//)
   })
 
@@ -87,7 +87,7 @@ describe('the extractor is never asked to grade itself', () => {
     // it and who is it for?" question is not left with nothing either: `[]`
     // becomes a one-fact array built from `creator_summary`. Same `unset ≠
     // false` rule, extended to a fallback the creator supplied themselves.
-    const job = readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8')
+    const job = (readFileSync(join(REPO, 'worker/src/jobs/extractProduct.ts'), 'utf8') + readFileSync(join(REPO, 'worker/src/jobs/extractPrompt.ts'), 'utf8'))
     // ⚠️ THE CONDITION GREW A SECOND CLAUSE AND THE ANCHOR FOLLOWED IT. The
     // branch is now guarded by `&& imagePaths.length === 0`, because an
     // image-only job has no page to read and this branch would otherwise write

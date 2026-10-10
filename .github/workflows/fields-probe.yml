@@ -1,0 +1,20 @@
+name: fields-probe
+# Plan 1.2 follow-up: run the real extractor prompt on made-up pages and print
+# which fields come out. Two model calls; prints field counts only; writes nothing.
+on:
+  workflow_dispatch: {}
+jobs:
+  probe:
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'npm' }
+      - run: npm ci
+      - name: Probe
+        run: npx tsx scripts/eval/fields-probe.ts
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

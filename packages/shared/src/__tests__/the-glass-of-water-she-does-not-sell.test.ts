@@ -173,6 +173,7 @@ describe('the taxonomy actually reaches the writer', () => {
 // this thing, physically. So this is two enum values on an existing schema, not
 // a new extraction pass.
 const EXTRACT = read(j(ROOT, 'worker', 'src', 'jobs', 'extractProduct.ts'), 'utf8')
+  + read(j(ROOT, 'worker', 'src', 'jobs', 'extractPrompt.ts'), 'utf8')
 
 describe('the extractor is asked the one question the direction field needs', () => {
   it('can report an object shape and a page section', () => {

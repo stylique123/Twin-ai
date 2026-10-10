@@ -4,6 +4,7 @@ import { harvestSections } from '../pageSections.js'
 import { join } from 'node:path'
 
 const SRC = readFileSync(join(__dirname, '..', 'jobs', 'extractProduct.ts'), 'utf8')
+  + readFileSync(join(__dirname, '..', 'jobs', 'extractPrompt.ts'), 'utf8')
 const SECTIONS = readFileSync(join(__dirname, '..', 'pageSections.ts'), 'utf8')
 
 /**
