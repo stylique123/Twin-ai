@@ -110,7 +110,7 @@ jobs:
             # Trial owner lists from secrets: replaced when set, left alone when unset.
             for k in TEST_OWNER_IDS PASSAGE_STORE_OWNERS; do
               v="${!k:-}"
-              if [ -n "$v" ]; then sed -i "/^$k=/d" /opt/twinai-worker.env; printf '%s=%s\n' "$k" "$v" >> /opt/twinai-worker.env; echo "$k: set from secret"; fi
+              if [ -n "$v" ]; then sed -i "/^$k=/d" /opt/twinai-worker.env; printf '%s=%s\n' "$k" "$v" >> /opt/twinai-worker.env; echo "::notice title=worker-env::$k written from secret"; fi
             done
             echo "worker job types: code default (see worker/src/env.ts jobTypes)"
             docker rm -f twinai-revideo 2>/dev/null || true
@@ -142,6 +142,10 @@ jobs:
                 --env-file /opt/twinai-worker.env twinai-worker:prev
               exit 1
             fi
+            # Presence only, never values: is each trial list set inside the running container?
+            for k in TEST_OWNER_IDS PASSAGE_STORE_OWNERS; do
+              if docker exec twinai-worker sh -c "test -n \"\${$k:-}\"" 2>/dev/null; then echo "::notice title=worker-env::$k present in the running worker"; else echo "::notice title=worker-env::$k NOT set in the running worker"; fi
+            done
             docker image prune -f >/dev/null 2>&1 || true
             # ⚠️ AND THE BUILD CACHE, WHICH IS THE BIGGER HALF AND WAS NOT SWEPT.
             #
