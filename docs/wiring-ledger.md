@@ -123,3 +123,5 @@ Compared against the scratchpad backlog, the parked list, open GitHub issues (7)
 | Held stashes `cta` and `bridges` | parked | W3 (tested against the rated library) |
 | No-story present-tense scenes and invented specifics | parked | W2 |
 | 1.2 subpages by role + ld FAQ | worker/src/jobs/extractProduct.ts (`subpagesByRole`, `ldFaqLines`) | subpagesByRoleAndFaq.test.ts | `feature_fired subpages_by_role`, `ld_faq` (worker logs) | worker, unflagged (extraction only) | awaiting CI (Actions billing) |
+| Part 11 test cost controls | scripts/ops/scriptBatch.mjs (`cost_mode`, `reportUsage`); generate-blueprint `lengthenOff` (test traffic only) | n/a (harness) | `::notice batch-usage`; `feature_fired lengthen_off` | `cost_mode=test` default | built |
+| 1.1 urgency field | worker/src/jobs/extractProduct.ts schema + prompt | extractorFields11.test.ts | product_knowledge field counts | always needs confirmation | built |
