@@ -25,7 +25,7 @@ import { CAPTION_SHAPE_VERSION as CAPTION_SHAPE_VERSION_N } from './generated/ca
 import { kickBrainSweep } from './nicheBrain/sweep.js'
 import { kickAudienceTests } from './nicheBrain/audience.js'
 import { createIdleBackoff } from './idleBackoff.js'
-import { installUsageTracking, withUsage, ledgerRows } from './aiUsage.js'
+import { installUsageTracking, runTallied, ledgerRows, type UsageStore } from './aiUsage.js'
 
 // Plan 11.1-2: tally every Gemini call per job into ai_usage_ledger.
 installUsageTracking()
@@ -258,12 +258,11 @@ async function tick(): Promise<boolean> {
     }, env.maxJobMs)
   })
   const endScope = beginJobScope(deadline.signal)
+  // Plan 11.1-2: the tally lives outside the handler so a failed or timed-out
+  // job still records what it spent (written in `finally` below).
+  const usage: UsageStore = {}
   try {
-    const tracked = withUsage(() => handler(job)).then(({ result, usage }) => {
-      const rows = ledgerRows(job as { id: string; type: string; owner_id?: string | null }, usage)
-      if (rows.length) void db.from('ai_usage_ledger').insert(rows).then(() => {}, () => {})
-      return result
-    })
+    const tracked = runTallied(usage, () => handler(job))
     const result = await Promise.race([tracked, guard])
     await completeJob(job.id, result, job.attempts)
     log('info', 'done', { job: job.id, type: job.type })
@@ -316,6 +315,9 @@ async function tick(): Promise<boolean> {
     // Close the scope whatever happened, so the next job opens a clean one and
     // `beginJobScope`'s serial-worker assertion stays meaningful.
     endScope()
+    // Success, failure or timeout: one ledger row per model this job called.
+    const rows = ledgerRows(job as { id: string; type: string; owner_id?: string | null }, usage)
+    if (rows.length) void db.from('ai_usage_ledger').insert(rows).then(() => {}, () => {})
   }
   return true
 }

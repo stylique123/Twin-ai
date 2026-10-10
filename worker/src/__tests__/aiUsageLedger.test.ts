@@ -20,3 +20,12 @@ describe('worker usage ledger (plan 11.1-2)', () => {
     expect(trafficOf(null, 'o1')).toBe('real')
   })
 })
+
+describe('a failed job still records its usage (plan 11.1-2)', () => {
+  it('keeps the tally when the handler throws', async () => {
+    const { runTallied } = await import('../aiUsage.js')
+    const usage: UsageStore = {}
+    await expect(runTallied(usage, async () => { addUsage(usage, 'm1', { promptTokenCount: 7 }); throw new Error('boom') })).rejects.toThrow('boom')
+    expect(ledgerRows({ id: 'j', type: 't', owner_id: null }, usage)[0]).toMatchObject({ model: 'm1', input_tokens: 7 })
+  })
+})
