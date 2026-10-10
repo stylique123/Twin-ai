@@ -127,3 +127,20 @@ export function extractPassages(segments: readonly Segment[]): PassageResult {
   }
   return { skipped: null, passages }
 }
+
+/**
+ * Plan 2.2: TAGS FOR THE PASSAGE STORE. Moment = a specific time, place or
+ * first-person event (the anchor); Meaning = a resolution or lesson in her
+ * words; Detail = a concrete specific (a number, a quantity, a named time of
+ * day, a sensory word). Tags never edit the text: the passage is kept verbatim.
+ */
+export type PassageTag = 'moment' | 'meaning' | 'detail'
+const DETAIL = /\b(?:\d+(?:[.,]\d+)?\s*(?:%|percent|grams?|g|kg|lbs?|pounds?|ounces?|oz|minutes?|mins?|seconds?|hours?|days?|weeks?|dollars?|bucks|degrees?|cups?|bags?|orders?|people|customers)|\$\d+|\d+ (?:a|per) (?:day|week|month)|(?:smell|smelled|taste|tasted|burnt|burned|sticky|cold|hot|loud|quiet|bitter|sweet|dark)\b|(?:6|7|8|9|10|11|12|[1-5])\s*(?:am|pm|a\.m\.|p\.m\.))/i
+export function passageTags(text: string): PassageTag[] {
+  const p = storyParts(text)
+  const tags: PassageTag[] = []
+  if (p.anchor) tags.push('moment')
+  if (p.resolution) tags.push('meaning')
+  if (DETAIL.test(text)) tags.push('detail')
+  return tags
+}

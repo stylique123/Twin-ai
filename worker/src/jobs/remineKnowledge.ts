@@ -30,7 +30,8 @@
 import { db, type Job } from '../db.js'
 import { insertKnowledge, KNOWLEDGE_ROWS_PER_SCAN } from '../knowledgeInsert.js'
 import { knowledgeRowsFrom } from '../knowledgeRows.js'
-import { extractPassages, type Segment } from '../generated/passages.js'
+import { extractPassages, passageTags, type Segment } from '../generated/passages.js'
+import { passageStoreOn } from '../passageStoreGate.js'
 import { EXTRACTOR_VERSION, voiceNeedsRemine } from '../extractorVersion.js'
 import { extractKnowledgeFromAudio, extractTargetedKnowledge } from '../voice.js'
 import { questionsFor } from '../targetedQuestions.js'
@@ -205,6 +206,26 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
     }
     console.log(JSON.stringify({ event: 'passages_shadow', voice_id: voiceId, ...tally }))
   } catch { /* shadow only */ }
+  // Plan 2.2: STORE the passages, verbatim and tagged, for owners on the trial
+  // list only (`PASSAGE_STORE_OWNERS`, comma-separated ids; unset = nobody).
+  // Its own table: creator_knowledge is never written here. Never fails the re-mine.
+  if (passageStoreOn(ownerId)) {
+    try {
+      const rows = stored.flatMap((t) => {
+        if (!t.segments.length) return []
+        const r = extractPassages(t.segments)
+        return r.passages.map((p) => ({
+          owner_id: ownerId, voice_id: voiceId, source_url: t.url,
+          start_sec: p.start, end_sec: p.end, text: p.text, kind: p.kind, complete: p.complete,
+          tags: passageTags(p.text),
+        }))
+      })
+      if (rows.length) {
+        const { error } = await db.from('story_passages').upsert(rows, { onConflict: 'voice_id,source_url,start_sec' })
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'passage_store', voice_id: voiceId, rows: rows.length, error: error?.message ?? null }))
+      }
+    } catch { /* storing never fails a re-mine */ }
+  }
   const [general, targeted] = await Promise.all([
     extractKnowledgeFromAudio(handle, platform, texts),
     extractTargetedKnowledge(handle, platform, texts, questionsFor(hasProduct)),
