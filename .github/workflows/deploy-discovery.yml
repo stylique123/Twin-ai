@@ -29,16 +29,20 @@ jobs:
       - name: Build + verify discovery over SSH
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           # Pass the untrusted input as an ENV VALUE (never interpolate ${{ }} into a
           # shell command — that was a root-RCE injection). Sanitized below before use.
           ONLY_NICHE_RAW: ${{ github.event.inputs.only_niche }}
         run: |
           if [ -z "$VPS_SSH_KEY" ]; then echo "::error::VPS_SSH_KEY not set"; exit 1; fi
-          mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Pinned host key, strict verification, fail-closed (same as deploy-worker).
+          if [ -z "$VPS_KNOWN_HOSTS" ]; then echo "::error::VPS_KNOWN_HOSTS not set — refusing to SSH without a pinned host key"; exit 1; fi
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts_vps"; chmod 600 "$HOME/.ssh/known_hosts_vps"
           # Allowlist: letters/digits/space/comma/underscore/hyphen only, capped length.
           ONLY_NICHE=$(printf '%s' "${ONLY_NICHE_RAW:-}" | tr -cd 'a-zA-Z0-9 ,_-' | cut -c1-200)
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" "$VPS_USER@$VPS_HOST" \
             "ONLY_NICHE=$(printf %q "$ONLY_NICHE") bash -se" <<'REMOTE'
             set -euo pipefail
             cd /opt/twinai-worker-src
