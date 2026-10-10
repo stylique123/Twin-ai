@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0284_story_passages':
+    'New service-role-only table (RLS on, no policies); applied live by hand 2026-10-10 (owner rule). Written only for owners in PASSAGE_STORE_OWNERS; nothing reads it yet. No staging-only surface.',
   '0283_lessons_synthetic':
     'One boolean column (default false) on creator_lessons; applied live by hand 2026-10-08 (owner rule). Readers tolerate its absence. No staging-only surface.',
   '0282_superseded_facts':
