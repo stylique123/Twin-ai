@@ -609,8 +609,16 @@ async function runVariant(mode) {
     if (!res.ok) {
       // The writer's own reason (a code like READINESS_INCOMPLETE, a question it
       // needs answered) — without it a 409 is undiagnosable from the log.
-      const why = await res.text().then((t) => t.replace(/\s+/g, ' ').slice(0, 300), () => '')
+      const raw = await res.text().catch(() => '')
+      const why = raw.replace(/\s+/g, ' ').slice(0, 300)
       console.log(`${mode} rejected ${res.status}: ${why}`)
+      // Job logs are not readable from every place this is checked, but
+      // annotations are. Codes and field names only: the repo can be public.
+      try {
+        const j = JSON.parse(raw)
+        const fields = Array.isArray(j.questions) ? j.questions.map((q) => q?.field).filter(Boolean).join(',') : ''
+        console.log(`::warning title=heartbeat-refusal::${mode} ${res.status} ${String(j.code ?? 'no-code')}${fields ? ` missing=${fields}` : ''}`)
+      } catch { console.log(`::warning title=heartbeat-refusal::${mode} ${res.status} unparsed`) }
       return { run: { at: Date.now(), mode, failed: `non-2xx from generate-blueprint: ${res.status}`, durationMs }, script: '', voiceId: null }
     }
     const json = await res.json()
