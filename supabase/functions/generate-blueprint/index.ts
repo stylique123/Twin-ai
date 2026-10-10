@@ -67,7 +67,7 @@ import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
-import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines } from '../_shared/itemFormat.ts'
+import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness } from '../_shared/itemFormat.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -9803,6 +9803,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           ...facts.map((f) => itemFromProductFact(f, oe?.id ? String(oe.id) : null)),
         ])
         console.log(JSON.stringify({ event: 'feature_fired', feature: 'item_slots', items: cov.items, by_slot: cov.bySlot, empty: cov.empty }))
+        // Plan 1.5: what this kind of product still lacks (measured; 4.3 asks).
+        const kr = kindReadiness((ownedEntity as { type?: unknown } | null)?.type, facts.map((f) => itemFromProductFact(f, oe?.id ? String(oe.id) : null)))
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'kind_readiness', kind: kr.kind, missing: kr.missing, ready: kr.ready }))
       } catch { /* measuring never fails a generation */ }
     }
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;

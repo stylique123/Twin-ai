@@ -67,3 +67,21 @@ describe('groupProductFactLines (plan 1.6)', () => {
     expect(groupProductFactLines([{ field: 'feature', value: '  ' }]).lines).toEqual([])
   })
 })
+
+import { kindReadiness } from '../itemFormat.js'
+describe('kindReadiness (plan 1.5)', () => {
+  it('an app needs a problem, a screen and terms', () => {
+    const r = kindReadiness('APP', [itemFromProductFact({ field: 'feature', value: 'Boards', trust: 'usable' })])
+    expect(r.missing).toEqual(['hook', 'show_it', 'close'])
+    const ok = kindReadiness('APP', [
+      itemFromProductFact({ field: 'problem', value: 'Lost tasks', trust: 'usable' }),
+      itemFromProductFact({ field: 'screen', value: 'board view', trust: 'usable' }),
+      itemFromProductFact({ field: 'terms', value: 'Free trial', trust: 'user_confirmed' }),
+    ])
+    expect(ok.ready).toBe(true)
+  })
+  it('unconfirmed items do not count, unknown kinds need nothing', () => {
+    expect(kindReadiness('PHYSICAL_PRODUCT', [itemFromProductFact({ field: 'object_shape', value: 'bag', trust: 'page' })]).missing).toContain('show_it')
+    expect(kindReadiness('OTHER', []).ready).toBe(true)
+  })
+})

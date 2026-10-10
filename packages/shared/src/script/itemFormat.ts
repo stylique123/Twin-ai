@@ -147,3 +147,29 @@ export function groupProductFactLines(facts: ReadonlyArray<{ field?: unknown; va
   }
   return { lines, groups }
 }
+
+/**
+ * Plan 1.5: what each kind of product needs before a script can do its job.
+ * Slots, not fields, so any field that fills the slot counts. Measured first;
+ * plan 4.3 turns a missing slot into one question.
+ */
+const KIND_NEEDS: Record<string, readonly Slot[]> = {
+  SAAS: ['hook', 'show_it', 'close'],
+  APP: ['hook', 'show_it', 'close'],
+  DIGITAL_PRODUCT: ['what_it_is', 'show_it', 'close'],
+  COURSE: ['hook', 'what_it_is', 'close'],
+  COMMUNITY: ['hook', 'what_it_is', 'close'],
+  PHYSICAL_PRODUCT: ['what_it_is', 'show_it'],
+  SERVICE: ['hook', 'what_it_is', 'close'],
+}
+
+export interface KindReadiness { kind: string; needs: Slot[]; missing: Slot[]; ready: boolean }
+
+/** Which of this kind's needed slots have no usable item. Unknown kinds need nothing. */
+export function kindReadiness(kind: unknown, items: readonly (Item | null)[]): KindReadiness {
+  const k = str(kind).toUpperCase()
+  const needs = [...(KIND_NEEDS[k] ?? [])]
+  const have = new Set(items.filter((i): i is Item => !!i && i.status !== 'unconfirmed').map((i) => i.slot_hint))
+  const missing = needs.filter((s) => !have.has(s))
+  return { kind: k, needs, missing, ready: missing.length === 0 }
+}
