@@ -27,6 +27,7 @@
 //   · the run must never fall through to the PAID transcript path, because a
 //     monitor that can spend money spends it hourly, forever.
 
+import { ingestForHeartbeat } from './heartbeatIngest.mjs'
 import {
   decideHeartbeat, runIsBad, INITIAL_PAGE_STATE, PAGE_IF_SLOWER_THAN_MS,
   wrongVoiceFinding, sponsoredSpokenAsLivedFinding, lengthBandFinding,
@@ -578,8 +579,16 @@ async function heartbeatToken(url, anonKey) {
  */
 async function runVariant(mode) {
   const started = Date.now()
+  let transcript_id
+  if (mode === 'reference') {
+    try {
+      transcript_id = await ingestForHeartbeat({ url: REFERENCE_URL, supabaseUrl: SUPABASE_URL, anonKey: ANON_KEY, token: ACCESS_TOKEN })
+    } catch (e) {
+      return { run: { at: Date.now(), mode, failed: `reference read failed: ${e instanceof Error ? e.message : String(e)}`, durationMs: Date.now() - started }, script: '', voiceId: null }
+    }
+  }
   const body = mode === 'reference'
-    ? { reference_url: REFERENCE_URL, ...ASSESS_OPTIONS }
+    ? { reference_url: REFERENCE_URL, transcript_id, ...ASSESS_OPTIONS }
     // ⚠️ AUDIT 2026-10-02: the writer reads `reference_note`; `idea` was never a
     // field it accepts, so every idea beat was a 400 "describe your idea".
     : { reference_note: IDEA_SENTENCE, ...ASSESS_OPTIONS }
