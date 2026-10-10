@@ -89,6 +89,13 @@ const CEILING = [
 let STORYLOAD = []
 /** Reads the story-load list from the private test_run_files row whose id was
  *  dispatched (STORYLOAD_FILE_ID). Only ids travel through the workflow. */
+// ⚠️ PHYSICAL30-A (owner batch 12 Oct): 11 of 15 rich-answer scripts stopped at
+// a 409 because, with no stated fact naming the product, the stand-in answered
+// the product question with an EMPTY string, which reads as unanswered, so the
+// writer asked again three times. A real creator answers or skips; skip always
+// works, so with nothing on topic the stand-in skips.
+const SKIP_ANSWER = 'Nothing specific, keep it general.'
+
 async function loadStoryload(admin) {
   const id = Number(process.env.STORYLOAD_FILE_ID || 0)
   if (!id) return []
@@ -691,9 +698,9 @@ async function main() {
         const productWords = String(aboutProduct ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? []
         const aboutThisProduct = (k) => productWords.length === 0 || productWords.some((w) => String(k).toLowerCase().includes(w))
         const onTopicHere = (q) => { const k = onTopic(q); return k && aboutThisProduct(k) ? k : null }
-        const answerFor = (f, q) => style === 'rich' ? (['claims', 'angle'].includes(f) ? (aboutProduct ? (onTopicHere(q) ?? '') : (onTopic(q) ?? RICH_ANSWER[f] ?? RICH_ANSWER.claims)) : (RICH_ANSWER[f] ?? RICH_ANSWER.claims))
+        const answerFor = (f, q) => style === 'rich' ? (['claims', 'angle'].includes(f) ? (aboutProduct ? (onTopicHere(q) ?? SKIP_ANSWER) : (onTopic(q) ?? RICH_ANSWER[f] ?? RICH_ANSWER.claims)) : (RICH_ANSWER[f] ?? RICH_ANSWER.claims))
           : style === 'short' ? (f === 'offer' ? 'Signature Blend' : 'Fresh beans.')
-          : 'Nothing specific, keep it general.'
+          : SKIP_ANSWER
         // "Which one is this video about?" is answered the way the app does: the
         // pick rides selected_product_id. Each kind of creator picks differently
         // (a product, the whole brand, or none of these).
