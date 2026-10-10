@@ -3,7 +3,7 @@
 // Reads every successful row of `script_batch_results` (status 200) for one or
 // more batches, joins its generation's blueprint and audience test, and the
 // test account's stored facts / products / voice / ratings, then prints the
-// same 12 metrics the 2026-10-03 audit used (docs/audits/script-batch-12-part-audit.md)
+// same 12 metrics the 2026-10-03 audit used (audit kept privately, not in the repo)
 // as JSON and as markdown.
 //
 // It never writes: only SELECTs through supabase-js.
