@@ -26,8 +26,8 @@ on:
         description: 'Optional second judge model (one read, same code caps), e.g. claude-sonnet-5-5 (needs the ANTHROPIC_API_KEY repo secret)'
         required: false
         default: ''
-      storyload_json:
-        description: 'Story-load test: JSON list of {story, goal, product?, note}; never committed'
+      storyload_file_id:
+        description: 'Story-load test: id of a private test_run_files row (kind=requests) holding the list. Never paste story text here: inputs are public.'
         required: false
         default: ''
       drafts:
@@ -62,7 +62,7 @@ jobs:
           node scripts/ops/scriptBatch.mjs "$BATCH_LABEL" "$BATCH_LIMIT" ${{ inputs.intake && ' ' || '--no-intake' }} "--group=$BATCH_GROUP" "--judge-only=$JUDGE_ONLY"
         env:
           BATCH_GROUP: ${{ inputs.group }}
-          STORYLOAD_JSON: ${{ inputs.storyload_json }}
+          STORYLOAD_FILE_ID: ${{ inputs.storyload_file_id }}
           BATCH_DRAFTS: ${{ inputs.drafts }}
           JUDGE_ONLY: ${{ inputs.judge_only }}
           JUDGE2_MODEL: ${{ inputs.judge2_model }}
