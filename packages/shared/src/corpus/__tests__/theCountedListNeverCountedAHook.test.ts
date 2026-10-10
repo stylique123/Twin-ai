@@ -99,7 +99,7 @@ describe('a counted list still wins over what is inside it', () => {
     // ⚠️ THIS RECLASSIFIES A ROW THAT ALREADY HAD AN ANSWER. The pattern table's
     // own header says a counted list wins over anything inside it; asserting it
     // here is what stops a future reorder from silently undoing the decision.
-    expect(shapeOf('Here are 3 postpartum fitness myths you need to stop believing.'))
+    expect(shapeOf('Here are 3 prenatal fitness myths you need to stop believing.'))
       .toBe('number_promise')
   })
 

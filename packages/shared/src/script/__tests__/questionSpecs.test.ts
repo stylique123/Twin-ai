@@ -152,7 +152,7 @@ describe('probe 2026-10-04: one cue word does not fill a slot', () => {
 
 describe('probe 2 (2026-10-05): a question never presumes a venture she has not named', () => {
   const idea = specById('idea:fun')!
-  const known = 'Sunflower Coffee Roasters roasts small batches in Farmington. She roasts at home.'
+  const known = 'Maya Coffee Co roasts small batches in Riverton. She roasts at home.'
   it('"behind your coffee cart" is rejected when nothing says she has one', () => {
     expect(validateQuestion('What chaotic moment happened behind your coffee cart that nobody warned you about?', { spec: idea, slot: idea.slots[0]!, asked: [], known }))
       .toEqual({ ok: false, reason: 'presumes_venture' })
@@ -163,7 +163,7 @@ describe('probe 2 (2026-10-05): a question never presumes a venture she has not 
 })
 
 describe('owner review 2026-10-05: presumption beyond "your"', () => {
-  const known = 'Sunflower Coffee Roasters roasts small batches in Farmington.'
+  const known = 'Maya Coffee Co roasts small batches in Riverton.'
   it.each([
     'What ridiculous mishap happened mid-rush at the cart?',
     'How did your setup look the next time you rolled the cart out?',

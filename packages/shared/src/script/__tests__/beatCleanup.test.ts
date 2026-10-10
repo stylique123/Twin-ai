@@ -36,14 +36,14 @@ describe('blind set 2 leftovers (owner 2026-10-05)', () => {
       .toBe('It keeps things simple for people just starting out.')
   })
   it('removes a scan topic opening a line (#11)', () => {
-    expect(stripProfileLabels('Starting and operating Sunflower Coffee Roasters as a micro roaster in Farmington, I see people expecting a smoky bite.', [], ['starting and operating a small coffee roasting business in Farmington, NM']))
+    expect(stripProfileLabels('Starting and operating Maya Coffee Co as a micro roaster in Riverton, I see people expecting a smoky bite.', [], ['starting and operating a small coffee roasting business in Riverton, WY']))
       .toBe('I see people expecting a smoky bite.')
   })
 })
 
 describe('stripProfileLabels never touches her own wording (owner 2026-10-05)', () => {
   const labels = ['everyday people', 'beginners', 'ecommerce', 'coffee lovers']
-  const topics = ['starting and operating a small coffee roasting business in Farmington, NM']
+  const topics = ['starting and operating a small coffee roasting business in Riverton, WY']
   it.each([
     'Someone told me they could taste the difference between my roast and the grocery store bag their mom always bought.',
     'I roast in small batches out of a tiny space, and every batch tastes slightly different depending on humidity and bean age.',

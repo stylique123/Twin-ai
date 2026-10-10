@@ -266,8 +266,8 @@ describe('script batch 2026-10-02: product scripts lost their middle', () => {
     expect(bad.accepted).toBe(false)
   })
   it('a state she wrote as its code may be said in full', () => {
-    expect(inventedByExtension('', 'We roast here in Farmington, New Mexico.', 'Small roastery in Farmington, NM')).toEqual([])
-    expect(inventedByExtension('', 'We roast here in Austin, Texas.', 'Small roastery in Farmington, NM')).not.toEqual([])
+    expect(inventedByExtension('', 'We roast here in Riverton, Wyoming.', 'Small roastery in Riverton, WY')).toEqual([])
+    expect(inventedByExtension('', 'We roast here in Austin, Texas.', 'Small roastery in Riverton, WY')).not.toEqual([])
   })
 })
 

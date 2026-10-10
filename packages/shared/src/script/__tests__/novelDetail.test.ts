@@ -4,7 +4,7 @@ import { dropNovelSentences, findNovelDetails, novelCounts } from '../novelDetai
 const HER = [
   'Someone told me they could taste the difference between my roast and the grocery store bag their mom always bought.',
   'I bought a batch of green beans from a new supplier without testing a small sample first, and the whole lot roasted uneven and had to be tossed.',
-  'Coffee Cart Launch Call: a 60-minute 1:1 video call for $75 where I help you plan your equipment, menu, and first market.',
+  'Brew Bar Setup Call: a 60-minute 1:1 video call for $75 where I help you plan your equipment, menu, and first market.',
   'La Marzocco espresso machine',
 ].join('\n')
 

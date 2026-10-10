@@ -41,7 +41,7 @@ describe('3.3 / 3.4: the fact list fits the idea', () => {
   const rows = [
     { id: 'origin', kind: 'experience', source: 'asked', text: 'Someone told me they could taste the difference between my roast and the grocery store bag their mom always bought' },
     { id: 'sticker', kind: 'product', source: 'caption', text: 'MakeStickers custom labels and stickers for coffee small business' },
-    ...Array.from({ length: 8 }, (_, i) => ({ id: `c${i}`, kind: 'claim', source: 'transcript', text: `Coffee business note ${i} about Farmington coffee business` })),
+    ...Array.from({ length: 8 }, (_, i) => ({ id: `c${i}`, kind: 'claim', source: 'transcript', text: `Coffee business note ${i} about Riverton coffee business` })),
   ]
   it('her origin story fits an idea about why she started roasting', () => {
     const items = planUseItems(rows, 'Why I started roasting coffee')

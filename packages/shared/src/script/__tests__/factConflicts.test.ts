@@ -13,6 +13,6 @@ describe('originConflict (owner 2026-10-06: the writer never chooses between con
   })
   it('one origin is not a conflict, and other products do not count', () => {
     expect(originConflict(rows.slice(1), 'Signature Blend Beans')).toBeNull()
-    expect(originConflict(rows, 'Coffee Cart Launch Call')).toBeNull()
+    expect(originConflict(rows, 'Brew Bar Setup Call')).toBeNull()
   })
 })

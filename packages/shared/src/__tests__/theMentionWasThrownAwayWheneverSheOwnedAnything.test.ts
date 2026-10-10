@@ -1,11 +1,11 @@
 // THE WRITER ARGUED AGAINST THE PRODUCT SHE EARNS COMMISSION ON.
 //
 // ⚠️⚠️ AUDITED ON TEN LIVE RUNS, ONE CREATOR, TWO PRODUCTS: an owned coaching
-// service and an affiliate postpartum band. On every NON-COMMERCIAL objective
+// service and an affiliate prenatal band. On every NON-COMMERCIAL objective
 // she picked the band and the script never named it — and did not stay silent
 // either. It invented a stance:
 //
-//   "a postpartum belly band will not heal your deep core"
+//   "a prenatal belly band will not heal your deep core"
 //   "wearing a belly band all day actually weakens your core"
 //   "stop wrapping your belly"
 //

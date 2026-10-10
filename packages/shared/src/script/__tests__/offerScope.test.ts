@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { foreignOfferFigures, offerFigures, scrubForeignOffer, stripForeignOffer } from '../offerScope'
 
 // Script batch audit 2026-10-03, parts 9 and 10: Signature Blend's offer bled
-// into House Espresso, Bella Donovan, Cold Brew and an idea video.
+// into House Espresso, Morning Blend, Cold Brew and an idea video.
 const SIGNATURE = '12oz bag for $18, or a 5lb bulk bag for $65.'
 const HOUSE_ESPRESSO = JSON.stringify({ id: 'he', name: 'House Espresso', offer: null, knowledge: [{ field: 'roast', value: 'medium-dark' }] })
 

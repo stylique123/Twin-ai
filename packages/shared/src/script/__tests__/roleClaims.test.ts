@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { unconfirmedRoleClaims } from '../roleClaims.js'
 
-const STATED = 'I roast coffee in small batches in Farmington. Sunflower Coffee Roasters is my roastery. I do one-on-one coffee cart planning calls.'
+const STATED = 'I roast coffee in small batches in Riverton. Maya Coffee Co is my roastery. I do one-on-one coffee cart planning calls.'
 
 describe('role claims only when she said them (owner, script B)', () => {
   it('flags "my coffee cart business" when she only advises on carts', () => {
-    expect(unconfirmedRoleClaims('Building my coffee cart business in Farmington taught me there is no clean formula.', STATED + ' cart'.replace('cart', 'calls')))
+    expect(unconfirmedRoleClaims('Building my coffee cart business in Riverton taught me there is no clean formula.', STATED + ' cart'.replace('cart', 'calls')))
       .toEqual(['coffee cart business'])
   })
   it('allows the roastery she stated', () => {
