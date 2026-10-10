@@ -699,6 +699,13 @@ const md = await deliverDigest(decision.digest, { db, summaryPath: process.env.G
 console.log(`reference: ${reference.run.failed ?? 'ok'} (${reference.run.durationMs ?? 'unmeasured'}ms)`)
 console.log(`idea:      ${idea.run.failed ?? 'ok'} (${idea.run.durationMs ?? 'unmeasured'}ms)`)
 console.log(`other variant: ${other.run.failed ?? 'ok'}`)
+// Annotations are readable where the job log is not. Outcome, timing and
+// finding kinds only — never script text (the repo can be public).
+for (const v of [reference, idea]) {
+  const bad = runIsBad(v.run)
+  console.log(`::notice title=heartbeat-outcome::${v.run.mode} ${bad ? 'BAD' : 'ok'}${v.run.failed ? ` failed=${String(v.run.failed).slice(0, 120)}` : ''} ms=${v.run.durationMs ?? 'n/a'} script_chars=${(v.script ?? '').length}`)
+}
+console.log(`::notice title=heartbeat-decision::page=${decision.page ?? 'none'} failing_after=${decision.nextState?.failing ?? 'n/a'} findings=${findings.map((f) => f.kind ?? f.k ?? '?').join(',') || 'none'}`)
 console.log(md)
 
 // ⚠️ EXIT 0 EVEN WHEN IT PAGED. A red workflow run would notify a SECOND time
