@@ -17,7 +17,7 @@ env:
   VPS_HOST: 138.201.119.239
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - name: Build + verify discovery over SSH
         env:

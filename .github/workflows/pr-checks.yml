@@ -20,9 +20,15 @@ on:
   push:
     branches: [main]
 
+# CI minutes: a new push to the same PR cancels the run it replaces. Runs on
+# main are never cancelled, so every merged commit is still checked.
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   web-and-shared:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,6 +53,7 @@ jobs:
         run: |
           node scripts/ci/check_workflows_parse.mjs --selftest
           node scripts/ci/check_workflows_parse.mjs
+          node scripts/ci/check_runner_guard.mjs
       # The edge functions were the one body of code CI never compiled. A prompt
       # edit put a backtick in prose inside a template literal, which closed the
       # literal and made generate-blueprint invalid TypeScript — it could not
@@ -93,7 +100,7 @@ jobs:
         run: npm run web:build
 
   worker:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -109,7 +116,7 @@ jobs:
   # recording/teleprompter data path still builds from a blueprint. Worker: the job
   # registry cannot claim `autoedit` and the editor env flags are gone.
   unit-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -294,7 +301,7 @@ jobs:
   # paths, and the pin/version coupling guard. All run OFFLINE with no model —
   # editor_speech.py returns exit 3 before faster-whisper is imported.
   model-pin-guards:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # merge-base needed for the coupling check
@@ -325,7 +332,7 @@ jobs:
   # forbidden — the recording Scene Timeline and future internal planning code use
   # it legitimately; behavior is reviewed separately.
   no-legacy-editor:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       # ⚠️ PINNED BECAUSE THE GUARDS BELOW USE `--experimental-strip-types`,
@@ -978,7 +985,7 @@ jobs:
   # calls for every pass/fail decision). Runs entirely offline: no network, no
   # secrets, no production contact.
   gate-probe-assert:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -991,7 +998,7 @@ jobs:
   # control. These previously ran only locally — a migration edit could silently
   # break a DB guarantee with CI green. Now they gate every PR.
   db-gates:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -1098,7 +1105,7 @@ jobs:
   # not configured. The conservative bound (tokens <= bytes) is proven in the
   # unit tests + the --selftest step; this job records the ACTUAL provider count.
   director-token-evidence:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

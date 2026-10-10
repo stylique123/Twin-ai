@@ -31,7 +31,7 @@ jobs:
   # Gate: never ship a worker that doesn't compile (main has no other guard —
   # pr-checks runs on PRs, but a direct push to main would skip it).
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,7 +44,7 @@ jobs:
 
   deploy:
     needs: check
-    runs-on: ubuntu-latest
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
       - name: Deploy to VPS over SSH
         env:
