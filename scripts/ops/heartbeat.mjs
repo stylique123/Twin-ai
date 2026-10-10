@@ -657,13 +657,43 @@ async function runVariant(mode) {
   }
 }
 
+// ⚖️ OWNER DECISION 12 OCT (cost): hourly FREE health check, one FULL run a day.
+// The full run writes two real scripts (about $0.05 each). The health check
+// sends an empty request that generate-blueprint refuses before any model
+// call: it proves the function boots, signs the account in and reaches the
+// database. A manual dispatch is always a full run.
+const FULL_HOUR_UTC = Number(process.env.HEARTBEAT_FULL_HOUR_UTC ?? '6')
+const FULL_RUN = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' || new Date().getUTCHours() === FULL_HOUR_UTC
+
+async function runHealth() {
+  const started = Date.now()
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-blueprint`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ACCESS_TOKEN}`, apikey: ANON_KEY, 'content-type': 'application/json' },
+      body: '{}',
+    })
+    const durationMs = Date.now() - started
+    const raw = await res.text().catch(() => '')
+    let parsed = false
+    try { JSON.parse(raw); parsed = true } catch { /* not JSON */ }
+    // Healthy = the function answered with a JSON refusal (4xx). A 5xx, a
+    // non-JSON body or a thrown request means it is not serving.
+    const failed = res.status >= 500 || !parsed ? `health check: ${res.status}${parsed ? '' : ' non-JSON'}` : null
+    return { run: { at: Date.now(), mode: 'health', failed, durationMs }, script: '', voiceId: null }
+  } catch (e) {
+    return { run: { at: Date.now(), mode: 'health', failed: `health check threw: ${e instanceof Error ? e.message : String(e)}`, durationMs: Date.now() - started }, script: '', voiceId: null }
+  }
+}
+
 const prev = await loadPageState(db)
 
 // ⚠️ THE REFERENCE VARIANT IS EVALUATED FIRST AND THE IDEA VARIANT ALWAYS RUNS.
 // Short-circuiting on a healthy reference run would skip the path that has no
 // reference to blame — the one that would have caught the original outage.
-const reference = await runVariant('reference')
-const idea = await runVariant('idea')
+const health = FULL_RUN ? null : await runHealth()
+const reference = health ?? await runVariant('reference')
+const idea = health ?? await runVariant('idea')
 
 // ⚖️ THE WORSE OF THE TWO DECIDES. If either variant cannot produce a script,
 // the product is broken for somebody, and averaging them would let a working
@@ -671,7 +701,7 @@ const idea = await runVariant('idea')
 const worst = runIsBad(reference.run) ? reference : idea
 const other = worst === reference ? idea : reference
 
-const findings = [
+const findings = health ? [] : [
   ...inspect(reference.script, reference.voiceId, reference.run),
   ...inspect(idea.script, idea.voiceId, idea.run),
 ]
@@ -701,7 +731,8 @@ console.log(`idea:      ${idea.run.failed ?? 'ok'} (${idea.run.durationMs ?? 'un
 console.log(`other variant: ${other.run.failed ?? 'ok'}`)
 // Annotations are readable where the job log is not. Outcome, timing and
 // finding kinds only — never script text (the repo can be public).
-for (const v of [reference, idea]) {
+console.log(`::notice title=heartbeat-mode::${health ? 'health (no model call)' : 'full (two scripts)'}`)
+for (const v of health ? [health] : [reference, idea]) {
   const bad = runIsBad(v.run)
   console.log(`::notice title=heartbeat-outcome::${v.run.mode} ${bad ? 'BAD' : 'ok'}${v.run.failed ? ` failed=${String(v.run.failed).slice(0, 120)}` : ''} ms=${v.run.durationMs ?? 'n/a'} script_chars=${(v.script ?? '').length}`)
 }
