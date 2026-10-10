@@ -1,4 +1,4 @@
-# VPS — 138.201.119.239
+# VPS — <VPS_HOST>
 
 The single authoritative record of this host: what is on it, what stays, what
 goes, and the before/after of the retirement.

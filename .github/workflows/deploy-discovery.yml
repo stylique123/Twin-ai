@@ -14,11 +14,18 @@ on:
     paths: ['discovery/**', '.github/workflows/deploy-discovery.yml']
 concurrency: { group: deploy-discovery, cancel-in-progress: false }
 env:
-  VPS_HOST: 138.201.119.239
+  VPS_HOST: ${{ secrets.VPS_HOST }}
+  VPS_USER: ${{ secrets.VPS_USER }}
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Server address and login come from repo secrets
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ]; then
+            echo "::error::Set the VPS_HOST and VPS_USER repository secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
       - name: Build + verify discovery over SSH
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -31,7 +38,7 @@ jobs:
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           # Allowlist: letters/digits/space/comma/underscore/hyphen only, capped length.
           ONLY_NICHE=$(printf '%s' "${ONLY_NICHE_RAW:-}" | tr -cd 'a-zA-Z0-9 ,_-' | cut -c1-200)
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" \
             "ONLY_NICHE=$(printf %q "$ONLY_NICHE") bash -se" <<'REMOTE'
             set -euo pipefail
             cd /opt/twinai-worker-src

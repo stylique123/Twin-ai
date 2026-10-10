@@ -112,10 +112,10 @@ trust the machine), then paste the single line it prints into a new secret:
 
 ```sh
 # On the VPS (SSH in the way you normally do), run:
-echo "138.201.119.239 $(awk '{print $1, $2}' /etc/ssh/ssh_host_ed25519_key.pub)"
+echo "<VPS_HOST> $(awk '{print $1, $2}' /etc/ssh/ssh_host_ed25519_key.pub)"
 ```
 
-Copy the printed line (looks like `138.201.119.239 ssh-ed25519 AAAA…`) and add
+Copy the printed line (looks like `<VPS_HOST> ssh-ed25519 AAAA…`) and add
 it in **GitHub → repo Settings → Secrets and variables → Actions → New
 repository secret**: name `VPS_KNOWN_HOSTS`, value = that line. (Reading the key
 on the VPS itself avoids the man-in-the-middle risk of fetching it over the

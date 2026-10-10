@@ -1,6 +1,6 @@
 # VPS retirement scope — founder decision, 2026-07-28
 
-Host `138.201.119.239`. **Keep TwinAI and Postiz. Retire everything else.**
+Host `<VPS_HOST>`. **Keep TwinAI and Postiz. Retire everything else.**
 
 This is the authoritative target list. It was produced by the read-only
 dependency probe (`stage=stack-dependency`, run 30348365132, **zero blockers**),
