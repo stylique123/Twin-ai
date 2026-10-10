@@ -92,6 +92,13 @@ export function inspect(script, producedVoiceId, run = {}) {
  * at all, still answers the question the heartbeat is asking.
  */
 export const ASSESS_OPTIONS = Object.freeze({ allow_paid_transcript: false })
+// ⚠️ 2026-10-10: WITHOUT A GOAL THE ACCOUNT'S STORED BRIEF DECIDES IT. The test
+// account's brief sells, and it has a product library, so the readiness gate
+// asked "which one is this video about?" (409 READINESS_INCOMPLETE,
+// missing=selected_product) on both variants. That gate is right for a creator;
+// the app always sends a goal. The heartbeat now does too: a non-selling one,
+// so it checks that a script gets written, not which product it is about.
+export const HEARTBEAT_GOAL = 'educate'
 
 // ── THE PAGER'S MEMORY, READ AND WRITTEN ──────────────────────────────────
 //
@@ -588,10 +595,10 @@ async function runVariant(mode) {
     }
   }
   const body = mode === 'reference'
-    ? { reference_url: REFERENCE_URL, transcript_id, ...ASSESS_OPTIONS }
+    ? { reference_url: REFERENCE_URL, transcript_id, goal: HEARTBEAT_GOAL, ...ASSESS_OPTIONS }
     // ⚠️ AUDIT 2026-10-02: the writer reads `reference_note`; `idea` was never a
     // field it accepts, so every idea beat was a 400 "describe your idea".
-    : { reference_note: IDEA_SENTENCE, ...ASSESS_OPTIONS }
+    : { reference_note: IDEA_SENTENCE, goal: HEARTBEAT_GOAL, ...ASSESS_OPTIONS }
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-blueprint`, {
       method: 'POST',
