@@ -97,3 +97,14 @@ both retiring; if either survives, it stays.
   `0.0.0.0` but external TCP did not open from outside the VPS
 - Whisper model identity remains UNPROVEN (`test -d` is a path check, not
   identity) and still gates the Render deploy — unrelated to this cleanup
+
+## Retired (2026-10-12)
+`vps-retire.yml` is retired by owner decision. Its first step now fails before
+any secret is read or the server is contacted, so no stage can run. What it did:
+staged, gated retirement of the old Stylique stack on the worker server
+(manifest and backups, pre-stop and routing audits, Chrome exposure and
+stack-dependency audits, leftover-credential sweep, build-cache reclaim, then
+disable-restart, stop, observe, remove-container, reclaim and an acceptance
+gate). Every mutating stage required the confirm phrase. The file and
+`check_vps_retire_safety.mjs` are kept so the record and the read-only
+collector guard (also used by `vps-diag`) stay in force.
