@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0287_ai_model_prices':
+    'Service-role-only price table (seeded, UNCONFIRMED) and two read views over ai_usage_ledger and generations; applied live by hand 2026-10-10 (owner rule). No staging-only surface.',
   '0286_ai_usage_ledger':
     'New service-role-only table (RLS on, no policies); applied live by hand 2026-10-10 (owner rule). Written by the worker job loop only. No staging-only surface.',
   '0285_brief_pillars_background':

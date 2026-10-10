@@ -14,6 +14,9 @@ export interface ModelUsage { calls: number; input: number; output: number; thin
 export type UsageStore = Record<string, ModelUsage>
 
 const store = new AsyncLocalStorage<UsageStore>()
+// Plan 11.1-1: the same tally keyed by stage (writer, editor, repair, ...).
+const stageOf = new AsyncLocalStorage<string>()
+const byStage = new AsyncLocalStorage<UsageStore>()
 const GEMINI = /^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/models\/([^:/?]+):(generateContent|embedContent)/
 
 /** The model a Gemini URL calls, or null for any other URL. */
@@ -48,7 +51,10 @@ export function installUsageTracking(): void {
     if (!model || !res.ok) return res
     try {
       const body = await res.clone().json()
-      addUsage(into, model, (body as { usageMetadata?: unknown })?.usageMetadata)
+      const meta = (body as { usageMetadata?: unknown })?.usageMetadata
+      addUsage(into, model, meta)
+      const st = byStage.getStore()
+      if (st) addUsage(st, `${stageOf.getStore() ?? 'other'}|${model}`, meta)
     } catch { /* an unreadable body is the caller's to handle */ }
     return res
   }
@@ -56,7 +62,33 @@ export function installUsageTracking(): void {
 
 /** Runs one request with its own usage tally. */
 export function trackUsage<T>(fn: () => Promise<T>): Promise<T> {
-  return store.run({}, fn)
+  return store.run({}, () => byStage.run({}, fn))
+}
+
+/** Runs `fn` with every model call inside it counted under `stage`. */
+export function inStage<T>(stage: string, fn: () => Promise<T>): Promise<T> {
+  return stageOf.run(stage, fn)
+}
+
+/** The current request's tally by stage, or null outside one. */
+export function currentStageUsage(): UsageStore | null {
+  const s = byStage.getStore()
+  return s ? structuredClone(s) : null
+}
+
+/**
+ * Which stage a model call belongs to, read from its system prompt. Inferred,
+ * so `other` is an honest answer; the writer is the call made with the
+ * blueprint schema.
+ */
+export function stageOfCall(system: string, isBlueprint: boolean): string {
+  const s = system.toLowerCase()
+  if (/\beditor\b/.test(s)) return 'editor'
+  if (/\b(judge|score|rate|rating|grade)\b/.test(s)) return 'judge'
+  if (/\b(viewer|audience panel)\b/.test(s)) return 'panel'
+  if (/\b(lengthen|longer|extend)\b/.test(s)) return 'lengthen'
+  if (/\b(rewrite|repair|fix)\b/.test(s)) return 'repair'
+  return isBlueprint ? 'writer' : 'other'
 }
 
 /** The current request's tally, or null outside one. */

@@ -51,6 +51,7 @@ import {
   evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
+import { inStage, currentStageUsage, stageOfCall } from '../_shared/aiUsage.ts'
 import { buildProvenance } from '../_shared/provenance.ts'
 import { dropInventedCauses, isSubjectOnlyTopic, subjectsLine } from '../_shared/inventedCause.ts'
 import { checkSupport } from '../_shared/supportCheck.ts'
@@ -6254,6 +6255,10 @@ function parseRepairRewrites(raw: unknown): Array<{ index?: unknown; line?: unkn
 // nothing said which step spent the time. Every model call now logs how long
 // it took and which prompt it was, so a timeout's last lines name the step.
 async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
+  return inStage(stageOfCall(system, schema === blueprintSchema), () => callModelStaged(apiKey, system, prompt, schema, record))
+}
+
+async function callModelStaged(apiKey: string, system: string, prompt: string, schema: unknown, record?: AttemptRecorder): Promise<string> {
   const t0 = Date.now()
   try {
     return await callModelInner(apiKey, system, prompt, schema, record)
@@ -16214,6 +16219,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           ...(blueprint as Record<string, unknown>),
           ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
           ai_usage: currentUsage(),
+          ai_usage_by_stage: currentStageUsage(),
           knowledge_route: knowledgeRoute ? { row: knowledgeRoute.row, gaps: knowledgeRoute.gaps, slots: knowledgeRoute.slots, available: routeAvail } : null,
         },
         reference_analysis: referenceAnalysis,

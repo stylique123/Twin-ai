@@ -779,6 +779,12 @@ async function reportUsage(admin) {
   const total = sumUsage((gens ?? []).map((g) => g?.blueprint?.ai_usage))
   const line = Object.entries(total).map(([m, r]) => `${m}: ${r.calls} calls, ${r.input} in, ${r.output} out`).join('; ')
   console.log(`::notice title=batch-usage::${ids.length} scripts; ${line}; reviewer reads ${JUDGE_READS}/script; panel ${PANEL_ON ? 'on' : 'off'}; lengthen ${LENGTHEN_ON ? 'on' : 'off'}`)
+  // Plan 11.1-1: estimated cost by stage from the price table (UNCONFIRMED prices).
+  const { data: cost } = await admin.from('ai_cost_by_stage_script').select('stage, est_usd').in('generation_id', ids)
+  const byStage = {}
+  for (const r of cost ?? []) byStage[r.stage] = (byStage[r.stage] ?? 0) + Number(r.est_usd ?? 0)
+  const sum = Object.values(byStage).reduce((a, b) => a + b, 0)
+  console.log(`::notice title=batch-cost::est $${sum.toFixed(3)} total, $${(sum / ids.length).toFixed(4)}/script (UNCONFIRMED prices); ${Object.entries(byStage).map(([k, v]) => `${k} $${v.toFixed(3)}`).join(', ')}`)
 }
 
 async function scoreAfterPanel(admin, ctx) {

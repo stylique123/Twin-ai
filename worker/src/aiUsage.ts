@@ -53,6 +53,12 @@ export async function withUsage<T>(fn: () => Promise<T>): Promise<{ result: T; u
   return { result, usage }
 }
 
+/** Runs `fn` tallying into a store the caller owns, so the tally survives a
+ *  failure or a timeout: the caller writes it whatever the outcome. */
+export function runTallied<T>(usage: UsageStore, fn: () => Promise<T>): Promise<T> {
+  return store.run(usage, fn)
+}
+
 /** 'test' for owners in TEST_OWNER_IDS (comma-separated), else 'real'. */
 export function trafficOf(ownerId: string | null | undefined, list = process.env.TEST_OWNER_IDS ?? ''): 'test' | 'real' {
   return ownerId && list.split(',').map((s) => s.trim()).includes(ownerId) ? 'test' : 'real'
