@@ -25,6 +25,10 @@ import { CAPTION_SHAPE_VERSION as CAPTION_SHAPE_VERSION_N } from './generated/ca
 import { kickBrainSweep } from './nicheBrain/sweep.js'
 import { kickAudienceTests } from './nicheBrain/audience.js'
 import { createIdleBackoff } from './idleBackoff.js'
+import { installUsageTracking, withUsage, ledgerRows } from './aiUsage.js'
+
+// Plan 11.1-2: tally every Gemini call per job into ai_usage_ledger.
+installUsageTracking()
 
 // Idle claim polls back off from pollMs to this ceiling. Must stay well under
 // the Docker HEALTHCHECK (90s on /tmp/worker-alive) and check_worker_liveness
@@ -255,7 +259,12 @@ async function tick(): Promise<boolean> {
   })
   const endScope = beginJobScope(deadline.signal)
   try {
-    const result = await Promise.race([handler(job), guard])
+    const tracked = withUsage(() => handler(job)).then(({ result, usage }) => {
+      const rows = ledgerRows(job as { id: string; type: string; owner_id?: string | null }, usage)
+      if (rows.length) void db.from('ai_usage_ledger').insert(rows).then(() => {}, () => {})
+      return result
+    })
+    const result = await Promise.race([tracked, guard])
     await completeJob(job.id, result, job.attempts)
     log('info', 'done', { job: job.id, type: job.type })
   } catch (err) {
