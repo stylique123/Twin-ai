@@ -70,6 +70,15 @@ jobs:
     runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     timeout-minutes: 30
     steps:
+      # ⚖️ RETIRED 2026-10-12 (owner decision). The Stylique stack retirement is
+      # finished and this is the one workflow that needed root on the server.
+      # It now stops here, before any secret is read or any host is contacted.
+      # The file stays so its record and its safety guard stay; see
+      # docs/vps-retirement-scope.md ("Retired").
+      - name: Retired — this workflow no longer runs
+        run: |
+          echo "::error::vps-retire was retired on 2026-10-12. Nothing was run on the server."
+          exit 1
       - name: Server address and login come from repo secrets
         run: |
           if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ]; then
