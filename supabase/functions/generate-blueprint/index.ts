@@ -9807,8 +9807,13 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         const kr = kindReadiness((ownedEntity as { type?: unknown } | null)?.type, facts.map((f) => itemFromProductFact(f, oe?.id ? String(oe.id) : null)))
         console.log(JSON.stringify({ event: 'feature_fired', feature: 'kind_readiness', kind: kr.kind, missing: kr.missing, ready: kr.ready }))
         // Plan 1.5 in the Need Check format (brief Part 2): one record per
-        // request, statuses and ids only. Pillars and niche findings are not
-        // stored yet, so those layers read 'unknown' / 'none' until they are.
+        // request, statuses and ids only. Niche findings are not passed in
+        // yet, so that layer reads 'none' until they are.
+        // Her pillars from onboarding (brief `contentPillars`); a pillar fits when
+        // one of its words appears in this request's idea.
+        const ncBrief = brief as Record<string, unknown>
+        const ncPillars = (Array.isArray(ncBrief.contentPillars) ? ncBrief.contentPillars as unknown[] : []).map(String).filter(Boolean)
+        const ncIdea = String(brief.idea ?? '').toLowerCase()
         const stories = speakable.filter((k) => ['experience', 'example'].includes(String((k as { kind?: unknown }).kind ?? '')))
         const nc = needCheck({
           voiceCard: !!vp,
@@ -9817,8 +9822,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           kind: (ownedEntity as { type?: unknown } | null)?.type,
           productItems: facts.map((f) => itemFromProductFact(f, oe?.id ? String(oe.id) : null)),
           nicheFindings: 0,
-          pillars: [],
-          pillarMatched: false,
+          pillars: ncPillars,
+          pillarMatched: ncPillars.some((pl) => pl.toLowerCase().split(/\W+/).filter((w) => w.length > 3).some((w) => ncIdea.includes(w))),
           urgencyFact: facts.some((f) => f?.field === 'urgency' && f?.trust !== 'unconfirmed'),
         })
         console.log(JSON.stringify({ event: 'feature_fired', feature: 'need_check', layers: nc.layers, decision: nc.decision, ask: nc.ask }))
