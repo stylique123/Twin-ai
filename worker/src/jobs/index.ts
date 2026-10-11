@@ -12,6 +12,7 @@ import { handleExtractionParity } from './extractionParity.js'
 import { extractionReplication } from './extractionReplication.js'
 import { handleSampleOwnAccount } from './sampleOwnAccount.js'
 import { handleRemineKnowledge } from './remineKnowledge.js'
+import { handleInventionRecheck } from './inventionRecheck.js'
 
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
@@ -56,4 +57,8 @@ export const handlers: Record<string, JobHandler> = {
   // Deletes the BYTES behind a removed media_asset. Enqueued by a database
   // trigger, not by application code, so every route to deletion is covered.
   purge_media: handlePurgeMedia,
+  // Re-runs the zero-invention gate on a saved trial script whose edge gate
+  // timed out or threw (owner rule 13 Oct: never ship an unchecked script
+  // silently). Enqueued by generate-blueprint right after the save.
+  invention_recheck: handleInventionRecheck,
 }

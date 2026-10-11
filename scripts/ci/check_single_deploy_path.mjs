@@ -136,6 +136,10 @@ const ALLOWED_REGISTRY = [
   // the queue — without this line every sweep would leave a job sitting `queued`
   // forever while the enqueue reported success.
   'remine_knowledge',
+  // invention_recheck re-runs the zero-invention gate on a saved trial script
+  // whose edge gate timed out or threw. Text in, model call, row out — no media.
+  // Missing here, every unchecked script would sit 'unchecked' forever.
+  'invention_recheck',
 ]
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.

@@ -698,6 +698,19 @@ export function planRepairs(p: PlanInput): RepairStep[] {
 }
 
 /** The constrained rewrite prompt for `replace`: only the listed items may be used. */
+/** The rewrite call's response shape (the edge's REPAIR_SCHEMA, same fields). */
+export const REWRITE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    rewrites: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { index: { type: 'STRING' }, line: { type: 'STRING' } }, required: ['index', 'line'] },
+    },
+  },
+  required: ['rewrites'],
+} as const
+/** The worker re-check's budget (owner rule 13 Oct): no edge wall clock to fit inside. */
+export const INVENTION_RECHECK_TIMEOUT_MS = 120_000
 export const REWRITE_SYSTEM = 'You rewrite single lines of a short video script so that every claim comes ONLY from the listed items. You never add a number, name, event, quote, customer, result or scarcity that the items do not state. You return JSON only.'
 export function buildRewritePrompt(targets: ReadonlyArray<{ i: number; text: string; items: readonly LedgerItem[] }>): string {
   const blocks = targets.map((t) => `${t.i}. LINE: ${t.text}\n   ITEMS:\n${t.items.map((it) => `   - [${it.id}] ${it.text.slice(0, 300)}`).join('\n')}`)
@@ -784,8 +797,10 @@ export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence
 
 // ── THE RECORD ─────────────────────────────────────────────────────────────
 
-/** 'timeout' = the gate ran out of time and fell back to measure-only for this request. */
-export type GateOutcome = 'final' | 'needs_answers' | 'general' | 'measure_only' | 'timeout'
+/** 'timeout' = the gate ran out of time and fell back to measure-only for this request.
+ *  'unchecked' = the shipped record when the gate timed out or failed: the script
+ *  went out as written and a durable re-check (worker `invention_recheck`) owns it. */
+export type GateOutcome = 'final' | 'needs_answers' | 'general' | 'measure_only' | 'timeout' | 'unchecked'
 
 export interface GateRecordSentence { i: number; surface: Surface; class: GateClass; claim_types: ClaimType[]; item_ids: string[]; reason: GateReason }
 
@@ -803,7 +818,55 @@ export interface InventionGateRecord {
   timed_out: boolean
   judge_malformed?: number
   error?: string
+  /** Only on outcome 'unchecked': why the gate did not finish. */
+  reason?: UncheckedReason
 }
+
+// ── CHECK STATUS (owner rule 13 Oct: a timeout never ships an unchecked script silently) ──
+
+/** What the saved blueprint says about the gate, in one field the UI and the re-check read. */
+export type CheckStatus = 'checked' | 'needs_answers' | 'general' | 'unchecked'
+export type UncheckedReason = 'timeout' | 'error'
+
+/** Map a gate record to the blueprint's check status. A timeout, or a
+ *  measure-only record from a full run (the judge or rewrite threw), means the
+ *  script was NOT checked; the reason says which. */
+export function checkStatusFor(record: Pick<InventionGateRecord, 'outcome' | 'timed_out'> | null | undefined): { status: CheckStatus; reason: UncheckedReason | null } {
+  if (!record) return { status: 'unchecked', reason: 'error' }
+  switch (record.outcome) {
+    case 'final': return { status: 'checked', reason: null }
+    case 'needs_answers': return { status: 'needs_answers', reason: null }
+    case 'general': return { status: 'general', reason: null }
+    case 'timeout': return { status: 'unchecked', reason: 'timeout' }
+    case 'unchecked': return { status: 'unchecked', reason: record.timed_out ? 'timeout' : 'error' }
+    default: return { status: 'unchecked', reason: record.timed_out ? 'timeout' : 'error' }
+  }
+}
+
+/** The record stored when the gate did not finish: outcome 'unchecked' plus the
+ *  reason, keeping whatever the first classification measured. */
+export function uncheckedRecord(prev: InventionGateRecord | null | undefined, reason: UncheckedReason, ms: number, model: string | null = null): InventionGateRecord {
+  const empty: ClassCounts = { S: 0, E: 0, I: 0, N: 0 }
+  return {
+    version: INVENTION_GATE_VERSION,
+    model: prev?.model ?? model,
+    sentences: prev?.sentences ?? [],
+    before: prev?.before ?? { ...empty },
+    after: prev?.after ?? prev?.before ?? { ...empty },
+    repaired: prev?.repaired ?? { replaced: 0, asked: 0, dropped: 0 },
+    rounds: prev?.rounds ?? 0,
+    outcome: 'unchecked',
+    e_flags: prev?.e_flags ?? [],
+    ms,
+    timed_out: reason === 'timeout',
+    ...(prev?.judge_malformed !== undefined ? { judge_malformed: prev.judge_malformed } : {}),
+    ...(prev?.error ? { error: prev.error } : {}),
+    reason,
+  }
+}
+
+/** Fields a gate run may rewrite on the blueprint (the shot list is re-synced after). */
+export const GATE_REWRITTEN_KEYS = ['script', 'hook_options', 'captions', 'packaging', 'publish_plan'] as const
 
 export function recordSentences(cs: readonly ClassifiedSentence[]): GateRecordSentence[] {
   return cs.map((s) => ({ i: s.i, surface: s.surface, class: s.class, claim_types: s.claim_types, item_ids: s.item_ids, reason: s.reason }))

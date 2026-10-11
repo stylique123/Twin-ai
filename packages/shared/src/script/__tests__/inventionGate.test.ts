@@ -442,7 +442,7 @@ describe('wiring: the edge calls the gate on the final script under trialOn', ()
     expect(block).toMatch(/if \(trialOn\b/)
     const after = EDGE.slice(gate, gate + 4000)
     expect(after).toContain('invention_gate')
-    expect(after).toContain('syncShotListSpokenText(')
+    expect(after).toContain('resyncShotListToScript(')
     expect(after).toContain('gate_questions')
   })
   it('the shadow support check and dropInventedEvents still run', () => {

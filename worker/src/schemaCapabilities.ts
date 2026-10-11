@@ -141,6 +141,7 @@ export const NO_DEDICATED_SCHEMA: Readonly<Record<string, string>> = {
   validate_clip: 'Measures a screen capture and writes to media_assets, shared with the app.',
   purge_media: 'Deletes storage bytes for an already-removed media_asset; it needs no table of its own.',
   extract_product: 'Writes to the product-entity tables shared with the Product Library UI, which the app would fail on first.',
+  invention_recheck: 'Reads and rewrites generations.blueprint (a jsonb column the edge already writes) and reads creator_knowledge_uses, creator_knowledge and product_entities, all shared with the app; no table of its own.',
 }
 
 export type SchemaStatus = 'healthy' | 'degraded'
