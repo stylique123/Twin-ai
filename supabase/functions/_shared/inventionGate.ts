@@ -658,6 +658,28 @@ export interface PlanInput {
   /** Last round: no more replace (a rewrite could not be re-checked). */
   finalRound?: boolean
   asksSoFar?: number
+  /** Slots (`writes_to`) she already answered with a skip: never asked again. */
+  declined?: ReadonlySet<string>
+}
+
+/** The skip the app sends for a question she declines (mirror of the edge's `isNonAnswer`). */
+export const SKIP_ANSWER = 'Nothing specific, keep it general'
+
+/** "Nothing specific", "keep it general", "idk", "skip": answered, but nothing to say.
+ *  Mirror of `isNonAnswer` in supabase/functions/generate-blueprint/index.ts. */
+export function isNonAnswerText(v: unknown): boolean {
+  const t = String(v ?? '').trim().toLowerCase().replace(/[.!\s]+$/, '')
+  if (!t) return true
+  if (t.split(/\s+/).length > 12) return false
+  return /^(nothing( specific| really| much)?|none|no|n\/a|na|idk|i don'?t know|not sure|skip|keep it general|nothing specific,? keep it general|no idea|not really)\b/.test(t)
+    || /\bkeep it general\b/.test(t)
+}
+
+/** Slots she skipped, read from her answers in the ledger (`answer:<writes_to>`). */
+export function declinedSlots(ledger: readonly LedgerItem[]): Set<string> {
+  const out = new Set<string>()
+  for (const it of ledger) if (it.origin === 'her_answer' && it.id.startsWith('answer:') && it.field && isNonAnswerText(it.text)) out.add(it.field)
+  return out
 }
 
 /** For each I (cheapest safe fix first): replace → ask → drop → fallback (design A5). */
@@ -678,11 +700,15 @@ export function planRepairs(p: PlanInput): RepairStep[] {
     const fillsSlot = SLOT_SECTION.test(sent?.section ?? '') || sent?.at === 0
       || s.claim_types.some((x) => x === 'event' || x === 'audience' || x === 'customer' || x === 'result')
     const kind = askKindOf(s)
+    // ⚖️ SKIP ALWAYS WORKS: a slot she declined is never asked again. Its
+    // sentence is dropped, or (at the beat floor) becomes the general version.
+    const slotKey = `script.beat.${sent?.at ?? 0}:${kind}`
+    const skipped = p.declined?.has(slotKey) ?? false
     const ask = (): RepairStep => {
       asks++
       return { i: s.i, action: 'ask', item_ids: [], question: { scope: 'script', kind, text: ASK_TEXT[kind], writes_to: `script.beat.${sent?.at ?? 0}:${kind}` } }
     }
-    if (fillsSlot && asks < MAX_ASKS) { steps.push(ask()); continue }
+    if (fillsSlot && !skipped && asks < MAX_ASKS) { steps.push(ask()); continue }
     const dropped = (dropsPerBeat.get(s.at) ?? 0) + 1
     const emptiesBeat = dropped >= (sentencesPerBeat.get(s.at) ?? 1)
     if (!emptiesBeat || beats - 1 >= SPOKEN_FLOOR) {
@@ -691,7 +717,7 @@ export function planRepairs(p: PlanInput): RepairStep[] {
       steps.push({ i: s.i, action: 'drop', item_ids: [] })
       continue
     }
-    if (asks < MAX_ASKS) { steps.push(ask()); continue }
+    if (!skipped && asks < MAX_ASKS) { steps.push(ask()); continue }
     steps.push({ i: s.i, action: 'fallback', item_ids: [], question: { scope: 'script', kind, text: ASK_TEXT[kind], writes_to: `script.beat.${sent?.at ?? 0}:${kind}` } })
   }
   return steps
@@ -1012,6 +1038,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     const repaired = { replaced: 0, asked: 0, dropped: 0 }
     let fallback = 0
     const questions: GateQuestion[] = []
+    const declined = declinedSlots(input.ledger)
     const apply = (steps: RepairStep[], rewrites?: Map<number, string>) => {
       const a = applyRepairs(bp, cur.sentences, steps, rewrites)
       bp = a.bp
@@ -1025,7 +1052,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       const over = overBudgetE(cur.classified, spokenWords(bp))
       if (!cur.classified.some((s) => s.class === 'I') && !over.length) break
       rounds++
-      const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: over, spokenBeats: spokenBeats(bp), asksSoFar: questions.length })
+      const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: over, spokenBeats: spokenBeats(bp), asksSoFar: questions.length, declined })
       const replaceSteps = steps.filter((s) => s.action === 'replace')
       if (!replaceSteps.length) {
         // Nothing new written: no re-judge needed.
@@ -1045,7 +1072,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     const overLast = overBudgetE(cur.classified, spokenWords(bp))
     if (cur.classified.some((s) => s.class === 'I') || overLast.length) {
       const prev = cur
-      const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: overLast, spokenBeats: spokenBeats(bp), finalRound: true, asksSoFar: questions.length })
+      const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: overLast, spokenBeats: spokenBeats(bp), finalRound: true, asksSoFar: questions.length, declined })
       apply(steps)
       const sentences = extractSentences(bp)
       cur = { sentences, classified: carryClasses(prev, sentences) }
@@ -1060,7 +1087,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       ms: now() - t0,
       judge_malformed: malformed,
     }
-    return { blueprint: bp, record, questions }
+    // A declined slot that fell back to the general version is not offered again.
+    return { blueprint: bp, record, questions: questions.filter((q) => !declined.has(q.writes_to)) }
   } catch (e) {
     const timedOut = e instanceof GateTimeout
     const counts = first ? countClasses(first.classified) : { ...empty }
