@@ -9165,6 +9165,11 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // reached a line (measurement only; never a claim's backing).
     const boardMaterial: LineSourceInput[] = []
     let brainNoteIds: string[] = []
+    // W12.1 (owner 13 Oct): why research, Reddit and moments read 0 on every
+    // run. Each read's failure is recorded (message only, never data) and the
+    // lookup inputs are logged as shape, never value.
+    const readErr: Record<string, string> = {}
+    const noteErr = (k: string) => (e: unknown) => { readErr[k] = String((e as Error)?.message ?? e).slice(0, 160) }
     {
       const ctrl = new AbortController()
       const brainTimer = setTimeout(() => ctrl.abort(), 2500)
@@ -9203,14 +9208,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           }
         }
         return rankBrainNotesForGoal(inHerLane(rows, nicheBucketInline(niche), String(subNiche ?? ''), String(niche ?? '')), videoGoal)
-      })().catch(() => [] as BrainNoteInline[])
+      })().catch((e) => { noteErr('notes')(e); return [] as BrainNoteInline[] })
       const trendsP = (async (): Promise<BrainTrendInline[]> => {
         const bucket = nicheBucketInline(niche)
         if (bucket === null) return []
         const { data } = await admin.rpc('brain_trends', { p_bucket: bucket, p_sub_niche: subNiche || null })
           .abortSignal(ctrl.signal)
         return Array.isArray(data) ? data as BrainTrendInline[] : []
-      })().catch(() => [] as BrainTrendInline[])
+      })().catch((e) => { noteErr('trends')(e); return [] as BrainTrendInline[] })
       const recordP = (async (): Promise<TrackRecordInline | null> => {
         const [rec, edits, feedback, lessons] = await Promise.all([
           admin.rpc('creator_track_record', { p_owner: ownerId, p_voice: voice?.id ?? null }).abortSignal(ctrl.signal),
@@ -9236,21 +9241,21 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           .abortSignal(ctrl.signal)
         const row = Array.isArray(data) ? data[0] : null
         return row && Array.isArray(row.moments) ? row.moments as MomentInline[] : []
-      })().catch(() => [] as MomentInline[])
+      })().catch((e) => { noteErr('moments')(e); return [] as MomentInline[] })
       const researchP = (async (): Promise<NicheResearchItemInline[]> => {
         const key = String(subNiche || niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
         if (!key) return []
         const { data } = await admin.from('niche_research').select('items').eq('niche_key', key).maybeSingle()
           .abortSignal(ctrl.signal)
         return Array.isArray((data as { items?: unknown } | null)?.items) ? (data as { items: NicheResearchItemInline[] }).items : []
-      })().catch(() => [] as NicheResearchItemInline[])
+      })().catch((e) => { noteErr('research')(e); return [] as NicheResearchItemInline[] })
       const redditP = (async (): Promise<NicheRedditItemInline[]> => {
         const key = String(subNiche || niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
         if (!key) return []
         const { data } = await admin.from('niche_reddit').select('items').eq('niche_key', key).maybeSingle()
           .abortSignal(ctrl.signal)
         return Array.isArray((data as { items?: unknown } | null)?.items) ? (data as { items: NicheRedditItemInline[] }).items : []
-      })().catch(() => [] as NicheRedditItemInline[])
+      })().catch((e) => { noteErr('reddit')(e); return [] as NicheRedditItemInline[] })
       try {
         const [notes, trends, record, moments, research, reddit] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP, redditP])
         brainNotesUsed = notes.length
@@ -9278,6 +9283,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         console.log(JSON.stringify({
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
           record: record !== null, moments: moments.length, research: research.length, reddit: reddit.length, rendered: brainBlock !== '',
+          bucket: nicheBucketInline(niche), niche_len: String(niche ?? '').length, sub_niche_len: String(subNiche ?? '').length,
+          key_len: String(subNiche || niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80).length,
+          aborted: ctrl.signal.aborted, errors: readErr,
         }))
       } catch {
         brainBlock = ''
