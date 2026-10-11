@@ -78,7 +78,7 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
-import { buildLedger as buildInventionLedger, runInventionGate, INVENTION_GATE_TIMEOUT_MS, JUDGE_SYSTEM as INVENTION_JUDGE_SYSTEM, JUDGE_SCHEMA as INVENTION_JUDGE_SCHEMA, REWRITE_SYSTEM as INVENTION_REWRITE_SYSTEM, checkStatusFor as inventionCheckStatus, uncheckedRecord as inventionUncheckedRecord, GATE_REWRITTEN_KEYS, type GateBlueprint, type UncheckedReason } from '../_shared/inventionGate.ts'
+import { buildLedger as buildInventionLedger, runInventionGate, INVENTION_GATE_TIMEOUT_MS, JUDGE_SYSTEM as INVENTION_JUDGE_SYSTEM, JUDGE_SCHEMA as INVENTION_JUDGE_SCHEMA, REWRITE_SYSTEM as INVENTION_REWRITE_SYSTEM, checkStatusFor as inventionCheckStatus, uncheckedRecord as inventionUncheckedRecord, GATE_REWRITTEN_KEYS, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type GateBlueprint, type UncheckedReason } from '../_shared/inventionGate.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
@@ -272,11 +272,11 @@ function followerBandInline(followers: unknown): string | null {
  *  counters looking like a store nothing has ever been supplied from, which is
  *  indistinguishable from this feature being off. */
 async function recordKnowledgeSpend(admin: {
-  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ error: { message?: string } | null }>
+  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data?: unknown; error: { message?: string } | null }>
 }, input: { generationId: string; ownerId: string; voiceId: string | null; ids: readonly string[] }): Promise<void> {
   if (!input.ids.length) return
   try {
-    const { error } = await admin.rpc('record_knowledge_use', {
+    const { data, error } = await admin.rpc('record_knowledge_use', {
       p_owner: input.ownerId,
       p_generation: input.generationId,
       p_voice: input.voiceId,
@@ -289,6 +289,15 @@ async function recordKnowledgeSpend(admin: {
         items: input.ids.length,
         detail: 'migration 0215 may not be applied; the same items will lead the next script',
         error: String(error.message ?? ''),
+      }))
+    } else if (typeof data === 'number' && data < new Set(input.ids).size) {
+      // ⚠️ FEWER ROWS THAN ITEMS SHOWN: an id the RPC refused (not this
+      // owner's, or a row deleted since the read). The writer still saw it.
+      console.warn(JSON.stringify({
+        event: 'knowledge_spend_short',
+        generation_id: input.generationId,
+        items: new Set(input.ids).size,
+        recorded: data,
       }))
     }
   } catch (err) {
@@ -16271,6 +16280,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           outside: gateOutside,
           now: Date.now(),
         })
+        // ⚖️ WHAT THE GATE CHECKED AGAINST, KEPT (owner, 13 Oct). Ids, origins
+        // and scope only, never text: enough to say later which items a
+        // verdict could have leaned on.
+        ;(blueprint as Record<string, unknown>).gate_ledger = compactInventionLedger(gateLedger)
         const gate = await runInventionGate({
           blueprint: blueprint as GateBlueprint,
           ledger: gateLedger,
@@ -16308,6 +16321,23 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         bpg.check_status = 'unchecked'
         inventionRecheck = { reason: 'error', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget } }
       }
+    }
+    // ⚖️ WHAT THE WRITER WAS SHOWN, ON EVERY GENERATION (owner, 13 Oct).
+    // creator_knowledge_uses records her stored items (and records nothing when
+    // the purpose/ask filters left none, which was 17 of 30 recent scripts);
+    // her product's facts, her answers and her note have no table, so this is
+    // their record. Ids only.
+    if (blueprint && typeof blueprint === 'object') {
+      try {
+        const supply = buildWriterSupply({
+          knowledge: provenanceSupply,
+          product: ownedEntity as { id?: unknown; knowledge?: unknown } | null,
+          answers,
+          note: reference_note,
+        })
+        ;(blueprint as Record<string, unknown>).writer_supply = supply
+        console.log(JSON.stringify({ event: 'writer_supply_recorded', knowledge: supply.knowledge_ids.length, product_facts: supply.product_fact_ids.length, answers: supply.answer_keys.length, note: supply.note }))
+      } catch { /* bookkeeping never fails a generation */ }
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
     ;(blueprint as Record<string, unknown>).beat_trace = beatTrace
@@ -16494,6 +16524,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // allowlist, documented as never throwing. Skipping it to save a script
         // would trade a lost generation for a spoken link nobody vouched for.
         const { blueprint: rescuedBp, removals } = sanitizeBlueprintLinks(rescue.bp, rescue.allow)
+        // The rescued script was written from the same supply: record it the same way.
+        if (rescuedBp && typeof rescuedBp === 'object' && !(rescuedBp as Record<string, unknown>).writer_supply) {
+          try {
+            ;(rescuedBp as Record<string, unknown>).writer_supply = buildWriterSupply({ knowledge: provenanceSupply, product: ownedEntity as { id?: unknown; knowledge?: unknown } | null, answers, note: reference_note })
+          } catch { /* bookkeeping never fails a generation */ }
+        }
         const { data: saved, error: rescueInsErr } = await admin
           .from('generations')
           .insert({

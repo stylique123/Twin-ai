@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import {
   buildLedger, parseNumbers, extractSentences, ruleRead, classifySentences, parseJudge, buildJudgePrompt,
   planRepairs, applyRepairs, runInventionGate, summarizeGateRecords, eBudget, overBudgetE, subjectProduct,
+  compactLedger, writerSupply,
   INVENTION_JUDGE_TASKS, INVENTION_GATE_TIMEOUT_MS, MAX_ASKS,
   type GateBlueprint, type GateSentence, type LedgerItem, type GateClass, type ClassifiedSentence,
 } from '../inventionGate.js'
@@ -448,5 +449,39 @@ describe('wiring: the edge calls the gate on the final script under trialOn', ()
   it('the shadow support check and dropInventedEvents still run', () => {
     expect(EDGE).toContain('checkSupport({')
     expect(EDGE).toContain('dropInventedEvents(bp.script')
+  })
+})
+
+describe('what the writer was given is recorded', () => {
+  it('gate_ledger keeps ids, origins and scope, never text', () => {
+    const c = compactLedger(mayaLedger())
+    expect(c.length).toBeGreaterThan(0)
+    for (const it of c) expect(Object.keys(it).sort()).toEqual(['field', 'first_party', 'id', 'live', 'origin', 'product_id'])
+    expect(JSON.stringify(c)).not.toContain('popcorn')
+    expect(c.find((x) => x.id === 'f-size')).toMatchObject({ origin: 'product_fact', product_id: HARBOR, field: 'size' })
+    expect(c.find((x) => x.id === 'k-garage')).toMatchObject({ origin: 'her_story', product_id: null })
+  })
+  it('writer_supply: knowledge ids, the product and its fact ids, answer keys, note; ids only', () => {
+    const w = writerSupply({
+      knowledge: [{ id: 'k-roast' }, { id: 'k-roast' }, { id: '' }, null],
+      product: { id: HARBOR, knowledge: [{ id: 'f-size', field: 'size', value: 'two-pound bag' }, { id: 'f-price', field: 'price', value: '$18' }] },
+      answers: { offer: 'Harbor Blend, link in bio', story: '' },
+      note: 'a video about roasting',
+    })
+    expect(w).toEqual({ knowledge_ids: ['k-roast'], product_id: HARBOR, product_fact_ids: ['f-size', 'f-price'], answer_keys: ['offer'], note: true })
+    expect(JSON.stringify(w)).not.toContain('two-pound')
+  })
+  it('writer_supply with nothing shown is an explicit empty record', () => {
+    expect(writerSupply({})).toEqual({ knowledge_ids: [], product_id: null, product_fact_ids: [], answer_keys: [], note: false })
+  })
+  it('the edge stores gate_ledger in the gate block and writer_supply on both save paths', () => {
+    const edge = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../../../supabase/functions/generate-blueprint/index.ts'), 'utf8')
+    const gateAt = edge.indexOf("if (trialOn && blueprint && typeof blueprint === 'object') {")
+    const ledgerAt = edge.indexOf('.gate_ledger = compactInventionLedger(gateLedger)')
+    expect(gateAt).toBeGreaterThan(0)
+    expect(ledgerAt).toBeGreaterThan(gateAt)
+    expect(edge.indexOf('const gate = await runInventionGate(')).toBeGreaterThan(ledgerAt)
+    expect(edge.match(/writer_supply = (?:supply|buildWriterSupply\()/g)?.length).toBe(2)
+    expect(edge).toContain("event: 'writer_supply_recorded'")
   })
 })
