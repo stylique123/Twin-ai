@@ -15,6 +15,14 @@ export function geminiModelOf(url: string): string | null {
   return GEMINI.exec(url)?.[1] ?? null
 }
 
+// Plan 11.1 (owner 13 Oct): the scraping vendor's runs are counted too, as
+// model `apify:<actor>` with calls only (no tokens). Apify bills per run whatever
+// the outcome, so every attempt counts. Its dollar cost is not in the response.
+const APIFY = /^https:\/\/api\.apify\.com\/v2\/acts\/([^/?]+)\//
+export function apifyActorOf(url: string): string | null {
+  return APIFY.exec(url)?.[1] ?? null
+}
+
 export function addUsage(into: UsageStore, model: string, meta: unknown): void {
   const m = (meta ?? {}) as Record<string, unknown>
   const n = (k: string) => (typeof m[k] === 'number' ? (m[k] as number) : 0)
@@ -36,6 +44,8 @@ export function installUsageTracking(): void {
     const into = store.getStore()
     if (!into) return res
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+    const actor = apifyActorOf(url)
+    if (actor) { addUsage(into, `apify:${actor}`, null); return res }
     const model = geminiModelOf(url)
     if (!model || !res.ok) return res
     try {
@@ -71,4 +81,21 @@ export function ledgerRows(job: { id: string; type: string; owner_id?: string | 
     calls: u.calls, input_tokens: u.input, output_tokens: u.output, thinking_tokens: u.thinking, cached_tokens: u.cached,
     traffic: trafficOf(job.owner_id),
   }))
+}
+
+/** The ledger rows for one background sweep step (no job row): stage `sweep:<name>`. */
+export function sweepLedgerRows(name: string, usage: UsageStore) {
+  return ledgerRows({ id: '', type: `sweep:${name}`, owner_id: null }, usage).map((r) => ({ ...r, job_id: null }))
+}
+
+/** Runs one sweep step in its own tally (never the enclosing job's) and hands
+ *  the rows to `write`, whatever the outcome. */
+export async function runSweepTallied(name: string, fn: () => Promise<void>, write: (rows: ReturnType<typeof sweepLedgerRows>) => void): Promise<void> {
+  const usage: UsageStore = {}
+  try {
+    await store.run(usage, fn)
+  } finally {
+    const rows = sweepLedgerRows(name, usage)
+    if (rows.length) write(rows)
+  }
 }

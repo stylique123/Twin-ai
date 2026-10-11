@@ -29,3 +29,26 @@ describe('a failed job still records its usage (plan 11.1-2)', () => {
     expect(ledgerRows({ id: 'j', type: 't', owner_id: null }, usage)[0]).toMatchObject({ model: 'm1', input_tokens: 7 })
   })
 })
+
+describe('background sweeps and the scraping vendor reach the ledger (owner 13 Oct)', () => {
+  it('reads the actor from an Apify run URL and nothing else', async () => {
+    const { apifyActorOf } = await import('../aiUsage.js')
+    expect(apifyActorOf('https://api.apify.com/v2/acts/someone~actor/run-sync-get-dataset-items?token=x')).toBe('someone~actor')
+    expect(apifyActorOf('https://example.com/v2/acts/a/run')).toBeNull()
+  })
+  it('writes sweep rows with no job and the sweep stage, even when the step throws', async () => {
+    const { runSweepTallied } = await import('../aiUsage.js')
+    let written: Array<Record<string, unknown>> = []
+    await expect(runSweepTallied('niche_reddit', async () => { throw new Error('x') }, (r) => { written = r })).rejects.toThrow('x')
+    expect(written).toEqual([])
+    const { addUsage } = await import('../aiUsage.js')
+    await runSweepTallied('moments', async () => {
+      const { AsyncLocalStorage } = await import('node:async_hooks')
+      void AsyncLocalStorage
+    }, (r) => { written = r })
+    const u: UsageStore = {}
+    addUsage(u, 'apify:a', null)
+    const { sweepLedgerRows } = await import('../aiUsage.js')
+    expect(sweepLedgerRows('moments', u)[0]).toMatchObject({ job_id: null, stage: 'sweep:moments', model: 'apify:a', calls: 1, input_tokens: 0, traffic: 'real' })
+  })
+})

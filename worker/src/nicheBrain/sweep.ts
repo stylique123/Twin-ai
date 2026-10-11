@@ -22,6 +22,7 @@ import { runAvailabilitySweep } from './availabilitySweep.js'
 import { runShapeSweep } from './shapeSweep.js'
 import { MAX_SOURCES, embedText, notesFromRead, place, relationFor, type NoteDraft } from './librarian.js'
 import { createEmptyProbeGate } from '../idleBackoff.js'
+import { runSweepTallied } from '../aiUsage.js'
 
 // A caught-up corpus answers `brain_unread` with nothing, and that answer was
 // the most expensive query on the database (it walks every read card to prove
@@ -147,18 +148,22 @@ export function kickBrainSweep(log: Log): void {
   if (inFlight || now - last < BRAIN_SWEEP_INTERVAL_MS) return
   last = now
   inFlight = true
+  // Plan 11.1 (owner 13 Oct): each step's Gemini and Apify calls go to the
+  // usage ledger as stage `sweep:<name>`, in its own tally.
+  const write = (rows: unknown[]) => { void db.from('ai_usage_ledger').insert(rows).then(() => {}, () => {}) }
+  const step = (name: string, fn: (l: Log) => Promise<void>) => runSweepTallied(name, () => fn(log), write)
   void (async () => {
-    await runBrainSweep(log)
-    await runOwnPostSweep(log)
-    await runLearner(log)
-    await runLessonLearner(log)
-    await runCorrectionApplier(log)
-    await runMomentWatcher(log)
-    await runNicheResearch(log)
-    await runNicheReddit(log)
-    await runIdeaWriter(log)
-    await runAvailabilitySweep(log)
-    await runShapeSweep(log)
+    await step('corpus_read', runBrainSweep)
+    await step('own_posts', runOwnPostSweep)
+    await step('learner', runLearner)
+    await step('lessons', runLessonLearner)
+    await step('corrections', runCorrectionApplier)
+    await step('moments', runMomentWatcher)
+    await step('niche_research', runNicheResearch)
+    await step('niche_reddit', runNicheReddit)
+    await step('ideas', runIdeaWriter)
+    await step('availability', runAvailabilitySweep)
+    await step('shape', runShapeSweep)
   })().catch((err) => {
     log('error', 'brain_sweep_threw', { error: err instanceof Error ? err.message : String(err) })
   }).finally(() => { inFlight = false })
