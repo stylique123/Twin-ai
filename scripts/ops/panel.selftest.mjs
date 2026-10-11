@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { panelScenarios, skipAnswers, PANEL_SKIP_ANSWER } from './panelRun.mjs'
-import { productKnowledge, resolveExpiry, panelEmail } from './seedFictionalPanel.mjs'
+import { productKnowledge, resolveExpiry, panelEmail, panelDomain, reusePlan, PANEL_CREDITS, PANEL_DOMAIN, LEGACY_PANEL_DOMAIN, PANEL_TAG } from './seedFictionalPanel.mjs'
 import { ledgerWithText, assertOutsideRepo, csvCell } from './exportPanel.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
@@ -30,7 +30,32 @@ assert.ok(Date.parse(resolveExpiry(urg[0].expires_at, now)) > now, 'urgency stay
 const pk = productKnowledge('glow-lab', glow.products[0], now)
 assert.ok(pk.every((f) => f.id.startsWith('panel:glow-lab:calm-cream:') && f.trust === 'usable'))
 assert.ok(pk.find((f) => f.field === 'urgency').expires_at)
-assert.equal(panelEmail('flowdesk'), 'twin-panel+flowdesk@example.com')
+assert.equal(panelEmail('flowdesk'), 'twin-panel+flowdesk@panel.invalid')
+
+// Owner conditions: non-deliverable domain only, zero credits.
+assert.equal(PANEL_DOMAIN, 'panel.invalid')
+assert.equal(panelDomain('qa.panel.invalid'), 'qa.panel.invalid')
+for (const bad of ['example.com', 'gmail.com', 'invalid', 'x.invalid.com', 'a@b.invalid']) assert.throws(() => panelDomain(bad), /\.invalid/, bad)
+assert.equal(PANEL_CREDITS, 0)
+
+// Idempotent seeding: reuse the current address, migrate a TAGGED legacy one, else create.
+const tagged = { id: 'u-legacy', app_metadata: { twin_test_account: PANEL_TAG } }
+assert.equal(reusePlan({ id: 'u-now' }, tagged).action, 'reuse')
+assert.equal(reusePlan(null, tagged).action, 'migrate')
+assert.equal(reusePlan(null, { id: 'u-real', app_metadata: {} }).action, 'create', 'an untagged legacy address is never adopted')
+assert.equal(reusePlan(null, null).action, 'create')
+assert.equal(LEGACY_PANEL_DOMAIN, 'example.com')
+const seedSrc = readFileSync(new URL('./seedFictionalPanel.mjs', import.meta.url), 'utf8')
+assert.match(seedSrc, /updateUserById\(user\.id, \{ email, email_confirm: true \}\)/, 'legacy address migrated in place, no mail')
+assert.match(seedSrc, /email_confirm: true,/, 'created confirmed: no mail')
+assert.match(seedSrc, /prior\s*\? await admin\.from\('test_run_files'\)\.update\(fileRow\)/, 'accounts row reused by label')
+assert.match(seedSrc, /delete\(\)\.eq\('owner_id', owner\)[\s\S]*product_entities'\)\.delete\(\)\.eq\('owner_id', owner\)/, 'knowledge and products replaced, not appended')
+// Logs: counts and the private row id only; the password is never printed or stored.
+for (const line of seedSrc.split('\n').filter((l) => /console\.(log|error|warn)/.test(l))) {
+  assert.ok(!/email|owner|password|user\.id|\.id\b(?!\})/.test(line.replace(/data\.id/, '')), `seed log prints no ids/emails: ${line.trim()}`)
+}
+assert.ok(!/password[^\n]*(console|content|insert)/.test(seedSrc))
+
 
 // Scenarios resolve each request to its own account and product.
 const accounts = { accounts: fixture.creators.map((c, i) => ({ key: c.key, owner_id: `owner-${i}`, email: panelEmail(c.key), products: Object.fromEntries(c.products.map((p) => [p.key, `pid-${c.key}-${p.key}`])) })) }

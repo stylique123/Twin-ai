@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0288_metrics_exclude_panel_test_accounts':
+    'Data-room rollups (metrics_overview, activation_funnel, retention_curve, founder_metrics) re-created to exclude app_metadata-tagged test accounts, plus two service-role helpers; NOT yet applied (file only, owner applies by hand). Read only by admin-metrics; no staging-only surface.',
   '0287_ai_model_prices':
     'Service-role-only price table (seeded, UNCONFIRMED) and two read views over ai_usage_ledger and generations; applied live by hand 2026-10-10 (owner rule). No staging-only surface.',
   '0286_ai_usage_ledger':

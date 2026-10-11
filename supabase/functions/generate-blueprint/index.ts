@@ -8760,7 +8760,11 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   }
 
   // Spend credits atomically BEFORE the model call. Refund on failure.
-  const { error: spendErr } = await admin.rpc('spend_credits', {
+  // ⚖️ A FICTIONAL PANEL ACCOUNT IS UNBILLABLE (owner, panel conditions): it is
+  // seeded with zero credits and never spends or refunds; `refunded` starts true
+  // below so every refund path is a no-op, and `unbillable` records
+  // credits_spent: 0 through the existing quality-gate path.
+  const { error: spendErr } = isPanel ? { error: null } : await admin.rpc('spend_credits', {
     p_user: ownerId,
     p_amount: BLUEPRINT_COST,
     p_reason: 'blueprint',
@@ -8824,7 +8828,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
   // Everything the writer was given, kept for the figure audit (Sunflower #23).
   let writerMaterial = ''
-  let refunded = false
+  // A panel account spent nothing, so there is nothing to refund (see spend above).
+  let refunded = isPanel
   const refundOnce = async (reason: string) => {
     if (refunded) return
     refunded = true
@@ -15480,7 +15485,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       const l = `${String(r?.line ?? '')} ${String(r?.ask ?? '')}`.toLowerCase()
       return OUR_ASKS.some((a) => l.includes(a))
     })
-    const unbillable = asksCreator
+    const unbillable = isPanel
+      ? 'panel_test_account'
+      : asksCreator
       ? 'script_asks_creator_for_context'
       : (finalBeats.length > 0 && askedBeats / finalBeats.length >= 0.4)
           ? 'script_mostly_questions'

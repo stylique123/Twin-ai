@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
 
   const [
     { data, error }, { data: funnel }, { data: retention }, { data: health }, { data: founder },
-    coverage,
+    coverage, testIds,
   ] = await Promise.all([
     admin.from('metrics_overview').select('*').single(),
     admin.rpc('activation_funnel'),
@@ -70,7 +70,16 @@ Deno.serve(async (req: Request) => {
       .select('*')
       .order('rows_substance', { ascending: true })
       .limit(100),
+    // Test accounts (heartbeat-like fictional panel, app_metadata-tagged) are
+    // excluded from the rollups by migration 0288; this list keeps them out of
+    // the per-creator worklist too. A missing function excludes nothing.
+    admin.rpc('test_account_ids'),
   ])
+  const testOwners = new Set<string>(
+    testIds.error || !Array.isArray(testIds.data)
+      ? []
+      : (testIds.data as unknown[]).map((r) => String(typeof r === 'object' && r ? Object.values(r)[0] : r)),
+  )
   if (error) {
     console.error('admin-metrics: query failed', error)
     return json({ error: 'Could not load metrics' }, 500)
@@ -93,6 +102,6 @@ Deno.serve(async (req: Request) => {
     retention: retention ?? null,
     health: health ?? null,
     founder: founder ?? null,
-    knowledge_coverage: coverage.error ? null : (coverage.data ?? []),
+    knowledge_coverage: coverage.error ? null : (coverage.data ?? []).filter((r) => !testOwners.has(String((r as { owner_id?: unknown }).owner_id ?? ''))),
   })
 })

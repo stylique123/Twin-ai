@@ -25,7 +25,7 @@ import { CAPTION_SHAPE_VERSION as CAPTION_SHAPE_VERSION_N } from './generated/ca
 import { kickBrainSweep } from './nicheBrain/sweep.js'
 import { kickAudienceTests } from './nicheBrain/audience.js'
 import { createIdleBackoff } from './idleBackoff.js'
-import { installUsageTracking, runTallied, ledgerRows, type UsageStore } from './aiUsage.js'
+import { installUsageTracking, runTallied, ledgerRows, isPanelOwner, type UsageStore } from './aiUsage.js'
 
 // Plan 11.1-2: tally every Gemini call per job into ai_usage_ledger.
 installUsageTracking()
@@ -316,8 +316,13 @@ async function tick(): Promise<boolean> {
     // `beginJobScope`'s serial-worker assertion stays meaningful.
     endScope()
     // Success, failure or timeout: one ledger row per model this job called.
-    const rows = ledgerRows(job as { id: string; type: string; owner_id?: string | null }, usage)
-    if (rows.length) void db.from('ai_usage_ledger').insert(rows).then(() => {}, () => {})
+    // A fictional-panel owner's usage is tagged test (isPanelOwner), never real.
+    const j = job as { id: string; type: string; owner_id?: string | null }
+    if (Object.keys(usage).length) {
+      void isPanelOwner(db as never, j.owner_id)
+        .then((testOwner) => db.from('ai_usage_ledger').insert(ledgerRows(j, usage, testOwner)))
+        .then(() => {}, () => {})
+    }
   }
   return true
 }

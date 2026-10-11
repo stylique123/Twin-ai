@@ -174,7 +174,13 @@ Deno.serve(async (req: Request) => {
       .select('id', { count: 'exact', head: true }).eq(col, val)
     return error || typeof count !== 'number' ? null : count
   }
-  const scriptsCount = await countOf('generations')
+  // ⚖️ REAL CREATORS ONLY: the heartbeat and the fictional panel write
+  // `is_heartbeat` generations (by identity), and they are not product usage.
+  const scriptsCount = await (async (): Promise<number | null> => {
+    const { count, error } = await admin.from('generations')
+      .select('id', { count: 'exact', head: true }).eq('is_heartbeat', false)
+    return error || typeof count !== 'number' ? null : count
+  })()
   // ⚠️⚠️ FINISHED TAKES, NOT ROWS. Measured 2026-09-14: `media_assets` holds 7
   // rows and SIX are `uploading`. `countOf('media_assets')` reported 7
   // recordings, so the card read "147 scripts, 7 recorded, 0 exported" -- a
@@ -190,6 +196,7 @@ Deno.serve(async (req: Request) => {
   // cannot be attributed — which is the true state, not an error.
   const { count: scriptIntentCount } = await admin.from('generations')
     .select('id', { count: 'exact', head: true })
+    .eq('is_heartbeat', false)
     .not('script_intent', 'is', null)
   // ── WHAT TWIN REFUSED TO CHARGE FOR ─────────────────────────────────────
   //

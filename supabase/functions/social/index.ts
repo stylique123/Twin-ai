@@ -25,6 +25,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { encryptToken, decryptToken } from './tokenCrypto.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { isPanelAccount } from '../_shared/testAccount.ts'
 import { OUTSTAND_API, OUTSTAND_NETWORKS, OUTSTAND_MARKER, outstandAuthUrl, outstandAccounts, pickAccounts, outstandPostBody, outstandPostResult, outstandMetrics, outstandComments, outstandStatus, insightStyle, queueWindow, type OutstandMetricSet } from '../_shared/outstand.ts'
 import { herAnswers, unansweredQuestions, type PlatformComment, type PostQuestion } from '../_shared/postQuestions.ts'
 import { youtubeId, samePermalink, matchTikTokByTime, outcomeWindow, statsFrom, type PostStats } from '../_shared/socialStats.ts'
@@ -1007,6 +1008,10 @@ Deno.serve(async (req: Request) => {
   const userClient = createClient(env('SUPABASE_URL')!, env('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } })
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
+  // Fictional panel test accounts (app_metadata, service-set) never connect a
+  // social account: no OAuth start, no posts, no stats. The OAuth callback only
+  // completes a nonce made by 'start', which this refuses first.
+  if (isPanelAccount(user)) return json({ error: 'Not available for test accounts', code: 'TEST_ACCOUNT' }, 403)
 
   let body: { action?: string; platform?: string; post_id?: string } = {}
   try { body = await req.json() } catch { /* GET-less actions only */ }
