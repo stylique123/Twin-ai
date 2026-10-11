@@ -18,7 +18,7 @@ env:
   VPS_USER: ${{ secrets.VPS_USER }}
 jobs:
   deploy:
-    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
     steps:
       - name: Server address and login come from repo secrets
         run: |

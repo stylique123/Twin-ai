@@ -13,7 +13,7 @@ env:
   EXP_REGISTRY: 'ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media,extract_product'
 jobs:
   diag:
-    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
     steps:
       - name: Server address and login come from repo secrets
         run: |

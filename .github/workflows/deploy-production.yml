@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
     steps:
       # ⚖️ ONLY DEPLOY WHEN THE WEBSITE CHANGED (owner 13 Oct, option c). Vercel's
       # Ignored Build Step already cancels hook builds with no website change, but

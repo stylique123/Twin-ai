@@ -44,7 +44,7 @@ concurrency:
 
 jobs:
   beat:
-    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
