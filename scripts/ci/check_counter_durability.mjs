@@ -1032,6 +1032,8 @@ const EVENTS = {
   creator_knowledge_source_column_absent: { kind: 'incident', why: '0122 unapplied — the selector cannot see source.' },
   objective_answer_stored: { kind: 'incident', why: 'Per generation that carried an answer to the rotating objective question: whether it was stored under its question id. A failed store costs rotation (the same question comes back next time), never the script.' },
   knowledge_rotation_columns_absent: { kind: 'incident', why: '0215 unapplied — the selector cannot see what it has already spent, so the same items lead every script. Per generation, because that is how long the degraded ranking lasts.' },
+  knowledge_spend_short: { kind: 'incident', why: 'record_knowledge_use wrote fewer rows than the items the writer was shown (an id not this owner\'s, or deleted since the read). The full list of ids shown survives in blueprint.writer_supply.' },
+  writer_supply_recorded: { kind: 'counter', stored: 'generations.blueprint', why: 'Stored as blueprint.writer_supply on every generation: knowledge ids, the product and its fact ids, answer keys and whether a note was given (ids only). The log line mirrors the stored counts.' },
   knowledge_spend_not_recorded: { kind: 'incident', why: 'A delivered script whose supplied knowledge was not written to the ledger. Silent, this looks exactly like a creator whose runway was never touched.' },
   scrape_dna_empty: { kind: 'incident', why: 'A scan that found nothing. Honesty about a failed scan, per scan.' },
   scrape_dna_read_failed: { kind: 'incident', why: 'A scan that could not read the account.' },
