@@ -7,8 +7,13 @@
 // the judge model; it writes nothing. It prints counts, rates and ids only —
 // never script or knowledge text.
 //
-//   node scripts/eval/gate-calibrate.mjs --batch=<label>[,<label>] --labels=<labels.csv> \
+//   node scripts/eval/gate-calibrate.mjs --batch=<label>[,<label>] \
+//        (--labels=<labels.csv> | --labels-file-id=<test_run_files id>) \
 //        [--models=read,extract] [--dry-run] [--dump=<rows.json>]
+//
+// --labels-file-id loads the CSV text from a private `test_run_files` row
+// (kind 'ratings' or 'other') with the service client, so labels never sit in
+// the repository or in workflow inputs — only the row id does.
 //
 // Env (live mode): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY.
 //
@@ -51,9 +56,13 @@ if (!BATCHES.length && !args.dump) {
 
 // ── labels ────────────────────────────────────────────────────────────────
 export function readLabels(path) {
+  return parseLabels(path ? readFileSync(path, 'utf8') : '')
+}
+
+export function parseLabels(text) {
   const out = new Map()
-  if (!path) return out
-  const lines = readFileSync(path, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  if (!text) return out
+  const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   const head = lines.shift()?.toLowerCase().split(',').map((s) => s.trim()) ?? []
   const col = (name) => head.indexOf(name)
   const [cb, cn, ci, cl] = ['batch', 'n', 'sentence_i', 'label'].map(col)
@@ -80,12 +89,32 @@ export function wilson(k, n, z = 1.96) {
 const pct = (x) => `${(100 * x).toFixed(1)}%`
 const ci = ([a, b]) => `[${pct(a)}, ${pct(b)}]`
 
+/** GitHub Actions annotation; only counts, rates and ids ever go in here. */
+const notice = (msg) => { if (process.env.GITHUB_ACTIONS) console.log(`::notice title=gate-calibrate::${msg}`) }
+
 // ── loading ───────────────────────────────────────────────────────────────
-async function loadLive() {
+let dbClient = null
+async function getDb() {
+  if (dbClient) return dbClient
   const { createClient } = await import('@supabase/supabase-js')
   const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required (or pass --dump=file)')
-  const db = createClient(url, key, { auth: { persistSession: false } })
+  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required (or pass --dump=file and --labels=file)')
+  dbClient = createClient(url, key, { auth: { persistSession: false } })
+  return dbClient
+}
+
+/** Labels CSV text from a private test_run_files row, by id. Never printed. */
+async function loadLabelsFile(id) {
+  const n = Number(id)
+  if (!Number.isInteger(n) || n <= 0) throw new Error('--labels-file-id must be a positive integer')
+  const { data, error } = await (await getDb()).from('test_run_files').select('kind, content').eq('id', n).maybeSingle()
+  if (error) throw error
+  if (!data || !['ratings', 'other'].includes(data.kind)) throw new Error(`labels: test_run_files row ${n} not found or not kind=ratings/other`)
+  return parseLabels(data.content)
+}
+
+async function loadLive() {
+  const db = await getDb()
   const { data: res, error } = await db.from('script_batch_results').select('batch,n,generation_id,scenario')
     .in('batch', BATCHES).eq('status', 200).gte('n', 0).not('generation_id', 'is', null).order('batch').order('n')
   if (error) throw error
@@ -144,7 +173,9 @@ async function callJudge(model, prompt) {
 // ── main ──────────────────────────────────────────────────────────────────
 async function main() {
   const rows = args.dump ? JSON.parse(readFileSync(args.dump, 'utf8')).filter((r) => !BATCHES.length || BATCHES.includes(r.batch)) : await loadLive()
-  const labels = readLabels(typeof args.labels === 'string' ? args.labels : '')
+  const labels = typeof args['labels-file-id'] === 'string'
+    ? await loadLabelsFile(args['labels-file-id'])
+    : readLabels(typeof args.labels === 'string' ? args.labels : '')
   const prepared = rows.map((r) => {
     const products = (r.products ?? []).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id && p.name)
     const ledger = buildLedger({ knowledge: r.knowledge, answers: r.answers, note: r.note, products: r.products, targetProductId: r.target_product_id ?? null, offer: r.offer, now: Date.now() })
@@ -158,6 +189,7 @@ async function main() {
   console.log(`scripts: ${prepared.length}  sentences: ${prepared.reduce((a, x) => a + x.sentences.length, 0)}  labelled: ${labels.size}`)
   console.log(`models: ${MODELS.join(', ')}`)
   console.log(`judge calls: ${calls}  est. tokens per model: ~${inTok} in / ~${outTok} out  (total ~${inTok * MODELS.length} in / ~${outTok * MODELS.length} out)`)
+  notice(`scripts ${prepared.length}, labelled sentences ${labels.size}${args['labels-file-id'] ? ` (labels row ${args['labels-file-id']})` : ''}; judge calls ${calls}; est. tokens ~${inTok * MODELS.length} in / ~${outTok * MODELS.length} out${DRY ? ' (dry run)' : ''}`)
   if (DRY) { console.log('dry run: no judge called.'); return }
 
   for (const model of MODELS) {
@@ -185,6 +217,8 @@ async function main() {
     console.log(`I recall:    ${tp}/${tp + fn} = ${tp + fn ? pct(tp / (tp + fn)) : 'n/a'}  95% ${ci(wilson(tp, tp + fn))}`)
     console.log(`false I on S-labelled: ${falseIonS}/${labelledS} = ${labelledS ? pct(falseIonS / labelledS) : 'n/a'}  95% ${ci(wilson(falseIonS, labelledS))}`)
     console.log(`confusion (I vs not-I): tp ${tp}  fp ${fp}  fn ${fn}  tn ${tn}   tokens used: ${used.in} in / ${used.out} out`)
+    const rate = (k, n) => `${k}/${n} = ${n ? pct(k / n) : 'n/a'} 95% ${ci(wilson(k, n))}`
+    notice(`${model}: I precision ${rate(tp, tp + fp)}; I recall ${rate(tp, tp + fn)}; false I on S ${rate(falseIonS, labelledS)}; judge calls ${prepared.length}; tokens ${used.in} in / ${used.out} out; malformed ${malformed}`)
   }
 }
 

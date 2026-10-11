@@ -1,0 +1,56 @@
+name: gate-calibrate
+
+# ZERO-INVENTION GATE — OFFLINE CALIBRATION (design v1 A7). Manual only.
+# Re-runs the gate classifier (rules + judge, no repair, no generation) on
+# scripts a batch already saved and compares its I calls with a private labels
+# CSV. Read-only. Prints counts, rates and ids only; the labels live in a
+# private test_run_files row and only its id is passed here.
+on:
+  workflow_dispatch:
+    inputs:
+      batches:
+        description: 'Batch labels to re-check, comma-separated'
+        required: true
+        default: ''
+      models:
+        description: 'Judge task classes or model ids, comma-separated'
+        required: false
+        default: 'read,extract'
+      labels_file_id:
+        description: 'Id of a private test_run_files row (kind=ratings) holding the labels CSV. Never paste labels here: inputs are public.'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Only count judge calls and tokens; call no model'
+        type: choice
+        options: ['true', 'false']
+        default: 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  calibrate:
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Calibrate
+        run: |
+          set -- "--batch=$CAL_BATCHES" "--models=$CAL_MODELS"
+          if [ -n "$CAL_LABELS_FILE_ID" ]; then set -- "$@" "--labels-file-id=$CAL_LABELS_FILE_ID"; fi
+          if [ "$CAL_DRY_RUN" != "false" ]; then set -- "$@" --dry-run; fi
+          npx tsx scripts/eval/gate-calibrate.mjs "$@"
+        env:
+          CAL_BATCHES: ${{ inputs.batches }}
+          CAL_MODELS: ${{ inputs.models }}
+          CAL_LABELS_FILE_ID: ${{ inputs.labels_file_id }}
+          CAL_DRY_RUN: ${{ inputs.dry_run }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
