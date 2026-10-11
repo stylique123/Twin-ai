@@ -151,6 +151,43 @@ const OUTSIDE_ORIGIN: Record<string, ItemOrigin> = {
   niche: 'niche_note', note: 'niche_note', audience: 'audience_question', reddit: 'audience_question',
 }
 
+/** One ledger item as stored on the blueprint: ids, origin and scope, never text. */
+export interface CompactLedgerItem { id: string; origin: ItemOrigin; product_id: string | null; field: string | null; first_party: boolean; live: boolean }
+
+/** `blueprint.gate_ledger` (private): what the gate checked the script against, ids only. */
+export function compactLedger(ledger: readonly LedgerItem[]): CompactLedgerItem[] {
+  return ledger.map((it) => ({ id: it.id, origin: it.origin, product_id: it.product_id, field: it.field, first_party: it.first_party, live: it.live }))
+}
+
+/** `blueprint.writer_supply` (private, every generation): what the writer was
+ *  shown, ids only. `knowledge_ids` are the creator_knowledge rows recorded in
+ *  creator_knowledge_uses; product facts, answers and the note have no table of
+ *  their own, so this is their only record. */
+export interface WriterSupply {
+  knowledge_ids: string[]
+  product_id: string | null
+  product_fact_ids: string[]
+  answer_keys: string[]
+  note: boolean
+}
+
+export function writerSupply(input: {
+  knowledge?: ReadonlyArray<{ id?: unknown } | null> | null
+  product?: { id?: unknown; knowledge?: unknown } | null
+  answers?: Record<string, unknown> | null
+  note?: unknown
+}): WriterSupply {
+  const ids = (xs: ReadonlyArray<{ id?: unknown } | null>) => [...new Set(xs.map((x) => str(x?.id)).filter(Boolean))]
+  const pid = str(input.product?.id) || null
+  return {
+    knowledge_ids: ids(input.knowledge ?? []),
+    product_id: pid,
+    product_fact_ids: pid ? ids(knowledgeList(input.product?.knowledge) as Array<{ id?: unknown }>) : [],
+    answer_keys: Object.entries(input.answers ?? {}).filter(([, v]) => str(v) !== '').map(([k]) => k).sort(),
+    note: str(input.note) !== '',
+  }
+}
+
 /** The material ledger (design A2): every item the writer was given, with id and scope. */
 export function buildLedger(input: LedgerInput): LedgerItem[] {
   const now = input.now ?? 0
