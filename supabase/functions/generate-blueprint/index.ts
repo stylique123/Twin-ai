@@ -9169,6 +9169,20 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // run. Each read's failure is recorded (message only, never data) and the
     // lookup inputs are logged as shape, never value.
     const readErr: Record<string, string> = {}
+    // ⚠️ W12.1 CAUSE (confirmed in the logs 11 Oct): the privacy scrub empties
+    // `niche` and `sub_niche` on the voice profile (a label sharing words with a
+    // private fact is cut), so the bucket and the research/Reddit key were empty
+    // and every outside read returned nothing without an error. Under the trial
+    // the LOOKUP uses the unscrubbed labels: they only select niche-level rows
+    // and never reach the prompt. The writer's own niche text stays scrubbed.
+    const rawLabel = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+    const scrubbedNiche = rawLabel(niche) === 'unspecified' ? '' : rawLabel(niche)
+    const lookupNiche = scrubbedNiche
+      || (trialOn ? rawLabel((voice?.profile as { niche?: unknown } | null)?.niche) || rawLabel((profile?.dna as { niche?: unknown } | null)?.niche) : '')
+    const lookupSub = rawLabel(subNiche)
+      || (trialOn ? rawLabel((voice?.profile as { sub_niche?: unknown } | null)?.sub_niche) || rawLabel((profile?.dna as { sub_niche?: unknown } | null)?.sub_niche) : '')
+    const lookupKey = String(lookupSub || lookupNiche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
+    const lookupBucket = nicheBucketInline(lookupNiche)
     const noteErr = (k: string) => (e: unknown) => { readErr[k] = String((e as Error)?.message ?? e).slice(0, 160) }
     {
       const ctrl = new AbortController()
@@ -9210,9 +9224,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         return rankBrainNotesForGoal(inHerLane(rows, nicheBucketInline(niche), String(subNiche ?? ''), String(niche ?? '')), videoGoal)
       })().catch((e) => { noteErr('notes')(e); return [] as BrainNoteInline[] })
       const trendsP = (async (): Promise<BrainTrendInline[]> => {
-        const bucket = nicheBucketInline(niche)
+        const bucket = lookupBucket
         if (bucket === null) return []
-        const { data } = await admin.rpc('brain_trends', { p_bucket: bucket, p_sub_niche: subNiche || null })
+        const { data } = await admin.rpc('brain_trends', { p_bucket: bucket, p_sub_niche: lookupSub || null })
           .abortSignal(ctrl.signal)
         return Array.isArray(data) ? data as BrainTrendInline[] : []
       })().catch((e) => { noteErr('trends')(e); return [] as BrainTrendInline[] })
@@ -9233,7 +9247,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         }
       })().catch(() => null)
       const momentsP = (async (): Promise<MomentInline[]> => {
-        const bucket = nicheBucketInline(niche)
+        const bucket = lookupBucket
         if (bucket === null) return []
         const since = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10)
         const { data } = await admin.from('brain_moments').select('moments, day')
@@ -9243,14 +9257,17 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         return row && Array.isArray(row.moments) ? row.moments as MomentInline[] : []
       })().catch((e) => { noteErr('moments')(e); return [] as MomentInline[] })
       const researchP = (async (): Promise<NicheResearchItemInline[]> => {
-        const key = String(subNiche || niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
+        const key = lookupKey
         if (!key) return []
         const { data } = await admin.from('niche_research').select('items').eq('niche_key', key).maybeSingle()
           .abortSignal(ctrl.signal)
         return Array.isArray((data as { items?: unknown } | null)?.items) ? (data as { items: NicheResearchItemInline[] }).items : []
       })().catch((e) => { noteErr('research')(e); return [] as NicheResearchItemInline[] })
       const redditP = (async (): Promise<NicheRedditItemInline[]> => {
-        const key = String(subNiche || niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
+        // ⚖️ OWNER 13 Oct: Reddit-derived items stay off for real creators until
+        // counsel reviews the collection; only the trial account reads them.
+        if (!trialOn) return []
+        const key = lookupKey
         if (!key) return []
         const { data } = await admin.from('niche_reddit').select('items').eq('niche_key', key).maybeSingle()
           .abortSignal(ctrl.signal)
@@ -9283,8 +9300,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         console.log(JSON.stringify({
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
           record: record !== null, moments: moments.length, research: research.length, reddit: reddit.length, rendered: brainBlock !== '',
-          bucket: nicheBucketInline(niche), niche_len: String(niche ?? '').length, sub_niche_len: String(subNiche ?? '').length,
-          key_len: String(subNiche || niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80).length,
+          bucket: lookupBucket, niche_len: String(niche ?? '').length, sub_niche_len: String(subNiche ?? '').length,
+          key_len: lookupKey.length, lookup_from_raw: lookupKey !== '' && !scrubbedNiche && !rawLabel(subNiche),
           aborted: ctrl.signal.aborted, errors: readErr,
         }))
       } catch {
