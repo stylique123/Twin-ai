@@ -49,7 +49,8 @@ jobs:
 
       - name: Skipped, no website change
         if: steps.web.outputs.deploy != 'true'
-        run: echo "::notice title=deploy-production::skipped: no website change"
+        run: |
+          echo "::notice title=deploy-production::skipped: no website change"
 
       # ⚠️ ABSENT IS NOT "SKIP". A missing secret used to be the classic silent
       # failure here: `if: secrets.X != ''` reads as caution and produces a GREEN
