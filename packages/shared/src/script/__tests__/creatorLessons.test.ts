@@ -58,7 +58,7 @@ describe('Twin learns from her ratings, viewers and picks (0250)', () => {
   })
 
   it('is wired end to end: learner runs in the sweep, writer reads and checks', () => {
-    expect(SWEEP).toMatch(/await runLessonLearner\(log\)/)
+    expect(SWEEP).toMatch(/await step\('lessons', runLessonLearner\)/)
     expect(EDGE).toMatch(/from\('creator_lessons'\)[\s\S]{0,120}\.eq\('active', true\)/)
     expect(EDGE).toMatch(/\$\{knowledgeBlock\}\$\{lessonsBlock\}/)
     expect(EDGE).toMatch(/brokenLessons\(/)
