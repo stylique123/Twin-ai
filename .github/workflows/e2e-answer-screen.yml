@@ -1,0 +1,54 @@
+# END-TO-END CHECK OF THE "NEEDS ONE ANSWER" SCREEN (dispatch only).
+#
+# Signs in as the heartbeat's test account with the heartbeat's secrets, opens
+# the live site with that session, and exercises the screen without submitting.
+# `real_request` adds ONE regenerate through the API (~1 generation).
+#
+# ⚠️ PASS/FAIL NOTICES ONLY. Logs and artifacts of this public repo are public,
+# so nothing else is printed and no screenshots are uploaded.
+name: e2e-answer-screen
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Site to test (falls back to the E2E_BASE_URL variable)'
+        type: string
+        required: false
+      real_request:
+        description: 'Also send ONE real answer through generate-blueprint (~1 generation)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-answer-screen
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HEARTBEAT_USER_EMAIL: ${{ secrets.HEARTBEAT_USER_EMAIL }}
+      HEARTBEAT_USER_PASSWORD: ${{ secrets.HEARTBEAT_USER_PASSWORD }}
+      E2E_BASE_URL: ${{ inputs.base_url || vars.E2E_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Install Playwright (Chromium)
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Screen checks (no submit, no model call)
+        run: node scripts/e2e/answer-screen.spec.mjs --ui
+      - name: One real answer (~1 generation)
+        if: ${{ !cancelled() && inputs.real_request }}
+        run: node scripts/e2e/answer-screen.spec.mjs --real

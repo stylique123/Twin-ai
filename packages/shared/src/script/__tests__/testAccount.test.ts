@@ -79,7 +79,11 @@ describe('edge wiring', () => {
     expect(edge).toMatch(/const isHeartbeat = \(heartbeatUserId !== '' && user\.id === heartbeatUserId\) \|\| isPanel/)
   })
   it('the gate reads measureOnly from the test-account rule, never the bare body', () => {
-    expect(edge).toMatch(/measureOnly: gateMeasureOnly\(\{ isTestAccount: isHeartbeat, isPanel, requested:/)
-    expect(edge).toMatch(/if \(isMeasuredRun\(gate\.record\)\)/)
+    // The gate runs in the worker (#1239); the edge decides measure mode and
+    // sends it with the queued job.
+    expect(edge).toMatch(/const gateMeasure = gateMeasureOnly\(\{ isTestAccount: isHeartbeat, isPanel, requested:/)
+    expect(edge).toMatch(/\.\.\.\(gateMeasure \? \{ measure_only: true \} : \{\}\)/)
+    const worker = readFileSync(new URL('../../../../../worker/src/jobs/inventionRecheck.ts', import.meta.url), 'utf8')
+    expect(worker).toMatch(/const measureOnly = extra\.measure_only === true/)
   })
 })

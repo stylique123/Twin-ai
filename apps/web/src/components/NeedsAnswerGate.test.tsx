@@ -6,6 +6,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { cleanup, render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import {
   NeedsAnswerCard, ScriptWithGaps, checkStatusOf, gateStatusFor, recordBlocked, SKIP_ANSWER,
+  gateProgressOf, gateStepText, UNCHECKED_POLL_FOR_MS,
 } from './NeedsAnswerGate'
 import { isNonAnswerText, SKIP_ANSWER as GATE_SKIP } from '../../../../packages/shared/src/script/inventionGate'
 
@@ -74,17 +75,40 @@ describe('needs one answer screen', () => {
     expect(recordBlocked(gateStatusFor(OTHER, { check_status: 'unchecked' }))).toBe(false)
   })
 
-  it('unchecked: neutral banner, record disabled, polls then stops after the window', () => {
+  it('unchecked: neutral banner, record disabled, polls for 3 minutes then stops', () => {
     vi.useFakeTimers()
     const onRefresh = vi.fn()
     const bp = { check_status: 'unchecked' }
     render(<NeedsAnswerCard userId={TRIAL} blueprint={bp} onSubmit={async () => {}} onRefresh={onRefresh} />)
     expect(screen.getByText('Twin is still checking this script')).toBeTruthy()
     expect(recordBlocked(gateStatusFor(TRIAL, bp))).toBe(true)
-    act(() => { vi.advanceTimersByTime(10_000) })
+    act(() => { vi.advanceTimersByTime(5_000) })
     expect(onRefresh).toHaveBeenCalledTimes(1)
-    act(() => { vi.advanceTimersByTime(200_000) })
-    expect(onRefresh.mock.calls.length).toBeLessThanOrEqual(12)
+    act(() => { vi.advanceTimersByTime(170_000) })
+    const mid = onRefresh.mock.calls.length
+    expect(mid).toBeGreaterThanOrEqual(30)
+    act(() => { vi.advanceTimersByTime(600_000) })
+    expect(onRefresh.mock.calls.length).toBeLessThanOrEqual(36)
+    expect(UNCHECKED_POLL_FOR_MS).toBe(180_000)
+  })
+
+  it('unchecked: shows the worker step text and keeps recording locked', () => {
+    const cases: Array<[Record<string, unknown>, RegExp]> = [
+      [{ step: 'queued', chunks_done: 0, chunks_total: 0 }, /about to check/i],
+      [{ step: 'judging', chunks_done: 2, chunks_total: 5 }, /2 of 5 parts/],
+      [{ step: 'repairing', chunks_done: 5, chunks_total: 5 }, /fixing the lines/i],
+      [{ step: 'failed', chunks_done: 0, chunks_total: 0 }, /trying again/i],
+    ]
+    for (const [gate_progress, text] of cases) {
+      const bp = { check_status: 'unchecked', gate_progress }
+      render(<NeedsAnswerCard userId={TRIAL} blueprint={bp} onSubmit={async () => {}} />)
+      expect(screen.getByTestId('gate-step').textContent).toMatch(text)
+      expect(screen.getByTestId('gate-unchecked').getAttribute('data-step')).toBe(gate_progress.step)
+      expect(recordBlocked(gateStatusFor(TRIAL, bp))).toBe(true)
+      cleanup()
+    }
+    expect(gateProgressOf({ gate_progress: { step: 'nonsense' } })).toBeNull()
+    expect(gateStepText(null)).toBe('Twin is still checking this script')
   })
 })
 

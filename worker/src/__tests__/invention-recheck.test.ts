@@ -83,6 +83,19 @@ describe('invention_recheck', () => {
     expect(out).toMatchObject({ generation_id: GEN, check_status: bp.check_status })
   })
 
+  it('measure mode (test accounts): records the classes, repairs nothing, check_status stays unchecked, no retry', async () => {
+    const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+    const { d, saved } = deps()
+    const out = await runInventionRecheck(job({ generation_id: GEN, owner_id: OWNER, reason: 'queued', ledger: { target_product_id: HARBOR, measure_only: true } }), d)
+    expect(saved).toHaveLength(1)
+    const bp = saved[0]!.blueprint
+    expect(JSON.stringify(bp.script)).toMatch(/sells out/)
+    expect(bp.check_status).toBe('unchecked')
+    expect((bp.invention_gate as Record<string, unknown>).outcome).toBe('measure_only')
+    expect(bp.gate_questions).toBeUndefined()
+    expect(out).toMatchObject({ outcome: 'measure_only', check_status: 'unchecked' })
+  })
+
   it('a re-check that fails writes nothing (check_status stays unchecked) and throws so the job retries', async () => {
     const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
     const { d, saved } = deps({ judge: async () => { throw new Error('model down') } })
@@ -111,11 +124,68 @@ describe('invention_recheck', () => {
     await runInventionRecheck(job(), gone).then(() => { throw new Error('expected a throw') }, (e) => expect(isPermanent(e)).toBe(true))
   })
 
+  it('writes real step events (judging with chunk counts, done) and never a progress write after the result', async () => {
+    const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+    const progress: Array<Record<string, unknown>> = []
+    const order: string[] = []
+    const { d, saved } = deps({
+      saveProgress: async (_id, blueprint) => { progress.push(blueprint.gate_progress as Record<string, unknown>); order.push('progress') },
+    })
+    const wrapped = { ...d, saveBlueprint: async (id: string, b: Record<string, unknown>) => { order.push('result'); await d.saveBlueprint(id, b) } }
+    await runInventionRecheck(job(), wrapped)
+    expect(progress[0]).toMatchObject({ step: 'judging', chunks_done: 0 })
+    expect(progress.some((p) => p.step === 'judging' && (p.chunks_total as number) >= 1 && p.chunks_done === p.chunks_total)).toBe(true)
+    expect(order[order.length - 1]).toBe('result')
+    const bp = saved[0]!.blueprint
+    expect(bp.gate_progress).toMatchObject({ step: 'done' })
+    expect(bp.check_status).not.toBe('unchecked')
+    const perf = (bp.invention_gate as { perf?: Record<string, unknown> }).perf!
+    expect(perf).toMatchObject({ judge_calls: expect.any(Number), escalations: expect.any(Number), ms_total: expect.any(Number) })
+    expect(perf.chunk_ms).toBeInstanceOf(Array)
+  })
+
+  it('a failed run writes only the failed step event; the result is not written and check_status stays unchecked', async () => {
+    const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+    const progress: Array<Record<string, unknown>> = []
+    const { d, saved } = deps({ judge: async () => { throw new Error('model down') }, saveProgress: async (_id, b) => { progress.push(b) } })
+    await expect(runInventionRecheck(job(), d)).rejects.toThrow(/gate error/)
+    expect(saved).toHaveLength(0)
+    const last = progress[progress.length - 1]!
+    expect(last.gate_progress).toMatchObject({ step: 'failed' })
+    expect(last.check_status).toBe('unchecked')
+  })
+
+  it('cascade: the judge runs with thinking 0 on the fast model; only uncertain sentences go to the strong model', async () => {
+    const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+    const calls: Array<{ model?: string; thinkingBudget?: number; prompt: string }> = []
+    const { d, saved } = deps({
+      strongModel: 'fake-pro',
+      callModel: async (system, prompt, _schema, _t, opts) => {
+        if (/rewrite/i.test(system)) return '{"rewrites":[]}'
+        calls.push({ model: opts?.model, thinkingBudget: opts?.thinkingBudget, prompt })
+        const block = prompt.split('SENTENCES:')[1] ?? ''
+        const rows = [...block.matchAll(/^(\d+)\. \([a-z_]+\) (.*)$/gm)]
+        return JSON.stringify({ sentences: rows.map((m) => ({ i: Number(m[1]), class: 'S', item_ids: ['k-roast'], ...(opts?.model === 'fake-flash' && /chocolate/.test(m[2]!) ? { uncertain: true } : {}) })) })
+      },
+    })
+    await runInventionRecheck(job(), d)
+    const fast = calls.filter((c) => c.model === 'fake-flash')
+    const strong = calls.filter((c) => c.model === 'fake-pro')
+    expect(fast.length).toBeGreaterThanOrEqual(1)
+    expect(strong).toHaveLength(1)
+    expect(strong[0]!.prompt.split('SENTENCES:')[1]).toMatch(/chocolate/)
+    expect(strong[0]!.prompt.split('SENTENCES:')[1]).not.toMatch(/roast Harbor Blend myself/)
+    expect(calls.every((c) => c.thinkingBudget === 0)).toBe(true)
+    expect((saved[0]!.blueprint.invention_gate as { perf: { escalations: number } }).perf.escalations).toBe(1)
+  })
+
   it('is registered and routes its model through the catalog', async () => {
     const { handlers } = await import('../jobs/index.js')
     expect(handlers).toHaveProperty('invention_recheck')
-    const { INVENTION_RECHECK_TASK } = await import('../jobs/inventionRecheck.js')
+    const { INVENTION_RECHECK_TASK, INVENTION_RECHECK_STRONG_TASK } = await import('../jobs/inventionRecheck.js')
     const { modelForTask } = await import('../modelRouting.js')
+    expect([INVENTION_RECHECK_TASK, INVENTION_RECHECK_STRONG_TASK]).toEqual(['read', 'extract'])
     expect(modelForTask(INVENTION_RECHECK_TASK)).toBeTruthy()
+    expect(modelForTask(INVENTION_RECHECK_STRONG_TASK)).toBeTruthy()
   })
 })

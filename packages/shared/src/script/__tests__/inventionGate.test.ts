@@ -424,7 +424,7 @@ describe('batch report from records (owner amendment g)', () => {
   })
 })
 
-describe('wiring: the edge calls the gate on the final script under trialOn', () => {
+describe('wiring: the edge queues the gate on the final script under trialOn', () => {
   const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..')
   const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
   const MIRROR = readFileSync(join(REPO, 'supabase/functions/_shared/inventionGate.ts'), 'utf8')
@@ -432,20 +432,21 @@ describe('wiring: the edge calls the gate on the final script under trialOn', ()
     expect(EDGE).toMatch(/from '\.\.\/_shared\/inventionGate\.ts'/)
     expect(MIRROR).toContain('GENERATED FROM packages/shared/src/script/inventionGate.ts')
   })
-  it('runs after the late guards, the shadow support check and dropInventedEvents, before the save, behind trialOn', () => {
-    const gate = EDGE.indexOf('runInventionGate(')
+  it('hands the gate to the durable worker step after the late guards, before the save, behind trialOn; no inline judge', () => {
+    expect(EDGE).not.toContain('runInventionGate(')
+    expect(EDGE).not.toMatch(/INVENTION_JUDGE_SYSTEM|JUDGE_SCHEMA as/)
+    const gate = EDGE.indexOf("bpg.invention_gate = inventionUncheckedRecord(null, 'queued', 0)")
     expect(gate).toBeGreaterThan(0)
     expect(gate).toBeGreaterThan(EDGE.lastIndexOf('guardrail_report'))
     expect(gate).toBeGreaterThan(EDGE.indexOf('checkSupport({'))
     expect(gate).toBeGreaterThan(EDGE.indexOf('dropInventedEvents(bp.script'))
     expect(gate).toBeGreaterThan(EDGE.indexOf("event: 'blueprint_compliance'"))
     expect(gate).toBeLessThan(EDGE.indexOf("traceBeats('shipped'"))
-    const block = EDGE.slice(EDGE.lastIndexOf('// ⚖️ THE ZERO-INVENTION GATE', gate), gate)
+    const block = EDGE.slice(EDGE.lastIndexOf('// ⚖️ THE ZERO-INVENTION GATE', gate), gate + 600)
     expect(block).toMatch(/if \(trialOn\b/)
-    const after = EDGE.slice(gate, gate + 4000)
-    expect(after).toContain('invention_gate')
-    expect(after).toContain('resyncShotListToScript(')
-    expect(after).toContain('gate_questions')
+    expect(block).toContain("bpg.check_status = 'unchecked'")
+    expect(block).toMatch(/bpg\.gate_progress = \{ step: 'queued'/)
+    expect(block).toMatch(/inventionRecheck = \{ reason: 'queued'/)
   })
   it('the shadow support check and dropInventedEvents still run', () => {
     expect(EDGE).toContain('checkSupport({')
@@ -481,7 +482,8 @@ describe('what the writer was given is recorded', () => {
     const ledgerAt = edge.indexOf('.gate_ledger = compactInventionLedger(gateLedger)')
     expect(gateAt).toBeGreaterThan(0)
     expect(ledgerAt).toBeGreaterThan(gateAt)
-    expect(edge.indexOf('const gate = await runInventionGate(')).toBeGreaterThan(ledgerAt)
+    // The gate now runs in the worker: the edge records the ledger, then queues the check.
+    expect(edge.indexOf("inventionUncheckedRecord(null, 'queued', 0)")).toBeGreaterThan(ledgerAt)
     expect(edge.match(/writer_supply = (?:supply|buildWriterSupply\()/g)?.length).toBe(2)
     expect(edge).toContain("event: 'writer_supply_recorded'")
   })

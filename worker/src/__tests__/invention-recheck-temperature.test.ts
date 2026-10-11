@@ -24,6 +24,19 @@ describe('invention re-check temperature', () => {
     }
   })
 
+  it('the judge passes thinking budget 0 and the cascade model; a model that refuses 0 is retried at the minimum', async () => {
+    const { recheckCallModel, MIN_THINKING_FALLBACK } = await import('../jobs/inventionRecheck.js')
+    const fake = vi.fn(async (..._a: unknown[]) => ({ sentences: [] }))
+    const call = recheckCallModel(fake as never, 'model-fixture')
+    await call('judge', 'p', { type: 'OBJECT' }, 1000, { model: 'strong-fixture', thinkingBudget: 0 })
+    expect(fake.mock.calls[0]![4]).toBe(0)
+    expect(fake.mock.calls[0]![5]).toBe('strong-fixture')
+    let n = 0
+    const refusing = vi.fn(async (..._a: unknown[]) => { if (n++ === 0) throw new Error('Gemini 400: thinking budget 0 is invalid for this model'); return { sentences: [] } })
+    await recheckCallModel(refusing as never, 'model-fixture')('judge', 'p', {}, 1000, { thinkingBudget: 0 })
+    expect(refusing.mock.calls.map((c) => c[4])).toEqual([0, MIN_THINKING_FALLBACK])
+  })
+
   it('geminiJson sends 0.4 by default and the given temperature when passed', async () => {
     const bodies: Array<{ generationConfig: { temperature: number } }> = []
     vi.stubGlobal('fetch', vi.fn(async (_u: unknown, init: { body: string }) => {
