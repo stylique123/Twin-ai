@@ -1,9 +1,11 @@
+// Pinned to ubuntu-24.04 (owner 13 Oct): GitHub moves ubuntu-latest to Ubuntu 26.04
+// from 19 Oct 2026 (actions/runner-images#14748).
 // Every workflow job must pick its runner through the public-repo guard:
 // a public repo always gets GitHub's hosted runner, whatever CI_RUNNER says,
 // so a pull request from a fork can never execute on a self-hosted machine.
 import { readdirSync, readFileSync } from 'node:fs'
 
-const GUARDED = "runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}"
+const GUARDED = "runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}"
 const dir = '.github/workflows'
 const bad = []
 for (const f of readdirSync(dir).filter((x) => x.endsWith('.yml'))) {

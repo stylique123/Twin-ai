@@ -82,7 +82,7 @@ concurrency:
 
 jobs:
   probe:
-    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
     environment: production
     timeout-minutes: 5
     steps:
