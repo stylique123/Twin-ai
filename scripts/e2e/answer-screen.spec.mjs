@@ -129,6 +129,10 @@ const vis = (page, sel) => page.locator(`${sel}:visible`)
 
 async function checkState(page, url, state, row, isSeed, admin) {
   await page.goto(url, { waitUntil: 'domcontentloaded' })
+  // A fresh script first shows the practice-viewer wait screen; a creator
+  // clicks "Show me the draft now" to see it. Do the same before checking.
+  const draftNow = page.getByRole('button', { name: /show me the draft now/i })
+  if (await draftNow.waitFor({ timeout: 15_000 }).then(() => true, () => false)) await draftNow.click()
   if (state === 'unchecked') {
     const banner = vis(page, '[data-testid="gate-unchecked"]').first()
     await banner.waitFor({ timeout: 45_000 }).catch(() => {})
