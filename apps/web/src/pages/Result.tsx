@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Quote, FileText, Clapperboard,
@@ -17,6 +17,8 @@ const UPLOAD_URLS: Record<string, string> = {
 }
 import { ScriptIntentAsk } from '../components/ScriptIntentAsk'
 import { FocusTeleprompter } from '../components/FocusTeleprompter'
+import { NeedsAnswerCard, ScriptWithGaps, gateStatusFor, recordBlocked, hasPlaceholder } from '../components/NeedsAnswerGate'
+import { generateBlueprint } from '../lib/api'
 import { recordScriptIntent } from '../lib/api'
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getPendingSourceAsset, pollSourceAssetReady, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
 import { explainFailure } from '../lib/api'
@@ -265,8 +267,30 @@ const MOCK_GENERATION = {
  */
 export default function Result() {
   const { id } = useParams()
-  const { profile } = useAuth()
+  const { profile, session } = useAuth()
+  const navigate = useNavigate()
   const [gen, setGen] = useState<Generation | null>(() => (id ? GEN_CACHE[id] ?? null : null))
+  // NEEDS-ONE-ANSWER (trial only). Re-read the blueprint while the gate is
+  // still checking it; a no-op status for every other account.
+  const refreshGen = useCallback(async () => {
+    if (!id) return
+    const g = await getGeneration(id).catch(() => null)
+    if (g) { GEN_CACHE[id] = g; setGen(g) }
+  }, [id])
+  // Answers ride the same readiness_answers re-generate path V2Building uses
+  // (generate-blueprint), rebuilding THIS video's inputs; billed exactly as
+  // that path bills. Keyed by each gate question's `writes_to`.
+  const submitGateAnswers = useCallback(async (answers: Record<string, string>) => {
+    if (!gen) return
+    const next = await generateBlueprint({
+      reference_url: gen.reference_url ?? '',
+      reference_note: gen.reference_note ?? '',
+      fidelity: gen.fidelity,
+      ...(gen.transcript_id ? { transcript_id: gen.transcript_id } : {}),
+      readiness_answers: answers,
+    } as Parameters<typeof generateBlueprint>[0])
+    if (next?.id) navigate(`/result/${next.id}`)
+  }, [gen, navigate])
   // The viewer test for this script: hook scores sit ON the hook picker.
   const audience = useAudienceTest(id ?? '')
   // ⚖️ ONLY THE TESTED VERSION IS SHOWN FIRST. A fresh script waits (up to
@@ -754,6 +778,12 @@ export default function Result() {
   // and calling .map on an undefined field would unmount the page (black screen).
   // Default every field so the result always renders something sensible.
   const raw = (gen.blueprint ?? {}) as Partial<Generation['blueprint']>
+  const gateStatus = gateStatusFor(session?.user?.id, raw as Parameters<typeof gateStatusFor>[1])
+  const gateBlocksRecord = recordBlocked(gateStatus)
+  const gateShowsGaps = gateStatus !== 'checked' && (gateBlocksRecord || ((raw.script ?? []) as Array<{ line?: string }>).some((x) => typeof x?.line === 'string' && hasPlaceholder(x.line)))
+  const gateCard = gateStatus !== 'checked'
+    ? <NeedsAnswerCard userId={session?.user?.id} blueprint={raw as Parameters<typeof gateStatusFor>[1]} onSubmit={submitGateAnswers} onRefresh={refreshGen} />
+    : null
   const rr = raw.reference_read ?? ({} as NonNullable<Generation['blueprint']>['reference_read'])
   const br = raw.b_roll_stats ?? { original_b_roll_count: '0', suggested_b_roll_count: '0' }
   const b = {
@@ -989,7 +1019,11 @@ export default function Result() {
                   </button>
                 )
               ) : (
-                <>
+                gateBlocksRecord ? (
+                  <span data-testid="record-locked" className="inline-flex items-center gap-1.5 rounded-full border border-amber/40 bg-amber/10 px-3.5 py-2 text-xs font-semibold text-amber">
+                    <Video className="h-3.5 w-3.5" /> Answer Twin's question to record
+                  </span>
+                ) : <>
                   <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-xs font-semibold"><Video className="h-3.5 w-3.5" /> Record Script</Link>
                   <Link to={`/record/${gen.id}?mode=upload`} className="btn-ghost py-2 text-xs font-medium"><Wand2 className="h-3.5 w-3.5" /> Upload Take</Link>
                 </>
@@ -1514,6 +1548,8 @@ export default function Result() {
 
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
+              {gateCard}
+              {gateShowsGaps ? <ScriptWithGaps script={(raw.script ?? []) as Array<{ line?: string }>} /> : (
               <ScriptEditor
                 onScriptChange={onScriptChange}
                 generationId={gen.id}
@@ -1523,6 +1559,7 @@ export default function Result() {
                 beatAudit={gen.beat_audit}
                 fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} advisoryFindings={readAdvisoryFindings(b)} />}
               />
+              )}
               {/* See the other call site: the script owns the list, so the
                   editor that changes it stays above this. */}
               <DeclaredClips generationId={gen.id} />
@@ -1675,7 +1712,7 @@ export default function Result() {
                   className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-6 shadow-glass backdrop-blur-md"
                 >
                   <TestViewers generationId={gen.id} />
-                  <button type="button" onClick={() => setFocusOpen(true)} data-testid="focus-mode-open"
+                  <button type="button" onClick={() => setFocusOpen(true)} data-testid="focus-mode-open" disabled={gateBlocksRecord}
                     className="w-full rounded-full border border-teal/30 bg-teal/10 px-4 py-2 text-xs font-semibold text-teal hover:bg-teal/20">
                     Read it in focus mode
                   </button>
@@ -1893,6 +1930,8 @@ export default function Result() {
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
+                {gateCard}
+                {gateShowsGaps ? <ScriptWithGaps script={(raw.script ?? []) as Array<{ line?: string }>} /> : (
                 <ScriptEditor
                   onScriptChange={onScriptChange}
                   generationId={gen.id}
@@ -1902,6 +1941,7 @@ export default function Result() {
                   beatAudit={gen.beat_audit}
                   fallback={<BlueprintScriptCards script={updatedScript} beatPlan={b.beat_plan} advisoryFindings={readAdvisoryFindings(b)} />}
                 />
+                )}
                 {/* BELOW the editor on purpose: the slots come FROM the script,
                     so the thing that changes them sits above the thing that
                     fills them. */}
@@ -2013,7 +2053,7 @@ export default function Result() {
           {mobileTab === 'strategy' && (
             <div className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-6 shadow-glass backdrop-blur-md">
               <TestViewers generationId={gen.id} />
-                  <button type="button" onClick={() => setFocusOpen(true)} data-testid="focus-mode-open"
+                  <button type="button" onClick={() => setFocusOpen(true)} data-testid="focus-mode-open" disabled={gateBlocksRecord}
                     className="w-full rounded-full border border-teal/30 bg-teal/10 px-4 py-2 text-xs font-semibold text-teal hover:bg-teal/20">
                     Read it in focus mode
                   </button>
@@ -2123,7 +2163,7 @@ export default function Result() {
 
       </div>
 
-      {focusOpen && (
+      {focusOpen && !gateBlocksRecord && (
         <FocusTeleprompter
           lines={[
             ...((chosenHook ?? '').trim() && !updatedScript.some((x) => String(x.line ?? '').trim() === (chosenHook ?? '').trim()) ? [chosenHook] : []),
