@@ -1,0 +1,53 @@
+name: panel-remove
+
+# REMOVE THE FICTIONAL CREATOR PANEL (owner, panel conditions). Run ONLY on the
+# owner's OK. Targets only users that are panel-tagged in app_metadata AND on
+# @panel.invalid AND allowlisted by the private test_run_files panel row (see
+# scripts/ops/removeFictionalPanel.mjs). Dry run by default (counts only); a
+# real removal needs dry_run=false AND confirm=REMOVE_PANEL. Main only, owner only.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: print counts only, delete nothing'
+        type: boolean
+        default: true
+      confirm:
+        description: 'For a real removal (dry_run unchecked): type REMOVE_PANEL'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  remove:
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
+    timeout-minutes: 30
+    steps:
+      - name: Guard — main branch, owner, and confirmation
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then echo "::error::panel-remove runs only from main"; exit 1; fi
+          if [ "$ACTOR" != "$OWNER" ]; then echo "::error::panel-remove runs only for the repository owner"; exit 1; fi
+          if [ "$DRY_RUN" = "false" ]; then
+            if [ "$CONFIRM" != "REMOVE_PANEL" ]; then echo "::error::a real removal needs confirm=REMOVE_PANEL"; exit 1; fi
+          fi
+        env:
+          REF: ${{ github.ref }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Remove the panel (counts only)
+        run: node scripts/ops/removeFictionalPanel.mjs "--dry-run=$DRY_RUN" "--confirm=$CONFIRM"
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
