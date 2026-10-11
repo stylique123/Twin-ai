@@ -64,6 +64,17 @@ jobs:
     runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
     timeout-minutes: 300
     steps:
+      # Owner conditions (fictional panel): manual dispatch only, from main only,
+      # by the repository owner only. No pull_request trigger, so no untrusted
+      # code is ever checked out with these secrets.
+      - name: Guard — main branch and owner only
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then echo "::error::script-batch runs only from main"; exit 1; fi
+          if [ "$ACTOR" != "$OWNER" ]; then echo "::error::script-batch runs only for the repository owner"; exit 1; fi
+        env:
+          REF: ${{ github.ref }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

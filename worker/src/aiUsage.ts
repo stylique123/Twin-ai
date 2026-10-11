@@ -75,12 +75,35 @@ export function trafficOf(ownerId: string | null | undefined, list = process.env
 }
 
 /** The ledger rows for one job: one per model that was called. */
-export function ledgerRows(job: { id: string; type: string; owner_id?: string | null }, usage: UsageStore) {
+export function ledgerRows(job: { id: string; type: string; owner_id?: string | null }, usage: UsageStore, testOwner = false) {
   return Object.entries(usage).map(([model, u]) => ({
     job_id: job.id, stage: job.type, owner_id: job.owner_id ?? null, model,
     calls: u.calls, input_tokens: u.input, output_tokens: u.output, thinking_tokens: u.thinking, cached_tokens: u.cached,
-    traffic: trafficOf(job.owner_id),
+    traffic: testOwner ? 'test' as const : trafficOf(job.owner_id),
   }))
+}
+
+// Fictional panel (owner, panel conditions): an owner whose auth
+// `app_metadata.twin_test_account` is 'fictional_panel' is test traffic in the
+// cost ledger, like TEST_OWNER_IDS. Read from identity (service-set, users
+// cannot write it); cached per owner; a failed lookup counts as real.
+const panelOwnerCache = new Map<string, boolean>()
+export async function isPanelOwner(
+  db: { auth: { admin: { getUserById: (id: string) => Promise<{ data: { user: { app_metadata?: unknown } | null } | null }> } } },
+  ownerId: string | null | undefined,
+): Promise<boolean> {
+  if (!ownerId) return false
+  const hit = panelOwnerCache.get(ownerId)
+  if (hit !== undefined) return hit
+  try {
+    const { data } = await db.auth.admin.getUserById(ownerId)
+    const meta = data?.user?.app_metadata as { twin_test_account?: unknown } | undefined
+    const v = meta?.twin_test_account === 'fictional_panel'
+    panelOwnerCache.set(ownerId, v)
+    return v
+  } catch {
+    return false
+  }
 }
 
 /** The ledger rows for one background sweep step (no job row): stage `sweep:<name>`. */

@@ -12,6 +12,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { isPanelAccount } from '../_shared/testAccount.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -38,6 +39,9 @@ Deno.serve(async (req: Request) => {
     data: { user },
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
+  // Fictional panel test accounts (app_metadata, service-set) never create or
+  // redeem referrals: no codes, no bonus credits, nothing in the referral counts.
+  if (isPanelAccount(user)) return json({ error: 'Not available for test accounts', code: 'TEST_ACCOUNT' }, 403)
 
   let body: { action?: string; code?: string }
   try {

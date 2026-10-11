@@ -11,10 +11,17 @@
 // ⚠️ PUBLIC REPO: nothing here prints an id, email or key. No password is ever
 // set or stored: the harness signs in with a one-time admin magic link.
 // Idempotent: a creator whose email already exists is reused and its rows are
-// replaced (knowledge and products deleted and re-inserted).
+// replaced (knowledge and products deleted and re-inserted); the accounts row in
+// test_run_files is reused by label, never duplicated.
+//
+// Owner conditions: emails are on the reserved `.invalid` TLD (never
+// deliverable; --domain must also end in .invalid), email_confirm is set so no
+// mail is sent, an account found under the OLD example.com address is migrated
+// in place (no mail) rather than duplicated, and credits are always ZERO (the
+// edge treats panel accounts as unbillable).
 //
 // Run (owner, after the PR is merged):
-//   SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/ops/seedFictionalPanel.mjs [--credits=10] [--domain=example.com]
+//   SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/ops/seedFictionalPanel.mjs [--domain=panel.invalid]
 import { readFileSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
@@ -23,8 +30,22 @@ export const PANEL_TAG = 'fictional_panel'
 const FIXTURE = new URL('./fixtures/fictional-panel.json', import.meta.url)
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split('=').slice(1).join('=')
 
-/** Email for a panel creator. Reserved documentation domain: never deliverable. */
-export function panelEmail(key, domain = 'example.com') { return `twin-panel+${key}@${domain}` }
+export const PANEL_DOMAIN = 'panel.invalid'
+/** The domain the panel was first seeded on; such accounts are migrated, not duplicated. */
+export const LEGACY_PANEL_DOMAIN = 'example.com'
+export const PANEL_ROWS_LABEL = 'fictional-panel-accounts'
+/** Panel accounts never hold credits (generation is unbillable for them anyway). */
+export const PANEL_CREDITS = 0
+
+/** A seeding domain: only the reserved, never-deliverable `.invalid` TLD (RFC 2606). */
+export function panelDomain(v) {
+  const d = String(v ?? PANEL_DOMAIN).trim().toLowerCase()
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*\.invalid$/.test(d)) throw new Error('--domain must end in .invalid (never deliverable)')
+  return d
+}
+
+/** Email for a panel creator. Reserved `.invalid` TLD: never deliverable. */
+export function panelEmail(key, domain = PANEL_DOMAIN) { return `twin-panel+${key}@${domain}` }
 
 /** A product fact's expiry: 'LIVE_PLUS_<n>_DAYS' resolves against `now`, so the urgency stays live at run time. */
 export function resolveExpiry(v, now = Date.now()) {
@@ -52,9 +73,25 @@ async function findUser(admin, email) {
   return null
 }
 
+/** Reuse decision for one creator (pure, for the self-test): the current
+ *  address first, else the legacy example.com address (migrate it), else create.
+ *  A legacy hit counts only when it already carries the panel tag. */
+export function reusePlan(current, legacy) {
+  if (current) return { action: 'reuse', user: current }
+  if (legacy && legacy.app_metadata?.twin_test_account === PANEL_TAG) return { action: 'migrate', user: legacy }
+  return { action: 'create', user: null }
+}
+
 async function seedCreator(admin, c, { credits, domain, now }) {
   const email = panelEmail(c.key, domain)
-  let user = await findUser(admin, email)
+  const plan = reusePlan(await findUser(admin, email), await findUser(admin, panelEmail(c.key, LEGACY_PANEL_DOMAIN)))
+  let user = plan.user
+  if (plan.action === 'migrate') {
+    // Move the old address to .invalid in place; email_confirm skips any mail.
+    const { data, error } = await admin.auth.admin.updateUserById(user.id, { email, email_confirm: true })
+    if (error) throw new Error(`${c.key}: email migrate failed: ${error.message}`)
+    user = data.user
+  }
   if (!user) {
     const { data, error } = await admin.auth.admin.createUser({
       email, email_confirm: true,
@@ -101,7 +138,7 @@ async function seedCreator(admin, c, { credits, domain, now }) {
     }).select('id').single())
     products[p.key] = row.id
   }
-  return { key: c.key, owner_id: owner, email, brand_id: brand.id, voice_id: voice.id, products }
+  return { action: plan.action, key: c.key, owner_id: owner, email, brand_id: brand.id, voice_id: voice.id, products }
 }
 
 async function main() {
@@ -109,20 +146,34 @@ async function main() {
   if (!URL_ || !SERVICE) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required')
   const admin = createClient(URL_, SERVICE, { auth: { persistSession: false } })
   const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'))
-  const opts = { credits: Number(arg('credits', '10')), domain: arg('domain', 'example.com'), now: Date.now() }
+  if (process.argv.some((a) => a.startsWith('--credits=') && Number(a.split('=')[1]) !== 0)) throw new Error('panel accounts hold zero credits; --credits is not accepted')
+  const opts = { credits: PANEL_CREDITS, domain: panelDomain(arg('domain', PANEL_DOMAIN)), now: Date.now() }
   const accounts = []
+  const results = []
   for (const c of fixture.creators) {
-    accounts.push(await seedCreator(admin, c, opts))
+    const { action, ...acct } = await seedCreator(admin, c, opts)
+    accounts.push(acct)
+    results.push({ action, stories: c.stories.length, products: c.products.length })
     console.log(`seeded ${c.key}: ${c.stories.length} stories, ${c.products.length} products`)
   }
   const content = JSON.stringify({ tag: PANEL_TAG, fixture_version: fixture.version, seeded_at: new Date(opts.now).toISOString(), accounts }, null, 2)
-  const { data, error } = await admin.from('test_run_files').insert({
-    label: 'fictional-panel-accounts', kind: 'other', file_name: 'fictional-panel-accounts.json',
+  const fileRow = {
+    label: PANEL_ROWS_LABEL, kind: 'other', file_name: `${PANEL_ROWS_LABEL}.json`,
     sha256: createHash('sha256').update(content).digest('hex'), content,
-  }).select('id').single()
-  if (error) throw new Error(`test_run_files insert failed: ${error.message}`)
+  }
+  // Reuse the one row by label (re-seeding replaces it, never adds another).
+  const { data: prior, error: readErr } = await admin.from('test_run_files').select('id')
+    .eq('label', PANEL_ROWS_LABEL).eq('kind', 'other').limit(1).maybeSingle()
+  if (readErr) throw new Error(`test_run_files read failed: ${readErr.message}`)
+  const { data, error } = prior
+    ? await admin.from('test_run_files').update(fileRow).eq('id', prior.id).select('id').single()
+    : await admin.from('test_run_files').insert(fileRow).select('id').single()
+  if (error) throw new Error(`test_run_files write failed: ${error.message}`)
   // The only id printed: the private row. Pass it as the batch's panel_file_id.
   console.log(`panel accounts recorded in test_run_files row ${data.id}`)
+  const tally = { accounts: accounts.length, created: 0, reused: 0, migrated: 0, stories: 0, products: 0 }
+  for (const r of results) { tally[r.action === 'create' ? 'created' : r.action === 'migrate' ? 'migrated' : 'reused']++; tally.stories += r.stories; tally.products += r.products }
+  console.log(`seed totals: accounts ${tally.accounts}, created ${tally.created}, reused ${tally.reused}, migrated ${tally.migrated}, stories ${tally.stories}, products ${tally.products}, panel rows 1 (${prior ? 'reused' : 'new'})`)
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(String(e?.message ?? e)); process.exit(1) })
