@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import {
   buildLedger, parseNumbers, extractSentences, ruleRead, classifySentences, parseJudge, buildJudgePrompt,
   planRepairs, applyRepairs, runInventionGate, summarizeGateRecords, eBudget, overBudgetE, subjectProduct,
+  isNonAnswerText, declinedSlots, SKIP_ANSWER,
   INVENTION_JUDGE_TASKS, INVENTION_GATE_TIMEOUT_MS, MAX_ASKS,
   type GateBlueprint, type GateSentence, type LedgerItem, type GateClass, type ClassifiedSentence,
 } from '../inventionGate.js'
@@ -448,5 +449,44 @@ describe('wiring: the edge calls the gate on the final script under trialOn', ()
   it('the shadow support check and dropInventedEvents still run', () => {
     expect(EDGE).toContain('checkSupport({')
     expect(EDGE).toContain('dropInventedEvents(bp.script')
+  })
+})
+
+describe('skip always works (a declined slot is never asked again)', () => {
+  const classified = (over: Partial<ClassifiedSentence>[]): ClassifiedSentence[] => over.map((o, i) => ({ i, surface: 'script', at: i, k: 0, class: 'I', claim_types: [], item_ids: [], reason: 'no_item', near: [], judged: true, ...o }))
+  const sentences = (n: number): GateSentence[] => Array.from({ length: n }, (_, i) => ({ i, surface: 'script' as const, at: i, k: 0, text: `Line ${i}.`, section: 'Body' }))
+  it('the skip value is a non-answer, and the edge uses the same test', () => {
+    expect(isNonAnswerText(SKIP_ANSWER)).toBe(true)
+    expect(isNonAnswerText('I spilled a whole bag of Harbor Blend on the floor')).toBe(false)
+    const edge = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../../../supabase/functions/generate-blueprint/index.ts'), 'utf8')
+    expect(edge).toContain("|nothing specific,? keep it general|no idea|not really)\\b/.test(t)")
+    expect(edge).toContain('|| /\\bkeep it general\\b/.test(t)')
+  })
+  it('declinedSlots reads skipped answers from the ledger', () => {
+    const ledger = buildLedger({ answers: { 'script.beat.2:story': SKIP_ANSWER, 'script.beat.3:customer': 'A regular told me it tastes like a campfire' } })
+    expect([...declinedSlots(ledger)]).toEqual(['script.beat.2:story'])
+  })
+  it('a declined slot is dropped, not asked', () => {
+    const steps = planRepairs({ classified: classified([{ class: 'S' }, { class: 'S' }, { claim_types: ['event'] }, { class: 'S' }]), sentences: sentences(4), spokenBeats: 4, declined: new Set(['script.beat.2:story']) })
+    expect(steps.map((s) => [s.i, s.action])).toEqual([[2, 'drop']])
+  })
+  it('at the beat floor a declined slot falls back to the general version, never an ask', () => {
+    const steps = planRepairs({ classified: classified([{ claim_types: ['event'] }, {}, {}]), sentences: sentences(3), spokenBeats: 3, finalRound: true, declined: new Set(['script.beat.0:story']) })
+    expect(steps[0]!.action).toBe('fallback')
+  })
+  it('end to end: a rerun with the skip never re-asks the same question', async () => {
+    const bp = script('I spilled a whole bag on the floor last week.', 'Harbor Blend tastes like dark chocolate and orange peel.', 'Link in bio.')
+    const judge = async () => JSON.stringify({ sentences: extractSentences(bp).map((s) => /spilled/.test(s.text)
+      ? { i: s.i, class: 'I', item_ids: [], claim_types: ['event'] }
+      : { i: s.i, class: 'S', item_ids: ['f-notes'], claim_types: [] }) })
+    const first = await runInventionGate({ blueprint: bp, ledger: mayaLedger(), products, targetProductId: HARBOR }, { judge, rewrite: async () => '{"rewrites":[]}' })
+    const asked = first.questions.map((q) => q.writes_to)
+    expect(first.record.outcome).toBe('needs_answers')
+    expect(asked.length).toBeGreaterThan(0)
+    const skipped = Object.fromEntries(asked.map((w) => [w, SKIP_ANSWER]))
+    const ledger = [...mayaLedger(), ...buildLedger({ answers: skipped })]
+    const again = await runInventionGate({ blueprint: bp, ledger, products, targetProductId: HARBOR }, { judge, rewrite: async () => '{"rewrites":[]}' })
+    expect(again.record.outcome).not.toBe('needs_answers')
+    for (const q of again.questions) expect(asked).not.toContain(q.writes_to)
   })
 })

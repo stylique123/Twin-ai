@@ -54,6 +54,25 @@ export function recordBlocked(status: CheckStatus): boolean {
   return status === 'needs_answers' || status === 'unchecked'
 }
 
+/**
+ * ⚖️ SKIP ALWAYS WORKS (owner, 13 Oct). The value sent for a question she
+ * skips. The server reads it as a non-answer (`isNonAnswer` in
+ * generate-blueprint, `isNonAnswerText` in the invention gate): the slot counts
+ * as answered, its sentence is dropped or the script goes general, and the
+ * same question is never asked again.
+ */
+export const SKIP_ANSWER = 'Nothing specific, keep it general'
+
+/** Every question gets an answer: her words, or the skip. */
+export function answersToSend(questions: GateQuestionView[], answers: Record<string, string>, skipped: Record<string, boolean>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const q of questions) {
+    const v = (answers[q.writes_to] ?? '').trim()
+    out[q.writes_to] = !skipped[q.writes_to] && v ? v : SKIP_ANSWER
+  }
+  return out
+}
+
 export const PLACEHOLDER_RE = /\[Your answer:[^\]]*\]/g
 
 export function hasPlaceholder(line: string): boolean {
@@ -109,6 +128,7 @@ export function NeedsAnswerCard({ userId, blueprint, onSubmit, onRefresh, pollMs
   const status = gateStatusFor(userId, blueprint)
   const questions = gateQuestionsOf(blueprint)
   const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [skipped, setSkipped] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -132,19 +152,20 @@ export function NeedsAnswerCard({ userId, blueprint, onSubmit, onRefresh, pollMs
     )
   }
 
-  const filled = questions.filter((q) => (answers[q.writes_to] ?? '').trim() !== '')
-  const ready = status === 'needs_answers' ? filled.length === questions.length && questions.length > 0 : filled.length > 0
+  // Each question is answered or skipped; nothing else is required.
+  const settled = questions.filter((q) => skipped[q.writes_to] || (answers[q.writes_to] ?? '').trim() !== '')
+  const ready = questions.length > 0 && settled.length === questions.length
 
-  const submit = async () => {
+  const send = async (out: Record<string, string>) => {
     setBusy(true); setErr(null)
     try {
-      const out: Record<string, string> = {}
-      for (const q of filled) out[q.writes_to] = answers[q.writes_to].trim()
       await onSubmit(out)
     } catch (e) {
       setErr((e as Error)?.message || 'Could not send your answers')
     } finally { setBusy(false) }
   }
+  const submit = () => send(answersToSend(questions, answers, skipped))
+  const writeGeneral = () => send(answersToSend(questions, {}, Object.fromEntries(questions.map((q) => [q.writes_to, true]))))
 
   const n = questions.length
   return (
@@ -155,19 +176,36 @@ export function NeedsAnswerCard({ userId, blueprint, onSubmit, onRefresh, pollMs
           ? `Twin needs ${n} answer${n === 1 ? '' : 's'} before this script is ready`
           : 'This is a general version — add a real detail to make it yours'}
       </p>
-      {questions.map((q) => (
-        <label key={q.writes_to} className="block space-y-1">
-          <span className="text-xs text-stone">{q.text}</span>
-          <input type="text" value={answers[q.writes_to] ?? ''} aria-label={q.text}
-            onChange={(e) => setAnswers((a) => ({ ...a, [q.writes_to]: e.target.value }))}
-            className="w-full rounded border border-white/10 bg-ink px-3 py-1.5 text-sm text-cream" />
-        </label>
-      ))}
+      {questions.map((q) => {
+        const isSkipped = !!skipped[q.writes_to]
+        return (
+          <div key={q.writes_to} className="space-y-1" data-testid="gate-question">
+            <label className="block space-y-1">
+              <span className="text-xs text-stone">{q.text}</span>
+              <input type="text" value={isSkipped ? '' : (answers[q.writes_to] ?? '')} aria-label={q.text} disabled={isSkipped}
+                placeholder={isSkipped ? 'Skipped — Twin keeps this part general' : undefined}
+                onChange={(e) => setAnswers((a) => ({ ...a, [q.writes_to]: e.target.value }))}
+                className="w-full rounded border border-white/10 bg-ink px-3 py-1.5 text-sm text-cream disabled:opacity-60" />
+            </label>
+            <button type="button" aria-pressed={isSkipped} aria-label={isSkipped ? `Answer this one: ${q.text}` : `Skip this one: ${q.text}`}
+              onClick={() => setSkipped((s) => ({ ...s, [q.writes_to]: !isSkipped }))}
+              className="text-xs text-stone underline">
+              {isSkipped ? 'Answer this one' : 'Skip this one'}
+            </button>
+          </div>
+        )
+      })}
       {err && <p className="text-xs text-amber">{err}</p>}
       <button type="button" disabled={!ready || busy} onClick={submit}
         className="btn-gradient py-2 text-xs font-semibold disabled:opacity-50">
         {busy ? 'Rewriting…' : 'Send answers and rewrite'}
       </button>
+      {questions.length > 0 && (
+        <button type="button" disabled={busy} onClick={writeGeneral}
+          className="ml-3 text-xs text-stone underline disabled:opacity-50">
+          Write the general version
+        </button>
+      )}
     </div>
   )
 }
