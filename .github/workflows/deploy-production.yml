@@ -31,11 +31,32 @@ jobs:
   deploy:
     runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-latest' || vars.CI_RUNNER }}
     steps:
+      # ⚖️ ONLY DEPLOY WHEN THE WEBSITE CHANGED (owner 13 Oct, option c). Vercel's
+      # Ignored Build Step already cancels hook builds with no website change, but
+      # this run still went green, which read as "deployed". Deciding here makes
+      # the skip visible. FAIL OPEN: a manual run, a missing base commit or any git
+      # error calls the hook. The dashboard's Ignored Build Step stays as a backstop.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Did anything the website is built from change?
+        id: web
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: bash scripts/ci/website_changed.sh "${EVENT}" "${BEFORE}" "${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Skipped, no website change
+        if: steps.web.outputs.deploy != 'true'
+        run: echo "::notice title=deploy-production::skipped: no website change"
+
       # ⚠️ ABSENT IS NOT "SKIP". A missing secret used to be the classic silent
       # failure here: `if: secrets.X != ''` reads as caution and produces a GREEN
       # run that deployed nothing. This asserts instead, so the board goes red and
       # somebody looks.
       - name: The deploy hook must exist, or this is a red run and not a quiet one
+        if: steps.web.outputs.deploy == 'true'
         env:
           HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         run: |
@@ -50,6 +71,7 @@ jobs:
           echo "hook is configured"
 
       - name: Ask Vercel to deploy this commit to production
+        if: steps.web.outputs.deploy == 'true'
         env:
           HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         run: |
@@ -71,6 +93,7 @@ jobs:
       # so this step says plainly what has and has not been proven rather than
       # letting a green tick imply more than it earned.
       - name: Say what a green run here does and does not prove
+        if: steps.web.outputs.deploy == 'true'
         run: |
           echo "PROVEN: the deploy hook exists and accepted the request for ${GITHUB_SHA}."
           echo "NOT PROVEN: that the build succeeded, or that the new version is live."
