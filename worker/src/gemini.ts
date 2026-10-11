@@ -29,6 +29,8 @@ export async function geminiJson(
   thinkingBudget?: number,
   model?: string,
   images: InlineImage[] = [],
+  /** Sampling temperature. Default 0.4; the invention re-check passes 0 to match the edge judge. */
+  temperature = 0.4,
 ): Promise<unknown> {
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
   // Per-call model wins, else the TASK CLASS decides (§2.4).
@@ -51,7 +53,7 @@ export async function geminiJson(
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts }],
     generationConfig: {
-      temperature: 0.4,
+      temperature,
       maxOutputTokens: 16384,
       responseMimeType: 'application/json',
       responseSchema: schema,

@@ -111,6 +111,21 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   return { generation_id: generationId, outcome: gate.record.outcome, check_status: status.status, ms: gate.record.ms }
 }
 
+/** The edge calls the judge and the rewrite at temperature 0 (`callOnce(..., 0, ...)`);
+ *  the re-check must too, or the same script can get a different verdict. */
+export const RECHECK_TEMPERATURE = 0
+
+type GeminiJsonFn = typeof import('../gemini.js').geminiJson
+
+/** The judge + rewrite call for the re-check: same flash model as the edge, temperature 0. */
+export function recheckCallModel(geminiJson: GeminiJsonFn, model: string): RecheckDeps['callModel'] {
+  return async (system, prompt, schema, timeoutMs) => {
+    // Same flash judge the edge runs (task class `read`, model_routing_v1.json).
+    const out = await geminiJson(system, prompt, schema, timeoutMs, undefined, model, [], RECHECK_TEMPERATURE)
+    return JSON.stringify(out)
+  }
+}
+
 export async function handleInventionRecheck(job: Job): Promise<Record<string, unknown>> {
   const { db } = await import('../db.js')
   const { geminiJson } = await import('../gemini.js')
@@ -141,10 +156,6 @@ export async function handleInventionRecheck(job: Job): Promise<Record<string, u
       const { error } = await db.from('generations').update({ blueprint }).eq('id', id)
       if (error) throw new Error(`invention_recheck: write failed: ${error.message}`)
     },
-    async callModel(system, prompt, schema, timeoutMs) {
-      // Same flash judge the edge runs (task class `read`, model_routing_v1.json).
-      const out = await geminiJson(system, prompt, schema, timeoutMs, undefined, model)
-      return JSON.stringify(out)
-    },
+    callModel: recheckCallModel(geminiJson, model),
   })
 }

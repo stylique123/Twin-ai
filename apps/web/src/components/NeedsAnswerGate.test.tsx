@@ -5,8 +5,9 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { cleanup, render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import {
-  NeedsAnswerCard, ScriptWithGaps, checkStatusOf, gateStatusFor, recordBlocked,
+  NeedsAnswerCard, ScriptWithGaps, checkStatusOf, gateStatusFor, recordBlocked, SKIP_ANSWER,
 } from './NeedsAnswerGate'
+import { isNonAnswerText, SKIP_ANSWER as GATE_SKIP } from '../../../../packages/shared/src/script/inventionGate'
 
 const TRIAL = 'trial-0000'
 const OTHER = 'someone-else'
@@ -84,5 +85,62 @@ describe('needs one answer screen', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1)
     act(() => { vi.advanceTimersByTime(200_000) })
     expect(onRefresh.mock.calls.length).toBeLessThanOrEqual(12)
+  })
+})
+
+describe('skip always works (owner, 13 Oct)', () => {
+  it('skip one and answer one submits, the skip as the non-answer value', async () => {
+    const onSubmit = vi.fn(async () => {})
+    render(<NeedsAnswerCard userId={TRIAL} blueprint={needsAnswers} onSubmit={onSubmit} />)
+    const send = screen.getByRole('button', { name: /send answers/i }) as HTMLButtonElement
+    const skips = screen.getAllByRole('button', { name: /^skip this one/i })
+    expect(skips).toHaveLength(2)
+    fireEvent.click(skips[0])
+    expect(send.disabled).toBe(true)
+    fireEvent.change(screen.getAllByRole('textbox')[1], { target: { value: 'I slept better' } })
+    expect(send.disabled).toBe(false)
+    fireEvent.click(send)
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+      'script.beat.1:story': SKIP_ANSWER, 'script.beat.3:result': 'I slept better',
+    }))
+  })
+
+  it('all skipped submits', async () => {
+    const onSubmit = vi.fn(async () => {})
+    render(<NeedsAnswerCard userId={TRIAL} blueprint={needsAnswers} onSubmit={onSubmit} />)
+    for (const b of screen.getAllByRole('button', { name: /^skip this one/i })) fireEvent.click(b)
+    const send = screen.getByRole('button', { name: /send answers/i }) as HTMLButtonElement
+    expect(send.disabled).toBe(false)
+    fireEvent.click(send)
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+      'script.beat.1:story': SKIP_ANSWER, 'script.beat.3:result': SKIP_ANSWER,
+    }))
+  })
+
+  it('a skipped question can be un-skipped; typed text is not sent while skipped', async () => {
+    const onSubmit = vi.fn(async () => {})
+    render(<NeedsAnswerCard userId={TRIAL} blueprint={needsAnswers} onSubmit={onSubmit} />)
+    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'It flickered' } })
+    fireEvent.click(screen.getAllByRole('button', { name: /^skip this one/i })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: /^skip this one/i })[0])
+    fireEvent.click(screen.getByRole('button', { name: /send answers/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+      'script.beat.1:story': SKIP_ANSWER, 'script.beat.3:result': SKIP_ANSWER,
+    }))
+  })
+
+  it('"Write the general version" sends a skip for every question, even with text typed', async () => {
+    const onSubmit = vi.fn(async () => {})
+    render(<NeedsAnswerCard userId={TRIAL} blueprint={needsAnswers} onSubmit={onSubmit} />)
+    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'It flickered' } })
+    fireEvent.click(screen.getByRole('button', { name: /write the general version/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+      'script.beat.1:story': SKIP_ANSWER, 'script.beat.3:result': SKIP_ANSWER,
+    }))
+  })
+
+  it("the skip value is the server's non-answer", () => {
+    expect(SKIP_ANSWER).toBe(GATE_SKIP)
+    expect(isNonAnswerText(SKIP_ANSWER)).toBe(true)
   })
 })
