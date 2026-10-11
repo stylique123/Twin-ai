@@ -89,6 +89,10 @@ jobs:
       # `no-legacy-editor` runs checkout and nothing else; putting a guard with a
       # dependency there answers ERR_MODULE_NOT_FOUND, which is a verdict about
       # the runner rather than about the code — the same mistake, twice already.
+      # Needs @supabase/supabase-js (imported by the panel scripts), so it runs
+      # here after `npm ci`, not in `no-legacy-editor`.
+      - name: Fictional panel self-test
+        run: node scripts/ops/panel.selftest.mjs
       - name: No dead-zone read inside an immediately-run callback
         run: node scripts/ci/check_immediate_callback_dead_zone.mjs
       # ⚠️ HERE, NOT IN `no-legacy-editor` — THE SECOND TIME THIS EXACT MOVE WAS
@@ -675,7 +679,6 @@ jobs:
           node scripts/ci/check_container_templates_parity.mjs
           # Which accounts are test accounts, and when the gate only measures.
           node scripts/ci/check_test_account_parity.mjs
-          node scripts/ops/panel.selftest.mjs
           # The speakability thresholds are DERIVED — 22 words is half again the
           # top of the spoken band, chosen so it catches the 25-word essay
           # sentence the file is named after. An edge copy that drifts looser
