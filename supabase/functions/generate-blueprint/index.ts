@@ -79,6 +79,7 @@ import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { buildLedger as buildInventionLedger, runInventionGate, INVENTION_GATE_TIMEOUT_MS, JUDGE_SYSTEM as INVENTION_JUDGE_SYSTEM, JUDGE_SCHEMA as INVENTION_JUDGE_SCHEMA, REWRITE_SYSTEM as INVENTION_REWRITE_SYSTEM, type GateBlueprint } from '../_shared/inventionGate.ts'
+import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
@@ -8836,7 +8837,17 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // action on every video shipped. The brief is only ever written from what
     // the creator typed (Onboarding.tsx stores `offer` only when they touched
     // it), so preferring it is not preferring a newer guess.
-    const niche = vp?.niche ?? dna.niche ?? 'unspecified'
+    // ⚠️ OWNER 13 Oct: the scrub can blank niche/sub_niche (6 of 50 accounts),
+    // and `??` never fell back on "". Lookups use the unscrubbed labels (never
+    // prompted, never logged); prompt text falls back to the onboarding niche,
+    // then "unspecified", or a generic parent category if the label is private.
+    const nicheLabels = resolveNicheLabels({
+      scrubbedVoice: vp as { niche?: unknown; sub_niche?: unknown } | null, scrubbedDna: dna as { niche?: unknown; sub_niche?: unknown },
+      rawVoice: (voice?.profile ?? null) as { niche?: unknown; sub_niche?: unknown } | null,
+      rawDna: (profile?.dna ?? null) as { niche?: unknown; sub_niche?: unknown } | null,
+      bucketOf: nicheBucketInline, isSensitive: (t) => isPrivate(t),
+    })
+    const niche = nicheLabels.promptNiche
 
     // ── THE NICHE'S OWN VOCABULARY, CACHED WEEKLY ─────────────────────────────
     //
@@ -8860,7 +8871,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // week's terms are still terminology — vocabulary does not rot in seven days.
     // Discarding them on a failed refresh would turn a slow cache into silence.
     const VOCAB_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
-    const herBucket = nicheBucketInline(niche)
+    const herBucket = nicheLabels.lookupBucket
     let vocabTerms: VocabularyTermInline[] = []
     let vocabCreators = 0
     if (herBucket !== null) {
@@ -9070,7 +9081,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       ?? (vp?.goal ?? dna.goal ?? 'turn attention into trust')
     const tone = vp?.tone ?? dna.voice ?? 'direct, warm, a little punchy'
     // Owner's grain addendum: keep her rough edge; stronger for raw tone / craft niches.
-    const grainBlock = renderGrainRule(String(tone), `${niche} ${vp?.sub_niche ?? dna.sub_niche ?? ''}`)
+    const grainBlock = renderGrainRule(String(tone), `${niche} ${nicheLabels.promptSubNiche}`)
     const editing = vp?.editing_style ?? dna.editing_style ?? 'fast jump cuts, burned-in captions'
     const platforms = voice?.platform
       ? [voice.platform]
@@ -9078,7 +9089,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         ? dna.platforms
         : ['tiktok']
 
-    const subNiche = vp?.sub_niche ?? dna.sub_niche ?? ''
+    const subNiche = nicheLabels.promptSubNiche
 
     // ── THE NICHE BRAIN (step 2) ────────────────────────────────────────────
     // ⚖️ ON TOP, NEVER INSTEAD. What real videos close to THIS creator did —
@@ -9173,17 +9184,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // ⚠️ W12.1 CAUSE (confirmed in the logs 11 Oct): the privacy scrub empties
     // `niche` and `sub_niche` on the voice profile (a label sharing words with a
     // private fact is cut), so the bucket and the research/Reddit key were empty
-    // and every outside read returned nothing without an error. Under the trial
-    // the LOOKUP uses the unscrubbed labels: they only select niche-level rows
-    // and never reach the prompt. The writer's own niche text stays scrubbed.
-    const rawLabel = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
-    const scrubbedNiche = rawLabel(niche) === 'unspecified' ? '' : rawLabel(niche)
-    const lookupNiche = scrubbedNiche
-      || (trialOn ? rawLabel((voice?.profile as { niche?: unknown } | null)?.niche) || rawLabel((profile?.dna as { niche?: unknown } | null)?.niche) : '')
-    const lookupSub = rawLabel(subNiche)
-      || (trialOn ? rawLabel((voice?.profile as { sub_niche?: unknown } | null)?.sub_niche) || rawLabel((profile?.dna as { sub_niche?: unknown } | null)?.sub_niche) : '')
-    const lookupKey = String(lookupSub || lookupNiche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
-    const lookupBucket = nicheBucketInline(lookupNiche)
+    // and every outside read returned nothing without an error. The LOOKUP uses
+    // the unscrubbed labels (all accounts since 13 Oct): they only select
+    // niche-level rows and never reach the prompt or a log.
+    // Lookups for every account now (was trial-only in #1225): see nicheLabels above.
+    const lookupNiche = nicheLabels.lookupNiche
+    const lookupSub = nicheLabels.lookupSubNiche
+    const lookupKey = nicheLabels.lookupKey
+    const lookupBucket = nicheLabels.lookupBucket
     const noteErr = (k: string) => (e: unknown) => { readErr[k] = String((e as Error)?.message ?? e).slice(0, 160) }
     {
       const ctrl = new AbortController()
@@ -9302,7 +9310,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           event: 'niche_brain', notes: brainNotesUsed, trends: trends.length,
           record: record !== null, moments: moments.length, research: research.length, reddit: reddit.length, rendered: brainBlock !== '',
           bucket: lookupBucket, niche_len: String(niche ?? '').length, sub_niche_len: String(subNiche ?? '').length,
-          key_len: lookupKey.length, lookup_from_raw: lookupKey !== '' && !scrubbedNiche && !rawLabel(subNiche),
+          key_len: lookupKey.length, lookup_from_raw: nicheLabels.lookupFromRaw,
           aborted: ctrl.signal.aborted, errors: readErr,
         }))
       } catch {
