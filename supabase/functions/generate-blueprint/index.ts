@@ -78,6 +78,7 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
+import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason } from '../_shared/inventionGate.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
@@ -6663,7 +6664,10 @@ async function handle(req: Request): Promise<Response> {
   // flag. Unset env means nothing is ever flagged, which is the safe direction:
   // an unflagged heartbeat is visible noise, a flagged creator is invisible loss.
   const heartbeatUserId = Deno.env.get('HEARTBEAT_USER_ID') ?? ''
-  const isHeartbeat = heartbeatUserId !== '' && user.id === heartbeatUserId
+  // The fictional creator panel (owner, 13 Oct) are test accounts too: tagged in
+  // app_metadata by the service-role seed, which no user can write. See _shared/testAccount.ts.
+  const isPanel = isPanelAccount(user)
+  const isHeartbeat = (heartbeatUserId !== '' && user.id === heartbeatUserId) || isPanel
   // ⚖️ TRIAL FIRST (owner 2026-10-04: "fix and keep re-running before it goes
   // to everyone"). A writing change under trial runs for the test account
   // only; it reaches every creator once a round shows +0.5 with no test
@@ -16277,7 +16281,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       bpg.invention_gate = inventionUncheckedRecord(null, 'queued', 0)
       bpg.check_status = 'unchecked'
       bpg.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
-      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget } }
+      // Test accounts only: classify and record, never repair (owner, 13 Oct).
+      const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode })
+      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}) } }
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
     // ⚖️ WHAT THE WRITER WAS SHOWN, ON EVERY GENERATION (owner, 13 Oct).

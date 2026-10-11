@@ -83,6 +83,19 @@ describe('invention_recheck', () => {
     expect(out).toMatchObject({ generation_id: GEN, check_status: bp.check_status })
   })
 
+  it('measure mode (test accounts): records the classes, repairs nothing, check_status stays unchecked, no retry', async () => {
+    const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+    const { d, saved } = deps()
+    const out = await runInventionRecheck(job({ generation_id: GEN, owner_id: OWNER, reason: 'queued', ledger: { target_product_id: HARBOR, measure_only: true } }), d)
+    expect(saved).toHaveLength(1)
+    const bp = saved[0]!.blueprint
+    expect(JSON.stringify(bp.script)).toMatch(/sells out/)
+    expect(bp.check_status).toBe('unchecked')
+    expect((bp.invention_gate as Record<string, unknown>).outcome).toBe('measure_only')
+    expect(bp.gate_questions).toBeUndefined()
+    expect(out).toMatchObject({ outcome: 'measure_only', check_status: 'unchecked' })
+  })
+
   it('a re-check that fails writes nothing (check_status stays unchecked) and throws so the job retries', async () => {
     const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
     const { d, saved } = deps({ judge: async () => { throw new Error('model down') } })

@@ -1,0 +1,180 @@
+{
+  "_note": "FICTIONAL CREATOR PANEL (owner, 13 Oct). Every creator, brand, product, number, story and testimonial here is MADE UP for testing. No real person or business. Seeded by scripts/ops/seedFictionalPanel.mjs; run by scriptBatch.mjs --group=panel.",
+  "version": 1,
+  "creators": [
+    {
+      "key": "mayas-coffee",
+      "display_name": "Maya (fictional)",
+      "handle": "mayas_coffee_fictional",
+      "brand": { "name": "Maya's Coffee", "description": "A one-person small-batch coffee roaster selling beans online and at a weekend market (fictional)." },
+      "voice": { "niche": "coffee", "sub_niche": "home coffee roasting", "tone": "warm, plain-spoken, a little nerdy about roast dates", "audience": "people who brew coffee at home every morning", "summary": "A small roaster who explains coffee without the snobbery." },
+      "stories": [
+        { "kind": "experience", "text": "I started roasting in my garage with a secondhand popcorn popper, and the first batch set off the smoke alarm twice." },
+        { "kind": "experience", "text": "At my first market stall I sold out of Harbor Blend by ten in the morning and spent the rest of the day handing out samples from an empty table." },
+        { "kind": "experience", "text": "A regular told me her beans tasted flat after a week, and when I asked, she was keeping them in the fridge next to the onions." },
+        { "kind": "opinion", "text": "I think most people who say they hate light roast have only ever had it stale." }
+      ],
+      "products": [
+        { "key": "harbor", "name": "Harbor Blend", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Harbor Blend, 12 oz bag, link in bio",
+          "facts": [
+            { "field": "price", "value": "$17 for a 12 oz bag" },
+            { "field": "size", "value": "12 oz whole-bean bag" },
+            { "field": "process_step", "value": "Roasted on Tuesdays and shipped within two days of roasting" },
+            { "field": "includes", "value": "Each bag has the roast date written on the label by hand" }
+          ] },
+        { "key": "nightowl", "name": "Night Owl Espresso", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Night Owl Espresso, link in bio",
+          "facts": [
+            { "field": "price", "value": "$19 for a 12 oz bag" },
+            { "field": "process_step", "value": "A darker roast pulled just after second crack, meant for espresso" }
+          ] }
+      ]
+    },
+    {
+      "key": "glow-lab",
+      "display_name": "Glow Lab (fictional)",
+      "handle": "glowlab_fictional",
+      "brand": { "name": "Glow Lab", "description": "A small skincare seller making a fragrance-free moisturizer and a cleansing balm (fictional).", "forbidden_claims": ["cures acne", "clinically proven", "anti-aging results guaranteed", "treats eczema"] },
+      "voice": { "niche": "skincare", "sub_niche": "fragrance-free skincare for sensitive skin", "tone": "calm, careful, never promises results", "audience": "people with sensitive skin who are tired of products that sting", "summary": "A small skincare maker who explains ingredients plainly and avoids medical claims." },
+      "stories": [
+        { "kind": "experience", "text": "I made the first jar of the moisturizer in my kitchen because every store cream I tried left my cheeks red by lunchtime." },
+        { "kind": "experience", "text": "My first batch separated in the jar overnight, and I threw out forty jars before I got the emulsion right." },
+        { "kind": "experience", "text": "A customer emailed me a photo of her empty jar with a note that said she finally found one that does not sting." },
+        { "kind": "opinion", "text": "I think fragrance is in most skincare for the shopper, not for the skin." }
+      ],
+      "products": [
+        { "key": "calm-cream", "name": "Calm Cream", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Calm Cream, 50 ml jar, link in bio",
+          "facts": [
+            { "field": "price", "value": "$28 for a 50 ml jar" },
+            { "field": "size", "value": "50 ml glass jar" },
+            { "field": "includes", "value": "Fragrance-free, with no essential oils" },
+            { "field": "process_step", "value": "Made in small batches of sixty jars" },
+            { "field": "testimonial", "value": "MADE-UP TESTIMONIAL: 'The first moisturizer that has not made my cheeks sting.' (fictional customer)", "trust": "confirmed" },
+            { "field": "urgency", "value": "Launch price of $24 until the end of the month", "expires_at": "LIVE_PLUS_20_DAYS", "source": "creator: launch price note (fictional)" }
+          ] },
+        { "key": "melt-balm", "name": "Melt Balm", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Melt Balm, link in bio",
+          "facts": [
+            { "field": "price", "value": "$22 for a 90 g tin" },
+            { "field": "size", "value": "90 g tin" },
+            { "field": "includes", "value": "A cleansing balm that rinses off with warm water" }
+          ] }
+      ]
+    },
+    {
+      "key": "flowdesk",
+      "display_name": "FlowDesk founder (fictional)",
+      "handle": "flowdesk_fictional",
+      "brand": { "name": "FlowDesk", "description": "A small SaaS tool that turns a shared inbox into a simple task board for tiny support teams (fictional)." },
+      "voice": { "niche": "software", "sub_niche": "SaaS for small support teams", "tone": "direct, practical, a founder talking to other small teams", "audience": "owners of small online shops who answer customer email themselves", "summary": "A solo founder building in public and explaining support workflows." },
+      "stories": [
+        { "kind": "experience", "text": "I built the first version of FlowDesk over a winter because my partner and I kept answering the same customer email twice." },
+        { "kind": "experience", "text": "Our first paying customer found a bug in the first hour, and I fixed it on a call with her while she watched." },
+        { "kind": "experience", "text": "I once lost a whole Saturday to a support ticket that was really a typo in our help page." }
+      ],
+      "products": [
+        { "key": "flowdesk", "name": "FlowDesk", "type": "SAAS", "relationship": "OWN_PRODUCT", "offer": "FlowDesk free 14-day trial, link in bio",
+          "facts": [
+            { "field": "price", "value": "$12 per month for up to three teammates" },
+            { "field": "includes", "value": "A shared inbox that turns each email into a card on a board" },
+            { "field": "includes", "value": "A 14-day free trial with no card needed" }
+          ] }
+      ]
+    },
+    {
+      "key": "coach-ana",
+      "display_name": "Coach Ana (fictional)",
+      "handle": "coach_ana_fictional",
+      "brand": { "name": "Coach Ana", "description": "An online strength coach for beginners who train at home (fictional).", "forbidden_claims": ["lose 10 pounds", "guaranteed weight loss", "cures back pain"] },
+      "voice": { "niche": "fitness", "sub_niche": "beginner strength training at home", "tone": "encouraging, no-nonsense, small steps", "audience": "adults starting strength training at home with little equipment", "summary": "A coach who keeps beginner training simple and safe." },
+      "stories": [
+        { "kind": "experience", "text": "The first time I tried a deadlift I copied a video and my lower back felt it for a week, which is why I teach the hip hinge with a broomstick first." },
+        { "kind": "experience", "text": "One of my first clients trained in a hallway with one pair of dumbbells, and we built her whole plan around that hallway." },
+        { "kind": "experience", "text": "I skipped warm-ups for a year and pulled a hamstring sprinting for a bus." },
+        { "kind": "opinion", "text": "I think beginners quit because the plan is too big, not because they are lazy." }
+      ],
+      "products": [
+        { "key": "starter", "name": "Home Strength Starter", "type": "SERVICE", "relationship": "OWN_SERVICE", "offer": "Book a free 15-minute intro call, link in bio",
+          "facts": [
+            { "field": "price", "value": "$90 per month" },
+            { "field": "includes", "value": "A weekly plan built around the equipment you already have" },
+            { "field": "includes", "value": "One video check-in call every two weeks" }
+          ] }
+      ]
+    },
+    {
+      "key": "clay-kiln",
+      "display_name": "Clay & Kiln maker (fictional)",
+      "handle": "clay_and_kiln_fictional",
+      "brand": { "name": "Clay & Kiln", "description": "A home studio making hand-thrown stoneware mugs and bowls (fictional)." },
+      "voice": { "niche": "crafts", "sub_niche": "handmade pottery", "tone": "slow, tactile, quietly funny", "audience": "people who like handmade things for their kitchen", "summary": "A potter showing the process behind each piece." },
+      "stories": [
+        { "kind": "experience", "text": "My first kiln load came out with every mug glued to the shelf because I glazed the bottoms." },
+        { "kind": "experience", "text": "I threw the same mug shape about two hundred times before the handles stopped cracking in the kiln." },
+        { "kind": "experience", "text": "A buyer at a craft fair picked up a mug, turned it over, and asked why the bottom was not glazed, so now I explain it on every label." }
+      ],
+      "products": [
+        { "key": "mug", "name": "Tide Mug", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Tide Mug, next batch drops in the shop, link in bio",
+          "facts": [
+            { "field": "price", "value": "$38 per mug" },
+            { "field": "size", "value": "Holds about 12 oz" },
+            { "field": "process_step", "value": "Hand-thrown, trimmed and fired twice" },
+            { "field": "includes", "value": "Dishwasher safe, with an unglazed foot" }
+          ] },
+        { "key": "bowl", "name": "Moss Bowl", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Moss Bowl, link in bio",
+          "facts": [
+            { "field": "price", "value": "$46 per bowl" },
+            { "field": "process_step", "value": "Glazed in a green that pools darker at the rim" }
+          ] }
+      ]
+    },
+    {
+      "key": "signal-daily",
+      "display_name": "Signal Daily (fictional)",
+      "handle": "signal_daily_fictional",
+      "brand": { "name": "Signal Daily", "description": "A short daily commentary channel on AI tools for working people (fictional)." },
+      "voice": { "niche": "technology", "sub_niche": "AI tools commentary", "tone": "skeptical, quick, explains why it matters", "audience": "working professionals curious about AI tools but short on time", "summary": "A creator who tests AI tools and says plainly what is useful." },
+      "stories": [
+        { "kind": "experience", "text": "I asked an AI tool to summarize my own newsletter and it confidently quoted a sentence I never wrote." },
+        { "kind": "experience", "text": "I spent a week letting an AI assistant plan my calendar and it double-booked me on the one day I had a dentist appointment." },
+        { "kind": "opinion", "text": "I think the most useful AI feature most people ignore is asking it to show its sources." }
+      ],
+      "products": [
+        { "key": "newsletter", "name": "Signal Daily Newsletter", "type": "DIGITAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Subscribe to the free newsletter, link in bio",
+          "facts": [
+            { "field": "price", "value": "Free" },
+            { "field": "includes", "value": "One email every weekday with one AI tool tested" }
+          ] }
+      ]
+    }
+  ],
+  "requests": [
+    { "creator": "mayas-coffee", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to tell if your coffee beans are stale" },
+    { "creator": "mayas-coffee", "kind": "sell", "goal": "sell", "door": "product", "product": "harbor", "note": "Harbor Blend" },
+    { "creator": "mayas-coffee", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "how I started roasting in my garage" },
+    { "creator": "mayas-coffee", "kind": "thin", "goal": "entertain", "door": "idea", "note": "beans" },
+
+    { "creator": "glow-lab", "kind": "educate", "goal": "educate", "door": "idea", "note": "why fragrance-free matters for sensitive skin" },
+    { "creator": "glow-lab", "kind": "sell", "goal": "sell", "door": "product", "product": "calm-cream", "note": "Calm Cream launch" },
+    { "creator": "glow-lab", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "the batch I had to throw out" },
+    { "creator": "glow-lab", "kind": "thin", "goal": "followers", "door": "idea", "note": "skin" },
+
+    { "creator": "flowdesk", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to stop answering the same customer email twice" },
+    { "creator": "flowdesk", "kind": "leads", "goal": "leads", "door": "product", "product": "flowdesk", "note": "FlowDesk trial" },
+    { "creator": "flowdesk", "kind": "story", "goal": "authority", "door": "idea", "note": "our first paying customer found a bug" },
+    { "creator": "flowdesk", "kind": "thin", "goal": "conversations", "door": "idea", "note": "support" },
+
+    { "creator": "coach-ana", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to learn the hip hinge at home" },
+    { "creator": "coach-ana", "kind": "leads", "goal": "leads", "door": "product", "product": "starter", "note": "Home Strength Starter" },
+    { "creator": "coach-ana", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "my first deadlift went wrong" },
+    { "creator": "coach-ana", "kind": "thin", "goal": "followers", "door": "idea", "note": "workout" },
+
+    { "creator": "clay-kiln", "kind": "educate", "goal": "educate", "door": "idea", "note": "why the bottom of a handmade mug is not glazed" },
+    { "creator": "clay-kiln", "kind": "sell", "goal": "sell", "door": "product", "product": "mug", "note": "Tide Mug" },
+    { "creator": "clay-kiln", "kind": "story", "goal": "entertain", "door": "idea", "note": "my first kiln load" },
+    { "creator": "clay-kiln", "kind": "thin", "goal": "conversations", "door": "idea", "note": "clay" },
+
+    { "creator": "signal-daily", "kind": "educate", "goal": "educate", "door": "idea", "note": "why you should ask AI tools to show their sources" },
+    { "creator": "signal-daily", "kind": "leads", "goal": "leads", "door": "product", "product": "newsletter", "note": "Signal Daily Newsletter" },
+    { "creator": "signal-daily", "kind": "story", "goal": "entertain", "door": "idea", "note": "the AI that misquoted my own newsletter" },
+    { "creator": "signal-daily", "kind": "thin", "goal": "authority", "door": "idea", "note": "AI" }
+  ]
+}

@@ -104,6 +104,9 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   }
   writeProgress(gateProgress('judging', 0, 0, clock()), true)
 
+  // Test accounts only (the edge sets this for the fictional panel and on the
+  // heartbeat's request): classify and record, never repair (owner, 13 Oct).
+  const measureOnly = extra.measure_only === true
   const budget = INVENTION_RECHECK_TIMEOUT_MS
   const judgeCall = (model: string) => (p: string) => deps.callModel(JUDGE_SYSTEM, p, JUDGE_SCHEMA, budget, { model, thinkingBudget: JUDGE_THINKING_BUDGET })
   const gate = await runInventionGate({
@@ -113,6 +116,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     targetProductId: target,
     model: deps.strongModel ? `${deps.model}>${deps.strongModel}` : deps.model,
     timeoutMs: budget,
+    ...(measureOnly ? { measureOnly: true } : {}),
     ...(deps.now ? { now: deps.now } : {}),
   }, {
     judge: judgeCall(deps.model),
@@ -123,6 +127,16 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   const perf = gate.record.perf
   console.log(JSON.stringify({ event: 'invention_gate_perf', generation_id: generationId, ms_total: perf?.ms_total ?? gate.record.ms, chunk_ms: perf?.chunk_ms ?? [], judge_calls: perf?.judge_calls ?? 0, escalations: perf?.escalations ?? 0, prefiltered: perf?.prefiltered ?? 0, judged: perf?.judged ?? 0, attempt: job.attempts }))
 
+  // A measure-only run that finished IS the result: keep the record, leave
+  // check_status 'unchecked' (the script was never checked-and-repaired), no retry.
+  if (measureOnly && gate.record.outcome === 'measure_only' && gate.record.timed_out !== true) {
+    bp.invention_gate = gate.record
+    bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
+    await chain
+    await deps.saveBlueprint(generationId, bp)
+    console.log(JSON.stringify({ event: 'invention_recheck', generation_id: generationId, outcome: 'measure_only', check_status: 'unchecked', before: gate.record.before, ms: gate.record.ms, judge_calls: perf?.judge_calls ?? 0, escalations: perf?.escalations ?? 0 }))
+    return { generation_id: generationId, outcome: 'measure_only', check_status: 'unchecked', ms: gate.record.ms }
+  }
   const status = checkStatusFor(gate.record)
   if (status.status === 'unchecked') {
     console.warn(JSON.stringify({ event: 'invention_recheck_failed', generation_id: generationId, reason: status.reason, ms: gate.record.ms, attempt: job.attempts }))
