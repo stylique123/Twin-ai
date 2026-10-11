@@ -168,6 +168,8 @@ const SOURCES = [
   ['packages/shared/src/script/inventedCause.ts', 'supabase/functions/_shared/inventedCause.ts'],
   // Support check (brief 2.17): per-sentence support, shadow; counts logged only.
   ['packages/shared/src/script/supportCheck.ts', 'supabase/functions/_shared/supportCheck.ts'],
+  // The zero-invention gate (design v1 Part A): ledger, rules, judge prompt/parser, repairs. Trial only.
+  ['packages/shared/src/script/inventionGate.ts', 'supabase/functions/_shared/inventionGate.ts'],
   // Goal fidelity: rebuttal framing, promotion gating, CTA-per-goal, shot-list
   // claim diff. Generated for the same reason as scriptIntegrity just above.
   ['packages/shared/src/script/goalFidelity.ts', 'supabase/functions/_shared/goalFidelity.ts'],
