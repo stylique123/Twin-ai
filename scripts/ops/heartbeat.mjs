@@ -473,6 +473,18 @@ if (PAGE_TEST) {
   process.exit(0)
 }
 
+// ── ERROR STATUS AS AN ANNOTATION (owner 13 Oct) ─────────────────────────
+// Job logs cannot be read after the fact; annotations can. A failing exit
+// prints its stage and a short reason as `::error title=heartbeat-status::`, so
+// a red run says whether it was configuration, setup, a timeout or an HTTP
+// status. Long digit and token-like runs are masked; nothing else is printed.
+function errorStatus(stage, detail) {
+  const safe = String(detail ?? '').replace(/[A-Za-z0-9_\-.]{32,}/g, '[masked]').replace(/[\r\n]+/g, ' ').slice(0, 200)
+  console.log(`::error title=heartbeat-status::${stage}: ${safe}`)
+}
+process.on('uncaughtException', (e) => { errorStatus('uncaught', e instanceof Error ? e.message : String(e)); process.exit(1) })
+process.on('unhandledRejection', (e) => { errorStatus('unhandled', e instanceof Error ? e.message : String(e)); process.exit(1) })
+
 // ── LIVE ──────────────────────────────────────────────────────────────────
 //
 // ⚠️ EVERY PIECE OF CONFIGURATION IS REQUIRED EXPLICITLY, and the run dies
@@ -484,6 +496,7 @@ function requireEnv(name) {
   if (!v) {
     console.error(`heartbeat: ${name} is not set. A heartbeat that runs without its `
       + `configuration reports health it never measured.`)
+    errorStatus('config', `${name} is not set`)
     process.exit(2)
   }
   return v
@@ -540,6 +553,7 @@ try {
   // is a report nobody gets, and the run log would show the delivery error with
   // no trace of what it was trying to report.
   console.error(`heartbeat could not start: ${detail}`)
+  errorStatus('setup', detail)
   const result = await deliverMonitorPage(
     { detail, at: Date.now(), runUrl: SETUP_RUN_URL },
     { token: GH_TOKEN, repo: GH_REPO, state: 'down' })
