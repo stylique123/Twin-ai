@@ -152,3 +152,31 @@ export function collapseDoubledNumbers(line: string): string {
   return line.replace(/\b(\d{2,})[\s-]+(zero|one|two|three|four|five|six|seven|eight|nine)\b/gi, (m, n: string, w: string) =>
     Number(n) >= 20 && UNIT_WORDS[Number(n.slice(-1))] === w.toLowerCase() ? n : m)
 }
+
+/** Each spoken shot takes its beat's action and camera (matched on the spoken
+ *  line, which the resync has just made identical to the beat's). Moved here
+ *  from the edge so the worker's invention re-check re-syncs the same way. */
+export function carryBeatActions(shots: Array<Record<string, unknown>>, script: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const byLine = new Map<string, Record<string, unknown>>()
+  for (const b of script) if (typeof b?.line === 'string' && b.line.trim()) byLine.set(b.line.trim(), b)
+  return shots.map((sh) => {
+    const beat = typeof sh?.spoken_text === 'string' ? byLine.get(sh.spoken_text.trim()) : undefined
+    if (!beat) return sh
+    const cam = String(beat.camera ?? '').toLowerCase() === 'back' ? 'back' : 'front'
+    const act = typeof beat.action_posing === 'string' ? beat.action_posing.trim() : ''
+    return {
+      ...sh,
+      camera: cam,
+      framing: cam === 'back' ? `Back camera${typeof sh.framing === 'string' && sh.framing ? ` · ${sh.framing}` : ''}` : sh.framing,
+      notes: act || sh.notes,
+    }
+  })
+}
+
+/** After a repair rewrote `script`: the shot list says what the script says,
+ *  and each spoken shot carries its beat's camera and action. Mutates `bp`. */
+export function resyncShotListToScript(bp: Record<string, unknown>): void {
+  if (!Array.isArray(bp.shot_list) || !Array.isArray(bp.script)) return
+  const synced = syncShotListSpokenText(bp.shot_list as Array<{ spoken_text?: unknown }>, bp.script as Array<{ line?: unknown }>)
+  bp.shot_list = carryBeatActions(synced.shots as Array<Record<string, unknown>>, bp.script as Array<Record<string, unknown>>)
+}

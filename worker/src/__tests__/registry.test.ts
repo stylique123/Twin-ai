@@ -63,7 +63,7 @@ describe('worker job registry has no old editor', () => {
       // `messageForOwnAccount` were both shipped and tested with nothing
       // invoking either — the exact "registered and enqueued by nothing"
       // cautionary tale `transcribe` is cited for above, run in reverse.
-      'purge_media', 'remine_knowledge',
+      'invention_recheck', 'purge_media', 'remine_knowledge',
       'sample_own_account', 'scrape_dna', 'validate_clip', 'validate_source',
     ])
     expect(handlers).not.toHaveProperty('autoedit')

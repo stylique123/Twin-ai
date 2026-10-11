@@ -196,6 +196,8 @@ const SOURCES = [
   // The shot list is re-derived from the script after the viewers' line rewrite too (round 3, 2.2).
   ['packages/shared/src/script/silentBeat.ts', 'worker/src/generated/silentBeat.ts'],
   ['packages/shared/src/script/shotListSync.ts', 'worker/src/generated/shotListSync.ts'],
+  // The zero-invention gate: the worker's invention_recheck re-runs the edge's exact gate.
+  ['packages/shared/src/script/inventionGate.ts', 'worker/src/generated/inventionGate.ts'],
   ['packages/shared/src/script/beatCamera.ts', 'worker/src/generated/beatCamera.ts'],
   ['packages/shared/src/script/itemFormat.ts', 'worker/src/generated/itemFormat.ts'],
   ['packages/shared/src/script/storyRotation.ts', 'worker/src/generated/storyRotation.ts'],
