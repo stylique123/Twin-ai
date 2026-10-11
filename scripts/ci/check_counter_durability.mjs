@@ -798,8 +798,8 @@ const EVENTS = {
   provenance: { kind: 'counter_ephemeral', why: 'Per script (trial): ids of the facts, stories and lessons the writer was shown and which fed each sentence (ids only, brief v2 1.4). Edge logs only, 24h.' },
   invention_gate: {
     kind: 'counter',
-    stored: 'generations.blueprint.invention_gate',
-    why: 'Per script (trial): S/E/I/N counts before and after repair, repairs by kind, outcome, ms and timeout (ids and reasons only, never text). The log line mirrors the stored record.',
+    stored: 'generations.blueprint',
+    why: 'Stored under blueprint.invention_gate. Per script (trial): S/E/I/N counts before and after repair, repairs by kind, outcome, ms and timeout (ids and reasons only, never text). The log line mirrors the stored record.',
   },
   invention_gate_failed: { kind: 'counter_ephemeral', why: 'The gate threw on a trial request and the script shipped without it (measure-only fallback); the stored record is absent for that generation, which the batch report counts. Edge logs only, 24h.' },
   support_check: { kind: 'counter_ephemeral', why: 'Per script (trial, shadow): how many spoken sentences do not trace to what the writer was given, by reason (counts only, never text, brief 2.17). Edge logs only, 24h.' },
