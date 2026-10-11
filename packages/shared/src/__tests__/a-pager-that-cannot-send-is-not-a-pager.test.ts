@@ -241,7 +241,10 @@ describe('the heartbeat flag is actually written', () => {
     // ⚠️⚠️ A BODY FLAG WOULD LET ANY CALLER HIDE THEIR GENERATIONS FROM EVERY
     // CORPUS SAMPLE — a quiet way to bias the product's own measurements. The
     // heartbeat is an account; only that account's rows carry the flag.
-    expect(EDGE).toMatch(/const isHeartbeat = heartbeatUserId !== '' && user\.id === heartbeatUserId/)
+    // 2026-10-13: the fictional panel accounts too — by app_metadata, which only
+    // the service role can write (isPanelAccount), never by a body flag.
+    expect(EDGE).toMatch(/const isHeartbeat = \(heartbeatUserId !== '' && user\.id === heartbeatUserId\) \|\| isPanel\n/)
+    expect(EDGE).toMatch(/const isPanel = isPanelAccount\(user\)\n/)
     const decl = EDGE.slice(EDGE.indexOf('const heartbeatUserId'), EDGE.indexOf('const isHeartbeat'))
     expect(decl).toMatch(/Deno\.env\.get\('HEARTBEAT_USER_ID'\)/)
     // The derivation must not consult the body at all.

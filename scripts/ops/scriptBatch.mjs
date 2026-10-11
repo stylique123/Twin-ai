@@ -17,6 +17,7 @@ import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.m
 import { findNovelDetails, novelCounts } from './.novelDetail.bundle.mjs'
 import { storyCraft } from './.storyCraft.bundle.mjs'
 import { blueprintCompliance } from './.blueprintCompliance.bundle.mjs'
+import { runPanel } from './panelRun.mjs'
 
 const URL_ = process.env.SUPABASE_URL
 const ANON = process.env.SUPABASE_ANON_KEY
@@ -553,6 +554,12 @@ function audit(bp, sc, ctx) {
 
 async function main() {
   for (const [k, v] of Object.entries({ SUPABASE_URL: URL_, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE })) if (!v) throw new Error(`missing ${k}`)
+  // The fictional creator panel (owner, 13 Oct) runs as its own six accounts,
+  // never the heartbeat: see panelRun.mjs. It is never mixed with other groups.
+  if ((process.argv.find((a) => a.startsWith('--group=')) ?? '').slice(8).split(',').map((x) => x.trim()).includes('panel')) {
+    await runPanel({ url: URL_, anon: ANON, service: SERVICE, batch: BATCH, limit: LIMIT, paceMs: PACE_MS })
+    return
+  }
   const auth = createClient(URL_, ANON)
   const { data: s, error } = await auth.auth.signInWithPassword({ email: process.env.HEARTBEAT_USER_EMAIL, password: process.env.HEARTBEAT_USER_PASSWORD })
   if (error || !s?.session) throw new Error(`sign-in failed: ${error?.message}`)

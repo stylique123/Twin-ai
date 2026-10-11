@@ -673,6 +673,9 @@ jobs:
           # reference was assessed as.
           node scripts/ci/check_container_templates_parity.mjs --selftest
           node scripts/ci/check_container_templates_parity.mjs
+          # Which accounts are test accounts, and when the gate only measures.
+          node scripts/ci/check_test_account_parity.mjs
+          node scripts/ops/panel.selftest.mjs
           # The speakability thresholds are DERIVED — 22 words is half again the
           # top of the spoken band, chosen so it catches the 25-word essay
           # sentence the file is named after. An edge copy that drifts looser

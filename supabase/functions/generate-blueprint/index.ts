@@ -78,6 +78,7 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
+import { isPanelAccount, gateMeasureOnly, isMeasuredRun } from '../_shared/testAccount.ts'
 import { buildLedger as buildInventionLedger, runInventionGate, INVENTION_GATE_TIMEOUT_MS, JUDGE_SYSTEM as INVENTION_JUDGE_SYSTEM, JUDGE_SCHEMA as INVENTION_JUDGE_SCHEMA, REWRITE_SYSTEM as INVENTION_REWRITE_SYSTEM, checkStatusFor as inventionCheckStatus, uncheckedRecord as inventionUncheckedRecord, GATE_REWRITTEN_KEYS, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type GateBlueprint, type UncheckedReason } from '../_shared/inventionGate.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
@@ -6663,7 +6664,10 @@ async function handle(req: Request): Promise<Response> {
   // flag. Unset env means nothing is ever flagged, which is the safe direction:
   // an unflagged heartbeat is visible noise, a flagged creator is invisible loss.
   const heartbeatUserId = Deno.env.get('HEARTBEAT_USER_ID') ?? ''
-  const isHeartbeat = heartbeatUserId !== '' && user.id === heartbeatUserId
+  // The fictional creator panel (owner, 13 Oct) are test accounts too: tagged in
+  // app_metadata by the service-role seed, which no user can write. See _shared/testAccount.ts.
+  const isPanel = isPanelAccount(user)
+  const isHeartbeat = (heartbeatUserId !== '' && user.id === heartbeatUserId) || isPanel
   // ⚖️ TRIAL FIRST (owner 2026-10-04: "fix and keep re-running before it goes
   // to everyone"). A writing change under trial runs for the test account
   // only; it reaches every creator once a round shows +0.5 with no test
@@ -16291,6 +16295,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           targetProductId: gateEntity?.id ? String(gateEntity.id) : null,
           model: gateModel,
           timeoutMs: gateBudget,
+          // Test accounts only: classify and record, never repair (owner, 13 Oct).
+          measureOnly: gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode }),
         }, {
           judge: (p) => callOnce(apiKey!, INVENTION_JUDGE_SYSTEM, p, gateModel, 0, gateBudget, INVENTION_JUDGE_SCHEMA),
           rewrite: (p) => callOnce(apiKey!, INVENTION_REWRITE_SYSTEM, p, gateModel, 0, gateBudget, REPAIR_SCHEMA),
@@ -16305,7 +16311,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
         if (gate.questions.length) bpg.gate_questions = [...(Array.isArray(bpg.gate_questions) ? bpg.gate_questions : []), ...gate.questions]
         const status = inventionCheckStatus(gate.record)
-        if (status.status === 'unchecked') {
+        if (isMeasuredRun(gate.record)) {
+          // A test account's measure-only run finished as asked: keep the record,
+          // queue no re-check (that would repair what the panel set out to measure).
+          bpg.invention_gate = gate.record
+        } else if (status.status === 'unchecked') {
           bpg.invention_gate = inventionUncheckedRecord(gate.record, status.reason ?? 'error', gate.record.ms, gateModel)
           inventionRecheck = { reason: status.reason ?? 'error', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget } }
           console.warn(JSON.stringify({ event: 'invention_gate_unchecked', reason: status.reason ?? 'error', ms: gate.record.ms }))

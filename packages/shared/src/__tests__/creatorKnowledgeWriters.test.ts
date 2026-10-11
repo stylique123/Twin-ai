@@ -110,6 +110,14 @@ const ALLOWED: Record<string, { ops: string[]; sources: string[]; why: string }>
     sources: [],
     why: 'The correction pass: stamps creator_excluded_at on facts her rating note rejects; writes no text.',
   },
+  // 2026-10-13: the fictional creator panel seed (owner-run, service role) writes
+  // MADE-UP stories from scripts/ops/fixtures/fictional-panel.json onto the six
+  // fictional test accounts only (delete + re-insert, source 'asked').
+  'scripts/ops/seedFictionalPanel.mjs': {
+    ops: ['delete', 'insert'],
+    sources: ['asked'],
+    why: 'Seeds the fictional panel accounts\' made-up stories from a committed fixture; never a real creator, never writer output.',
+  },
   'worker/src/knowledgeInsert.ts': {
     ops: ['rpc:merge_creator_knowledge', 'insert', 'update'],
     sources: ['caption', 'transcript'],

@@ -15,7 +15,7 @@ on:
         required: false
         default: '0'
       group:
-        description: 'Only these groups, comma-separated (product, business, idea, reference, adversarial, repeat, options, fresh, thin, ceiling, paired); empty = all'
+        description: 'Only these groups, comma-separated (product, business, idea, reference, adversarial, repeat, options, fresh, thin, ceiling, paired, panel); empty = all. panel runs alone, as the fictional accounts'
         required: false
         default: ''
       judge_only:
@@ -30,6 +30,14 @@ on:
         description: 'Story-load test: id of a private test_run_files row (kind=requests) holding the list. Never paste story text here: inputs are public.'
         required: false
         default: ''
+      panel_file_id:
+        description: 'Fictional panel (group=panel): id of the private test_run_files row (kind=other) written by seedFictionalPanel.mjs. Only the id goes here.'
+        required: false
+        default: ''
+      panel_budget_usd:
+        description: 'Fictional panel: stop once the estimated spend passes this (USD)'
+        required: false
+        default: '2.5'
       drafts:
         description: 'Drafts per script, best one kept (1-3; test account only)'
         required: false
@@ -68,6 +76,8 @@ jobs:
         env:
           BATCH_GROUP: ${{ inputs.group }}
           STORYLOAD_FILE_ID: ${{ inputs.storyload_file_id }}
+          PANEL_FILE_ID: ${{ inputs.panel_file_id }}
+          PANEL_BUDGET_USD: ${{ inputs.panel_budget_usd }}
           BATCH_DRAFTS: ${{ inputs.drafts }}
           BATCH_PANEL: ${{ inputs.cost_mode == 'checkpoint' && 'on' || 'off' }}
           BATCH_LENGTHEN: ${{ inputs.cost_mode == 'checkpoint' && 'on' || 'off' }}
