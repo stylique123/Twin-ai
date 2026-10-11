@@ -11,3 +11,10 @@ describe('usage stage tags (plan 11.1-1)', () => {
     expect(stageOfCall('Return one question', false)).toBe('other')
   })
 })
+
+describe('the writer is not mistaken for the panel', () => {
+  it('a blueprint call whose prompt mentions viewers is the writer', () => {
+    expect(stageOfCall('Write for the viewer who scrolls past', true)).toBe('writer')
+    expect(stageOfCall('You are a test viewer', false)).toBe('panel')
+  })
+})
