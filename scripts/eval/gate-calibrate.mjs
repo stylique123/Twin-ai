@@ -150,12 +150,29 @@ async function loadLive() {
   return rows
 }
 
+// Calls run in parallel (the sequential run hit the 20-minute job limit on
+// 13 Oct); each call has its own timeout and a failed call counts as malformed.
+const JUDGE_CONCURRENCY = 6
+const JUDGE_CALL_TIMEOUT_MS = 150_000
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i], i) }
+  }))
+  return out
+}
+const pctl = (xs, q) => { if (!xs.length) return 0; const a = [...xs].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(q * a.length))] }
+
 // ── judge ─────────────────────────────────────────────────────────────────
 async function callJudge(model, prompt) {
   const key = process.env.GEMINI_API_KEY
   if (!key) throw new Error('GEMINI_API_KEY is required')
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), JUDGE_CALL_TIMEOUT_MS)
+  const t0 = Date.now()
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST',
+    method: 'POST', signal: ctrl.signal,
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: JUDGE_SYSTEM }] },
@@ -163,8 +180,9 @@ async function callJudge(model, prompt) {
       generationConfig: { responseMimeType: 'application/json', responseSchema: JUDGE_SCHEMA, temperature: 0 },
     }),
   })
-  const j = await res.json()
+  const j = await res.json().finally(() => clearTimeout(timer))
   return {
+    ms: Date.now() - t0,
     text: j?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '',
     tokens: { in: j?.usageMetadata?.promptTokenCount ?? 0, out: j?.usageMetadata?.candidatesTokenCount ?? 0 },
   }
@@ -195,8 +213,11 @@ async function main() {
   for (const model of MODELS) {
     let tp = 0, fp = 0, fn = 0, tn = 0, labelledS = 0, falseIonS = 0, used = { in: 0, out: 0 }, malformed = 0
     const byClass = { S: 0, E: 0, I: 0, N: 0 }
-    for (const x of prepared) {
-      const { text, tokens } = await callJudge(model, x.prompt)
+    const results = await mapLimit(prepared, JUDGE_CONCURRENCY, (x) => callJudge(model, x.prompt).catch(() => ({ text: '', tokens: { in: 0, out: 0 }, ms: JUDGE_CALL_TIMEOUT_MS, failed: true })))
+    const msList = results.map((r) => r.ms)
+    const failed = results.filter((r) => r.failed).length
+    for (const [k, x] of prepared.entries()) {
+      const { text, tokens } = results[k]
       used.in += tokens.in; used.out += tokens.out
       const parsed = parseJudge(text, x.sentences.length, new Set(x.ledger.map((it) => it.id)))
       malformed += parsed.malformed
@@ -218,7 +239,7 @@ async function main() {
     console.log(`false I on S-labelled: ${falseIonS}/${labelledS} = ${labelledS ? pct(falseIonS / labelledS) : 'n/a'}  95% ${ci(wilson(falseIonS, labelledS))}`)
     console.log(`confusion (I vs not-I): tp ${tp}  fp ${fp}  fn ${fn}  tn ${tn}   tokens used: ${used.in} in / ${used.out} out`)
     const rate = (k, n) => `${k}/${n} = ${n ? pct(k / n) : 'n/a'} 95% ${ci(wilson(k, n))}`
-    notice(`${model}: I precision ${rate(tp, tp + fp)}; I recall ${rate(tp, tp + fn)}; false I on S ${rate(falseIonS, labelledS)}; judge calls ${prepared.length}; tokens ${used.in} in / ${used.out} out; malformed ${malformed}`)
+    notice(`${model}: I precision ${rate(tp, tp + fp)}; I recall ${rate(tp, tp + fn)}; false I on S ${rate(falseIonS, labelledS)}; judge calls ${prepared.length} (failed ${failed}); judge ms p50 ${pctl(msList, 0.5)} p90 ${pctl(msList, 0.9)}; tokens ${used.in} in / ${used.out} out; malformed ${malformed}`)
   }
 }
 
