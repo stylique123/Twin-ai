@@ -78,6 +78,7 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
+import { buildLedger as buildInventionLedger, runInventionGate, INVENTION_GATE_TIMEOUT_MS, JUDGE_SYSTEM as INVENTION_JUDGE_SYSTEM, JUDGE_SCHEMA as INVENTION_JUDGE_SCHEMA, REWRITE_SYSTEM as INVENTION_REWRITE_SYSTEM, type GateBlueprint } from '../_shared/inventionGate.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
@@ -16223,6 +16224,61 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       ;(blueprint as Record<string, unknown>).compliance = c
       console.log(JSON.stringify({ event: 'blueprint_compliance', passed: c.passed, compliant: c.compliant, hook_swapped: hookSwapped, fails: Object.entries(c).filter(([, v]) => v === false).map(([k]) => k) }))
     } catch { /* measuring never fails a build */ }
+    // ⚖️ THE ZERO-INVENTION GATE (design v1 Part A, stage 1; trial only). Runs
+    // on the FINAL script — after the late guards, the shadow support check,
+    // dropInventedEvents and the compliance hook swap, all of which keep
+    // running unchanged for comparison. Every spoken line, hook option, title,
+    // caption and on-screen text is checked against the ledger of what the
+    // writer was given (ids + scope + numbers-to-field); an I is replaced from
+    // listed items, turned into a question for her, or dropped, and never
+    // ships. Hard 25s cap (inside the edge's 150s): on timeout the script is
+    // kept as written and the record says 'timeout'. Ids and reasons only.
+    if (trialOn && blueprint && typeof blueprint === 'object') {
+      try {
+        // The writer-family flash model (calibration also runs the pro model offline).
+        const gateModel = Deno.env.get('INVENTION_GATE_MODEL') ?? Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.8-flash'
+        const gateBudget = Math.max(0, Math.min(INVENTION_GATE_TIMEOUT_MS, 150_000 - 20_000 - (Date.now() - reqStartedAt)))
+        const gateEntity = ownedEntity as { id?: unknown } | null
+        const gateProducts = (libraryRows ?? []).map((r) => ({ id: String((r as { id?: unknown }).id ?? ''), name: String((r as { name?: unknown }).name ?? '') })).filter((p) => p.id && p.name)
+        const gateLedger = buildInventionLedger({
+          knowledge: provenanceSupply,
+          answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}), ...(typeof brief.productFacts === 'string' && brief.productFacts.trim() ? { product_facts: brief.productFacts } : {}) },
+          note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: gateEntity?.id ? String(gateEntity.id) : null,
+          offer: typeof readyOffer === 'string' ? readyOffer : '',
+          outside: boardMaterial.map((m, n) => ({ id: m.id ?? `${m.kind}:${n}`, kind: m.kind, text: m.text })),
+          now: Date.now(),
+        })
+        const gate = await runInventionGate({
+          blueprint: blueprint as GateBlueprint,
+          ledger: gateLedger,
+          products: gateProducts,
+          targetProductId: gateEntity?.id ? String(gateEntity.id) : null,
+          model: gateModel,
+          timeoutMs: gateBudget,
+        }, {
+          judge: (p) => callOnce(apiKey!, INVENTION_JUDGE_SYSTEM, p, gateModel, 0, gateBudget, INVENTION_JUDGE_SCHEMA),
+          rewrite: (p) => callOnce(apiKey!, INVENTION_REWRITE_SYSTEM, p, gateModel, 0, gateBudget, REPAIR_SCHEMA),
+        })
+        const bpg = blueprint as Record<string, unknown>
+        if (gate.blueprint !== blueprint) {
+          for (const k of ['script', 'hook_options', 'captions', 'packaging', 'publish_plan'] as const) {
+            if (k in gate.blueprint) bpg[k] = (gate.blueprint as Record<string, unknown>)[k]
+          }
+          // The shot list and the teleprompter (which reads `script`) say what the repaired script says.
+          if (Array.isArray(bpg.shot_list) && Array.isArray(bpg.script)) {
+            const synced = syncShotListSpokenText(bpg.shot_list as Array<{ spoken_text?: unknown }>, bpg.script as Array<{ line?: unknown }>)
+            bpg.shot_list = carryBeatActions(synced.shots as Array<Record<string, unknown>>, bpg.script as Array<Record<string, unknown>>)
+          }
+        }
+        if (gate.questions.length) bpg.gate_questions = [...(Array.isArray(bpg.gate_questions) ? bpg.gate_questions : []), ...gate.questions]
+        bpg.invention_gate = gate.record
+        console.log(JSON.stringify({ event: 'invention_gate', outcome: gate.record.outcome, before: gate.record.before, after: gate.record.after, repaired: gate.record.repaired, rounds: gate.record.rounds, ms: gate.record.ms, timed_out: gate.record.timed_out }))
+      } catch (e) {
+        console.warn(JSON.stringify({ event: 'invention_gate_failed', error: String((e as Error)?.name ?? 'error').slice(0, 40) }))
+      }
+    }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
     ;(blueprint as Record<string, unknown>).beat_trace = beatTrace
     {

@@ -796,6 +796,12 @@ const EVENTS = {
   panel_cleanup: { kind: 'counter_ephemeral', why: 'Per script: the viewer-panel rewrite shipped a line the writer cleanup removes (follow closer, stored note, repeated ask); cleaned again.' },
   note_moment_spine: { kind: 'counter_ephemeral', why: 'Per script (trial): her note held a first-person moment and was made the spine.' },
   provenance: { kind: 'counter_ephemeral', why: 'Per script (trial): ids of the facts, stories and lessons the writer was shown and which fed each sentence (ids only, brief v2 1.4). Edge logs only, 24h.' },
+  invention_gate: {
+    kind: 'counter',
+    stored: 'generations.blueprint',
+    why: 'Stored under blueprint.invention_gate. Per script (trial): S/E/I/N counts before and after repair, repairs by kind, outcome, ms and timeout (ids and reasons only, never text). The log line mirrors the stored record.',
+  },
+  invention_gate_failed: { kind: 'counter_ephemeral', why: 'The gate threw on a trial request and the script shipped without it (measure-only fallback); the stored record is absent for that generation, which the batch report counts. Edge logs only, 24h.' },
   support_check: { kind: 'counter_ephemeral', why: 'Per script (trial, shadow): how many spoken sentences do not trace to what the writer was given, by reason (counts only, never text, brief 2.17). Edge logs only, 24h.' },
   lessons_in_prompt: { kind: 'counter_ephemeral', why: 'Per script (trial): lessons entering the writer prompt by source, and how many were dropped as synthetic, duplicate, expired or over the AI-viewer cap (brief v2 1.2). Counts only.' },
   personal_use_beat_dropped: { kind: 'counter_ephemeral', why: 'Per script: a middle beat that only claimed personal use of an unconfirmed product was removed instead of failing the build (ceiling C6).' },
