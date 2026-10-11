@@ -21,10 +21,11 @@ export const INVENTION_GATE_VERSION = 'invention-gate-v1'
 /** Judge models, as TASK CLASSES of worker/model_routing_v1.json (no model
  *  literal outside the catalog — check_model_routing). Cheapest first:
  *  `read` is the writer-family flash model, `extract` the stronger pro model.
- *  The edge runs the flash judge; calibration runs both (owner amendment b). */
+ *  The durable worker step runs them as a CASCADE (see INVENTION_JUDGE_CASCADE):
+ *  flash on every chunk, pro only for the sentences flash is unsure of. */
 export const INVENTION_JUDGE_TASKS = ['read', 'extract'] as const
 
-/** Hard cap on the whole gate per request (owner amendment d). */
+/** Default deadline for a gate run when the caller gives none (the worker passes its own budget). */
 export const INVENTION_GATE_TIMEOUT_MS = 25_000
 export const INVENTION_GATE_MAX_ROUNDS = 2
 /** ≈ one E per this many words may remain (design A5). */
@@ -462,6 +463,7 @@ export const JUDGE_SCHEMA = {
           item_ids: { type: 'ARRAY', items: { type: 'STRING' } },
           claim_types: { type: 'ARRAY', items: { type: 'STRING' } },
           reason: { type: 'STRING' },
+          uncertain: { type: 'BOOLEAN' },
         },
         required: ['i', 'class', 'item_ids'],
       },
@@ -472,7 +474,7 @@ export const JUDGE_SCHEMA = {
 
 const fence = (s: string) => s.split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
 
-/** One prompt per script: all sentences and all items (design A4). */
+/** One prompt per chunk of sentences, carrying only the items relevant to that chunk (see `chunkLedger`). */
 export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: readonly LedgerItem[], products: readonly ProductName[] = []): string {
   const prodName = (id: string | null) => (id === null ? 'general' : products.find((p) => p.id === id)?.name ?? id)
   const items = ledger.map((it) => `[${it.id}] (${it.origin}${it.field ? `/${it.field}` : ''}; about: ${prodName(it.product_id)}; ${it.first_party ? 'her own words' : 'outside source'}${it.origin === 'urgency' ? (it.live ? '; LIVE' : '; NOT live') : ''}) ${it.text.slice(0, 400)}`)
@@ -486,13 +488,14 @@ export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: rea
     'A question that PRESUPPOSES a fact ("Did you know every bag is roasted the morning it ships?") is judged on that fact.',
     'Hyperbole about her own experience ("this literally saved my mornings") is E when her own item backs the experience, otherwise I.',
     'item_ids: the ids of the items that entail the sentence (empty for I or N). claim_types: any of audience, customer, result, scarcity, number, event, quote, feeling, presupposition, cross_product, opinion, figurative, general. reason: at most 8 words.',
+    'uncertain: true when you cannot tell whether the material entails the sentence, or it is only partly backed (a stronger checker looks again); otherwise false.',
     `\nMATERIAL (the only source of truth):\n<<<UNTRUSTED_DATA material\n${fence(items.join('\n'))}\nEND_UNTRUSTED_DATA>>>`,
     `\nSENTENCES:\n<<<UNTRUSTED_DATA sentences\n${fence(lines.join('\n'))}\nEND_UNTRUSTED_DATA>>>`,
-    '\nReturn {"sentences":[{"i":0,"class":"S","item_ids":["…"],"claim_types":[],"reason":"…"}]} with one entry per sentence.',
+    '\nReturn {"sentences":[{"i":0,"class":"S","item_ids":["…"],"claim_types":[],"reason":"…","uncertain":false}]} with one entry per sentence.',
   ].join('\n')
 }
 
-export interface JudgeVerdict { i: number; cls: GateClass; item_ids: string[]; claim_types: ClaimType[]; reason: string }
+export interface JudgeVerdict { i: number; cls: GateClass; item_ids: string[]; claim_types: ClaimType[]; reason: string; uncertain?: boolean }
 
 const CLAIM_TYPES = new Set<ClaimType>(['audience', 'customer', 'result', 'scarcity', 'number', 'event', 'quote', 'feeling', 'presupposition', 'cross_product', 'product', 'opinion', 'general', 'figurative', 'hyperbole'])
 
@@ -517,9 +520,199 @@ export function parseJudge(raw: unknown, sentenceCount: number, ledgerIds: Reado
     if (!Number.isInteger(i) || i < 0 || i >= sentenceCount || !['S', 'E', 'I', 'N'].includes(cls) || verdicts.has(i)) { malformed++; continue }
     const ids = (Array.isArray(r?.item_ids) ? r!.item_ids as unknown[] : []).map((x) => String(x ?? '').trim()).filter((x) => ledgerIds.has(x))
     const types = (Array.isArray(r?.claim_types) ? r!.claim_types as unknown[] : []).map((x) => String(x ?? '').trim().toLowerCase()).filter((x): x is ClaimType => CLAIM_TYPES.has(x as ClaimType))
-    verdicts.set(i, { i, cls: cls as GateClass, item_ids: [...new Set(ids)], claim_types: [...new Set(types)], reason: String(r?.reason ?? '').slice(0, 60) })
+    verdicts.set(i, { i, cls: cls as GateClass, item_ids: [...new Set(ids)], claim_types: [...new Set(types)], reason: String(r?.reason ?? '').slice(0, 60), ...(r?.uncertain === true ? { uncertain: true } : {}) })
   }
   return { verdicts, malformed }
+}
+
+// ── FAST PATH: PREFILTER → CHUNKS → CASCADE (owner decision 13 Oct) ────────
+//
+// One judge call over a whole script took 40-70 s. Three cuts, none of which
+// loosens a verdict:
+//   1. PREFILTER: a sentence the rules already decide (N by rule, I by a hard
+//      rule, a placeholder) never goes to the judge — `classifySentences`
+//      decides it the same way with or without a verdict.
+//   2. CHUNKS: the rest go in groups of ~6, each prompt carrying only the items
+//      that could matter to that group (in scope + lexical/number relevance +
+//      the closest items, plus every first-party/live item when the group has a
+//      gated claim). Chunks run in parallel, a few at a time.
+//   3. CASCADE: the fast model (task class `read`) judges every chunk; only
+//      the sentences it marks `uncertain` (or skips, or whose chunk failed) go
+//      to the stronger model (task class `extract`).
+
+export class GateTimeout extends Error {}
+
+/** Sentences per judge call. */
+export const JUDGE_CHUNK_SIZE = 6
+/** Judge calls in flight at once per request (6 hit rate limits in calibration). */
+export const JUDGE_CONCURRENCY = 4
+/** Thinking budget for the judge: off. Schema-constrained classification. */
+export const JUDGE_THINKING_BUDGET = 0
+/** The cascade: fast model first, then the stronger one for uncertain sentences (task classes of model_routing_v1.json). */
+export const INVENTION_JUDGE_CASCADE = { fast: 'read', strong: 'extract' } as const
+
+/** Steps the durable worker run reports on `blueprint.gate_progress`. */
+export type GateStep = 'queued' | 'judging' | 'repairing' | 'done' | 'failed'
+export interface GateProgress { step: GateStep; at: string; chunks_done: number; chunks_total: number }
+export function gateProgress(step: GateStep, chunksDone = 0, chunksTotal = 0, at: number = Date.now()): GateProgress {
+  return { step, at: new Date(at).toISOString(), chunks_done: chunksDone, chunks_total: chunksTotal }
+}
+
+/** Per-request timing, recorded on the gate record (numbers only). */
+export interface GatePerf {
+  ms_total: number
+  /** Wall time of each judge call (fast and strong), in order of completion. */
+  chunk_ms: number[]
+  judge_calls: number
+  /** Sentences sent on to the stronger model. */
+  escalations: number
+  /** Sentences the rules decided without a judge. */
+  prefiltered: number
+  /** Sentences sent to the judge (cache hits from an earlier round excluded). */
+  judged: number
+}
+export const emptyPerf = (): GatePerf => ({ ms_total: 0, chunk_ms: [], judge_calls: 0, escalations: 0, prefiltered: 0, judged: 0 })
+
+/** True when the rules (or a placeholder) already decide this sentence. */
+export function decidedByRule(s: GateSentence, r: RuleRead): boolean {
+  return isPlaceholder(s.text) || !!r.hard || !!r.soft
+}
+
+export function chunk<T>(xs: readonly T[], size: number = JUDGE_CHUNK_SIZE): T[][] {
+  const n = Math.max(1, Math.floor(size))
+  const out: T[][] = []
+  for (let k = 0; k < xs.length; k += n) out.push(xs.slice(k, k + n))
+  return out
+}
+
+const NEEDS_HER = new Set<ClaimType>(['audience', 'customer', 'result', 'scarcity', 'event', 'quote', 'feeling'])
+
+/** The items a chunk's prompt carries: in scope for one of its sentences, and
+ *  either one of their closest items, sharing a content word or a number with
+ *  them, or (when the chunk holds a gated/her-own claim) any first-party or
+ *  live item. Out-of-scope items can never back a sentence, so leaving them out
+ *  changes no verdict. */
+export function chunkLedger(group: ReadonlyArray<{ s: GateSentence; r: RuleRead }>, ledger: readonly LedgerItem[]): LedgerItem[] {
+  const words = new Set<string>()
+  const nums: LedgerNumber[] = []
+  for (const { s } of group) { for (const w of contentWords(s.text)) words.add(w); nums.push(...parseNumbers(s.text)) }
+  const near = new Set(group.flatMap((g) => g.r.near))
+  const gated = group.some((g) => g.r.claim_types.some((t) => NEEDS_HER.has(t)))
+  return ledger.filter((it) => {
+    if (!group.some((g) => inScope(it, g.r.subject_product))) return false
+    if (near.has(it.id)) return true
+    if (gated && (it.first_party || it.live)) return true
+    if (it.numbers.some((n) => nums.some((m) => m.value === n.value))) return true
+    for (const w of contentWords(it.text)) if (words.has(w)) return true
+    return false
+  })
+}
+
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (x: T, k: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) { const k = next++; out[k] = await fn(items[k]!, k) }
+  }))
+  return out
+}
+
+export interface JudgeRunInput {
+  sentences: readonly GateSentence[]
+  ledger: readonly LedgerItem[]
+  products?: readonly ProductName[]
+  targetProductId?: string | null
+  chunkSize?: number
+  concurrency?: number
+  /** Verdicts from an earlier round, keyed by `verdictKey`; unchanged sentences are not judged again. */
+  cache?: Map<string, JudgeVerdict>
+}
+export interface JudgeRunDeps {
+  /** The fast judge (task class `read`). Raw model text. */
+  judge: (prompt: string) => Promise<string>
+  /** The stronger judge (task class `extract`) for uncertain sentences; none = no cascade. */
+  judgeStrong?: (prompt: string) => Promise<string>
+  /** Called after each judge call: calls done so far, calls planned so far. */
+  onChunk?: (done: number, total: number) => void
+  now?: () => number
+  /** Wraps each call (the gate's deadline). */
+  wrap?: <T>(p: Promise<T>) => Promise<T>
+}
+export interface JudgeRunResult { verdicts: Map<number, JudgeVerdict>; malformed: number; perf: GatePerf }
+
+export const verdictKey = (s: GateSentence) => `${s.surface}\u0000${s.text}`
+
+/** Prefilter → chunk → fast judge → strong judge for the uncertain ones. */
+export async function judgeSentences(input: JudgeRunInput, deps: JudgeRunDeps): Promise<JudgeRunResult> {
+  const now = deps.now ?? (() => Date.now())
+  const wrap = deps.wrap ?? (<T>(p: Promise<T>) => p)
+  const products = input.products ?? []
+  const target = input.targetProductId ?? null
+  const ids = new Set(input.ledger.map((it) => it.id))
+  const perf = emptyPerf()
+  const verdicts = new Map<number, JudgeVerdict>()
+  let malformed = 0
+  const pending: Array<{ s: GateSentence; r: RuleRead }> = []
+  for (const s of input.sentences) {
+    if (isPlaceholder(s.text)) { perf.prefiltered++; continue }
+    const r = ruleRead(s, input.ledger, products, target)
+    if (decidedByRule(s, r)) { perf.prefiltered++; continue }
+    const hit = input.cache?.get(verdictKey(s))
+    if (hit) { verdicts.set(s.i, { ...hit, i: s.i }); continue }
+    pending.push({ s, r })
+  }
+  perf.judged = pending.length
+  const size = input.chunkSize ?? JUDGE_CHUNK_SIZE
+  const limit = input.concurrency ?? JUDGE_CONCURRENCY
+  let done = 0
+  let total = 0
+  const run = async (group: Array<{ s: GateSentence; r: RuleRead }>, call: (p: string) => Promise<string>) => {
+    const prompt = buildJudgePrompt(group.map((g) => g.s), chunkLedger(group, input.ledger), products)
+    const t0 = now()
+    try {
+      const raw = await wrap(call(prompt))
+      const parsed = parseJudge(raw, input.sentences.length, ids)
+      const mine = new Set(group.map((g) => g.s.i))
+      const out = new Map<number, JudgeVerdict>()
+      for (const [i, v] of parsed.verdicts) if (mine.has(i)) out.set(i, v)
+      malformed += parsed.malformed
+      return out
+    } finally {
+      perf.chunk_ms.push(now() - t0)
+      perf.judge_calls++
+      deps.onChunk?.(++done, total)
+    }
+  }
+  const fast = chunk(pending, size)
+  total += fast.length
+  const escalate: Array<{ s: GateSentence; r: RuleRead }> = []
+  await mapLimit(fast, limit, async (group) => {
+    let got: Map<number, JudgeVerdict>
+    try { got = await run(group, deps.judge) } catch (e) {
+      // A failed fast chunk goes to the strong model whole; with no cascade the gate fails.
+      if (!deps.judgeStrong || e instanceof GateTimeout) throw e
+      escalate.push(...group)
+      return
+    }
+    for (const g of group) {
+      const v = got.get(g.s.i)
+      if (v && !(v.uncertain && deps.judgeStrong)) verdicts.set(g.s.i, v)
+      else if (deps.judgeStrong) { if (v) verdicts.set(g.s.i, v); escalate.push(g) }
+    }
+  })
+  if (escalate.length && deps.judgeStrong) {
+    perf.escalations = escalate.length
+    const strong = chunk(escalate.sort((a, b) => a.s.i - b.s.i), size)
+    total += strong.length
+    deps.onChunk?.(done, total)
+    await mapLimit(strong, limit, async (group) => {
+      const got = await run(group, deps.judgeStrong!)
+      // The stronger verdict wins; where it gave none, the fast verdict (if any) stands.
+      for (const g of group) { const v = got.get(g.s.i); if (v) verdicts.set(g.s.i, { ...v, uncertain: false }) }
+    })
+  }
+  if (input.cache) for (const s of input.sentences) { const v = verdicts.get(s.i); if (v) input.cache.set(verdictKey(s), v) }
+  return { verdicts, malformed, perf }
 }
 
 // ── COMBINE ────────────────────────────────────────────────────────────────
@@ -842,13 +1035,16 @@ export interface InventionGateRecord {
   error?: string
   /** Only on outcome 'unchecked': why the gate did not finish. */
   reason?: UncheckedReason
+  /** Timing of this run: total ms, per-judge-call ms, judge calls, escalations. */
+  perf?: GatePerf
 }
 
 // ── CHECK STATUS (owner rule 13 Oct: a timeout never ships an unchecked script silently) ──
 
 /** What the saved blueprint says about the gate, in one field the UI and the re-check read. */
 export type CheckStatus = 'checked' | 'needs_answers' | 'general' | 'unchecked'
-export type UncheckedReason = 'timeout' | 'error'
+/** 'queued' = the edge saved the script and handed the gate to the durable worker step. */
+export type UncheckedReason = 'timeout' | 'error' | 'queued'
 
 /** Map a gate record to the blueprint's check status. A timeout, or a
  *  measure-only record from a full run (the judge or rewrite threw), means the
@@ -883,6 +1079,7 @@ export function uncheckedRecord(prev: InventionGateRecord | null | undefined, re
     timed_out: reason === 'timeout',
     ...(prev?.judge_malformed !== undefined ? { judge_malformed: prev.judge_malformed } : {}),
     ...(prev?.error ? { error: prev.error } : {}),
+    ...(prev?.perf ? { perf: prev.perf } : {}),
     reason,
   }
 }
@@ -927,8 +1124,12 @@ export function summarizeGateRecords(records: ReadonlyArray<InventionGateRecord 
 // ── ONE ROUND, END TO END (the edge and the tests drive this) ──────────────
 
 export interface GateDeps {
-  /** One judge call per script. Returns the model's raw text. */
+  /** The fast judge (task class `read`), one call per chunk. Returns the model's raw text. */
   judge: (prompt: string) => Promise<string>
+  /** The stronger judge (task class `extract`) for sentences the fast one is unsure of. */
+  judgeStrong?: (prompt: string) => Promise<string>
+  /** Step events ('judging' with chunk counts, 'repairing'). */
+  onProgress?: (p: GateProgress) => void
   /** One constrained rewrite call for all replace targets. Returns raw text. */
   rewrite: (prompt: string) => Promise<string>
 }
@@ -943,6 +1144,8 @@ export interface RunGateInput {
   measureOnly?: boolean
   now?: () => number
   timeoutMs?: number
+  chunkSize?: number
+  concurrency?: number
 }
 
 export interface RunGateResult { blueprint: GateBlueprint; record: InventionGateRecord; questions: GateQuestion[] }
@@ -966,7 +1169,6 @@ function parseRewrites(raw: string): Map<number, string> {
   return m
 }
 
-class GateTimeout extends Error {}
 
 /** Classes for a repaired blueprint WITHOUT a new judge call: no new text was
  *  written (only drops, asks and placeholders), so each surviving sentence
@@ -993,7 +1195,6 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
   const timeoutMs = input.timeoutMs ?? INVENTION_GATE_TIMEOUT_MS
   const products = input.products ?? []
   const target = input.targetProductId ?? null
-  const ids = new Set(input.ledger.map((it) => it.id))
   const byId = new Map(input.ledger.map((it) => [it.id, it] as const))
   const race = async <T>(p: Promise<T>): Promise<T> => {
     const ms = timeoutMs - (now() - t0)
@@ -1004,15 +1205,29 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     } finally { if (timer) clearTimeout(timer) }
   }
   let malformed = 0
+  const perf = emptyPerf()
+  const cache = new Map<string, JudgeVerdict>()
+  const progress = (step: GateStep, d = 0, t = 0) => { try { deps.onProgress?.(gateProgress(step, d, t, now())) } catch { /* progress never fails a gate */ } }
   type State = { sentences: GateSentence[]; classified: ClassifiedSentence[] }
   const classify = async (bp: GateBlueprint): Promise<State> => {
     const sentences = extractSentences(bp)
     let judge: Map<number, JudgeVerdict> | null = null
     if (sentences.length) {
-      const raw = await race(deps.judge(buildJudgePrompt(sentences, input.ledger, products)))
-      const parsed = parseJudge(raw, sentences.length, ids)
-      malformed += parsed.malformed
-      judge = parsed.verdicts
+      progress('judging')
+      const j = await judgeSentences({ sentences, ledger: input.ledger, products, targetProductId: target, cache,
+        ...(input.chunkSize ? { chunkSize: input.chunkSize } : {}), ...(input.concurrency ? { concurrency: input.concurrency } : {}) }, {
+        judge: deps.judge,
+        ...(deps.judgeStrong ? { judgeStrong: deps.judgeStrong } : {}),
+        onChunk: (d, t) => progress('judging', d, t),
+        now, wrap: race,
+      })
+      malformed += j.malformed
+      perf.chunk_ms.push(...j.perf.chunk_ms)
+      perf.judge_calls += j.perf.judge_calls
+      perf.escalations += j.perf.escalations
+      perf.prefiltered += j.perf.prefiltered
+      perf.judged += j.perf.judged
+      judge = j.verdicts
     }
     return { sentences, classified: classifySentences({ sentences, ledger: input.ledger, products, targetProductId: target, judge }) }
   }
@@ -1026,7 +1241,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     first = await classify(input.blueprint)
     const before = countClasses(first.classified)
     if (input.measureOnly) {
-      return { blueprint: input.blueprint, questions: [], record: { ...base(), sentences: recordSentences(first.classified), before, after: before, ms: now() - t0, judge_malformed: malformed } }
+      return { blueprint: input.blueprint, questions: [], record: { ...base(), sentences: recordSentences(first.classified), before, after: before, ms: now() - t0, judge_malformed: malformed, perf: { ...perf, ms_total: now() - t0 } } }
     }
     let bp = input.blueprint
     let cur: State = first
@@ -1058,6 +1273,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
         cur = { sentences, classified: carryClasses(prev, sentences) }
         continue
       }
+      progress('repairing')
       const raw = await race(deps.rewrite(buildRewritePrompt(replaceSteps.map((st) => ({
         i: st.i, text: cur.sentences[st.i]!.text, items: st.item_ids.map((id) => byId.get(id)).filter((x): x is LedgerItem => !!x),
       })))))
@@ -1082,6 +1298,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       e_flags: cur.classified.filter((s) => s.class === 'E').slice(0, ebudget).map((s) => ({ i: s.i, surface: s.surface, item_ids: s.item_ids })),
       ms: now() - t0,
       judge_malformed: malformed,
+      perf: { ...perf, ms_total: now() - t0 },
     }
     // A declined slot that fell back to the general version is not offered again.
     return { blueprint: bp, record, questions: questions.filter((q) => !declined.has(q.writes_to)) }
@@ -1096,7 +1313,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
         sentences: first ? recordSentences(first.classified) : [],
         before: counts, after: counts,
         outcome: timedOut ? 'timeout' : 'measure_only',
-        ms: now() - t0, timed_out: timedOut, judge_malformed: malformed,
+        ms: now() - t0, timed_out: timedOut, judge_malformed: malformed, perf: { ...perf, ms_total: now() - t0 },
         ...(timedOut ? {} : { error: String((e as Error)?.name ?? 'error').slice(0, 40) }),
       },
     }

@@ -19,6 +19,7 @@ export interface GateQuestionView { scope: 'script'; kind: string; text: string;
 
 interface GateBlueprintLike {
   check_status?: unknown
+  gate_progress?: unknown
   invention_gate?: { outcome?: unknown } | null
   gate_questions?: unknown
   script?: Array<{ line?: unknown } | null> | null
@@ -47,6 +48,33 @@ export function gateQuestionsOf(bp: GateBlueprintLike | null | undefined): GateQ
 /** Which status the trial user sees; `checked` for everyone else. */
 export function gateStatusFor(userId: string | null | undefined, bp: GateBlueprintLike | null | undefined): CheckStatus {
   return trialUser(userId) ? checkStatusOf(bp) : 'checked'
+}
+
+/** The durable worker step's progress (`blueprint.gate_progress`), written as the job runs. */
+export type GateStep = 'queued' | 'judging' | 'repairing' | 'done' | 'failed'
+export interface GateProgressView { step: GateStep; chunks_done: number; chunks_total: number }
+const STEPS: GateStep[] = ['queued', 'judging', 'repairing', 'done', 'failed']
+
+export function gateProgressOf(bp: GateBlueprintLike | null | undefined): GateProgressView | null {
+  const p = bp?.gate_progress as { step?: unknown; chunks_done?: unknown; chunks_total?: unknown } | null | undefined
+  if (!p || typeof p !== 'object' || !(STEPS as unknown[]).includes(p.step)) return null
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0)
+  return { step: p.step as GateStep, chunks_done: n(p.chunks_done), chunks_total: n(p.chunks_total) }
+}
+
+/** The line shown while the script is 'unchecked'. Never says it is ready. */
+export function gateStepText(p: GateProgressView | null): string {
+  if (!p) return 'Twin is still checking this script'
+  switch (p.step) {
+    case 'queued': return 'Twin is about to check every fact in this script'
+    case 'judging':
+      return p.chunks_total > 0
+        ? `Checking every fact against what you gave Twin (${Math.min(p.chunks_done, p.chunks_total)} of ${p.chunks_total} parts)`
+        : 'Checking every fact against what you gave Twin'
+    case 'repairing': return 'Fixing the lines Twin could not back up'
+    case 'done': return 'Check finished, loading the result'
+    case 'failed': return 'The check hit a problem; Twin is trying again'
+  }
 }
 
 /** Record / teleprompter / "use this script" are closed for these. */
@@ -115,7 +143,10 @@ export function ScriptWithGaps({ script }: { script: GateBlueprintLike['script']
   )
 }
 
-export function NeedsAnswerCard({ userId, blueprint, onSubmit, onRefresh, pollMs = 10_000, pollForMs = 120_000 }: {
+/** How long the screen polls an 'unchecked' script (the worker step targets p90 ≤ 30 s). */
+export const UNCHECKED_POLL_FOR_MS = 180_000
+
+export function NeedsAnswerCard({ userId, blueprint, onSubmit, onRefresh, pollMs = 5_000, pollForMs = UNCHECKED_POLL_FOR_MS }: {
   userId: string | null | undefined
   blueprint: GateBlueprintLike | null | undefined
   /** Answers keyed by each question's `writes_to`. */
@@ -146,8 +177,10 @@ export function NeedsAnswerCard({ userId, blueprint, onSubmit, onRefresh, pollMs
 
   if (status === 'unchecked') {
     return (
-      <div role="status" data-testid="gate-unchecked" className="rounded-card border border-white/10 bg-ink2/60 p-4 text-sm text-stone">
-        Twin is still checking this script
+      <div role="status" aria-live="polite" data-testid="gate-unchecked" data-step={gateProgressOf(blueprint)?.step ?? 'unknown'}
+        className="rounded-card border border-white/10 bg-ink2/60 p-4 text-sm text-stone">
+        <span className="block" data-testid="gate-step">{gateStepText(gateProgressOf(blueprint))}</span>
+        <span className="mt-1 block text-xs text-stone/70">Recording opens when the check is done.</span>
       </div>
     )
   }

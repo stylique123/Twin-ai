@@ -57,15 +57,15 @@ describe('check status', () => {
 describe('wiring: an unchecked gate enqueues a durable re-check', () => {
   const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..')
   const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
-  it('timeout or throw marks the blueprint unchecked and sets the recheck', () => {
-    const gate = EDGE.indexOf('runInventionGate(')
-    const block = EDGE.slice(gate, EDGE.indexOf("traceBeats('shipped'", gate))
-    expect(block).toMatch(/inventionCheckStatus\(gate\.record\)/)
-    expect(block).toMatch(/status\.status === 'unchecked'[\s\S]*inventionRecheck = /)
-    expect(block).toMatch(/bpg\.check_status = status\.status/)
-    const caught = block.slice(block.indexOf("event: 'invention_gate_failed'"))
-    expect(caught).toMatch(/check_status = 'unchecked'/)
-    expect(caught).toMatch(/inventionRecheck = \{ reason: 'error'/)
+  it('under trialOn the edge never judges inline: it marks the blueprint unchecked (reason queued) and sets the job', () => {
+    expect(EDGE).not.toContain('runInventionGate(')
+    expect(EDGE).not.toContain('callOnce(apiKey!, INVENTION_JUDGE_SYSTEM')
+    const at = EDGE.indexOf("inventionUncheckedRecord(null, 'queued', 0)")
+    expect(at).toBeGreaterThan(0)
+    const block = EDGE.slice(EDGE.lastIndexOf('if (trialOn && blueprint', at), EDGE.indexOf("traceBeats('shipped'", at))
+    expect(block).toMatch(/bpg\.check_status = 'unchecked'/)
+    expect(block).toMatch(/inventionRecheck = \{ reason: 'queued', ledger: \{ answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget \} \}/)
+    expect(block).toContain("event: 'invention_gate_queued'")
   })
   it('enqueues an invention_recheck jobs row keyed on the saved generation id, right after the save', () => {
     const save = EDGE.indexOf('const { data: gen, error: insErr } = await admin')

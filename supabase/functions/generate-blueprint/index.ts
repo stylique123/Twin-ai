@@ -65,7 +65,7 @@ import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phrase
 import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPOSURE, type ReferenceUseLevel } from '../_shared/referenceExposure.ts'
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
-import { syncShotListSpokenText, collapseDoubledNumbers, carryBeatActions, resyncShotListToScript } from '../_shared/shotListSync.ts'
+import { syncShotListSpokenText, collapseDoubledNumbers, carryBeatActions } from '../_shared/shotListSync.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
@@ -78,7 +78,7 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
-import { buildLedger as buildInventionLedger, runInventionGate, INVENTION_GATE_TIMEOUT_MS, JUDGE_SYSTEM as INVENTION_JUDGE_SYSTEM, JUDGE_SCHEMA as INVENTION_JUDGE_SCHEMA, REWRITE_SYSTEM as INVENTION_REWRITE_SYSTEM, checkStatusFor as inventionCheckStatus, uncheckedRecord as inventionUncheckedRecord, GATE_REWRITTEN_KEYS, type GateBlueprint, type UncheckedReason } from '../_shared/inventionGate.ts'
+import { uncheckedRecord as inventionUncheckedRecord, type UncheckedReason } from '../_shared/inventionGate.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
@@ -5155,8 +5155,8 @@ const REPAIR_SCHEMA = {
 
 const SCRIPT_EMPTIED = 'SCRIPT_EMPTIED_BY_CHECKS'
 
-/** The worker job that re-runs the zero-invention gate on a saved generation
- *  whose gate timed out or failed (owner rule 13 Oct). Same queue row shape as
+/** The worker job that runs the zero-invention gate on a saved trial
+ *  generation as a durable step (owner decision 13 Oct). Same queue row shape as
  *  every other edge enqueue (owner_id, type, status, max_attempts, payload). */
 const INVENTION_RECHECK_JOB = 'invention_recheck'
 async function enqueueInventionRecheck(
@@ -16230,22 +16230,19 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       ;(blueprint as Record<string, unknown>).compliance = c
       console.log(JSON.stringify({ event: 'blueprint_compliance', passed: c.passed, compliant: c.compliant, hook_swapped: hookSwapped, fails: Object.entries(c).filter(([, v]) => v === false).map(([k]) => k) }))
     } catch { /* measuring never fails a build */ }
-    // ⚖️ THE ZERO-INVENTION GATE (design v1 Part A, stage 1; trial only). Runs
-    // on the FINAL script — after the late guards, the shadow support check,
-    // dropInventedEvents and the compliance hook swap, all of which keep
-    // running unchanged for comparison. Every spoken line, hook option, title,
-    // caption and on-screen text is checked against the ledger of what the
-    // writer was given (ids + scope + numbers-to-field); an I is replaced from
-    // listed items, turned into a question for her, or dropped, and never
-    // ships. Hard 25s cap (inside the edge's 150s): on timeout the script is
-    // kept as written and the record says 'timeout'. Ids and reasons only.
+    // ⚖️ THE ZERO-INVENTION GATE IS A DURABLE WORKER STEP (owner decision 13 Oct;
+    // design v1 Part A, stage 1; trial only). The edge no longer judges inline:
+    // one judge call per script took 40-70 s, more than the edge can spend. It
+    // saves the script with check_status 'unchecked' (record reason 'queued')
+    // and enqueues the worker's `invention_recheck` job right after the save,
+    // keyed on the saved generation id, with the request-only ledger material
+    // (answers, outside board, offer, target). The worker runs the full gate
+    // (rules prefilter, chunked judge with the read->extract cascade, repair,
+    // shot-list re-sync, questions) and writes step events to
+    // blueprint.gate_progress while it runs. Recording stays locked while
+    // 'unchecked': an unchecked script never ships as final.
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
-    // ⚖️ OWNER RULE (13 Oct): A TIMEOUT NEVER SILENTLY SHIPS AN UNCHECKED SCRIPT.
-    // A gate that times out or throws stores outcome 'unchecked' (with its
-    // reason) and check_status 'unchecked', and a durable `invention_recheck`
-    // job is enqueued right after the save, keyed on the saved generation id.
     if (trialOn && blueprint && typeof blueprint === 'object') {
-      const gateT0 = Date.now()
       const gateEntity = ownedEntity as { id?: unknown } | null
       const gateTarget = gateEntity?.id ? String(gateEntity.id) : null
       let gateAnswers: Record<string, unknown> = {}
@@ -16255,59 +16252,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         gateAnswers = { ...(answers ?? {}), ...(body.readiness_answers ?? {}), ...(typeof brief.productFacts === 'string' && brief.productFacts.trim() ? { product_facts: brief.productFacts } : {}) }
         gateOutside = boardMaterial.map((m, n) => ({ id: m.id ?? `${m.kind}:${n}`, kind: m.kind, text: m.text }))
         gateOffer = typeof readyOffer === 'string' ? readyOffer : ''
-      } catch { /* the re-check rebuilds what it can from the saved rows */ }
-      try {
-        // The writer-family flash model (calibration also runs the pro model offline).
-        const gateModel = Deno.env.get('INVENTION_GATE_MODEL') ?? Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.8-flash'
-        const gateBudget = Math.max(0, Math.min(INVENTION_GATE_TIMEOUT_MS, 150_000 - 20_000 - (Date.now() - reqStartedAt)))
-        const gateProducts = (libraryRows ?? []).map((r) => ({ id: String((r as { id?: unknown }).id ?? ''), name: String((r as { name?: unknown }).name ?? '') })).filter((p) => p.id && p.name)
-        const gateLedger = buildInventionLedger({
-          knowledge: provenanceSupply,
-          answers: gateAnswers,
-          note: reference_note,
-          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
-          targetProductId: gateEntity?.id ? String(gateEntity.id) : null,
-          offer: gateOffer,
-          outside: gateOutside,
-          now: Date.now(),
-        })
-        const gate = await runInventionGate({
-          blueprint: blueprint as GateBlueprint,
-          ledger: gateLedger,
-          products: gateProducts,
-          targetProductId: gateEntity?.id ? String(gateEntity.id) : null,
-          model: gateModel,
-          timeoutMs: gateBudget,
-        }, {
-          judge: (p) => callOnce(apiKey!, INVENTION_JUDGE_SYSTEM, p, gateModel, 0, gateBudget, INVENTION_JUDGE_SCHEMA),
-          rewrite: (p) => callOnce(apiKey!, INVENTION_REWRITE_SYSTEM, p, gateModel, 0, gateBudget, REPAIR_SCHEMA),
-        })
-        const bpg = blueprint as Record<string, unknown>
-        if (gate.blueprint !== blueprint) {
-          for (const k of GATE_REWRITTEN_KEYS) {
-            if (k in gate.blueprint) bpg[k] = (gate.blueprint as Record<string, unknown>)[k]
-          }
-          // The shot list and the teleprompter (which reads `script`) say what the repaired script says.
-          resyncShotListToScript(bpg)
-        }
-        if (gate.questions.length) bpg.gate_questions = [...(Array.isArray(bpg.gate_questions) ? bpg.gate_questions : []), ...gate.questions]
-        const status = inventionCheckStatus(gate.record)
-        if (status.status === 'unchecked') {
-          bpg.invention_gate = inventionUncheckedRecord(gate.record, status.reason ?? 'error', gate.record.ms, gateModel)
-          inventionRecheck = { reason: status.reason ?? 'error', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget } }
-          console.warn(JSON.stringify({ event: 'invention_gate_unchecked', reason: status.reason ?? 'error', ms: gate.record.ms }))
-        } else {
-          bpg.invention_gate = gate.record
-        }
-        bpg.check_status = status.status
-        console.log(JSON.stringify({ event: 'invention_gate', outcome: gate.record.outcome, before: gate.record.before, after: gate.record.after, repaired: gate.record.repaired, rounds: gate.record.rounds, ms: gate.record.ms, timed_out: gate.record.timed_out }))
-      } catch (e) {
-        console.warn(JSON.stringify({ event: 'invention_gate_failed', error: String((e as Error)?.name ?? 'error').slice(0, 40) }))
-        const bpg = blueprint as Record<string, unknown>
-        bpg.invention_gate = inventionUncheckedRecord(null, 'error', Date.now() - gateT0)
-        bpg.check_status = 'unchecked'
-        inventionRecheck = { reason: 'error', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget } }
-      }
+      } catch { /* the worker rebuilds what it can from the saved rows */ }
+      const bpg = blueprint as Record<string, unknown>
+      bpg.invention_gate = inventionUncheckedRecord(null, 'queued', 0)
+      bpg.check_status = 'unchecked'
+      bpg.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
+      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget } }
+      console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
     ;(blueprint as Record<string, unknown>).beat_trace = beatTrace
@@ -16373,10 +16324,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // SIGNAL. An attempt row with no `generation_id` is a run that never produced
     // a script — the state that today leaves no trace at all — so this must never
     // be backfilled onto rows whose run failed.
-    // ⚖️ THE UNCHECKED SCRIPT GETS A DURABLE RE-CHECK (owner rule 13 Oct). Keyed
-    // on the saved id; the worker's `invention_recheck` re-runs the same gate
-    // with a longer budget and writes the repaired blueprint back. A failed
-    // enqueue is logged, never fatal: the row already says 'unchecked'.
+    // ⚖️ THE GATE RUNS AS A DURABLE WORKER STEP (owner decision 13 Oct). Keyed
+    // on the saved id; the worker's `invention_recheck` runs the full gate and
+    // writes the repaired blueprint back. A failed enqueue is logged, never
+    // fatal: the row already says 'unchecked' and recording stays locked.
     if (gen?.id && inventionRecheck) {
       const { error: recheckErr } = await enqueueInventionRecheck(admin, { generationId: gen.id, ownerId: user.id, reason: inventionRecheck.reason, ledger: inventionRecheck.ledger })
       console.log(JSON.stringify({ event: 'invention_recheck_enqueued', reason: inventionRecheck.reason, ok: !recheckErr }))

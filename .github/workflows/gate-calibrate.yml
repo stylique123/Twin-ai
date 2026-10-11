@@ -1,9 +1,9 @@
 name: gate-calibrate
 
 # ZERO-INVENTION GATE — OFFLINE CALIBRATION (design v1 A7). Manual only.
-# Re-runs the gate classifier (rules + judge, no repair, no generation) on
-# scripts a batch already saved and compares its I calls with a private labels
-# CSV. Read-only. Prints counts, rates and ids only; the labels live in a
+# Re-runs the production gate path (prefilter, chunked judge, read>extract
+# cascade, repair) on scripts a batch already saved, compares its first I calls
+# with a private labels CSV and reports whole-gate p50/p90. Read-only. Prints counts, rates and ids only; the labels live in a
 # private test_run_files row and only its id is passed here.
 on:
   workflow_dispatch:
@@ -13,9 +13,9 @@ on:
         required: true
         default: ''
       models:
-        description: 'Judge task classes or model ids, comma-separated'
+        description: 'Modes, comma-separated: cascade (what production runs) and/or a single task class or model id'
         required: false
-        default: 'read,extract'
+        default: 'cascade'
       labels_file_id:
         description: 'Id of a private test_run_files row (kind=ratings) holding the labels CSV. Never paste labels here: inputs are public.'
         required: false
