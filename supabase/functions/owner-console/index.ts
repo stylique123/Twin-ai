@@ -163,8 +163,12 @@ Deno.serve(async (req: Request) => {
   // ⚠️ NULL SURVIVES AS NULL. A count that failed is passed through as null so
   // `funnelCard` can report "could not be read", which is not a product with
   // no recordings.
+  // ⚖️ REAL CREATORS ONLY: the heartbeat and the fictional panel write
+  // `is_heartbeat` generations (by identity), and they are not product usage,
+  // so a generations count always carries that filter.
   const countOf = async (table: string): Promise<number | null> => {
-    const { count, error } = await admin.from(table).select('id', { count: 'exact', head: true })
+    const base = admin.from(table).select('id', { count: 'exact', head: true })
+    const { count, error } = await (table === 'generations' ? base.eq('is_heartbeat', false) : base)
     return error || typeof count !== 'number' ? null : count
   }
   // ⚠️ A COUNT OF THE TABLE, FILTERED. `countOf` counts every row, which is
@@ -174,13 +178,7 @@ Deno.serve(async (req: Request) => {
       .select('id', { count: 'exact', head: true }).eq(col, val)
     return error || typeof count !== 'number' ? null : count
   }
-  // ⚖️ REAL CREATORS ONLY: the heartbeat and the fictional panel write
-  // `is_heartbeat` generations (by identity), and they are not product usage.
-  const scriptsCount = await (async (): Promise<number | null> => {
-    const { count, error } = await admin.from('generations')
-      .select('id', { count: 'exact', head: true }).eq('is_heartbeat', false)
-    return error || typeof count !== 'number' ? null : count
-  })()
+  const scriptsCount = await countOf('generations')
   // ⚠️⚠️ FINISHED TAKES, NOT ROWS. Measured 2026-09-14: `media_assets` holds 7
   // rows and SIX are `uploading`. `countOf('media_assets')` reported 7
   // recordings, so the card read "147 scripts, 7 recorded, 0 exported" -- a

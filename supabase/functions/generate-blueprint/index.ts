@@ -8828,8 +8828,10 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
   // Everything the writer was given, kept for the figure audit (Sunflower #23).
   let writerMaterial = ''
-  // A panel account spent nothing, so there is nothing to refund (see spend above).
-  let refunded = isPanel
+  let refunded = false
+  // A panel account spent nothing (see spend above), so every refund path is a
+  // no-op: the one-refund latch starts closed for it.
+  if (isPanel) refunded = true
   const refundOnce = async (reason: string) => {
     if (refunded) return
     refunded = true

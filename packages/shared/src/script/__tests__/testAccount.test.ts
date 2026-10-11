@@ -95,7 +95,7 @@ describe('panel account guards (wiring)', () => {
   const edge = read('supabase/functions/generate-blueprint/index.ts')
   it('generation never spends or refunds for a panel account and records credits_spent 0', () => {
     expect(edge).toMatch(/const \{ error: spendErr \} = isPanel \? \{ error: null \} : await admin\.rpc\('spend_credits'/)
-    expect(edge).toMatch(/let refunded = isPanel\n/)
+    expect(edge).toMatch(/let refunded = false\n[\s\S]{0,200}if \(isPanel\) refunded = true\n/)
     expect(edge).toMatch(/const unbillable = isPanel\s*\? 'panel_test_account'/)
     expect(edge).toMatch(/credits_spent: unbillable \? 0 : BLUEPRINT_COST/)
   })
@@ -116,8 +116,9 @@ describe('panel account guards (wiring)', () => {
   })
   it('owner-console counts real generations only', () => {
     const oc = read('supabase/functions/owner-console/index.ts')
-    expect(oc).toMatch(/from\('generations'\)\s*\.select\('id', \{ count: 'exact', head: true \}\)\.eq\('is_heartbeat', false\)/)
-    expect(oc).not.toMatch(/countOf\('generations'\)/)
+    expect(oc).toMatch(/table === 'generations' \? base\.eq\('is_heartbeat', false\) : base/)
+    expect(oc).toContain("const scriptsCount = await countOf('generations')")
+    expect(oc).toMatch(/\.eq\('is_heartbeat', false\)\s*\.not\('script_intent', 'is', null\)/)
   })
   it('admin-metrics rollups and worklist exclude tagged test accounts', () => {
     const am = read('supabase/functions/admin-metrics/index.ts')
