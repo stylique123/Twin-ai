@@ -3,7 +3,7 @@
 // Under the trial the edge no longer runs the gate inline: it saves the script
 // with `blueprint.check_status = 'unchecked'` (record reason 'queued') and
 // enqueues this job keyed on the saved generation id. Here the FULL gate runs
-// (rules prefilter, chunked judge with the read→extract cascade, repair,
+// (rules prefilter, chunked judge: the read and extract judges both judge every chunk, repair,
 // shot-list re-sync, questions) with a 120 s budget, and the blueprint + record
 // are written back. While it runs, `blueprint.gate_progress` carries real step
 // events ('judging' with chunk counts, 'repairing', 'done', 'failed') that the
@@ -28,7 +28,7 @@ import { resyncShotListToScript } from '../generated/shotListSync.js'
 
 /** The fast judge and the rewrite (task class of model_routing_v1.json). */
 export const INVENTION_RECHECK_TASK = INVENTION_JUDGE_CASCADE.fast
-/** The stronger judge, only for sentences the fast one marks uncertain. */
+/** The stronger judge: judges every sentence too, in parallel (two judges, owner Reply 13). */
 export const INVENTION_RECHECK_STRONG_TASK = INVENTION_JUDGE_CASCADE.strong
 /** Judging progress is written at most this often (step changes always go out). */
 export const PROGRESS_MIN_INTERVAL_MS = 1_000
@@ -53,7 +53,7 @@ export interface RecheckDeps {
   callModel(system: string, prompt: string, schema: unknown, timeoutMs: number, opts?: CallOpts): Promise<string>
   /** The fast model (task class `read`). */
   model: string
-  /** The stronger model (task class `extract`); absent = no cascade. */
+  /** The stronger model (task class `extract`); absent = the fast judge stands in for both. */
   strongModel?: string
   now?: () => number
 }
@@ -114,7 +114,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     ledger,
     products,
     targetProductId: target,
-    model: deps.strongModel ? `${deps.model}>${deps.strongModel}` : deps.model,
+    model: deps.strongModel ? `${deps.model}+${deps.strongModel}` : deps.model,
     timeoutMs: budget,
     ...(measureOnly ? { measureOnly: true } : {}),
     ...(deps.now ? { now: deps.now } : {}),
@@ -125,7 +125,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     onProgress: (p) => writeProgress(p),
   })
   const perf = gate.record.perf
-  console.log(JSON.stringify({ event: 'invention_gate_perf', generation_id: generationId, ms_total: perf?.ms_total ?? gate.record.ms, chunk_ms: perf?.chunk_ms ?? [], judge_calls: perf?.judge_calls ?? 0, escalations: perf?.escalations ?? 0, prefiltered: perf?.prefiltered ?? 0, judged: perf?.judged ?? 0, attempt: job.attempts }))
+  console.log(JSON.stringify({ event: 'invention_gate_perf', generation_id: generationId, ms_total: perf?.ms_total ?? gate.record.ms, chunk_ms: perf?.chunk_ms ?? [], judge_calls: perf?.judge_calls ?? 0, escalations: perf?.escalations ?? 0, strong_calls: perf?.strong_calls ?? 0, verdicts: gate.record.verdicts ?? null, prefiltered: perf?.prefiltered ?? 0, judged: perf?.judged ?? 0, attempt: job.attempts }))
 
   // A measure-only run that finished IS the result: keep the record, leave
   // check_status 'unchecked' (the script was never checked-and-repaired), no retry.
@@ -134,7 +134,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
     await chain
     await deps.saveBlueprint(generationId, bp)
-    console.log(JSON.stringify({ event: 'invention_recheck', generation_id: generationId, outcome: 'measure_only', check_status: 'unchecked', before: gate.record.before, ms: gate.record.ms, judge_calls: perf?.judge_calls ?? 0, escalations: perf?.escalations ?? 0 }))
+    console.log(JSON.stringify({ event: 'invention_recheck', generation_id: generationId, outcome: 'measure_only', check_status: 'unchecked', before: gate.record.before, ms: gate.record.ms, judge_calls: perf?.judge_calls ?? 0, escalations: perf?.escalations ?? 0, strong_calls: perf?.strong_calls ?? 0, verdicts: gate.record.verdicts ?? null }))
     return { generation_id: generationId, outcome: 'measure_only', check_status: 'unchecked', ms: gate.record.ms }
   }
   const status = checkStatusFor(gate.record)
@@ -157,11 +157,14 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   const prior = rec(bp.invention_gate) as Partial<InventionGateRecord>
   bp.invention_gate = { ...gate.record, rechecked: true, ...(prior.reason ? { recheck_of: prior.reason } : {}) }
   bp.check_status = status.status
+  // Review lines never change check_status (they ship as written); the count is
+  // for the UI's "check this line" prompt (follow-up, not built here).
+  bp.review_count = gate.record.review_lines?.length ?? 0
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
   // No progress write may land after (and clobber) the result.
   await chain
   await deps.saveBlueprint(generationId, bp)
-  console.log(JSON.stringify({ event: 'invention_recheck', generation_id: generationId, outcome: gate.record.outcome, check_status: status.status, before: gate.record.before, after: gate.record.after, repaired: gate.record.repaired, ms: gate.record.ms, judge_calls: perf?.judge_calls ?? 0, escalations: perf?.escalations ?? 0 }))
+  console.log(JSON.stringify({ event: 'invention_recheck', generation_id: generationId, outcome: gate.record.outcome, check_status: status.status, before: gate.record.before, after: gate.record.after, repaired: gate.record.repaired, ms: gate.record.ms, judge_calls: perf?.judge_calls ?? 0, escalations: perf?.escalations ?? 0, strong_calls: perf?.strong_calls ?? 0, verdicts: gate.record.verdicts ?? null }))
   return { generation_id: generationId, outcome: gate.record.outcome, check_status: status.status, ms: gate.record.ms }
 }
 

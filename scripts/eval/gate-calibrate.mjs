@@ -3,7 +3,8 @@
 //
 // Re-runs THE SAME GATE PATH PRODUCTION RUNS (the durable worker step, owner
 // decision 13 Oct): rules prefilter, chunks of ~6 with a per-chunk ledger at
-// concurrency 4, thinking off, the read→extract cascade, then repair and the
+// concurrency 4, thinking off, TWO JUDGES (read and extract each judge every
+// chunk, in parallel; owner Reply 13), then repair and the
 // re-judge of rewritten lines — on scripts that already exist. Its first
 // classification is compared with an INDEPENDENTLY LABELLED set fed in from a
 // CSV, and the whole gate's wall time per script is reported as p50/p90.
@@ -12,12 +13,12 @@
 //
 //   node scripts/eval/gate-calibrate.mjs --batch=<label>[,<label>] \
 //        (--labels=<labels.csv> | --labels-file-id=<test_run_files id>) \
-//        [--modes=cascade,read,extract] [--measure-only] [--script-concurrency=2] \
+//        [--modes=two-judge,read,extract] [--measure-only] [--script-concurrency=2] \
 //        [--dry-run] [--dump=<rows.json>]
 //
-// --modes: `cascade` (default, what production runs: fast `read` on every
-// chunk, `extract` only for uncertain sentences), or a single task class / model
-// id judged alone with no cascade (for comparison). --measure-only skips the
+// --modes: `two-judge` (default, what production runs: `read` AND `extract`
+// each judge every chunk; `cascade` is kept as an alias for old workflow
+// inputs), or a single task class / model id judged alone (for comparison). --measure-only skips the
 // repair step (classification latency only).
 //
 // --labels-file-id loads the CSV text from a private `test_run_files` row
@@ -47,8 +48,14 @@
 // advisor {S,E,I,N}, the owner's metrics split by tune (n 0-11) and validation
 // (n 12-23) half, recall misses by surface, failed-call error classes, and
 // per-script gate ms with judge calls, escalations and rounds.
-// --dump-row stores per-sentence {batch,n,i,surface,cls,reason,label} (NO
-// text) in a private test_run_files row and prints only its id.
+// TWO-JUDGE REPORT (tune, validation and combined): REVIEW set (either judge
+// I-HARD or a G) recall on advisor strict I and false flags; BLOCK set (both
+// I-HARD) precision against advisor I|E and false blocks on S|N; p90 whole-gate
+// ms; tokens in/out per judge role and an estimated added cost per script
+// (price fields of worker/model_routing_v1.json, else UNCONFIRMED); share of
+// scripts with >=1 review line.
+// --dump-row stores per-sentence {batch,n,i,surface,cls,fc,sc,verdict,reason,label}
+// (NO text) in a private test_run_files row and prints only its id.
 //
 // --dry-run prints how many judge calls and roughly how many tokens a run
 // would use, and calls nothing. --dump reads the joined rows from a JSON file
@@ -60,7 +67,7 @@ import {
   JUDGE_SYSTEM, JUDGE_SCHEMA, REWRITE_SYSTEM, REWRITE_SCHEMA, JUDGE_THINKING_BUDGET, INVENTION_JUDGE_CASCADE,
   INVENTION_RECHECK_TIMEOUT_MS,
 } from '../../packages/shared/src/script/inventionGate.ts'
-import { formatReport } from './gateScore.mjs'
+import { formatReport, formatTwoJudgeReport, HALVES } from './gateScore.mjs'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/)
@@ -69,12 +76,20 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => {
 const BATCHES = typeof args.batch === 'string' ? args.batch.split(',').map((s) => s.trim()).filter(Boolean) : []
 // --models takes task classes of the routing catalog (read, extract) or model ids.
 const ROUTING = JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses ?? {}
+/** USD per million tokens for a task class, from the routing catalog's price fields; null when absent. */
+export function priceOf(routing, task) {
+  const e = routing?.[task]
+  const p = e?.price ?? e?.pricing ?? null
+  const inP = Number(p?.input_per_mtok ?? p?.input ?? e?.input_price_per_mtok)
+  const outP = Number(p?.output_per_mtok ?? p?.output ?? e?.output_price_per_mtok)
+  return Number.isFinite(inP) && Number.isFinite(outP) ? { in: inP, out: outP } : null
+}
 const modelOf = (m) => ROUTING[m]?.model ?? m
 // `--models` is kept as an alias of `--modes` for older workflow inputs.
-const MODE_ARG = typeof args.modes === 'string' ? args.modes : typeof args.models === 'string' ? args.models : 'cascade'
-const MODES = MODE_ARG.split(',').map((s) => s.trim()).filter(Boolean).map((m) => (m === 'cascade'
-  ? { name: `cascade ${INVENTION_JUDGE_CASCADE.fast}>${INVENTION_JUDGE_CASCADE.strong}`, fast: modelOf(INVENTION_JUDGE_CASCADE.fast), strong: modelOf(INVENTION_JUDGE_CASCADE.strong) }
-  : { name: modelOf(m), fast: modelOf(m), strong: null }))
+const MODE_ARG = typeof args.modes === 'string' ? args.modes : typeof args.models === 'string' ? args.models : 'two-judge'
+const MODES = MODE_ARG.split(',').map((s) => s.trim()).filter(Boolean).map((m) => (m === 'two-judge' || m === 'cascade'
+  ? { name: `two-judge ${INVENTION_JUDGE_CASCADE.fast}+${INVENTION_JUDGE_CASCADE.strong}`, fast: modelOf(INVENTION_JUDGE_CASCADE.fast), strong: modelOf(INVENTION_JUDGE_CASCADE.strong), fastTask: INVENTION_JUDGE_CASCADE.fast, strongTask: INVENTION_JUDGE_CASCADE.strong }
+  : { name: modelOf(m), fast: modelOf(m), strong: null, fastTask: ROUTING[m] ? m : null, strongTask: null }))
 // The rewrite runs on the fast model, as in the worker.
 const REWRITE_MODEL = modelOf(INVENTION_JUDGE_CASCADE.fast)
 const MEASURE_ONLY = !!args['measure-only']
@@ -279,24 +294,27 @@ async function main() {
   console.log(`worker payload found for ${prepared.filter((x) => x.r.worker_payload).length}/${prepared.length} scripts; measure-only per payload: ${prepared.filter((x) => x.r.measure_only).length}`)
   console.log(`scripts: ${prepared.length}  sentences: ${prepared.reduce((a, x) => a + x.sentences.length, 0)}  prefiltered by rule: ${prefiltered}  to judge: ${judged}  labelled: ${labels.size}`)
   console.log(`modes: ${MODES.map((m) => m.name).join(', ')}${MEASURE_ONLY ? '  (measure only, no repair)' : ''}`)
-  console.log(`fast-pass judge calls per mode: ${fastCalls}  est. tokens ~${inTok} in / ~${judged * 30} out (plus escalations and rewrites)`)
+  console.log(`judge calls per judge: ${fastCalls} (two-judge mode makes this many on EACH judge)  est. tokens per judge ~${inTok} in / ~${judged * 30} out (plus rewrites)`)
   notice(`scripts ${prepared.length}, labelled sentences ${labels.size}${args['labels-file-id'] ? ` (labels row ${args['labels-file-id']})` : ''}; prefiltered ${prefiltered}, judged ${judged}; fast-pass calls ${fastCalls} per mode; est. tokens ~${inTok * MODES.length} in${DRY ? ' (dry run)' : ''}`)
   if (DRY) { console.log('dry run: no model called.'); return }
 
   for (const mode of MODES) {
     let tp = 0, fp = 0, fn = 0, tn = 0, labelledS = 0, falseIonS = 0, malformed = 0, failed = 0
-    const used = { in: 0, out: 0, errors: {} }
+    // Tokens per role: the fast judge, the strong judge, and the rewrite (fast model).
+    const errors = {}
+    const usedBy = { fast: { in: 0, out: 0, errors }, strong: { in: 0, out: 0, errors }, rewrite: { in: 0, out: 0, errors } }
+    const used = { get in() { return usedBy.fast.in + usedBy.strong.in + usedBy.rewrite.in }, get out() { return usedBy.fast.out + usedBy.strong.out + usedBy.rewrite.out }, errors }
     const byClass = { S: 0, E: 0, I: 0, N: 0, G: 0 }
     const perfs = []
     const records = await mapLimit(prepared, SCRIPT_CONCURRENCY, async (x) => {
-      const judgeWith = (model) => (p) => callModel(model, JUDGE_SYSTEM, JUDGE_SCHEMA, p, JUDGE_THINKING_BUDGET, used)
+      const judgeWith = (model, u) => (p) => callModel(model, JUDGE_SYSTEM, JUDGE_SCHEMA, p, JUDGE_THINKING_BUDGET, u)
       const r = await runInventionGate({
         blueprint: x.r.blueprint, ledger: x.ledger, products: x.products, targetProductId: x.r.target_product_id ?? null,
         model: mode.name, measureOnly: MEASURE_ONLY || x.r.measure_only === true, timeoutMs: INVENTION_RECHECK_TIMEOUT_MS,
       }, {
-        judge: judgeWith(mode.fast),
-        ...(mode.strong ? { judgeStrong: judgeWith(mode.strong) } : {}),
-        rewrite: (p) => callModel(REWRITE_MODEL, REWRITE_SYSTEM, REWRITE_SCHEMA, p, undefined, used),
+        judge: judgeWith(mode.fast, usedBy.fast),
+        ...(mode.strong ? { judgeStrong: judgeWith(mode.strong, usedBy.strong) } : {}),
+        rewrite: (p) => callModel(REWRITE_MODEL, REWRITE_SYSTEM, REWRITE_SCHEMA, p, undefined, usedBy.rewrite),
       })
       return r.record
     })
@@ -308,10 +326,10 @@ async function main() {
       const byI = new Map(rec.sentences.map((c) => [c.i, c]))
       for (const s of x.sentences) {
         const c = byI.get(s.i)
-        sentRows.push({ batch: x.r.batch, n: x.r.n, i: s.i, surface: s.surface, cls: c ? c.class : 'X', reason: c ? c.reason : (rec.error ?? (rec.timed_out ? 'timeout' : 'none')), label: labels.get(`${x.r.batch}|${x.r.n}|${s.i}`) ?? null })
+        sentRows.push({ batch: x.r.batch, n: x.r.n, i: s.i, surface: s.surface, cls: c ? c.class : 'X', fc: c?.fast_class ?? null, sc: c?.strong_class ?? null, verdict: c?.verdict ?? null, reason: c ? c.reason : (rec.error ?? (rec.timed_out ? 'timeout' : 'none')), label: labels.get(`${x.r.batch}|${x.r.n}|${s.i}`) ?? null })
       }
       const p = rec.perf ?? {}
-      scriptLines.push(`  n=${x.r.n} ms=${p.ms_total ?? rec.ms} calls=${p.judge_calls ?? 0} esc=${p.escalations ?? 0} fast_failed=${p.fast_failed ?? 0} rounds=${rec.rounds} outcome=${rec.outcome}${rec.error ? ` error=${rec.error}` : ''}${rec.timed_out ? ' timed_out' : ''}`)
+      scriptLines.push(`  n=${x.r.n} ms=${p.ms_total ?? rec.ms} calls=${p.judge_calls ?? 0} strong_calls=${p.strong_calls ?? 0} fast_failed=${p.fast_failed ?? 0} strong_failed=${p.strong_failed ?? 0} review=${rec.verdicts?.review ?? 0} block=${rec.verdicts?.block ?? 0} rounds=${rec.rounds} outcome=${rec.outcome}${rec.error ? ` error=${rec.error}` : ''}${rec.timed_out ? ' timed_out' : ''}`)
       if (rec.outcome === 'timeout' || rec.error) { const k2 = rec.timed_out ? 'timeout' : rec.error; failReasons[k2] = (failReasons[k2] ?? 0) + 1 }
       if (rec.outcome === 'timeout' || rec.error) failed++
       malformed += rec.judge_malformed ?? 0
@@ -338,10 +356,28 @@ async function main() {
     console.log(`false I on S-labelled: ${falseIonS}/${labelledS} = ${labelledS ? pct(falseIonS / labelledS) : 'n/a'}  95% ${ci(wilson(falseIonS, labelledS))}`)
     console.log(`confusion (I vs not-I): tp ${tp}  fp ${fp}  fn ${fn}  tn ${tn}   tokens used: ${used.in} in / ${used.out} out`)
     console.log(`WHOLE GATE per script: p50 ${pctl(gateMs, 0.5)} ms  p90 ${pctl(gateMs, 0.9)} ms  max ${Math.max(0, ...gateMs)} ms  (target p90 <= 30000)`)
-    console.log(`judge calls: ${calls} (${prepared.length ? (calls / prepared.length).toFixed(1) : 0}/script)  per-call p50 ${pctl(chunkMs, 0.5)} ms p90 ${pctl(chunkMs, 0.9)} ms  escalated ${esc}/${jud} sentences`)
+    console.log(`judge calls: ${calls} (${prepared.length ? (calls / prepared.length).toFixed(1) : 0}/script)  per-call p50 ${pctl(chunkMs, 0.5)} ms p90 ${pctl(chunkMs, 0.9)} ms  strong-judge calls ${perfs.reduce((a, p) => a + (p.strong_calls ?? 0), 0)} (escalations ${esc}: always 0 with two judges) over ${jud} judged sentences`)
     console.log(`failed scripts by error class: ${JSON.stringify(failReasons)}; failed model calls by error class (after retries): ${JSON.stringify(used.errors)}`)
-    console.log(`per-script gate (ms, judge calls, escalations, rounds):\n${scriptLines.join('\n')}`)
+    console.log(`per-script gate (ms, judge calls, strong calls, verdict counts, rounds):\n${scriptLines.join('\n')}`)
     console.log(formatReport(mode.name, sentRows))
+    // Two-judge metrics, by half and combined; whole-gate p90 per half; tokens and cost.
+    console.log(formatTwoJudgeReport(mode.name, sentRows))
+    for (const [h, f] of [...Object.entries(HALVES), ['combined', (n) => HALVES.tune(n) || HALVES.validation(n)]]) {
+      const ms = prepared.map((x, k) => [x.r.n, records[k].perf?.ms_total ?? records[k].ms]).filter(([n]) => f(n)).map(([, m]) => m)
+      console.log(`   whole gate ${h}: p90 ${pctl(ms, 0.9)} ms over ${ms.length} scripts (target <= 30000)`)
+    }
+    const nScripts = Math.max(1, prepared.length)
+    for (const [role, task] of [['fast', mode.fastTask], ['strong', mode.strongTask], ['rewrite', mode.strong ? INVENTION_JUDGE_CASCADE.fast : mode.fastTask]]) {
+      const u = usedBy[role]
+      if (!u.in && !u.out) continue
+      const pr = task ? priceOf(ROUTING, task) : null
+      const cost = pr ? `est. $${((u.in * pr.in + u.out * pr.out) / 1e6 / nScripts).toFixed(5)}/script` : 'cost UNCONFIRMED (no price fields in worker/model_routing_v1.json)'
+      console.log(`   tokens ${role}${task ? ` (${task})` : ''}: ${u.in} in / ${u.out} out (${(u.in / nScripts).toFixed(0)} / ${(u.out / nScripts).toFixed(0)} per script); ${cost}`)
+    }
+    if (mode.strong) {
+      const pr = priceOf(ROUTING, mode.strongTask)
+      console.log(`   ADDED by the second judge (strong, every chunk): ${(usedBy.strong.in / nScripts).toFixed(0)} in / ${(usedBy.strong.out / nScripts).toFixed(0)} out tokens per script; ${pr ? `est. $${((usedBy.strong.in * pr.in + usedBy.strong.out * pr.out) / 1e6 / nScripts).toFixed(5)}/script` : 'cost UNCONFIRMED'}`)
+    }
     if (args['dump-row']) {
       const content = JSON.stringify({ mode: mode.name, batches: BATCHES, rows: sentRows })
       const { createHash } = await import('node:crypto')

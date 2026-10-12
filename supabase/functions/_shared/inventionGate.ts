@@ -512,21 +512,6 @@ export interface RuleContext {
 }
 
 const FRAGMENT_SURFACES = new Set<Surface>(['title', 'caption', 'thumbnail_text'])
-const FRAGMENT_SURFACES_ALL = new Set<Surface>(['title', 'caption', 'thumbnail_text', 'publish_caption'])
-const PERSON_RE = /\b(?:i|i'm|i've|me|my|we|we're|our|us|you|you're|your|yours)\b/i
-const PROMISE_VERB_RE = /\b(?:fix(?:es|ed)?|stops?|stopped|ends?|ended|cuts?|beats?|improv\w*|transform\w*|chang(?:e|es|ed)|solv\w*|gets? rid|never again|no more|gone|guarantee\w*|unlock\w*|get|gets|got|became|become|feel|felt|lose|lost|gain\w*|earn\w*|land\w*)\b/i
-const TIME_TO_RESULT_RE = /\b(?:in|within|after|over|under) (?:\d+|a|an|one|two|three|four|five|six|seven|a few|just|only) (?:seconds?|minutes?|hours?|days?|nights?|weeks?|months?|years?)\b|\b(?:overnight|instantly|immediately|same[- ]day|in no time)\b/i
-const COMPARATIVE_WORD_RE = /\b(?:better|faster|easier|cheaper|longer|stronger|smoother|softer|fresher|healthier|clearer|calmer|richer|best|worst|most|least|more|less|fewer)\b/i
-
-/** v5 rule 1: does a fragment carry a claim of its own (so it is no truism)? */
-export function fragmentCarriesClaim(t: string, products: readonly ProductName[], subject: string | null, targetId: string | null): boolean {
-  if ((PERSON_RE.test(t) && (PROMISE_VERB_RE.test(t) || OUTCOME_FRAGMENT_RE.test(t))) || PROMISE_VERB_RE.test(t) && OUTCOME_FRAGMENT_RE.test(t)) return true
-  if (OUTCOME_FRAGMENT_RE.test(t) || TIME_TO_RESULT_RE.test(t) || COMPARATIVE_RE.test(t) || COMPARATIVE_WORD_RE.test(t)) return true
-  if (PERSON_RE.test(t) && PROMISE_VERB_RE.test(t)) return true
-  if (mentionsAnyProduct(t, products) || (subject !== null && subject !== targetId)) return true
-  const lower = t.toLowerCase()
-  return products.some((p) => p.name.trim() && lower.includes(p.name.trim().toLowerCase()))
-}
 
 /** The context `ruleRead` gets for each sentence of one blueprint. */
 export function ruleContexts(sentences: readonly GateSentence[]): (s: GateSentence) => RuleContext {
@@ -623,18 +608,13 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
   const hardPresent = types.some((x) => HARD_TYPES.has(x))
   // Figurative language with no checkable claim is N (owner amendment e).
   if (types.includes('figurative') && !hardPresent && !COMPARATIVE_RE.test(t)) return read(null, { cls: 'N', reason: 'figurative' })
-  // v5: a FRAGMENT (title, caption, thumbnail, publish caption) that carries
-  // outcome language, a promise/result verb, a time-to-result, a comparative
-  // or a named product is never a truism or "no claim": it goes to the judge
-  // with its script line shown.
-  const fragmentClaim = FRAGMENT_SURFACES_ALL.has(s.surface) && fragmentCarriesClaim(t, products, subject, targetId)
   // A non-specific, non-risky truism is N (owner amendment f).
-  if (!fragmentClaim && !hardPresent && !FIRST_PERSON_RE.test(t) && !SPECIFIC_RE.test(t) && !RISK_RE.test(t) && !PRODUCT_PRONOUN_RE.test(t) && !SECOND_PERSON_PROMISE_RE.test(t) && !COMPARATIVE_RE.test(t)
+  if (!hardPresent && !FIRST_PERSON_RE.test(t) && !SPECIFIC_RE.test(t) && !RISK_RE.test(t) && !PRODUCT_PRONOUN_RE.test(t) && !SECOND_PERSON_PROMISE_RE.test(t) && !COMPARATIVE_RE.test(t)
     && subject === targetId && !mentionsAnyProduct(t, products) && wordCount(t) <= 12 && !types.includes('opinion')) {
     return read(null, { cls: 'N', reason: CTA_RE.test(t) ? 'cta' : 'truism' })
   }
-  if (!fragmentClaim && CTA_RE.test(t) && !hardPresent && wordCount(t) <= 14) return read(null, { cls: 'N', reason: 'cta' })
-  if (!fragmentClaim && wordCount(t) <= 3 && !hardPresent) return read(null, { cls: 'N', reason: 'no_claim' })
+  if (CTA_RE.test(t) && !hardPresent && wordCount(t) <= 14) return read(null, { cls: 'N', reason: 'cta' })
+  if (wordCount(t) <= 3 && !hardPresent) return read(null, { cls: 'N', reason: 'no_claim' })
   return read(null)
 }
 
@@ -689,7 +669,7 @@ export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: rea
   })
   return [
     'Classify EVERY sentence below as exactly one of:',
-    'S = every claim is entailed by one listed item about the same product (or a general item); numbers match the item number with the same unit and meaning. S needs the item to SAY it: an inference that goes beyond the item — adding a result, an outcome, a frequency, a quantity, a duration or an experience the item does not state — is never S (E at most when only intensity is added; I when it adds a result, number or event).',
+    'S = every claim is entailed by one listed item about the same product (or a general item); numbers match the item number with the same unit and meaning.',
     'E = an item backs it, but the sentence adds intensity, frequency or an experience adjective ("always", "every single time"); the addition is never a number, event, quote, scarcity or result.',
     'I = any claim with no entailing item; a claim backed only by an item about ANOTHER product; a number whose unit or meaning differs ("two parts water" is not "a two-pound bag"); what people/customers/followers ask or say without HER OWN item saying so (outside sources never count); scarcity without a LIVE urgency item; an event, quote or feeling she never gave, in ANY tense ("people always ask me", "a regular comes in every morning").',
     'N = no checkable claim: a pure question to the viewer, a transition, a call to action restating the offer, an opinion she gave, figurative language ("a hug in a mug"), or a non-specific harmless truism ("good coffee takes time").',
@@ -746,9 +726,10 @@ export function parseJudge(raw: unknown, sentenceCount: number, ledgerIds: Reado
 //      that could matter to that group (in scope + lexical/number relevance +
 //      the closest items, plus every first-party/live item when the group has a
 //      gated claim). Chunks run in parallel, a few at a time.
-//   3. CASCADE: the fast model (task class `read`) judges every chunk; only
-//      the sentences it marks `uncertain` (or skips, or whose chunk failed) go
-//      to the stronger model (task class `extract`).
+//   3. TWO JUDGES (owner Reply 13, replaces the v3/v4 escalation cascade): the
+//      fast model (task class `read`) AND the stronger model (task class
+//      `extract`) each judge EVERY chunk, in parallel. Both verdicts are kept;
+//      `combineJudges` turns them into pass / review / block.
 
 export class GateTimeout extends Error {}
 
@@ -758,29 +739,10 @@ export const JUDGE_CHUNK_SIZE = 6
 export const JUDGE_CONCURRENCY = 4
 /** Thinking budget for the judge: off. Schema-constrained classification. */
 export const JUDGE_THINKING_BUDGET = 0
-/** The cascade: fast model first, then the stronger one for uncertain sentences (task classes of model_routing_v1.json). */
+/** The two judges (task classes of model_routing_v1.json). Both judge every sentence the rules send on. */
 export const INVENTION_JUDGE_CASCADE = { fast: 'read', strong: 'extract' } as const
-
-/** v3 (live calibration, panel-current-2: escalated 0/246): at temperature 0
- *  with thinking off the fast judge never marks a sentence `uncertain`, so the
- *  cascade never ran. A fast I is the verdict that blocks a script, so it is
- *  always confirmed by the stronger judge; an uncertain verdict still is too. */
-export const ESCALATE_FAST_I = true
-/** v4 (live calibration v3: 2 scripts aborted, p90 45 s): at most this many
- *  sentences per script go to the strong judge (failed fast chunks first) ... */
-export const ESCALATE_MAX_PER_SCRIPT = 12
-/** ... and only while the run is younger than this; later, the fast verdict stands. */
-export const ESCALATE_WINDOW_MS = 18_000
-/** Does a fast verdict go to the strong judge? An uncertain one, or an I that
- *  would be I-HARD (a fast I that would only be G-SOFT blocks nothing). Without
- *  the sentence context (`hardI` omitted) every fast I counts as hard. */
-export function needsStrong(v: Pick<JudgeVerdict, 'cls' | 'uncertain'> & { claim_types?: readonly ClaimType[] }, hardI: boolean = true, ruleTypes: readonly ClaimType[] = []): boolean {
-  if (v.uncertain === true || (ESCALATE_FAST_I && v.cls === 'I' && hardI)) return true
-  // v5: a fast S on an I-HARD claim (event, result, number, people, scarcity,
-  // risk, quote, feeling) is confirmed by the strong judge before it stands.
-  return v.cls === 'S' && [...ruleTypes, ...(v.claim_types ?? [])].some((x) => CONFIRM_S_TYPES.has(x))
-}
-const CONFIRM_S_TYPES = new Set<ClaimType>(['event', 'quote', 'feeling', 'result', 'customer', 'audience', 'number', 'scarcity', 'risk'])
+/** Alias with the current meaning: two independent judges, not a cascade. */
+export const INVENTION_JUDGES = INVENTION_JUDGE_CASCADE
 
 /** Steps the durable worker run reports on `blueprint.gate_progress`. */
 export type GateStep = 'queued' | 'judging' | 'repairing' | 'done' | 'failed'
@@ -795,13 +757,17 @@ export interface GatePerf {
   /** Wall time of each judge call (fast and strong), in order of completion. */
   chunk_ms: number[]
   judge_calls: number
-  /** Sentences sent on to the stronger model. */
+  /** v5 two-judge: always 0 (no escalation cascade). Kept so old records and readers stay valid. */
   escalations: number
+  /** Calls made to the strong judge (also counted in judge_calls). */
+  strong_calls?: number
+  /** Strong-judge chunks that failed (their sentences keep only the fast verdict). */
+  strong_failed?: number
   /** Sentences the rules decided without a judge. */
   prefiltered: number
   /** Sentences sent to the judge (cache hits from an earlier round excluded). */
   judged: number
-  /** Fast chunks that failed and went to the strong model whole. */
+  /** Fast-judge chunks that failed (their sentences keep only the strong verdict). */
   fast_failed?: number
   /** Sentences no judge answered (judge_missing); the rest of the script kept its verdicts. */
   unjudged?: number
@@ -822,6 +788,8 @@ export function mergeFailedPerf(perf: GatePerf, failed: GatePerf | undefined, ms
     judged: perf.judged + failed.judged,
     ...(failed.unjudged || perf.unjudged ? { unjudged: (perf.unjudged ?? 0) + (failed.unjudged ?? 0) } : {}),
     ...(failed.fast_failed || perf.fast_failed ? { fast_failed: (perf.fast_failed ?? 0) + (failed.fast_failed ?? 0) } : {}),
+    ...(failed.strong_calls || perf.strong_calls ? { strong_calls: (perf.strong_calls ?? 0) + (failed.strong_calls ?? 0) } : {}),
+    ...(failed.strong_failed || perf.strong_failed ? { strong_failed: (perf.strong_failed ?? 0) + (failed.strong_failed ?? 0) } : {}),
     ...(failed.errors?.length || perf.errors?.length ? { errors: [...(perf.errors ?? []), ...(failed.errors ?? [])] } : {}),
   }
 }
@@ -877,13 +845,16 @@ export interface JudgeRunInput {
   targetProductId?: string | null
   chunkSize?: number
   concurrency?: number
-  /** Verdicts from an earlier round, keyed by `verdictKey`; unchanged sentences are not judged again. */
+  /** Fast verdicts from an earlier round, keyed by `verdictKey`; unchanged sentences are not judged again. */
   cache?: Map<string, JudgeVerdict>
+  /** The strong judge's cache, same keys. */
+  cacheStrong?: Map<string, JudgeVerdict>
 }
 export interface JudgeRunDeps {
   /** The fast judge (task class `read`). Raw model text. */
   judge: (prompt: string) => Promise<string>
-  /** The stronger judge (task class `extract`) for uncertain sentences; none = no cascade. */
+  /** The stronger judge (task class `extract`): judges every chunk too, in
+   *  parallel with the fast one. None = the fast judge stands in for both. */
   judgeStrong?: (prompt: string) => Promise<string>
   /** Called after each judge call: calls done so far, calls planned so far. */
   onChunk?: (done: number, total: number) => void
@@ -891,7 +862,15 @@ export interface JudgeRunDeps {
   /** Wraps each call (the gate's deadline). */
   wrap?: <T>(p: Promise<T>) => Promise<T>
 }
-export interface JudgeRunResult { verdicts: Map<number, JudgeVerdict>; malformed: number; perf: GatePerf }
+export interface JudgeRunResult {
+  /** The strong judge's verdicts where it answered, else the fast one's (back-compat single map). */
+  verdicts: Map<number, JudgeVerdict>
+  fast: Map<number, JudgeVerdict>
+  /** Equal to `fast` (same map) when no strong judge was given. */
+  strong: Map<number, JudgeVerdict>
+  malformed: number
+  perf: GatePerf
+}
 
 export const verdictKey = (s: GateSentence) => `${s.surface}\u0000${s.text}`
 
@@ -983,56 +962,38 @@ async function judgeSentencesInner(input: JudgeRunInput, deps: JudgeRunDeps, per
       deps.onChunk?.(++done, total)
     }
   }
-  const fast = chunk(pending, size)
-  total += fast.length
-  const t0run = now()
-  // Failed fast chunks first (they have no verdict at all), then fast I-HARD calls.
-  const escalateFailed: Array<{ s: GateSentence; r: RuleRead }> = []
-  const escalateI: Array<{ s: GateSentence; r: RuleRead }> = []
+  // ⚖️ TWO JUDGES, EVERY CHUNK, IN PARALLEL. A failed chunk on one side
+  // leaves that side's verdict missing for its sentences (judge_missing reads
+  // as I-HARD for that judge); the other side's verdicts stand, and the rest
+  // of the script keeps its verdicts (v4 per-chunk degradation).
+  const groups = chunk(pending, size)
+  total = groups.length * (deps.judgeStrong ? 2 : 1)
+  const strongV = deps.judgeStrong ? new Map<number, JudgeVerdict>() : verdicts
   let fastFailed = 0
+  let strongFailed = 0
   let lastError: unknown = null
-  await mapLimit(fast, limit, async (group) => {
-    let got: Map<number, JudgeVerdict>
-    try { got = await run(group, deps.judge) } catch (e) {
-      // ⚖️ v4: a failed chunk never loses the script. With a cascade it goes to
-      // the strong judge whole; without one its sentences stay unjudged
-      // (judge_missing, which is I) and the rest of the script keeps its verdicts.
-      fastFailed++
-      lastError = e
-      perf.errors = [...(perf.errors ?? []), errorClass(e)]
-      if (deps.judgeStrong && !(e instanceof GateTimeout)) escalateFailed.push(...group)
-      return
-    }
-    for (const g of group) {
-      const v = got.get(g.s.i)
-      if (!v) { if (deps.judgeStrong) escalateFailed.push(g); continue }
-      verdicts.set(g.s.i, v)
-      const hardI = v.cls !== 'I' || !isSoftGeneral(g.s.text, g.r.claim_types, v.claim_types, g.r.subject_product, target, products)
-      if (deps.judgeStrong && needsStrong(v, hardI, g.r.claim_types)) escalateI.push(g)
-    }
+  const fail = (e: unknown) => { lastError = e; perf.errors = [...(perf.errors ?? []), errorClass(e)] }
+  await mapLimit(groups, limit, async (group) => {
+    await Promise.all([
+      run(group, deps.judge).then((got) => { for (const [i, v] of got) verdicts.set(i, v) }, (e) => { fastFailed++; fail(e) }),
+      deps.judgeStrong
+        ? run(group, deps.judgeStrong).then((got) => { perf.strong_calls = (perf.strong_calls ?? 0) + 1; for (const [i, v] of got) strongV.set(i, { ...v, uncertain: false }) }, (e) => { perf.strong_calls = (perf.strong_calls ?? 0) + 1; strongFailed++; fail(e) })
+        : Promise.resolve(),
+    ])
   })
-  perf.fast_failed = fastFailed
-  const inWindow = now() - t0run < ESCALATE_WINDOW_MS
-  const escalate = [...escalateFailed, ...(inWindow ? escalateI : [])].slice(0, ESCALATE_MAX_PER_SCRIPT)
-  if (escalate.length && deps.judgeStrong) {
-    perf.escalations = escalate.length
-    const strong = chunk(escalate.sort((a, b) => a.s.i - b.s.i), size)
-    total += strong.length
-    deps.onChunk?.(done, total)
-    await mapLimit(strong, limit, async (group) => {
-      let got: Map<number, JudgeVerdict>
-      // A failed strong chunk keeps the fast verdicts (where there are any).
-      try { got = await run(group, deps.judgeStrong!) } catch (e) { lastError = e; perf.errors = [...(perf.errors ?? []), errorClass(e)]; return }
-      // The stronger verdict wins; where it gave none, the fast verdict (if any) stands.
-      for (const g of group) { const v = got.get(g.s.i); if (v) verdicts.set(g.s.i, { ...v, uncertain: false }) }
-    })
-  }
-  const unjudged = pending.filter((g) => !verdicts.has(g.s.i)).length
+  if (fastFailed) perf.fast_failed = fastFailed
+  if (strongFailed) perf.strong_failed = strongFailed
+  // Cache hits (both sides were cached together).
+  for (const s of input.sentences) { const h = input.cacheStrong?.get(verdictKey(s)); if (h && deps.judgeStrong && !strongV.has(s.i) && !pending.some((g) => g.s.i === s.i)) strongV.set(s.i, { ...h, i: s.i }) }
+  const unjudged = pending.filter((g) => !verdicts.has(g.s.i) && !strongV.has(g.s.i)).length
   if (unjudged) perf.unjudged = unjudged
-  // Nothing judged at all: that is a failed gate (the worker retries), not a degraded one.
+  // Nothing judged at all by either judge: that is a failed gate (the worker retries), not a degraded one.
   if (pending.length && unjudged === pending.length && lastError) throw lastError
   if (input.cache) for (const s of input.sentences) { const v = verdicts.get(s.i); if (v) input.cache.set(verdictKey(s), v) }
-  return { verdicts, malformed, perf }
+  if (input.cacheStrong && deps.judgeStrong) for (const s of input.sentences) { const v = strongV.get(s.i); if (v) input.cacheStrong.set(verdictKey(s), v) }
+  const merged = new Map(verdicts)
+  for (const [i, v] of strongV) merged.set(i, v)
+  return { verdicts: merged, fast: verdicts, strong: strongV, malformed, perf }
 }
 
 // ── COMBINE ────────────────────────────────────────────────────────────────
@@ -1049,6 +1010,57 @@ export interface ClassifiedSentence {
   /** Close in-scope items, for a replace repair. Not recorded. */
   near: string[]
   judged: boolean
+  /** Two-judge run (owner Reply 13): each judge's class and the combined verdict. */
+  fast_class?: GateClass
+  strong_class?: GateClass
+  verdict?: GateVerdict
+}
+
+/** pass = ships as written; review = ships, shown to the creator to confirm/edit/remove
+ *  (never hidden, never repaired); block = repaired (replace/ask/drop + re-check). */
+export type GateVerdict = 'pass' | 'review' | 'block'
+
+/** ⚖️ THE COMBINE RULE (owner Reply 13; rules frozen):
+ *    both judges I-HARD          → block
+ *    either judge I-HARD         → review
+ *    either judge G-SOFT         → review (an unsupported low-risk claim needs sourcing)
+ *    otherwise                   → pass
+ *  A rule-decided sentence reads the same under both judges, so rule N/S pass
+ *  and a hard-rule I blocks, exactly as before. */
+export function combineVerdict(fast: GateClass, strong: GateClass): GateVerdict {
+  if (fast === 'I' && strong === 'I') return 'block'
+  if (fast === 'I' || strong === 'I' || fast === 'G' || strong === 'G') return 'review'
+  return 'pass'
+}
+
+/** Merge the per-judge classifications (same sentences, same order) into one.
+ *  The merged `class` drives repair and the outcome: block → I (repaired);
+ *  review → never I (the non-I judge's class, G when either said G), so a
+ *  review line alone never makes a script needs_answers/general; pass → the
+ *  strong judge's class. A fragment that inherits its script line under both
+ *  judges takes the line's verdict (round-4 inheritance). */
+export function combineJudges(fast: readonly ClassifiedSentence[], strong: readonly ClassifiedSentence[]): ClassifiedSentence[] {
+  const out: ClassifiedSentence[] = []
+  fast.forEach((f, k) => {
+    const s = strong[k] ?? f
+    const verdict = combineVerdict(f.class, s.class)
+    const both = { fast_class: f.class, strong_class: s.class, verdict }
+    if (verdict === 'block') { out.push({ ...(s.class === 'I' ? s : f), ...both }); return }
+    if (verdict === 'review') {
+      const pick = f.class === 'I' ? s : s.class === 'I' ? f : (s.class === 'G' ? s : f)
+      out.push({ ...pick, ...both, class: f.class === 'G' || s.class === 'G' ? 'G' : pick.class, judged: f.judged || s.judged })
+      return
+    }
+    out.push({ ...s, ...both, judged: f.judged || s.judged })
+  })
+  return out
+}
+
+/** Run classifySentences once per judge and combine. */
+export function classifyTwoJudges(input: Omit<ClassifyInput, 'judge'> & { fast: Map<number, JudgeVerdict> | null; strong: Map<number, JudgeVerdict> | null }): ClassifiedSentence[] {
+  const f = classifySentences({ ...input, judge: input.fast })
+  const s = input.strong === input.fast ? f : classifySentences({ ...input, judge: input.strong })
+  return combineJudges(f, s)
 }
 
 export interface ClassifyInput {
@@ -1097,23 +1109,6 @@ export function inheritsFrom(frag: GateSentence, fragRead: RuleRead, parent: Gat
 }
 
 const STORY_TYPES = new Set<ClaimType>(['event', 'feeling', 'quote'])
-
-/** v5 rule 3: the words of a script line that NO in-scope item contains (its
- *  unbacked part; product-name words excluded). A fragment inherits the line's
- *  I/G only when it carries at least one of them; a fragment restating only the
- *  backed part is judged on its own. */
-export function unbackedWords(parentText: string, ledger: readonly LedgerItem[], subject: string | null, products: readonly ProductName[]): Set<string> {
-  const names = new Set(products.flatMap((p) => [...productWordsOf(p.name)]))
-  const backed = new Set<string>()
-  for (const it of ledger) if (inScope(it, subject)) for (const w of contentWords(it.text)) backed.add(w)
-  return new Set([...contentWords(parentText)].filter((w) => !backed.has(w) && !names.has(w)))
-}
-export function carriesUnbacked(fragText: string, parentText: string, ledger: readonly LedgerItem[], subject: string | null, products: readonly ProductName[]): boolean {
-  const un = unbackedWords(parentText, ledger, subject, products)
-  if (!un.size) return true
-  for (const w of contentWords(fragText)) if (un.has(w)) return true
-  return false
-}
 /** v4: only the RISK direction is inherited — a parent's I, G or E, never its S
  *  or N (a fragment of an S line is judged alone, with the line shown). A
  *  fragment that is no claim on its own (a rule N) keeps that N unless its
@@ -1162,8 +1157,7 @@ export function classifySentences(input: ClassifyInput): ClassifiedSentence[] {
     if (r.hard) return out('I', r.hard.reason)
     const parent = s.parent !== undefined ? input.sentences.find((x) => x.i === s.parent) : undefined
     const pc = parent ? done.get(parent.i) : undefined
-    if (parent && pc && inheritsFrom(s, r, parent, readOf(parent)) && inheritable(pc, r) && (pc.class !== 'I' || carriesTrigger(pc.reason, s.text, r))
-      && (pc.class === 'E' || carriesUnbacked(s.text, parent.text, input.ledger, readOf(parent).subject_product, products))) {
+    if (parent && pc && inheritsFrom(s, r, parent, readOf(parent)) && inheritable(pc, r) && (pc.class !== 'I' || carriesTrigger(pc.reason, s.text, r))) {
       // An undecided parent (no judge verdict) leaves its fragment undecided too.
       return { ...base, class: pc.class, claim_types: [...new Set([...types, ...pc.claim_types])], item_ids: pc.item_ids, reason: pc.reason === 'judge_missing' ? 'judge_missing' : 'inherited', judged: false }
     }
@@ -1208,7 +1202,8 @@ export function eBudget(spokenWords: number): number {
   return Math.max(1, Math.round(spokenWords / E_BUDGET_WORDS))
 }
 export function overBudgetE(cs: readonly ClassifiedSentence[], spokenWords: number): number[] {
-  const es = cs.filter((s) => s.class === 'E')
+  // A review line (one judge said I) is never repaired: it ships for the creator to check.
+  const es = cs.filter((s) => s.class === 'E' && s.verdict !== 'review')
   return es.slice(eBudget(spokenWords)).map((s) => s.i)
 }
 
@@ -1431,7 +1426,11 @@ export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence
  *  went out as written and a durable re-check (worker `invention_recheck`) owns it. */
 export type GateOutcome = 'final' | 'needs_answers' | 'general' | 'measure_only' | 'timeout' | 'unchecked'
 
-export interface GateRecordSentence { i: number; surface: Surface; class: GateClass; claim_types: ClaimType[]; item_ids: string[]; reason: GateReason }
+export interface GateRecordSentence {
+  i: number; surface: Surface; class: GateClass; claim_types: ClaimType[]; item_ids: string[]; reason: GateReason
+  /** Two-judge fields (absent on records written before them). */
+  fast_class?: GateClass; strong_class?: GateClass; verdict?: GateVerdict
+}
 
 export interface InventionGateRecord {
   version: string
@@ -1451,6 +1450,11 @@ export interface InventionGateRecord {
   reason?: UncheckedReason
   /** Timing of this run: total ms, per-judge-call ms, judge calls, escalations. */
   perf?: GatePerf
+  /** Lines of the SHIPPED blueprint (its sentence indices) the creator should
+   *  check: one judge said I-HARD, or a judge said G-SOFT. Never hidden. */
+  review_lines?: Array<{ i: number; surface: Surface }>
+  /** Verdict counts on the first classification (before repair). */
+  verdicts?: { review: number; block: number }
 }
 
 // ── CHECK STATUS (owner rule 13 Oct: a timeout never ships an unchecked script silently) ──
@@ -1503,7 +1507,15 @@ export function uncheckedRecord(prev: InventionGateRecord | null | undefined, re
 export const GATE_REWRITTEN_KEYS = ['script', 'hook_options', 'captions', 'packaging', 'publish_plan'] as const
 
 export function recordSentences(cs: readonly ClassifiedSentence[]): GateRecordSentence[] {
-  return cs.map((s) => ({ i: s.i, surface: s.surface, class: s.class, claim_types: s.claim_types, item_ids: s.item_ids, reason: s.reason }))
+  return cs.map((s) => ({ i: s.i, surface: s.surface, class: s.class, claim_types: s.claim_types, item_ids: s.item_ids, reason: s.reason,
+    ...(s.verdict ? { fast_class: s.fast_class, strong_class: s.strong_class, verdict: s.verdict } : {}) }))
+}
+
+export function verdictCounts(cs: readonly ClassifiedSentence[]): { review: number; block: number } {
+  return { review: cs.filter((s) => s.verdict === 'review').length, block: cs.filter((s) => s.verdict === 'block').length }
+}
+export function reviewLines(cs: readonly ClassifiedSentence[]): Array<{ i: number; surface: Surface }> {
+  return cs.filter((s) => s.verdict === 'review').map((s) => ({ i: s.i, surface: s.surface }))
 }
 
 /** Outcome after the last round: an unrepaired I never ships as final. A G
@@ -1542,7 +1554,7 @@ export function summarizeGateRecords(records: ReadonlyArray<InventionGateRecord 
 export interface GateDeps {
   /** The fast judge (task class `read`), one call per chunk. Returns the model's raw text. */
   judge: (prompt: string) => Promise<string>
-  /** The stronger judge (task class `extract`) for sentences the fast one is unsure of. */
+  /** The stronger judge (task class `extract`): judges every sentence too, in parallel. */
   judgeStrong?: (prompt: string) => Promise<string>
   /** Step events ('judging' with chunk counts, 'repairing'). */
   onProgress?: (p: GateProgress) => void
@@ -1593,11 +1605,11 @@ export function carryClasses(prev: { sentences: readonly GateSentence[]; classif
   const pool = prev.classified.map((c) => ({ c, text: prev.sentences[c.i]?.text ?? '', used: false }))
   return next.map((s) => {
     if (isPlaceholder(s.text)) {
-      return { i: s.i, surface: s.surface, at: s.at, k: s.k, class: 'N' as const, claim_types: [], item_ids: [], reason: 'no_claim' as const, near: [], judged: false }
+      return { i: s.i, surface: s.surface, at: s.at, k: s.k, class: 'N' as const, claim_types: [], item_ids: [], reason: 'no_claim' as const, near: [], judged: false, fast_class: 'N' as const, strong_class: 'N' as const, verdict: 'pass' as const }
     }
     const hit = pool.find((p) => !p.used && p.c.surface === s.surface && p.text === s.text)
     if (hit) { hit.used = true; return { ...hit.c, i: s.i, at: s.at, k: s.k } }
-    return { i: s.i, surface: s.surface, at: s.at, k: s.k, class: 'I' as const, claim_types: [], item_ids: [], reason: 'judge_missing' as const, near: [], judged: false }
+    return { i: s.i, surface: s.surface, at: s.at, k: s.k, class: 'I' as const, claim_types: [], item_ids: [], reason: 'judge_missing' as const, near: [], judged: false, fast_class: 'I' as const, strong_class: 'I' as const, verdict: 'block' as const }
   })
 }
 
@@ -1623,14 +1635,16 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
   let malformed = 0
   const perf = emptyPerf()
   const cache = new Map<string, JudgeVerdict>()
+  const cacheStrong = new Map<string, JudgeVerdict>()
   const progress = (step: GateStep, d = 0, t = 0) => { try { deps.onProgress?.(gateProgress(step, d, t, now())) } catch { /* progress never fails a gate */ } }
   type State = { sentences: GateSentence[]; classified: ClassifiedSentence[] }
   const classify = async (bp: GateBlueprint): Promise<State> => {
     const sentences = extractSentences(bp)
-    let judge: Map<number, JudgeVerdict> | null = null
+    let fastV: Map<number, JudgeVerdict> | null = null
+    let strongV: Map<number, JudgeVerdict> | null = null
     if (sentences.length) {
       progress('judging')
-      const j = await judgeSentences({ sentences, ledger: input.ledger, products, targetProductId: target, cache,
+      const j = await judgeSentences({ sentences, ledger: input.ledger, products, targetProductId: target, cache, cacheStrong,
         ...(input.chunkSize ? { chunkSize: input.chunkSize } : {}), ...(input.concurrency ? { concurrency: input.concurrency } : {}) }, {
         judge: deps.judge,
         ...(deps.judgeStrong ? { judgeStrong: deps.judgeStrong } : {}),
@@ -1641,14 +1655,17 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       perf.chunk_ms.push(...j.perf.chunk_ms)
       perf.judge_calls += j.perf.judge_calls
       perf.escalations += j.perf.escalations
+      if (j.perf.strong_calls) perf.strong_calls = (perf.strong_calls ?? 0) + j.perf.strong_calls
+      if (j.perf.strong_failed) perf.strong_failed = (perf.strong_failed ?? 0) + j.perf.strong_failed
       if (j.perf.unjudged) perf.unjudged = (perf.unjudged ?? 0) + j.perf.unjudged
       if (j.perf.fast_failed) perf.fast_failed = (perf.fast_failed ?? 0) + j.perf.fast_failed
       if (j.perf.errors?.length) perf.errors = [...(perf.errors ?? []), ...j.perf.errors]
       perf.prefiltered += j.perf.prefiltered
       perf.judged += j.perf.judged
-      judge = j.verdicts
+      fastV = j.fast
+      strongV = j.strong
     }
-    return { sentences, classified: classifySentences({ sentences, ledger: input.ledger, products, targetProductId: target, judge }) }
+    return { sentences, classified: classifyTwoJudges({ sentences, ledger: input.ledger, products, targetProductId: target, fast: fastV, strong: strongV }) }
   }
   const empty: ClassCounts = { S: 0, E: 0, I: 0, N: 0, G: 0 }
   const base = (): InventionGateRecord => ({
@@ -1660,7 +1677,9 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     first = await classify(input.blueprint)
     const before = countClasses(first.classified)
     if (input.measureOnly) {
-      return { blueprint: input.blueprint, questions: [], record: { ...base(), sentences: recordSentences(first.classified), before, after: before, ms: now() - t0, judge_malformed: malformed, perf: { ...perf, ms_total: now() - t0 } } }
+      // Measure only: verdicts recorded, nothing repaired, review lines as classified.
+      return { blueprint: input.blueprint, questions: [], record: { ...base(), sentences: recordSentences(first.classified), before, after: before, ms: now() - t0, judge_malformed: malformed, perf: { ...perf, ms_total: now() - t0 },
+        verdicts: verdictCounts(first.classified), review_lines: reviewLines(first.classified) } }
     }
     let bp = input.blueprint
     let cur: State = first
@@ -1722,6 +1741,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       ms: now() - t0,
       judge_malformed: malformed,
       perf: { ...perf, ms_total: now() - t0 },
+      verdicts: verdictCounts(first.classified),
+      review_lines: reviewLines(cur.classified),
     }
     // A declined slot that fell back to the general version is not offered again.
     return { blueprint: bp, record, questions: questions.filter((q) => !declined.has(q.writes_to)) }
@@ -1737,6 +1758,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
         before: counts, after: counts,
         outcome: timedOut ? 'timeout' : 'measure_only',
         ms: now() - t0, timed_out: timedOut, judge_malformed: malformed, perf: mergeFailedPerf(perf, (e as { perf?: GatePerf } | null)?.perf, now() - t0),
+        ...(first ? { verdicts: verdictCounts(first.classified) } : {}),
         ...(timedOut ? {} : { error: errorClass(e) }),
       },
     }

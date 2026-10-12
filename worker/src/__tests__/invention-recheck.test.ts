@@ -155,7 +155,7 @@ describe('invention_recheck', () => {
     expect(last.check_status).toBe('unchecked')
   })
 
-  it('cascade: the judge runs with thinking 0 on the fast model; only uncertain sentences go to the strong model', async () => {
+  it('two judges: thinking 0 on both models; the strong model judges every chunk the fast one does', async () => {
     const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
     const calls: Array<{ model?: string; thinkingBudget?: number; prompt: string }> = []
     const { d, saved } = deps({
@@ -172,11 +172,15 @@ describe('invention_recheck', () => {
     const fast = calls.filter((c) => c.model === 'fake-flash')
     const strong = calls.filter((c) => c.model === 'fake-pro')
     expect(fast.length).toBeGreaterThanOrEqual(1)
-    expect(strong).toHaveLength(1)
-    expect(strong[0]!.prompt.split('SENTENCES:')[1]).toMatch(/chocolate/)
-    expect(strong[0]!.prompt.split('SENTENCES:')[1]).not.toMatch(/roast Harbor Blend myself/)
+    expect(strong).toHaveLength(fast.length)
+    expect(strong.map((c) => c.prompt).sort()).toEqual(fast.map((c) => c.prompt).sort())
     expect(calls.every((c) => c.thinkingBudget === 0)).toBe(true)
-    expect((saved[0]!.blueprint.invention_gate as { perf: { escalations: number } }).perf.escalations).toBe(1)
+    const rec = saved[0]!.blueprint.invention_gate as { perf: { escalations: number; strong_calls: number }; sentences: Array<{ verdict?: string }> }
+    expect(rec.perf.escalations).toBe(0)
+    expect(rec.perf.strong_calls).toBe(strong.length)
+    expect(rec.sentences.every((x) => typeof x.verdict === 'string')).toBe(true)
+    expect(saved[0]!.blueprint.review_count).toBe(0)
+    expect(saved[0]!.blueprint.check_status).toBe('checked')
   })
 
   it('is registered and routes its model through the catalog', async () => {
