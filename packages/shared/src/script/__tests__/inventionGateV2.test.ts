@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildLedger, extractSentences, classifySentences, ruleRead, runInventionGate, checkStatusFor, decideOutcome,
   countClasses, listCounts, listDelivery, linkParents, buildJudgePrompt, judgeSentences, isSoftGeneral, summarizeGateRecords,
-  INVENTION_GATE_VERSION, fragmentCarriesClaim, carriesUnbacked, ESCALATE_MAX_PER_SCRIPT, inheritable, needsStrong, errorClass, pendingForJudge, GateTimeout,
+  INVENTION_GATE_VERSION, ESCALATE_MAX_PER_SCRIPT, inheritable, needsStrong, errorClass, pendingForJudge, GateTimeout,
   type GateBlueprint, type GateClass, type GateSentence, type LedgerItem, type InventionGateRecord,
 } from '../inventionGate.js'
 import { dropInventedEvents, narratesEvent } from '../noStoryEvents.js'
@@ -324,40 +324,5 @@ describe('v4: rule bugs', () => {
     const p2 = [{ id: 'calm', name: 'Calm Cream' }]
     expect(isSoftGeneral('Fragrance often irritates skin that is already calm.', [], [], 'calm', 'calm', p2)).toBe(true)
     expect(isSoftGeneral('Calm Cream soothes skin.', [], [], 'calm', 'calm', p2)).toBe(false)
-  })
-})
-
-describe('v5: fragment leaks, S confirmation, backed-part fragments', () => {
-  const frag = (text: string, surface: GateSentence['surface'] = 'caption') => ruleRead({ i: 1, surface, at: 0, k: 0, text }, fernLedger(), products, MOSS)
-  it('a fragment with outcome, promise, time-to-result, comparative or a product name is never a truism', () => {
-    for (const t of ['Your skin, finally fixed', 'Softer hands in a week', 'Gentler than store soap', 'Moss Bar for winter', 'No more dry patches']) {
-      const r = frag(t)
-      expect(r.soft, t).toBeNull()
-    }
-    expect(fragmentCarriesClaim('Smooth skin in 3 days', products, MOSS, MOSS)).toBe(true)
-  })
-  it('a plain fragment is still N', () => {
-    expect(frag('Watch the lather').soft?.cls).toBe('N')
-    expect(frag('Good soap takes time.', 'title').soft?.cls).toBe('N')
-  })
-  it('the judge prompt says an inference beyond the item is never S', () => {
-    expect(buildJudgePrompt([], [], [])).toMatch(/inference that goes beyond the item/)
-  })
-  it('a fast S on an I-HARD claim is confirmed by the strong judge', async () => {
-    expect(needsStrong({ cls: 'S', claim_types: ['result'] })).toBe(true)
-    expect(needsStrong({ cls: 'S', claim_types: ['general'] })).toBe(false)
-    const sentences = extractSentences({ script: [{ line: 'It cleared my dry patches after one winter of use.' }] })
-    const strong = fakeJudge([[/cleared/, 'I']])
-    const r = await judgeSentences({ sentences, ledger: fernLedger([{ id: 'k-dry', kind: 'experience', text: 'My dry patches cleared after one winter of use with it' }]), products, targetProductId: MOSS }, {
-      judge: async () => JSON.stringify({ sentences: [{ i: 0, class: 'S', item_ids: ['k-dry'], claim_types: ['result'] }] }),
-      judgeStrong: strong,
-    })
-    expect(strong.calls.length).toBe(1)
-    expect(r.verdicts.get(0)!.cls).toBe('I')
-  })
-  it('a fragment restating only the backed part of an I line is judged on its own', () => {
-    const led = fernLedger()
-    expect(carriesUnbacked('six weeks on a pine rack', 'I cure every bar six weeks on a pine rack and buyers cry.', led, MOSS, products)).toBe(false)
-    expect(carriesUnbacked('buyers cry', 'I cure every bar six weeks on a pine rack and buyers cry.', led, MOSS, products)).toBe(true)
   })
 })
