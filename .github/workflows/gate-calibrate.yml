@@ -3,7 +3,7 @@ name: gate-calibrate
 # ZERO-INVENTION GATE — OFFLINE CALIBRATION (design v1 A7). Manual only.
 # Re-runs the production gate path (prefilter, chunked judge, read>extract
 # cascade, repair) on scripts a batch already saved, compares its first I calls
-# with a private labels CSV and reports whole-gate p50/p90. Read-only. Prints counts, rates and ids only; the labels live in a
+# with a private labels CSV and reports whole-gate p50/p90. Read-only except --dump-row (one private test_run_files row of ids, classes and labels; no text). Prints counts, rates and ids only; the labels live in a
 # private test_run_files row and only its id is passed here.
 on:
   workflow_dispatch:
@@ -25,6 +25,11 @@ on:
         type: choice
         options: ['true', 'false']
         default: 'true'
+      dump_row:
+        description: 'Store per-sentence rows (n, sentence_i, gate class, reason, advisor label; no text) in a private test_run_files row and print its id'
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
 
 permissions:
   contents: read
@@ -45,12 +50,14 @@ jobs:
           set -- "--batch=$CAL_BATCHES" "--models=$CAL_MODELS"
           if [ -n "$CAL_LABELS_FILE_ID" ]; then set -- "$@" "--labels-file-id=$CAL_LABELS_FILE_ID"; fi
           if [ "$CAL_DRY_RUN" != "false" ]; then set -- "$@" --dry-run; fi
+          if [ "$CAL_DUMP_ROW" = "true" ]; then set -- "$@" --dump-row; fi
           npx tsx scripts/eval/gate-calibrate.mjs "$@"
         env:
           CAL_BATCHES: ${{ inputs.batches }}
           CAL_MODELS: ${{ inputs.models }}
           CAL_LABELS_FILE_ID: ${{ inputs.labels_file_id }}
           CAL_DRY_RUN: ${{ inputs.dry_run }}
+          CAL_DUMP_ROW: ${{ inputs.dump_row }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

@@ -720,6 +720,15 @@ export const JUDGE_THINKING_BUDGET = 0
 /** The cascade: fast model first, then the stronger one for uncertain sentences (task classes of model_routing_v1.json). */
 export const INVENTION_JUDGE_CASCADE = { fast: 'read', strong: 'extract' } as const
 
+/** v3 (live calibration, panel-current-2: escalated 0/246): at temperature 0
+ *  with thinking off the fast judge never marks a sentence `uncertain`, so the
+ *  cascade never ran. A fast I is the verdict that blocks a script, so it is
+ *  always confirmed by the stronger judge; an uncertain verdict still is too. */
+export const ESCALATE_FAST_I = true
+export function needsStrong(v: Pick<JudgeVerdict, 'cls' | 'uncertain'>): boolean {
+  return v.uncertain === true || (ESCALATE_FAST_I && v.cls === 'I')
+}
+
 /** Steps the durable worker run reports on `blueprint.gate_progress`. */
 export type GateStep = 'queued' | 'judging' | 'repairing' | 'done' | 'failed'
 export interface GateProgress { step: GateStep; at: string; chunks_done: number; chunks_total: number }
@@ -739,8 +748,27 @@ export interface GatePerf {
   prefiltered: number
   /** Sentences sent to the judge (cache hits from an earlier round excluded). */
   judged: number
+  /** Fast chunks that failed and went to the strong model whole. */
+  fast_failed?: number
+  /** Error classes of failed judge calls (never text). */
+  errors?: string[]
 }
 export const emptyPerf = (): GatePerf => ({ ms_total: 0, chunk_ms: [], judge_calls: 0, escalations: 0, prefiltered: 0, judged: 0 })
+
+/** Perf of a run that threw: what finished before, plus the failing judge pass's counts. */
+export function mergeFailedPerf(perf: GatePerf, failed: GatePerf | undefined, msTotal: number): GatePerf {
+  if (!failed) return { ...perf, ms_total: msTotal }
+  return {
+    ...perf, ms_total: msTotal,
+    chunk_ms: [...perf.chunk_ms, ...failed.chunk_ms],
+    judge_calls: perf.judge_calls + failed.judge_calls,
+    escalations: perf.escalations + failed.escalations,
+    prefiltered: perf.prefiltered + failed.prefiltered,
+    judged: perf.judged + failed.judged,
+    ...(failed.fast_failed || perf.fast_failed ? { fast_failed: (perf.fast_failed ?? 0) + (failed.fast_failed ?? 0) } : {}),
+    ...(failed.errors?.length || perf.errors?.length ? { errors: [...(perf.errors ?? []), ...(failed.errors ?? [])] } : {}),
+  }
+}
 
 /** True when the rules (or a placeholder) already decide this sentence. */
 export function decidedByRule(s: GateSentence, r: RuleRead): boolean {
@@ -812,13 +840,55 @@ export interface JudgeRunResult { verdicts: Map<number, JudgeVerdict>; malformed
 export const verdictKey = (s: GateSentence) => `${s.surface}\u0000${s.text}`
 
 /** Prefilter → chunk → fast judge → strong judge for the uncertain ones. */
+/** The sentences the judge must see: not a placeholder, not decided by a rule,
+ *  not a fragment inheriting its script line (v2). The ONE definition of the
+ *  prefilter, shared by `judgeSentences` (worker) and the calibration dry run. */
+export function pendingForJudge(sentences: readonly GateSentence[], ledger: readonly LedgerItem[], products: readonly ProductName[], target: string | null): Array<{ s: GateSentence; r: RuleRead }> {
+  const out: Array<{ s: GateSentence; r: RuleRead }> = []
+  const ctxOf = ruleContexts(sentences)
+  const reads = new Map<number, RuleRead>()
+  const readOf = (s: GateSentence) => { let r = reads.get(s.i); if (!r) { r = ruleRead(s, ledger, products, target, ctxOf(s)); reads.set(s.i, r) } return r }
+  for (const s of sentences) {
+    if (isPlaceholder(s.text)) continue
+    const r = readOf(s)
+    if (r.hard) continue
+    const parent = s.parent !== undefined ? sentences.find((x) => x.i === s.parent) : undefined
+    if (parent && inheritsFrom(s, r, parent, readOf(parent))) continue
+    if (decidedByRule(s, r)) continue
+    out.push({ s, r })
+  }
+  return out
+}
+
+/** A failure as a short class, never text: 'timeout', 'http_429', 'abort', 'parse', or the error name. */
+export function errorClass(e: unknown): string {
+  if (e instanceof GateTimeout) return 'timeout'
+  const name = String((e as Error)?.name ?? 'error')
+  const msg = String((e as Error)?.message ?? '')
+  const http = msg.match(/\b(?:model|gemini|status)\D{0,12}(\d{3})\b/i)
+  if (http) return `http_${http[1]}`
+  if (name === 'AbortError' || /abort/i.test(msg)) return 'abort'
+  if (name === 'SyntaxError') return 'parse'
+  return name.slice(0, 40)
+}
+
 export async function judgeSentences(input: JudgeRunInput, deps: JudgeRunDeps): Promise<JudgeRunResult> {
+  const perfOut = emptyPerf()
+  try {
+    return await judgeSentencesInner(input, deps, perfOut)
+  } catch (e) {
+    // The work done before a failure is still reported (escalations, calls, ms).
+    if (e && typeof e === 'object') (e as { perf?: GatePerf }).perf = perfOut
+    throw e
+  }
+}
+
+async function judgeSentencesInner(input: JudgeRunInput, deps: JudgeRunDeps, perf: GatePerf): Promise<JudgeRunResult> {
   const now = deps.now ?? (() => Date.now())
   const wrap = deps.wrap ?? (<T>(p: Promise<T>) => p)
   const products = input.products ?? []
   const target = input.targetProductId ?? null
   const ids = new Set(input.ledger.map((it) => it.id))
-  const perf = emptyPerf()
   const verdicts = new Map<number, JudgeVerdict>()
   let malformed = 0
   const pending: Array<{ s: GateSentence; r: RuleRead }> = []
@@ -864,22 +934,26 @@ export async function judgeSentences(input: JudgeRunInput, deps: JudgeRunDeps): 
   const fast = chunk(pending, size)
   total += fast.length
   const escalate: Array<{ s: GateSentence; r: RuleRead }> = []
+  let fastFailed = 0
   await mapLimit(fast, limit, async (group) => {
     let got: Map<number, JudgeVerdict>
     try { got = await run(group, deps.judge) } catch (e) {
       // A failed fast chunk goes to the strong model whole; with no cascade the gate fails.
       if (!deps.judgeStrong || e instanceof GateTimeout) throw e
+      fastFailed++
+      perf.errors = [...(perf.errors ?? []), errorClass(e)]
       escalate.push(...group)
       return
     }
     for (const g of group) {
       const v = got.get(g.s.i)
-      if (v && !(v.uncertain && deps.judgeStrong)) verdicts.set(g.s.i, v)
+      if (v && !(needsStrong(v) && deps.judgeStrong)) verdicts.set(g.s.i, v)
       else if (deps.judgeStrong) { if (v) verdicts.set(g.s.i, v); escalate.push(g) }
     }
   })
   if (escalate.length && deps.judgeStrong) {
     perf.escalations = escalate.length
+    perf.fast_failed = fastFailed
     const strong = chunk(escalate.sort((a, b) => a.s.i - b.s.i), size)
     total += strong.length
     deps.onChunk?.(done, total)
@@ -1469,6 +1543,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       perf.chunk_ms.push(...j.perf.chunk_ms)
       perf.judge_calls += j.perf.judge_calls
       perf.escalations += j.perf.escalations
+      if (j.perf.fast_failed) perf.fast_failed = (perf.fast_failed ?? 0) + j.perf.fast_failed
+      if (j.perf.errors?.length) perf.errors = [...(perf.errors ?? []), ...j.perf.errors]
       perf.prefiltered += j.perf.prefiltered
       perf.judged += j.perf.judged
       judge = j.verdicts
@@ -1561,8 +1637,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
         sentences: first ? recordSentences(first.classified) : [],
         before: counts, after: counts,
         outcome: timedOut ? 'timeout' : 'measure_only',
-        ms: now() - t0, timed_out: timedOut, judge_malformed: malformed, perf: { ...perf, ms_total: now() - t0 },
-        ...(timedOut ? {} : { error: String((e as Error)?.name ?? 'error').slice(0, 40) }),
+        ms: now() - t0, timed_out: timedOut, judge_malformed: malformed, perf: mergeFailedPerf(perf, (e as { perf?: GatePerf } | null)?.perf, now() - t0),
+        ...(timedOut ? {} : { error: errorClass(e) }),
       },
     }
   }

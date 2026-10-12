@@ -38,16 +38,29 @@
 // research, moments, Reddit) is not recoverable per generation and is left
 // out; it can never back a gated claim, so this only matters for plain S.
 //
+// THE SAME INPUT AS THE WORKER (v3): answers, outside board, offer, target
+// product and measure-only are read from the generation's `invention_recheck`
+// job payload (what the edge handed the worker), falling back to the scenario.
+// Model calls retry 429/5xx like worker/src/gemini.ts.
+//
+// REPORT (counts only): the full confusion matrix gate {S,E,I,G,N,X=failed} x
+// advisor {S,E,I,N}, the owner's metrics split by tune (n 0-11) and validation
+// (n 12-23) half, recall misses by surface, failed-call error classes, and
+// per-script gate ms with judge calls, escalations and rounds.
+// --dump-row stores per-sentence {batch,n,i,surface,cls,reason,label} (NO
+// text) in a private test_run_files row and prints only its id.
+//
 // --dry-run prints how many judge calls and roughly how many tokens a run
 // would use, and calls nothing. --dump reads the joined rows from a JSON file
 // ([{batch,n,blueprint,knowledge,products,note,answers,target_product_id}])
 // instead of the database.
 import { readFileSync } from 'node:fs'
 import {
-  buildLedger, extractSentences, ruleRead, decidedByRule, chunk, chunkLedger, buildJudgePrompt, runInventionGate,
+  buildLedger, extractSentences, pendingForJudge, errorClass, chunk, chunkLedger, buildJudgePrompt, runInventionGate,
   JUDGE_SYSTEM, JUDGE_SCHEMA, REWRITE_SYSTEM, REWRITE_SCHEMA, JUDGE_THINKING_BUDGET, INVENTION_JUDGE_CASCADE,
   INVENTION_RECHECK_TIMEOUT_MS,
 } from '../../packages/shared/src/script/inventionGate.ts'
+import { formatReport } from './gateScore.mjs'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/)
@@ -157,12 +170,20 @@ async function loadLive() {
       productsByOwner.set(g.user_id, p ?? [])
     }
     const body = r.scenario?.body ?? {}
-    const target = typeof body.selected_product_id === 'string' && !body.selected_product_id.startsWith('brand:') ? body.selected_product_id : null
+    // What the edge handed the worker for this generation (the worker's ledger input).
+    const { data: jobs, error: e5 } = await db.from('jobs').select('payload').eq('type', 'invention_recheck').eq('payload->>generation_id', g.id).order('created_at', { ascending: false }).limit(1)
+    if (e5) throw e5
+    const led = jobs?.[0]?.payload?.ledger ?? null
+    const fromBody = typeof body.selected_product_id === 'string' && !body.selected_product_id.startsWith('brand:') ? body.selected_product_id : null
+    const target = led ? (typeof led.target_product_id === 'string' && led.target_product_id ? led.target_product_id : null) : fromBody
     const products = productsByOwner.get(g.user_id)
     rows.push({
       batch: r.batch, n: r.n, blueprint: g.blueprint, knowledge, products, note: g.reference_note ?? '',
-      answers: body.readiness_answers ?? {}, target_product_id: target,
-      offer: products.find((p) => p.id === target)?.offer ?? '',
+      answers: led?.answers ?? body.readiness_answers ?? {}, target_product_id: target,
+      offer: typeof led?.offer === 'string' ? led.offer : (products.find((p) => p.id === target)?.offer ?? ''),
+      outside: Array.isArray(led?.outside) ? led.outside : [],
+      measure_only: led?.measure_only === true,
+      worker_payload: !!led,
     })
   }
   return rows
@@ -202,12 +223,22 @@ async function callModel(model, system, schema, prompt, thinkingBudget, used) {
     if (!res.ok) throw new Error(`model ${res.status}: ${String(j?.error?.message ?? '').slice(0, 120)}`)
     return j
   }
+  const sendRetry = async (budget) => {
+    // Same policy as worker/src/gemini.ts: a 429 or 5xx is retried (3 attempts, backoff).
+    for (let attempt = 0; ; attempt++) {
+      try { return await send(budget) } catch (e) {
+        const st = Number(String(e?.message ?? '').match(/^model (\d{3})/)?.[1] ?? 0)
+        if (attempt < 2 && (st === 429 || st >= 500)) { await new Promise((r) => setTimeout(r, (st === 429 ? 4000 : 1000) * (attempt + 1) * (attempt + 1))); continue }
+        throw e
+      }
+    }
+  }
   try {
     let j
-    try { j = await send(thinkingBudget) } catch (e) {
+    try { j = await sendRetry(thinkingBudget) } catch (e) {
       // Same fallback as the worker: a model that cannot switch thinking off gets the minimum.
-      if (thinkingBudget === 0 && /thinking/i.test(String(e?.message ?? ''))) j = await send(128)
-      else throw e
+      if (thinkingBudget === 0 && /thinking/i.test(String(e?.message ?? ''))) j = await sendRetry(128)
+      else { used.errors[errorClass(e)] = (used.errors[errorClass(e)] ?? 0) + 1; throw e }
     }
     used.in += j?.usageMetadata?.promptTokenCount ?? 0
     used.out += j?.usageMetadata?.candidatesTokenCount ?? 0
@@ -223,7 +254,7 @@ async function main() {
     : readLabels(typeof args.labels === 'string' ? args.labels : '')
   const prepared = rows.map((r) => {
     const products = (r.products ?? []).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id && p.name)
-    const ledger = buildLedger({ knowledge: r.knowledge, answers: r.answers, note: r.note, products: r.products, targetProductId: r.target_product_id ?? null, offer: r.offer, now: Date.now() })
+    const ledger = buildLedger({ knowledge: r.knowledge, answers: r.answers, note: r.note, products: r.products, targetProductId: r.target_product_id ?? null, offer: r.offer, outside: r.outside ?? [], now: Date.now() })
     const sentences = extractSentences(r.blueprint ?? {})
     return { r, products, ledger, sentences }
   }).filter((x) => x.sentences.length)
@@ -231,17 +262,16 @@ async function main() {
   // Dry run: what the fast pass would send (prefilter + chunks), no model call.
   let fastCalls = 0, judged = 0, prefiltered = 0, inTok = 0
   for (const x of prepared) {
-    const pend = []
-    for (const s of x.sentences) {
-      const r = ruleRead(s, x.ledger, x.products, x.r.target_product_id ?? null)
-      if (decidedByRule(s, r)) prefiltered++; else pend.push({ s, r })
-    }
+    // The worker's own prefilter (rules, v2 fragment inheritance, list counts).
+    const pend = pendingForJudge(x.sentences, x.ledger, x.products, x.r.target_product_id ?? null)
+    prefiltered += x.sentences.length - pend.length
     judged += pend.length
     for (const g of chunk(pend)) {
       fastCalls++
       inTok += Math.ceil((buildJudgePrompt(g.map((y) => y.s), chunkLedger(g, x.ledger), x.products).length + JUDGE_SYSTEM.length) / 4)
     }
   }
+  console.log(`worker payload found for ${prepared.filter((x) => x.r.worker_payload).length}/${prepared.length} scripts; measure-only per payload: ${prepared.filter((x) => x.r.measure_only).length}`)
   console.log(`scripts: ${prepared.length}  sentences: ${prepared.reduce((a, x) => a + x.sentences.length, 0)}  prefiltered by rule: ${prefiltered}  to judge: ${judged}  labelled: ${labels.size}`)
   console.log(`modes: ${MODES.map((m) => m.name).join(', ')}${MEASURE_ONLY ? '  (measure only, no repair)' : ''}`)
   console.log(`fast-pass judge calls per mode: ${fastCalls}  est. tokens ~${inTok} in / ~${judged * 30} out (plus escalations and rewrites)`)
@@ -250,14 +280,14 @@ async function main() {
 
   for (const mode of MODES) {
     let tp = 0, fp = 0, fn = 0, tn = 0, labelledS = 0, falseIonS = 0, malformed = 0, failed = 0
-    const used = { in: 0, out: 0 }
+    const used = { in: 0, out: 0, errors: {} }
     const byClass = { S: 0, E: 0, I: 0, N: 0, G: 0 }
     const perfs = []
     const records = await mapLimit(prepared, SCRIPT_CONCURRENCY, async (x) => {
       const judgeWith = (model) => (p) => callModel(model, JUDGE_SYSTEM, JUDGE_SCHEMA, p, JUDGE_THINKING_BUDGET, used)
       const r = await runInventionGate({
         blueprint: x.r.blueprint, ledger: x.ledger, products: x.products, targetProductId: x.r.target_product_id ?? null,
-        model: mode.name, measureOnly: MEASURE_ONLY, timeoutMs: INVENTION_RECHECK_TIMEOUT_MS,
+        model: mode.name, measureOnly: MEASURE_ONLY || x.r.measure_only === true, timeoutMs: INVENTION_RECHECK_TIMEOUT_MS,
       }, {
         judge: judgeWith(mode.fast),
         ...(mode.strong ? { judgeStrong: judgeWith(mode.strong) } : {}),
@@ -265,8 +295,19 @@ async function main() {
       })
       return r.record
     })
+    const sentRows = []
+    const scriptLines = []
+    const failReasons = {}
     for (const [k, x] of prepared.entries()) {
       const rec = records[k]
+      const byI = new Map(rec.sentences.map((c) => [c.i, c]))
+      for (const s of x.sentences) {
+        const c = byI.get(s.i)
+        sentRows.push({ batch: x.r.batch, n: x.r.n, i: s.i, surface: s.surface, cls: c ? c.class : 'X', reason: c ? c.reason : (rec.error ?? (rec.timed_out ? 'timeout' : 'none')), label: labels.get(`${x.r.batch}|${x.r.n}|${s.i}`) ?? null })
+      }
+      const p = rec.perf ?? {}
+      scriptLines.push(`  n=${x.r.n} ms=${p.ms_total ?? rec.ms} calls=${p.judge_calls ?? 0} esc=${p.escalations ?? 0} fast_failed=${p.fast_failed ?? 0} rounds=${rec.rounds} outcome=${rec.outcome}${rec.error ? ` error=${rec.error}` : ''}${rec.timed_out ? ' timed_out' : ''}`)
+      if (rec.outcome === 'timeout' || rec.error) { const k2 = rec.timed_out ? 'timeout' : rec.error; failReasons[k2] = (failReasons[k2] ?? 0) + 1 }
       if (rec.outcome === 'timeout' || rec.error) failed++
       malformed += rec.judge_malformed ?? 0
       if (rec.perf) perfs.push(rec.perf)
@@ -293,6 +334,17 @@ async function main() {
     console.log(`confusion (I vs not-I): tp ${tp}  fp ${fp}  fn ${fn}  tn ${tn}   tokens used: ${used.in} in / ${used.out} out`)
     console.log(`WHOLE GATE per script: p50 ${pctl(gateMs, 0.5)} ms  p90 ${pctl(gateMs, 0.9)} ms  max ${Math.max(0, ...gateMs)} ms  (target p90 <= 30000)`)
     console.log(`judge calls: ${calls} (${prepared.length ? (calls / prepared.length).toFixed(1) : 0}/script)  per-call p50 ${pctl(chunkMs, 0.5)} ms p90 ${pctl(chunkMs, 0.9)} ms  escalated ${esc}/${jud} sentences`)
+    console.log(`failed scripts by error class: ${JSON.stringify(failReasons)}; failed model calls by error class (after retries): ${JSON.stringify(used.errors)}`)
+    console.log(`per-script gate (ms, judge calls, escalations, rounds):\n${scriptLines.join('\n')}`)
+    console.log(formatReport(mode.name, sentRows))
+    if (args['dump-row']) {
+      const content = JSON.stringify({ mode: mode.name, batches: BATCHES, rows: sentRows })
+      const { createHash } = await import('node:crypto')
+      const { data, error } = await (await getDb()).from('test_run_files').insert({ label: `gate-calibrate-rows-${BATCHES.join('+')}`, kind: 'other', file_name: 'gate-calibrate-rows.json', sha256: createHash('sha256').update(content).digest('hex'), content }).select('id').single()
+      if (error) throw error
+      console.log(`per-sentence rows stored in test_run_files row ${data.id}`)
+      notice(`${mode.name}: per-sentence rows in test_run_files row ${data.id}`)
+    }
     const rate = (k, n) => `${k}/${n} = ${n ? pct(k / n) : 'n/a'} 95% ${ci(wilson(k, n))}`
     notice(`${mode.name}: I precision ${rate(tp, tp + fp)}; I recall ${rate(tp, tp + fn)}; false I on S ${rate(falseIonS, labelledS)}; whole gate ms p50 ${pctl(gateMs, 0.5)} p90 ${pctl(gateMs, 0.9)}; judge calls ${calls} (call ms p50 ${pctl(chunkMs, 0.5)} p90 ${pctl(chunkMs, 0.9)}); escalated ${esc}/${jud}; failed ${failed}; tokens ${used.in} in / ${used.out} out; malformed ${malformed}`)
   }
