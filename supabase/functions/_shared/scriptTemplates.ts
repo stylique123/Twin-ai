@@ -156,7 +156,14 @@ export function renderTemplateBlock(plan: TemplatePlan, profile: DurationProfile
     const n = copies(b)
     const filled = plan.slots.filter((s) => s.beat === bi)
     const what = filled.map((s) => {
-      if (s.fill === 'asked') return `${s.slot}: write exactly "[Your answer: ${QUESTION_TEMPLATES[t.beats[bi]!.slots.find((x) => x.name === s.slot)!.ask].text}]"`
+      // ⚠️ NEVER ASK THE WRITER FOR A BRACKET (panel-current-3, 2026-10-12). The
+      // writer's system prompt forbids any bracket in a spoken line; telling it to
+      // "write exactly [Your answer: …]" here contradicted that, and briefs with
+      // asked slots ran both model attempts to timeout (7 of 24 failed). The
+      // question already reaches her as a gate question (`plan.questions`), and
+      // the gate places its own placeholder deterministically; the writer only
+      // has to leave the slot out.
+      if (s.fill === 'asked') return `${s.slot}: not on file yet, leave it out (she is asked for it separately; write no stand-in)`
       if (s.fill === 'empty' || s.fill === 'skipped' || !s.item_id) return `${s.slot}: nothing on file, leave it out`
       const it = byId.get(s.item_id)
       return `${s.slot}: from item ${s.item_id}${it ? ` ("${it.text.slice(0, 200).replace(/"/g, "'")}")` : ''}`
