@@ -20,10 +20,18 @@ on:
 permissions:
   contents: read
 
+# One panel removal at a time; never cancel a removal mid-flight.
+concurrency:
+  group: panel-remove
+  cancel-in-progress: false
+
 jobs:
   remove:
     runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
     timeout-minutes: 30
+    # Owner step: create the panel-remove environment with yourself as required
+    # reviewer. Until then GitHub creates it unprotected; the guards below gate.
+    environment: panel-remove
     steps:
       - name: Guard — main branch, owner, and confirmation
         run: |
