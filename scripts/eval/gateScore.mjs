@@ -54,3 +54,46 @@ export function formatReport(name, rows) {
   }
   return out.join('\n')
 }
+
+// ── TWO JUDGES (owner Reply 13) ────────────────────────────────────────────
+// Rows from a two-judge run also carry { fc, sc, verdict } (fast class, strong
+// class, verdict ∈ pass|review|block). Rows without a verdict are ignored here.
+//   REVIEW set = flagged at all: either judge I-HARD, or a judge G-SOFT (verdict review or block).
+//   BLOCK set  = both judges I-HARD (verdict block).
+export function twoJudgeMetrics(rows) {
+  const rs = rows.filter((r) => r.verdict)
+  const lab = rs.filter((r) => r.label)
+  const advI = lab.filter((r) => r.label === 'I')
+  const isFlag = (r) => r.verdict === 'review' || r.verdict === 'block'
+  const flagged = lab.filter(isFlag)
+  const blocks = lab.filter((r) => r.verdict === 'block')
+  const scripts = [...new Set(rs.map((r) => r.n))]
+  return {
+    rows: rs.length,
+    labelled: lab.length,
+    review_recall_strict_I: [advI.filter(isFlag).length, advI.length],
+    review_false_flags: [flagged.filter((r) => r.label === 'N' || r.label === 'S').length, flagged.length],
+    review_only_lines: rs.filter((r) => r.verdict === 'review').length,
+    block_precision_I_or_E: [blocks.filter((r) => r.label === 'I' || r.label === 'E').length, blocks.length],
+    block_false_blocks: [blocks.filter((r) => r.label === 'S' || r.label === 'N').length, blocks.length],
+    block_lines: rs.filter((r) => r.verdict === 'block').length,
+    scripts_with_review: [scripts.filter((n) => rs.some((r) => r.n === n && r.verdict === 'review')).length, scripts.length],
+  }
+}
+
+/** The two-judge metrics for the tune half, the validation half, and both combined. */
+export function formatTwoJudgeReport(name, rows) {
+  const out = []
+  const parts = [
+    ...Object.entries(HALVES).map(([h, f]) => [`${h} half (n ${h === 'tune' ? '0-11' : '12-23'})`, rows.filter((r) => f(r.n))]),
+    ['combined (n 0-23)', rows.filter((r) => HALVES.tune(r.n) || HALVES.validation(r.n))],
+  ]
+  for (const [label, rs] of parts) {
+    const m = twoJudgeMetrics(rs)
+    out.push(`-- ${name} / two judges / ${label}: ${m.rows} rows with a verdict, ${m.labelled} labelled`)
+    out.push(`   REVIEW set (either I-HARD or a G): recall strict I ${frac(m.review_recall_strict_I)}; false flags (on N|S / flagged) ${frac(m.review_false_flags)}; review-only lines ${m.review_only_lines}`)
+    out.push(`   BLOCK set (both I-HARD): precision (I|E / blocks) ${frac(m.block_precision_I_or_E)}; false blocks (on S|N / blocks) ${frac(m.block_false_blocks)}; block lines ${m.block_lines}`)
+    out.push(`   scripts with >=1 review line ${frac(m.scripts_with_review)}`)
+  }
+  return out.join('\n')
+}

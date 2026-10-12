@@ -139,8 +139,8 @@ describe('chunking', () => {
   })
 })
 
-describe('cascade', () => {
-  it('only the sentences the fast judge marks uncertain go to the strong judge; its verdict wins', async () => {
+describe('two judges (owner Reply 13: no cascade)', () => {
+  it('both judges see every judged sentence, in parallel; both verdicts are returned', async () => {
     const L = ledger()
     const lines = [...plain(5), 'Grind it medium-fine, it works for every brewer.']
     const sentences = extractSentences(bp(...lines))
@@ -149,30 +149,32 @@ describe('cascade', () => {
     const out = await judgeSentences({ sentences, ledger: L, products, targetProductId: HARBOR }, { judge: fastJ, judgeStrong: strong })
     expect(fastJ.calls).toHaveLength(1)
     expect(strong.calls).toHaveLength(1)
-    expect(sentIn(strong.calls[0]!)).toEqual([5])
+    expect(sentIn(strong.calls[0]!)).toEqual(sentIn(fastJ.calls[0]!))
+    expect(out.fast.get(5)).toMatchObject({ cls: 'S' })
+    expect(out.strong.get(5)).toMatchObject({ cls: 'E' })
     expect(out.verdicts.get(5)).toMatchObject({ cls: 'E' })
-    expect(out.verdicts.get(0)).toMatchObject({ cls: 'S' })
-    expect(out.perf).toMatchObject({ escalations: 1, judge_calls: 2 })
+    expect(out.perf).toMatchObject({ escalations: 0, judge_calls: 2, strong_calls: 1 })
   })
-  it('no uncertain sentence → the strong judge is never called', async () => {
+  it('the strong judge is called for every chunk even when the fast one is sure', async () => {
     const strong = fake([])
-    const out = await judgeSentences({ sentences: extractSentences(bp(...plain(4))), ledger: ledger(), products, targetProductId: HARBOR }, { judge: fake([]), judgeStrong: strong })
-    expect(strong.calls).toHaveLength(0)
+    const out = await judgeSentences({ sentences: extractSentences(bp(...plain(8))), ledger: ledger(), products, targetProductId: HARBOR }, { judge: fake([]), judgeStrong: strong })
+    expect(strong.calls).toHaveLength(2)
     expect(out.perf.escalations).toBe(0)
   })
-  it('a fast chunk that fails goes to the strong judge whole; without a cascade the failure propagates', async () => {
+  it('a failed fast chunk keeps the strong verdicts; without a strong judge the failure propagates', async () => {
     const sentences = extractSentences(bp(...plain(3)))
     const strong = fake([])
     const out = await judgeSentences({ sentences, ledger: ledger(), products, targetProductId: HARBOR }, { judge: async () => { throw new Error('rate limited') }, judgeStrong: strong })
     expect(strong.calls).toHaveLength(1)
-    expect(out.verdicts.size).toBe(3)
-    expect(out.perf.escalations).toBe(3)
+    expect(out.fast.size).toBe(0)
+    expect(out.strong.size).toBe(3)
+    expect(out.perf.fast_failed).toBe(1)
     await expect(judgeSentences({ sentences, ledger: ledger(), products, targetProductId: HARBOR }, { judge: async () => { throw new Error('rate limited') } })).rejects.toThrow(/rate limited/)
   })
 })
 
 describe('the gate run', () => {
-  it('records ms total, per-chunk ms, judge calls and escalations, and emits judging/repairing steps', async () => {
+  it('records ms total, per-chunk ms, judge calls (both judges), and emits judging/repairing steps', async () => {
     const steps: GateProgress[] = []
     const lines = [...plain(7), 'It sells out every single week.']
     const r = await runInventionGate({ blueprint: bp(...lines), ledger: ledger(), products, targetProductId: HARBOR }, {
@@ -182,13 +184,14 @@ describe('the gate run', () => {
       onProgress: (p) => steps.push(p),
     })
     const perf = r.record.perf!
-    expect(perf.judge_calls).toBeGreaterThanOrEqual(3) // 2 fast chunks + 1 strong
+    expect(perf.judge_calls).toBeGreaterThanOrEqual(4) // 2 chunks x 2 judges
     expect(perf.chunk_ms).toHaveLength(perf.judge_calls)
-    expect(perf.escalations).toBe(2)
+    expect(perf.escalations).toBe(0)
+    expect(perf.strong_calls).toBeGreaterThanOrEqual(2)
     expect(perf.prefiltered).toBeGreaterThanOrEqual(1)
     expect(typeof perf.ms_total).toBe('number')
     expect(steps[0]).toMatchObject({ step: 'judging', chunks_done: 0 })
-    expect(steps.some((s) => s.step === 'judging' && s.chunks_done === 3 && s.chunks_total === 3)).toBe(true)
+    expect(steps.some((s) => s.step === 'judging' && s.chunks_done === 4 && s.chunks_total === 4)).toBe(true)
     expect(steps.every((s) => typeof s.at === 'string')).toBe(true)
     expect(JSON.stringify(r.blueprint.script)).not.toMatch(/sells out/)
   })

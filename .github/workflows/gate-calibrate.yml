@@ -13,9 +13,9 @@ on:
         required: true
         default: ''
       models:
-        description: 'Modes, comma-separated: cascade (what production runs) and/or a single task class or model id'
+        description: 'Modes, comma-separated: two-judge (what production runs; cascade is an alias) and/or a single task class or model id'
         required: false
-        default: 'cascade'
+        default: 'two-judge'
       labels_file_id:
         description: 'Id of a private test_run_files row (kind=ratings) holding the labels CSV. Never paste labels here: inputs are public.'
         required: false

@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildLedger, extractSentences, classifySentences, ruleRead, runInventionGate, checkStatusFor, decideOutcome,
   countClasses, listCounts, listDelivery, linkParents, buildJudgePrompt, judgeSentences, isSoftGeneral, summarizeGateRecords,
-  INVENTION_GATE_VERSION, ESCALATE_MAX_PER_SCRIPT, inheritable, needsStrong, errorClass, pendingForJudge, GateTimeout,
+  INVENTION_GATE_VERSION, inheritable, errorClass, pendingForJudge, GateTimeout,
   type GateBlueprint, type GateClass, type GateSentence, type LedgerItem, type InventionGateRecord,
 } from '../inventionGate.js'
 import { dropInventedEvents, narratesEvent } from '../noStoryEvents.js'
@@ -216,18 +216,18 @@ describe('judge prompt', () => {
   })
 })
 
-describe('v3: cascade, failures, one prefilter', () => {
-  it('a fast I is confirmed by the strong judge; S stays with the fast one', async () => {
+describe('v3: two judges, failures, one prefilter', () => {
+  it('both judges answer every sentence; the strong verdict is the merged one (no escalation)', async () => {
     const bp: GateBlueprint = { script: [{ line: 'It lathers like whipped cream on wet skin every time.' }, { line: 'It smells like cedar and moss after rain.' }] }
     const sentences = extractSentences(bp)
     const fast = fakeJudge([[/lathers/, 'I']])
     const strong = fakeJudge([[/lathers/, 'S', ['k-cure']]])
     const r = await judgeSentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS }, { judge: fast, judgeStrong: strong })
-    expect(needsStrong({ cls: 'I' })).toBe(true)
-    expect(needsStrong({ cls: 'S' })).toBe(false)
-    expect(r.perf.escalations).toBe(1)
+    expect(r.perf.escalations).toBe(0)
+    expect(r.fast.get(0)!.cls).toBe('I')
+    expect(r.strong.get(0)!.cls).toBe('S')
     expect(r.verdicts.get(0)!.cls).toBe('S')
-    expect(strong.calls.join('\n')).not.toMatch(/cedar/)
+    expect(strong.calls.join('\n')).toMatch(/cedar/)
   })
   it('a failed run records an error class and the work it did', async () => {
     const bp: GateBlueprint = { script: [{ line: 'It lathers like whipped cream on wet skin every time.' }] }
@@ -271,12 +271,12 @@ describe('v4: degrade per chunk, bounded escalation', () => {
     expect(r.perf.unjudged).toBeGreaterThan(0)
     expect(r.verdicts.size).toBe(sentences.length - (r.perf.unjudged ?? 0))
   })
-  it('escalation is capped per script and skips fast I that would only be G-SOFT', async () => {
-    expect(needsStrong({ cls: 'I' }, false)).toBe(false)
+  it('no escalation cap any more: the strong judge sees every sentence the fast one sees', async () => {
     const sentences = extractSentences({ script: Array.from({ length: 20 }, (_, k) => ({ line: `It lathers like whipped cream on wet skin, try ${k + 10} times.` })) })
     const strong = fakeJudge([])
     const r = await judgeSentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS }, { judge: fakeJudge([[/./, 'I']]), judgeStrong: strong })
-    expect(r.perf.escalations).toBeLessThanOrEqual(ESCALATE_MAX_PER_SCRIPT)
+    expect(r.perf.escalations).toBe(0)
+    expect(r.strong.size).toBe(r.fast.size)
     void lines
   })
 })

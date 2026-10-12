@@ -394,7 +394,7 @@ describe('the run: rounds, timeout, record', () => {
     const r = await runInventionGate({ blueprint: bp(), ledger: mayaLedger(), products, targetProductId: HARBOR }, { judge: fakeJudge([[/caramel|always ask/, 'I']]), rewrite: async () => '{"rewrites":[]}' })
     const json = JSON.stringify(r.record)
     expect(json).not.toMatch(/caramel|Tuesday|smooth|Harbor/)
-    expect(Object.keys(r.record.sentences[0]!).sort()).toEqual(['claim_types', 'class', 'i', 'item_ids', 'reason', 'surface'])
+    expect(Object.keys(r.record.sentences[0]!).sort()).toEqual(['claim_types', 'class', 'fast_class', 'i', 'item_ids', 'reason', 'strong_class', 'surface', 'verdict'])
   })
   it('two judge models are configured for calibration (owner amendment b)', () => {
     const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..')
