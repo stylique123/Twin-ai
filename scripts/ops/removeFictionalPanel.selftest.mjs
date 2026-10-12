@@ -2,7 +2,8 @@
 //   node scripts/ops/removeFictionalPanel.selftest.mjs
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { runMode, allowlistFrom, removalTargets, assertCap, residualReport, removalLogRow, RESIDUAL_TABLES, MAX_TARGETS, CONFIRM, PANEL_TAG } from './removeFictionalPanel.mjs'
+import { runMode, allowlistFrom, removalTargets, assertCap, residualReport, removalLogRow, RESIDUAL_TABLES, MAX_TARGETS, CONFIRM, PANEL_TAG, verifiedCascades, dryRunResidualCounts, isTargetPath } from './removeFictionalPanel.mjs'
+import { scanMigrations, readMigrations, coverageProblems, MIGRATIONS_DIR } from '../ci/check_panel_remove_coverage.mjs'
 
 // Dry run by default; deletion needs both flags.
 assert.deepEqual(runMode(['node', 'x']), { dryRun: true })
@@ -45,6 +46,37 @@ assert.equal(some.lines.at(-1), 'residual: 3')
 for (const t of ['generations', 'script_batch_results', 'creator_knowledge', 'product_entities', 'brands', 'brand_voices', 'profiles', 'jobs', 'ai_usage_ledger', 'analytics_events', 'referrals', 'posts', 'platform_connections']) {
   assert.ok(RESIDUAL_TABLES.some((r) => r.table === t), `residual check covers ${t}`)
 }
+
+// Cascade entries are verified from the migrations; the CI coverage guard passes on the real list.
+const cols = scanMigrations(readMigrations(MIGRATIONS_DIR))
+const verified = verifiedCascades(cols)
+for (const t of ['media_assets.owner_id', 'notifications.user_id', 'subscriptions.user_id']) {
+  assert.ok(RESIDUAL_TABLES.some((r) => `${r.table}.${r.col}` === t && r.cleanup === 'cascade'), `${t} is a cascade entry`)
+  assert.ok(verified.has(t), `${t} cascade verified from migrations`)
+}
+assert.deepEqual(coverageProblems(cols, RESIDUAL_TABLES), [])
+for (const r of RESIDUAL_TABLES) assert.ok(['delete', 'cascade', 'report'].includes(r.cleanup), `${r.table}: known cleanup`)
+
+// Dry-run residual: delete and verified cascade clear; report and unverified cascade survive.
+const entries = [
+  { table: 'a', col: 'owner_id', cleanup: 'delete' },
+  { table: 'b', col: 'owner_id', cleanup: 'cascade' },
+  { table: 'c', col: 'owner_id', cleanup: 'cascade' },
+  { table: 'd', col: 'accepted_by', cleanup: 'report' },
+]
+const dry = dryRunResidualCounts({ 'a.owner_id': 4, 'b.owner_id': 3, 'c.owner_id': 2, 'd.accepted_by': 1 }, new Set(['b.owner_id']), entries)
+assert.deepEqual(dry, { 'a.owner_id': 0, 'b.owner_id': 0, 'c.owner_id': 2, 'd.accepted_by': 1 })
+assert.equal(residualReport(dry).residual, 3)
+assert.equal(residualReport(dryRunResidualCounts({ 'b.owner_id': 5 }, new Set(), entries)).residual, 5, 'unverified cascade is residual')
+
+// Storage: only paths whose first segment is a target id.
+assert.ok(isTargetPath('fake-a/take.webm', ['fake-a']))
+assert.ok(isTargetPath('fake-a/x/y.png', ['fake-a']))
+assert.ok(!isTargetPath('other/fake-a/y.png', ['fake-a']))
+assert.ok(!isTargetPath('fake-ab/y.png', ['fake-a']))
+assert.ok(!isTargetPath('', ['fake-a']))
+assert.match(readFileSync(new URL('./removeFictionalPanel.mjs', import.meta.url), 'utf8'), /storage\.from\(bucket\)\.remove\(paths\.slice/, 'storage removal is scoped to the listed target paths')
+assert.match(readFileSync(new URL('./removeFictionalPanel.mjs', import.meta.url), 'utf8'), /storage\.objects\.owner_unverified/, 'unavailable owner lookup fails closed on a real run')
 
 // Removal log row: ops_events panel_removed, counts only, no ids or emails.
 const row = removalLogRow({ deleted: { 'generations.user_id': 3 }, remaining: { 'generations.user_id': 0 }, residual: 0, runId: '123', actor: 'someone', at: '2026-01-01T00:00:00.000Z' })
