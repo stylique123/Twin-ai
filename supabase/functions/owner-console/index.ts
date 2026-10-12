@@ -163,8 +163,12 @@ Deno.serve(async (req: Request) => {
   // ⚠️ NULL SURVIVES AS NULL. A count that failed is passed through as null so
   // `funnelCard` can report "could not be read", which is not a product with
   // no recordings.
+  // ⚖️ REAL CREATORS ONLY: the heartbeat and the fictional panel write
+  // `is_heartbeat` generations (by identity), and they are not product usage,
+  // so a generations count always carries that filter.
   const countOf = async (table: string): Promise<number | null> => {
-    const { count, error } = await admin.from(table).select('id', { count: 'exact', head: true })
+    const base = admin.from(table).select('id', { count: 'exact', head: true })
+    const { count, error } = await (table === 'generations' ? base.eq('is_heartbeat', false) : base)
     return error || typeof count !== 'number' ? null : count
   }
   // ⚠️ A COUNT OF THE TABLE, FILTERED. `countOf` counts every row, which is
@@ -190,6 +194,7 @@ Deno.serve(async (req: Request) => {
   // cannot be attributed — which is the true state, not an error.
   const { count: scriptIntentCount } = await admin.from('generations')
     .select('id', { count: 'exact', head: true })
+    .eq('is_heartbeat', false)
     .not('script_intent', 'is', null)
   // ── WHAT TWIN REFUSED TO CHARGE FOR ─────────────────────────────────────
   //

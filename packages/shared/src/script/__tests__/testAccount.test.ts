@@ -87,3 +87,62 @@ describe('edge wiring', () => {
     expect(worker).toMatch(/const measureOnly = extra\.measure_only === true/)
   })
 })
+
+// Owner panel conditions: panel accounts are unbillable and shut out of
+// referrals, checkout, social connections, counts and the cost ledger.
+describe('panel account guards (wiring)', () => {
+  const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
+  const edge = read('supabase/functions/generate-blueprint/index.ts')
+  it('generation never spends or refunds for a panel account and records credits_spent 0', () => {
+    expect(edge).toMatch(/const \{ error: spendErr \} = isPanel \? \{ error: null \} : await admin\.rpc\('spend_credits'/)
+    expect(edge).toMatch(/let refunded = false\n[\s\S]{0,200}if \(isPanel\) refunded = true\n/)
+    expect(edge).toMatch(/const unbillable = isPanel\s*\? 'panel_test_account'/)
+    expect(edge).toMatch(/credits_spent: unbillable \? 0 : BLUEPRINT_COST/)
+  })
+  for (const [fn, why] of [['referral', 'create or redeem referrals'], ['billing', 'start checkout'], ['social', 'connect social accounts']] as const) {
+    it(`${fn}: a panel account cannot ${why}`, () => {
+      const src = read(`supabase/functions/${fn}/index.ts`)
+      expect(src).toMatch(/import \{ isPanelAccount \} from '\.\.\/_shared\/testAccount\.ts'/)
+      expect(src).toMatch(/if \(isPanelAccount\(user\)\) return json\(\{ error: 'Not available for test accounts', code: 'TEST_ACCOUNT' \}, 403\)/)
+    })
+  }
+  it('each refusal sits before the action it blocks', () => {
+    const ref = read('supabase/functions/referral/index.ts')
+    expect(ref.indexOf('isPanelAccount(user)')).toBeLessThan(ref.indexOf("body.action === 'code'"))
+    const bill = read('supabase/functions/billing/index.ts')
+    expect(bill.indexOf('isPanelAccount(user)')).toBeLessThan(bill.indexOf('provider.checkout('))
+    const social = read('supabase/functions/social/index.ts')
+    expect(social.indexOf('isPanelAccount(user)')).toBeLessThan(social.indexOf("if (action === 'start')"))
+  })
+  it('owner-console counts real generations only', () => {
+    const oc = read('supabase/functions/owner-console/index.ts')
+    expect(oc).toMatch(/table === 'generations' \? base\.eq\('is_heartbeat', false\) : base/)
+    expect(oc).toContain("const scriptsCount = await countOf('generations')")
+    expect(oc).toMatch(/\.eq\('is_heartbeat', false\)\s*\.not\('script_intent', 'is', null\)/)
+  })
+  it('admin-metrics rollups and worklist exclude tagged test accounts', () => {
+    const am = read('supabase/functions/admin-metrics/index.ts')
+    expect(am).toMatch(/admin\.rpc\('test_account_ids'\)/)
+    expect(am).toMatch(/filter\(\(r\) => !testOwners\.has/)
+    const mig = read('supabase/migrations/0288_metrics_exclude_panel_test_accounts.sql')
+    expect(mig).toMatch(/raw_app_meta_data->>'twin_test_account'/)
+    for (const f of ['metrics_overview', 'activation_funnel', 'retention_curve', 'founder_metrics']) expect(mig).toContain(f)
+  })
+  it('lessons skip is_heartbeat generations', () => {
+    expect(read('worker/src/nicheBrain/lessons.ts')).toMatch(/select\('is_heartbeat'\)/)
+  })
+  it('the worker cost ledger tags panel owners as test traffic', () => {
+    expect(read('worker/src/aiUsage.ts')).toMatch(/twin_test_account === 'fictional_panel'/)
+    expect(read('worker/src/index.ts')).toMatch(/isPanelOwner\(db as never, j\.owner_id\)/)
+  })
+  it('script-batch is manual, main-only, owner-only', () => {
+    for (const wf of ['script-batch.yml']) {
+      const y = read(`.github/workflows/${wf}`)
+      expect(y).toMatch(/^on:\n {2}workflow_dispatch:/m)
+      expect(y).not.toMatch(/^\s*(pull_request|pull_request_target|push|schedule):/m)
+      expect(y).toMatch(/\[ "\$REF" != "refs\/heads\/main" \]/)
+      expect(y).toMatch(/\[ "\$ACTOR" != "\$OWNER" \]/)
+      expect(y).not.toMatch(/set -x|printenv|toJSON\(secrets\)/)
+    }
+  })
+})

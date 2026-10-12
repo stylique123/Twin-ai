@@ -16,6 +16,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { isPanelAccount } from '../_shared/testAccount.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -201,6 +202,9 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action !== 'checkout') return json({ error: 'Unknown action' }, 400)
+  // Fictional panel test accounts (app_metadata, service-set) can never start a
+  // checkout or record a payment intent.
+  if (isPanelAccount(user)) return json({ error: 'Not available for test accounts', code: 'TEST_ACCOUNT' }, 403)
 
   const plan = (body.plan ?? '').trim().toLowerCase()
   const planCfg = PLANS[plan]
