@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { panelScenarios, skipAnswers, PANEL_SKIP_ANSWER } from './panelRun.mjs'
 import { productKnowledge, resolveExpiry, panelEmail, panelDomain, reusePlan, PANEL_CREDITS, PANEL_DOMAIN, LEGACY_PANEL_DOMAIN, PANEL_TAG } from './seedFictionalPanel.mjs'
-import { ledgerWithText, assertOutsideRepo, csvCell } from './exportPanel.mjs'
+import { ledgerWithText, assertOutsideRepo, csvCell, gatePending } from './exportPanel.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
 
@@ -81,6 +81,13 @@ const led = ledgerWithText({
   answers: { claims: 'skip' }, note: 'n', offer: 'off',
 })
 assert.deepEqual(led.map((x) => x.text), ['story', '$17', 'skip', 'n', 'off', null])
+// Outside items (niche notes, research, audience) carry their text when the gate job had it.
+const ledO = ledgerWithText({ gateLedger: [{ id: 'o0' }, { id: 'o1' }], outside: [{ id: 'o0', kind: 'niche', text: 'made-up niche note' }] })
+assert.deepEqual(ledO.map((x) => [x.text, x.text_known]), [['made-up niche note', true], [null, false]])
+// A gate still queued on the worker is marked pending, never read as a record.
+assert.equal(gatePending({ check_status: 'unchecked', invention_gate: { outcome: 'unchecked', reason: 'queued' }, gate_progress: { step: 'queued' } }), true)
+assert.equal(gatePending({ check_status: 'unchecked', invention_gate: { outcome: 'measure_only' }, gate_progress: { step: 'done' } }), false)
+assert.equal(gatePending({ check_status: 'checked', invention_gate: { outcome: 'final' } }), false)
 assert.throws(() => assertOutsideRepo(new URL('./', import.meta.url).pathname + 'x'), /outside the repository/)
 assert.ok(assertOutsideRepo('/tmp/panel-out'))
 assert.equal(csvCell('a, "b"'), '"a, ""b"""')

@@ -251,7 +251,7 @@ async function main() {
   for (const mode of MODES) {
     let tp = 0, fp = 0, fn = 0, tn = 0, labelledS = 0, falseIonS = 0, malformed = 0, failed = 0
     const used = { in: 0, out: 0 }
-    const byClass = { S: 0, E: 0, I: 0, N: 0 }
+    const byClass = { S: 0, E: 0, I: 0, N: 0, G: 0 }
     const perfs = []
     const records = await mapLimit(prepared, SCRIPT_CONCURRENCY, async (x) => {
       const judgeWith = (model) => (p) => callModel(model, JUDGE_SYSTEM, JUDGE_SCHEMA, p, JUDGE_THINKING_BUDGET, used)
@@ -284,9 +284,9 @@ async function main() {
     const calls = perfs.reduce((a, p) => a + p.judge_calls, 0)
     const esc = perfs.reduce((a, p) => a + p.escalations, 0)
     const jud = perfs.reduce((a, p) => a + p.judged, 0)
-    const factual = byClass.S + byClass.E + byClass.I
+    const factual = byClass.S + byClass.E + byClass.I + byClass.G
     console.log(`\n== ${mode.name} ==`)
-    console.log(`classes: S ${byClass.S}  E ${byClass.E}  I ${byClass.I}  N ${byClass.N}  invented rate on factual: ${factual ? pct(byClass.I / factual) : 'n/a'}  malformed: ${malformed}  failed/timeout: ${failed}`)
+    console.log(`classes: S ${byClass.S}  E ${byClass.E}  I ${byClass.I}  G ${byClass.G}  N ${byClass.N}  invented rate on factual: ${factual ? pct(byClass.I / factual) : 'n/a'}  malformed: ${malformed}  failed/timeout: ${failed}`)
     console.log(`I precision: ${tp}/${tp + fp} = ${tp + fp ? pct(tp / (tp + fp)) : 'n/a'}  95% ${ci(wilson(tp, tp + fp))}`)
     console.log(`I recall:    ${tp}/${tp + fn} = ${tp + fn ? pct(tp / (tp + fn)) : 'n/a'}  95% ${ci(wilson(tp, tp + fn))}`)
     console.log(`false I on S-labelled: ${falseIonS}/${labelledS} = ${labelledS ? pct(falseIonS / labelledS) : 'n/a'}  95% ${ci(wilson(falseIonS, labelledS))}`)

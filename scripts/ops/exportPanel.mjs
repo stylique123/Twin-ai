@@ -13,6 +13,16 @@
 // With --to-db it also stores the bundle as one private test_run_files row
 // (kind 'other') and prints only that row's id.
 //
+// OUTSIDE MATERIAL WITH TEXT (owner, gate tuning v2; FICTIONAL PANEL ONLY): the
+// niche notes, outside research and audience items the gate checked against
+// are saved with their text (read from the gate job's payload), so labelling
+// can be complete. Only panel rows (scenario.group 'panel') are ever exported.
+//
+// THE GATE IS A DURABLE WORKER STEP: a script saved seconds before the export
+// still reads 'queued' (panel-current-2 #23 did: the export ran 18 s after its
+// save, before the worker wrote the record). The export waits for queued gates
+// (--wait-gate=<seconds>, default 240) and marks any still queued `gate_pending`.
+//
 // Run:
 //   npx esbuild packages/shared/src/script/inventionGate.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.inventionGate.bundle.mjs
 //   SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/ops/exportPanel.mjs <batch-label> --out=/private/dir [--to-db]
@@ -31,8 +41,9 @@ export function csvCell(v) {
 export const CSV_HEADER = ['script_id', 'creator', 'kind', 'sentence_i', 'surface', 'text', 'label']
 
 /** The material ledger with text: each compact gate_ledger item joined to the text it stood for. */
-export function ledgerWithText({ gateLedger, knowledge, products, answers, note, offer }) {
+export function ledgerWithText({ gateLedger, knowledge, products, answers, note, offer, outside }) {
   const kById = new Map((knowledge ?? []).map((k) => [String(k.id), k]))
+  const oById = new Map((outside ?? []).filter((o) => o && o.id != null && typeof o.text === 'string').map((o) => [String(o.id), o.text]))
   const facts = new Map()
   for (const p of products ?? []) for (const f of Array.isArray(p.knowledge) ? p.knowledge : []) if (f?.id) facts.set(String(f.id), { ...f, product: p.name })
   return (gateLedger ?? []).map((it) => {
@@ -42,8 +53,16 @@ export function ledgerWithText({ gateLedger, knowledge, products, answers, note,
     else if (it.id.startsWith('answer:')) text = answers?.[it.id.slice(7)] ?? null
     else if (it.id === 'note') text = note ?? null
     else if (it.id === 'offer') text = offer ?? null
+    else if (oById.has(it.id)) text = oById.get(it.id)
     return { ...it, text, text_known: text !== null }
   })
+}
+
+/** A gate still queued on the worker (no record written yet). */
+export function gatePending(bp) {
+  const g = bp?.invention_gate
+  return !!bp && bp.check_status === 'unchecked' && g?.outcome === 'unchecked' && g?.reason === 'queued'
+    && !['done', 'failed'].includes(bp?.gate_progress?.step)
 }
 
 export function assertOutsideRepo(out) {
@@ -63,6 +82,15 @@ async function main() {
   const { data: rows, error } = await admin.from('script_batch_results').select('n, scenario, generation_id, status').eq('batch', batch).gte('n', 0).not('generation_id', 'is', null).order('n')
   if (error) throw error
   const panelRows = (rows ?? []).filter((r) => r.scenario?.group === 'panel')
+  // Wait for gates the worker has not finished (see the header).
+  const waitArg = (process.argv.find((a) => a.startsWith('--wait-gate=')) ?? '').slice(12)
+  const deadline = Date.now() + 1000 * (waitArg ? Number(waitArg) : 240)
+  for (;;) {
+    const { data: gs } = await admin.from('generations').select('id, blueprint->check_status, blueprint->invention_gate, blueprint->gate_progress').in('id', panelRows.map((r) => r.generation_id))
+    const pending = (gs ?? []).filter((g) => gatePending({ check_status: g.check_status, invention_gate: g.invention_gate, gate_progress: g.gate_progress })).length
+    if (!pending || Date.now() >= deadline) { if (pending) console.log(`${pending} panel gates still queued; exported as gate_pending`); break }
+    await new Promise((r) => setTimeout(r, 10_000))
+  }
   mkdirSync(join(out, 'scripts'), { recursive: true })
   const csv = [CSV_HEADER.join(',')]
   const bundle = []
@@ -73,6 +101,9 @@ async function main() {
     const { data: knowledge } = await admin.from('creator_knowledge').select('id, kind, text').eq('owner_id', owner)
     const { data: products } = await admin.from('product_entities').select('id, name, offer, knowledge').eq('owner_id', owner)
     const target = (products ?? []).find((p) => p.id === bp?.writer_supply?.product_id) ?? null
+    // The outside board the gate checked against, with text (fictional panel only).
+    const { data: jobRows } = await admin.from('jobs').select('payload').eq('type', 'invention_recheck').eq('payload->>generation_id', row.generation_id).limit(1)
+    const outside = Array.isArray(jobRows?.[0]?.payload?.ledger?.outside) ? jobRows[0].payload.ledger.outside : []
     const scriptId = `${batch}#${row.n}`
     const sentences = extractSentences(bp)
     for (const s of sentences) csv.push([scriptId, row.scenario?.creator, row.scenario?.kind, s.i, s.surface, s.text, ''].map(csvCell).join(','))
@@ -83,10 +114,11 @@ async function main() {
       hook_options: bp.hook_options ?? [], titles: bp.packaging?.titles ?? [], thumbnail_text: bp.packaging?.thumbnail?.text_overlay ?? null,
       captions: bp.captions ?? [], publish_captions: Array.isArray(bp.publish_plan) ? bp.publish_plan.map((p) => p?.caption ?? null) : [],
       sentences: sentences.map((s) => ({ i: s.i, surface: s.surface, text: s.text })),
-      material_ledger: ledgerWithText({ gateLedger: bp.gate_ledger, knowledge, products, answers: row.scenario?.body?.readiness_answers ?? {}, note: g?.reference_note ?? row.scenario?.body?.reference_note, offer: target?.offer ?? null }),
+      material_ledger: ledgerWithText({ gateLedger: bp.gate_ledger, knowledge, products, answers: row.scenario?.body?.readiness_answers ?? {}, note: g?.reference_note ?? row.scenario?.body?.reference_note, offer: target?.offer ?? null, outside }),
       writer_supply: bp.writer_supply ?? null,
       invention_gate: bp.invention_gate ?? null,
       check_status: bp.check_status ?? null,
+      gate_pending: gatePending(bp),
     }
     writeFileSync(join(out, 'scripts', `${scriptId.replace(/[^A-Za-z0-9_.-]/g, '_')}.json`), JSON.stringify(file, null, 2))
     bundle.push(file)

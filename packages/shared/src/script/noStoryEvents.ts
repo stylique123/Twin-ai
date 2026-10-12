@@ -14,6 +14,11 @@ const TIME_ANCHOR = /\b(?:today|yesterday|last (?:week|month|year|night|summer|w
 // Common irregular past forms plus frequent narrative -ed verbs. The subject
 // gate (first person, or a third party acting on her) narrows it.
 const PAST_VERB = /\b(?:was|were|had|did|went|came|saw|told|said|took|got|made|found|felt|heard|knew|left|ran|gave|thought|bought|sold|began|started|knocked|dropped|asked|looked|checked|showed|walked|called|happened|realized|realised|decided|tried|opened|stopped|visited|inspected|learned|learnt|noticed|wanted|needed|panicked|froze|quit|lost|cried|burned|burnt)\b/i
+// A first-person ORIGIN story ("I built the first version over a winter because
+// my partner and I kept answering…", panel-current-2 #8). "We built X to fix
+// this" is a purpose, not a story; a time, place or cause makes it one.
+// Mirrors ORIGIN_RE in inventionGate.ts (no imports here on purpose).
+const ORIGIN = /\b(?:i|we|my \w+ and i)\s+(?:first\s+)?(?:built|founded|launched|created|started|made)\b[^.!?]*\b(?:over (?:a|one|the)|in (?:my|our|a|the) (?:garage|kitchen|basement|bedroom|dorm|spare)|during|back (?:in|when)|because|after (?:i|we|my)|years? ago|months? ago|winter|summer|spring|autumn|first version|from scratch)\b/i
 const HYPOTHETICAL = /^\s*(?:if|when(?:ever)? (?:you|your)|what if|imagine|suppose|say)\b/i
 const BELIEF = /\b(?:I|we) (?:believe|think|feel that|know that|always say|guess|bet)\b/i
 
@@ -31,7 +36,7 @@ export function narratesEvent(sentence: string): boolean {
   const firstPerson = FIRST_PERSON.test(s)
   const actsOnHer = THIRD_PARTY.test(s) && ACTS_ON_HER.test(s)
   if (!firstPerson && !actsOnHer) return false
-  return PAST_VERB.test(s) || TIME_ANCHOR.test(s)
+  return PAST_VERB.test(s) || TIME_ANCHOR.test(s) || ORIGIN.test(s)
 }
 
 /**

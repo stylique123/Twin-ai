@@ -8826,6 +8826,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // No-story trial rule: set where the note moment is read; story items read from provenanceSupply.
   let noteMomentForVideo = false
   let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
+  // The outside board (research, moments, niche notes, audience), kept for the
+  // invention gate of a RESCUED script too (panel-current-2 #8 had no gate record).
+  let gateBoard: Array<{ id?: unknown; kind?: unknown; text?: unknown }> = []
   // Everything the writer was given, kept for the figure audit (Sunflower #23).
   let writerMaterial = ''
   let refunded = false
@@ -9202,6 +9205,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // The audience, niche and world material itself, for tracing which of it
     // reached a line (measurement only; never a claim's backing).
     const boardMaterial: LineSourceInput[] = []
+    gateBoard = boardMaterial as Array<{ id?: unknown; kind?: unknown; text?: unknown }>
     let brainNoteIds: string[] = []
     // W12.1 (owner 13 Oct): why research, Reddit and moments read 0 on every
     // run. Each read's failure is recorded (message only, never data) and the
@@ -11292,7 +11296,7 @@ ${defaultRegisterCard}` : ''}${signaturePhrasesLine ? `
         const momentInstruction = noteHasMoment
           ? '\n\nHER MOMENT FOR THIS VIDEO: the creator\'s note above contains a moment she lived, in her own words. Tell THAT moment as the script\'s one story (setup, what went wrong or surprised her, what she did, how it ended), keeping her wording. Do not swap in a different stored story; a stored fact may only support it. Add nothing to it that she did not say.'
           : noStorySupplied
-            ? '\n\nNo personal story was given for this video. Do not narrate any specific past event, visit, conversation or result as if it happened. Speak in general terms, give her known facts, or ask the viewer.'
+            ? '\n\nNo personal story was given for this video. Do not narrate any specific past event, visit, conversation or result as if it happened. Never write a first-person origin or founding story (how, when or why she built, started, founded or made the business or product, how long it took, who helped) unless one of her items says it. Speak in general terms, give her known facts, or ask the viewer.'
             : ''
         // ⚠️ FIX 12 (Wave 4). SAME `creatorHasExperience` READ, DIFFERENT
         // QUESTION: `premiseInstruction` above asks whether the REFERENCE's own
@@ -16503,6 +16507,34 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             ;(rescuedBp as Record<string, unknown>).writer_supply = buildWriterSupply({ knowledge: provenanceSupply, product: ownedEntity as { id?: unknown; knowledge?: unknown } | null, answers, note: reference_note })
           } catch { /* bookkeeping never fails a generation */ }
         }
+        // ⚖️ A RESCUED SCRIPT IS GATED TOO (panel-current-2 #8: a rescued trial
+        // script with an empty ledger and an invented founder story shipped with
+        // no gate record at all, because only the success path queued the gate).
+        // Same as the success path: check_status 'unchecked', record 'queued',
+        // the worker's `invention_recheck` enqueued after the save.
+        let rescueRecheck: { ledger: Record<string, unknown> } | null = null
+        if (trialOn && rescuedBp && typeof rescuedBp === 'object') {
+          try {
+            const rbp = rescuedBp as Record<string, unknown>
+            const gateEntity = ownedEntity as { id?: unknown } | null
+            const gateTarget = gateEntity?.id ? String(gateEntity.id) : null
+            const gateAnswers: Record<string, unknown> = { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }
+            const gateOutside = gateBoard.map((m, n) => ({ id: m.id ?? `${String(m.kind)}:${n}`, kind: m.kind, text: m.text }))
+            const gateOffer = typeof readyOffer === 'string' ? readyOffer : ''
+            try {
+              rbp.gate_ledger = compactInventionLedger(buildInventionLedger({
+                knowledge: provenanceSupply, answers: gateAnswers, note: reference_note,
+                targetProductId: gateTarget, offer: gateOffer, outside: gateOutside, now: Date.now(),
+              }))
+            } catch { /* the record is best-effort; the worker still checks */ }
+            rbp.invention_gate = inventionUncheckedRecord(null, 'queued', 0)
+            rbp.check_status = 'unchecked'
+            rbp.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
+            const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode })
+            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}) } }
+            console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
+          } catch { /* the gate bookkeeping never loses a rescued script */ }
+        }
         const { data: saved, error: rescueInsErr } = await admin
           .from('generations')
           .insert({
@@ -16561,6 +16593,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             generation_id: saved.id,
             error: describeThrown(err),
           }))
+          if (saved.id && rescueRecheck) {
+            const { error: recheckErr } = await enqueueInventionRecheck(admin, { generationId: saved.id, ownerId: user.id, reason: 'queued', ledger: rescueRecheck.ledger })
+            console.log(JSON.stringify({ event: 'invention_recheck_enqueued', reason: 'queued', rescued: true, ok: !recheckErr }))
+          }
           if (saved.id) {
             await admin.from('script_attempts')
               .update({ generation_id: saved.id })
