@@ -221,6 +221,10 @@ const SOURCES = [
   ['packages/shared/src/script/offerScope.ts', 'supabase/functions/_shared/offerScope.ts'],
   // The late guards as one check, run on the extension's output and at the finish (part-4 batch 2026-10-04).
   ['packages/shared/src/script/lateGuards.ts', 'supabase/functions/_shared/lateGuards.ts'],
+  // Script templates T1/T3/T4 as data + slot filling and checks (quality sprint stage 2, trial only).
+  // The sources live one folder down; their `../x.js` imports flatten to the sibling copy.
+  ['packages/shared/src/script/templates/templateData.ts', 'supabase/functions/_shared/templateData.ts'],
+  ['packages/shared/src/script/templates/scriptTemplates.ts', 'supabase/functions/_shared/scriptTemplates.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
@@ -268,6 +272,9 @@ const render = (from, src0, to = '') => {
     // to '.ts'` — in the DEPLOY, which nothing was watching, not in CI. A rule
     // cannot be forgotten; a list can, and was.
     .replace(/(from\s+'\.\/[A-Za-z0-9_-]+)\.m?js'/g, "$1.ts'")
+    // A source in a subfolder (script/templates/) imports its parent's modules
+    // as `../x.js`; the edge copies are all flat siblings in _shared/.
+    .replace(/from\s+'\.\.\/([A-Za-z0-9_-]+)\.js'/g, (m, name) => (from.includes('/templates/') ? `from './${name}.ts'` : m))
 }
 
 // ⚠️ AND THE RULE IS ASSERTED, because a rewrite that silently stops matching
@@ -276,7 +283,7 @@ const render = (from, src0, to = '') => {
 // deploy time, so it fails HERE instead, where someone is looking.
 const unresolvableImports = (text) => {
   const out = []
-  for (const m of text.matchAll(/from\s+'(\.\/[^']+\.m?js)'/g)) out.push(m[1])
+  for (const m of text.matchAll(/from\s+'(\.\.?\/[^']+\.m?js)'/g)) out.push(m[1])
   return out
 }
 
