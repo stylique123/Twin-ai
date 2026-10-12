@@ -1498,6 +1498,10 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     let fallback = 0
     const questions: GateQuestion[] = []
     const declined = declinedSlots(input.ledger)
+    // ⚠️ A PLACEHOLDER ALREADY IN THE SCRIPT IS AN OPEN QUESTION (a template
+    // slot asked before the writer ran, quality sprint stage 2). It counts
+    // toward the 3-question cap and the script is never 'final' while it stands.
+    const preAsked = first.sentences.filter((s) => s.surface === 'script' && isPlaceholder(s.text)).length
     const apply = (steps: RepairStep[], rewrites?: Map<number, string>) => {
       const a = applyRepairs(bp, cur.sentences, steps, rewrites)
       bp = a.bp
@@ -1511,7 +1515,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       const over = overBudgetE(cur.classified, spokenWords(bp))
       if (!cur.classified.some((s) => s.class === 'I') && !over.length) break
       rounds++
-      const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: over, spokenBeats: spokenBeats(bp), asksSoFar: questions.length, declined })
+      const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: over, spokenBeats: spokenBeats(bp), asksSoFar: questions.length + preAsked, declined })
       const replaceSteps = steps.filter((s) => s.action === 'replace')
       if (!replaceSteps.length) {
         // Nothing new written: no re-judge needed.
@@ -1532,7 +1536,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     const overLast = overBudgetE(cur.classified, spokenWords(bp))
     if (cur.classified.some((s) => s.class === 'I') || overLast.length) {
       const prev = cur
-      const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: overLast, spokenBeats: spokenBeats(bp), finalRound: true, asksSoFar: questions.length, declined })
+      const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: overLast, spokenBeats: spokenBeats(bp), finalRound: true, asksSoFar: questions.length + preAsked, declined })
       apply(steps)
       const sentences = extractSentences(bp)
       cur = { sentences, classified: carryClasses(prev, sentences) }
@@ -1542,7 +1546,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       ...base(),
       sentences: recordSentences(first.classified),
       before, after: countClasses(cur.classified), repaired, rounds,
-      outcome: decideOutcome(cur.classified, repaired.asked, fallback),
+      outcome: decideOutcome(cur.classified, repaired.asked + preAsked, fallback),
       e_flags: cur.classified.filter((s) => s.class === 'E').slice(0, ebudget).map((s) => ({ i: s.i, surface: s.surface, item_ids: s.item_ids })),
       ms: now() - t0,
       judge_malformed: malformed,

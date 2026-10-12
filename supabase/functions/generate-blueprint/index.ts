@@ -79,7 +79,9 @@ import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
-import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason } from '../_shared/inventionGate.ts'
+import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
+import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, type TemplatePlan } from '../_shared/scriptTemplates.ts'
+import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
@@ -11995,7 +11997,32 @@ This is the video's position. Every field below must serve it. If the reference'
       hasProduct: !!ownedEntity,
       offerText: String((ownedEntity as { offer?: unknown } | null)?.offer ?? ''),
     })
-    const familyHookRule = renderFamilyHookRule(family)
+    // ⚖️ QUALITY SPRINT STAGE 2 (trial only): a script template (T1/T3/T4) whose
+    // slots are filled from the invention-gate ledger by origin and evidence.
+    // Real creators never reach chooseTemplates: no template, no block, no record.
+    let templatePlan: TemplatePlan | null = null
+    let templateProfile: TemplateProfile = 'standard'
+    let templateLedger: InventionLedgerItem[] = []
+    const templateChoices: TemplatePlan[] = trialOn ? (() => {
+      try {
+        templateLedger = buildInventionLedger({
+          knowledge: provenanceSupply, answers: { ...(answers ?? {}) }, note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
+          offer: typeof readyOffer === 'string' ? readyOffer : '',
+          outside: boardMaterial.map((m, n) => ({ id: m.id ?? `${m.kind}:${n}`, kind: m.kind, text: m.text })), now: Date.now(),
+        })
+        return chooseTemplates({
+          goal: String(videoGoal ?? body.goal ?? ''), angle: pickedAngle ? String(pickedAngle.kind ?? '') : null,
+          ledger: templateLedger, targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
+        })
+      } catch { return [] }
+    })() : []
+    if (templateChoices.length) {
+      templatePlan = templateChoices[0]!
+      templateProfile = pickTemplateProfile(templatePlan.template, body.target_seconds, softwareTargetSec != null)
+    }
+    const familyHookRule = renderFamilyHookRule(family) + (templatePlan ? `\n\n${renderTemplateBlock(templatePlan, templateProfile, templateLedger)}` : '')
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
@@ -16267,6 +16294,26 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // shot-list re-sync, questions) and writes step events to
     // blueprint.gate_progress while it runs. Recording stays locked while
     // 'unchecked': an unchecked script never ships as final.
+    // Quality sprint stage 2 (trial only): hold the script to its template —
+    // hook shapes, bridges, the promised count and the word budget. Every
+    // repair removes, reorders or re-numbers; the record is ids only.
+    if (trialOn && templatePlan && blueprint && typeof blueprint === 'object') {
+      try {
+        const bpt = blueprint as Record<string, unknown>
+        if (Array.isArray(bpt.script)) {
+          const f = finishTemplate({
+            plan: templatePlan, profile: templateProfile, ledger: templateLedger,
+            script: bpt.script as Array<Record<string, unknown>>,
+            hook_options: Array.isArray(bpt.hook_options) ? (bpt.hook_options as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+          })
+          bpt.script = f.script
+          if (Array.isArray(bpt.hook_options)) bpt.hook_options = f.hook_options
+          bpt.template = f.record
+          if (templatePlan.questions.length) bpt.gate_questions = [...templatePlan.questions]
+          console.log(JSON.stringify({ event: 'script_template_applied', template: f.record.id, profile: f.record.profile, asked: templatePlan.questions.length, promise_paid: f.record.promise_paid, promise_repair: f.record.promise_repair, bridges_ok: f.record.bridges_ok, hook_shapes_matched: f.record.hook_shapes.filter(Boolean).length, trimmed: f.record.trimmed }))
+        }
+      } catch { /* a template check never fails a build */ }
+    }
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
     if (trialOn && blueprint && typeof blueprint === 'object') {
       const gateEntity = ownedEntity as { id?: unknown } | null
