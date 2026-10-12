@@ -207,9 +207,14 @@ const pctl = (xs, q) => { if (!xs.length) return 0; const a = [...xs].sort((x, y
 async function callModel(model, system, schema, prompt, thinkingBudget, used) {
   const key = process.env.GEMINI_API_KEY
   if (!key) throw new Error('GEMINI_API_KEY is required')
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), CALL_TIMEOUT_MS)
+  // v4: one deadline PER ATTEMPT. A single controller shared by the retries
+  // aborted the retry after a 429 back-off (the live 'abort' failures).
   const send = async (budget) => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), CALL_TIMEOUT_MS)
+    try { return await sendOnce(budget, ctrl) } finally { clearTimeout(timer) }
+  }
+  const sendOnce = async (budget, ctrl) => {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', signal: ctrl.signal,
       headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
@@ -243,7 +248,7 @@ async function callModel(model, system, schema, prompt, thinkingBudget, used) {
     used.in += j?.usageMetadata?.promptTokenCount ?? 0
     used.out += j?.usageMetadata?.candidatesTokenCount ?? 0
     return j?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
-  } finally { clearTimeout(timer) }
+  } finally { /* each attempt clears its own timer */ }
 }
 
 // ── main ──────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildLedger, extractSentences, classifySentences, ruleRead, runInventionGate, checkStatusFor, decideOutcome,
   countClasses, listCounts, listDelivery, linkParents, buildJudgePrompt, judgeSentences, isSoftGeneral, summarizeGateRecords,
-  INVENTION_GATE_VERSION, needsStrong, errorClass, pendingForJudge, GateTimeout,
+  INVENTION_GATE_VERSION, ESCALATE_MAX_PER_SCRIPT, inheritable, needsStrong, errorClass, pendingForJudge, GateTimeout,
   type GateBlueprint, type GateClass, type GateSentence, type LedgerItem, type InventionGateRecord,
 } from '../inventionGate.js'
 import { dropInventedEvents, narratesEvent } from '../noStoryEvents.js'
@@ -117,7 +117,8 @@ describe('v2 rule 2: fragments inherit their script line', () => {
     expect(caps[0]!.class).toBe('I')
     expect(caps[1]!.class).toBe('I')
     expect(caps[1]!.reason).toBe('inherited')
-    expect(caps[2]!.class).toBe('G')
+    // v4: a no-claim fragment of a non-story line keeps its own N.
+    expect(caps[2]!.class).toBe('N')
   })
   it('a fragment that adds a claim is judged alone, and the judge sees the parent line', async () => {
     const bp2: GateBlueprint = { script: [{ line: 'Lye soap needs curing before use.' }], captions: ['lye soap needs curing so it feels milder'] }
@@ -247,5 +248,81 @@ describe('v3: cascade, failures, one prefilter', () => {
     const judge = fakeJudge([])
     const r = await judgeSentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS }, { judge })
     expect(pendingForJudge(sentences, fernLedger(), products, MOSS).map((x) => x.s.i)).toEqual([...r.verdicts.keys()].sort((a, b) => a - b))
+  })
+})
+
+describe('v4: degrade per chunk, bounded escalation', () => {
+  const lines = Array.from({ length: 14 }, (_, k) => `It lathers like whipped cream number ${['one', 'two', 'three'][k % 3]} on wet skin, batch ${k}x.`)
+  it('a strong chunk that fails keeps the fast verdicts; the script is never lost', async () => {
+    const sentences = extractSentences({ script: [{ line: 'It lathers like whipped cream on wet skin every time.' }, { line: 'It smells like cedar and moss after rain.' }] })
+    const r = await judgeSentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS }, {
+      judge: fakeJudge([[/lathers/, 'I']]), judgeStrong: async () => { throw new Error('model 503: busy') },
+    })
+    expect(r.verdicts.get(0)!.cls).toBe('I')
+    expect(r.verdicts.get(1)!.cls).toBe('S')
+    expect(r.perf.errors).toEqual(['http_503'])
+  })
+  it('a fast chunk that fails with no cascade leaves only its sentences unjudged', async () => {
+    const sentences = extractSentences({ script: Array.from({ length: 7 }, (_, k) => ({ line: `It smells like cedar ${"abcdefg"[k]}x after rain on the porch.` })) })
+    let calls = 0
+    const r = await judgeSentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS, chunkSize: 6 }, {
+      judge: async (p) => { if (calls++ === 0) throw new Error('model 500: x'); return fakeJudge([])(p) },
+    })
+    expect(r.perf.unjudged).toBeGreaterThan(0)
+    expect(r.verdicts.size).toBe(sentences.length - (r.perf.unjudged ?? 0))
+  })
+  it('escalation is capped per script and skips fast I that would only be G-SOFT', async () => {
+    expect(needsStrong({ cls: 'I' }, false)).toBe(false)
+    const sentences = extractSentences({ script: Array.from({ length: 20 }, (_, k) => ({ line: `It lathers like whipped cream on wet skin, try ${k + 10} times.` })) })
+    const strong = fakeJudge([])
+    const r = await judgeSentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS }, { judge: fakeJudge([[/./, 'I']]), judgeStrong: strong })
+    expect(r.perf.escalations).toBeLessThanOrEqual(ESCALATE_MAX_PER_SCRIPT)
+    void lines
+  })
+})
+
+describe('v4: inheritance only in the risk direction', () => {
+  const soft = { claim_types: [], hard: null, soft: { cls: 'N' as const, reason: 'truism' as const }, near: [], subject_product: null }
+  const hard = { ...soft, soft: null }
+  it('S and N never flow down', () => {
+    expect(inheritable({ class: 'S', claim_types: [], reason: 'entailed' }, hard)).toBe(false)
+    expect(inheritable({ class: 'N', claim_types: [], reason: 'no_claim' }, hard)).toBe(false)
+    expect(inheritable({ class: 'I', claim_types: [], reason: 'no_item' }, hard)).toBe(true)
+  })
+  it('a no-claim fragment keeps N unless its line is an invented story', () => {
+    expect(inheritable({ class: 'I', claim_types: ['general'], reason: 'no_item' }, soft)).toBe(false)
+    expect(inheritable({ class: 'I', claim_types: ['event'], reason: 'event_unbacked' }, soft)).toBe(true)
+  })
+  it('a caption of a line the judge called S is judged on its own', () => {
+    const bp: GateBlueprint = { script: [{ line: 'I cure every Moss Bar for six weeks on a pine rack.' }], captions: ['every Moss Bar cures six weeks on pine'] }
+    const sentences = extractSentences(bp)
+    const cs = classifySentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS, judge: verdicts(sentences, [[/^every Moss/, 'I']]) })
+    expect(cs[0]!.class).toBe('S')
+    expect(cs[1]!.class).toBe('I')
+    expect(cs[1]!.reason).not.toBe('inherited')
+  })
+})
+
+describe('v4: rule bugs', () => {
+  const rr = (text: string, surface: GateSentence['surface'] = 'script') => ruleRead({ i: 0, surface, at: 1, k: 0, text }, fernLedger(), products, MOSS)
+  it('a small count in a hypothetical, instruction or question is not a factual number', () => {
+    expect(rr('When two people share one inbox, replies collide.').hard).toBeNull()
+    expect(rr('Stop letting two people answer the same email.').hard).toBeNull()
+    expect(rr('How many times has your team sent two replies?').hard).toBeNull()
+  })
+  it('factual, personal and product numbers are still matched', () => {
+    expect(rr('Two people asked me about it yesterday.').hard).not.toBeNull()
+    expect(rr('If you buy Moss Bar, it is a 6 oz bar.').hard?.reason).toBe('number_unmatched')
+    expect(rr('Five hundred people bought one.').hard).not.toBeNull()
+  })
+  it('one shared word is not another product', () => {
+    const led = buildLedger({ products: [{ id: MOSS, name: 'Moss Bar', knowledge: [] }, { id: 'p2', name: 'Tide Balm', knowledge: [{ id: 'f2', field: 'feature', value: 'Tide Balm never stings dry hands' }] }], targetProductId: MOSS, now: 0 })
+    const r = ruleRead({ i: 0, surface: 'thumbnail_text', at: 0, k: 0, text: 'WHY IT STINGS' }, led, [...products, { id: 'p2', name: 'Tide Balm' }], MOSS)
+    expect(r.claim_types).not.toContain('cross_product')
+  })
+  it('common words of a product name do not make a line about the product', () => {
+    const p2 = [{ id: 'calm', name: 'Calm Cream' }]
+    expect(isSoftGeneral('Fragrance often irritates skin that is already calm.', [], [], 'calm', 'calm', p2)).toBe(true)
+    expect(isSoftGeneral('Calm Cream soothes skin.', [], [], 'calm', 'calm', p2)).toBe(false)
   })
 })

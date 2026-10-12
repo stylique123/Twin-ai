@@ -410,6 +410,7 @@ export const HER_MIN = 0.34
 const PRODUCT_PRONOUN_RE = /\b(?:it|it's|its|this|these|they|they're|ours?)\b/i
 /** A quantified or business-specific statement is never a harmless truism. */
 const SPECIFIC_RE = /\b(?:every|each|always|never|all of|only)\b|\b(?:ships?|shipped|roast(?:s|ed)?|sourced?|handmade|organic|same[- ]day|small[- ]batch(?:es)?|award|certified|imported|local(?:ly)?)\b/i
+const HYPOTHETICAL_LEAD_RE = /^(?:if|when|whenever|once|stop|don'?t|never|avoid|imagine|say|let'?s say|picture)\b/i
 const QUANTIFIER_RE = /\b(?:every|each|always|never|all of|only)\b/i
 const SECOND_PERSON_PROMISE_RE = /\byou(?:'ll| will| would)\b/i
 /** A first-person ORIGIN story: "I built the first version over a winter because…".
@@ -536,6 +537,8 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
   const bestScoped = Math.max(0, ...ranked.filter((x) => inScope(x.it, subject)).map((x) => x.o))
   const bestHer = Math.max(0, ...ranked.filter((x) => inScope(x.it, subject) && isHerOwn(x.it)).map((x) => x.c))
   const bestOut = Math.max(0, ...ranked.filter((x) => !inScope(x.it, subject)).map((x) => x.o))
+  // v4: one shared word ("WHY IT STINGS") is not a claim about another product.
+  const outHits = Math.max(0, ...ranked.filter((x) => !inScope(x.it, subject)).map((x) => [...ws].filter((w) => contentWords(x.it.text).has(w)).length))
 
   const isQuestion = /\?\s*["”')]*$/.test(t)
   const presup = isQuestion && PRESUP_Q_RE.test(t.trim())
@@ -565,8 +568,14 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
     if (k >= 0) { listLeft.splice(k, 1); return false }
     return true
   })
+  // v4: a small count in a hypothetical, an instruction or a question ("when
+  // two people share an inbox", "stop letting two people reply") is not a
+  // factual number. Units, prices, sizes and anything personal or about a
+  // product are still matched digit-to-field.
+  const hypothetical = (isQuestion || HYPOTHETICAL_LEAD_RE.test(t.trim())) && !FIRST_PERSON_RE.test(t) && !mentionsAnyProduct(t, products) && subject === targetId
+  if (hypothetical) for (let k = nums.length - 1; k >= 0; k--) if (nums[k]!.unit === 'count' && nums[k]!.value <= 3) nums.splice(k, 1)
   if (nums.length) types.push('number')
-  if (bestOut >= 0.5 && bestScoped < 0.25) types.push('cross_product')
+  if (bestOut >= 0.5 && bestScoped < 0.25 && outHits >= 2) types.push('cross_product')
 
   // Close items for a replace repair: in scope, and her own words when the claim is gated.
   const needsHer = types.some((x) => GATED.has(x) || x === 'event' || x === 'quote' || x === 'feeling')
@@ -608,9 +617,17 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
   return read(null)
 }
 
+/** Does the sentence name a product? v4: a multi-word name whose words are
+ *  common ("Calm Cream") is named only when all its words appear ("calms the
+ *  skin" is not Calm Cream); a one-word name is named by that word. Scope
+ *  (`subjectProduct`) is unchanged. */
 function mentionsAnyProduct(t: string, products: readonly ProductName[]): boolean {
   const ws = contentWords(t)
-  return products.some((p) => [...productWordsOf(p.name)].some((w) => w.length >= 4 && ws.has(w)))
+  return products.some((p) => {
+    const pw = [...productWordsOf(p.name)].filter((w) => w.length >= 4)
+    if (!pw.length) return false
+    return pw.length === 1 ? ws.has(pw[0]!) : pw.every((w) => ws.has(w))
+  })
 }
 
 // ── JUDGE: PROMPT + STRICT PARSER ───────────────────────────────────────────
@@ -647,7 +664,7 @@ export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: rea
   const items = ledger.map((it) => `[${it.id}] (${it.origin}${it.field ? `/${it.field}` : ''}; about: ${prodName(it.product_id)}; ${it.first_party ? 'her own words' : 'outside source'}${it.origin === 'urgency' ? (it.live ? '; LIVE' : '; NOT live') : ''}) ${it.text.slice(0, 400)}`)
   const lines = sentences.map((s) => {
     const p = s.parent !== undefined ? parents.get(s.parent) : undefined
-    return p ? `${s.i}. (${s.surface}; paraphrases script line: ${p.slice(0, 300)}) ${s.text}` : `${s.i}. (${s.surface}) ${s.text}`
+    return p ? `${s.i}. (${s.surface}) ${s.text}\n   (paraphrases script line: ${p.slice(0, 300)})` : `${s.i}. (${s.surface}) ${s.text}`
   })
   return [
     'Classify EVERY sentence below as exactly one of:',
@@ -728,8 +745,16 @@ export const INVENTION_JUDGE_CASCADE = { fast: 'read', strong: 'extract' } as co
  *  cascade never ran. A fast I is the verdict that blocks a script, so it is
  *  always confirmed by the stronger judge; an uncertain verdict still is too. */
 export const ESCALATE_FAST_I = true
-export function needsStrong(v: Pick<JudgeVerdict, 'cls' | 'uncertain'>): boolean {
-  return v.uncertain === true || (ESCALATE_FAST_I && v.cls === 'I')
+/** v4 (live calibration v3: 2 scripts aborted, p90 45 s): at most this many
+ *  sentences per script go to the strong judge (failed fast chunks first) ... */
+export const ESCALATE_MAX_PER_SCRIPT = 12
+/** ... and only while the run is younger than this; later, the fast verdict stands. */
+export const ESCALATE_WINDOW_MS = 18_000
+/** Does a fast verdict go to the strong judge? An uncertain one, or an I that
+ *  would be I-HARD (a fast I that would only be G-SOFT blocks nothing). Without
+ *  the sentence context (`hardI` omitted) every fast I counts as hard. */
+export function needsStrong(v: Pick<JudgeVerdict, 'cls' | 'uncertain'>, hardI: boolean = true): boolean {
+  return v.uncertain === true || (ESCALATE_FAST_I && v.cls === 'I' && hardI)
 }
 
 /** Steps the durable worker run reports on `blueprint.gate_progress`. */
@@ -753,6 +778,8 @@ export interface GatePerf {
   judged: number
   /** Fast chunks that failed and went to the strong model whole. */
   fast_failed?: number
+  /** Sentences no judge answered (judge_missing); the rest of the script kept its verdicts. */
+  unjudged?: number
   /** Error classes of failed judge calls (never text). */
   errors?: string[]
 }
@@ -768,6 +795,7 @@ export function mergeFailedPerf(perf: GatePerf, failed: GatePerf | undefined, ms
     escalations: perf.escalations + failed.escalations,
     prefiltered: perf.prefiltered + failed.prefiltered,
     judged: perf.judged + failed.judged,
+    ...(failed.unjudged || perf.unjudged ? { unjudged: (perf.unjudged ?? 0) + (failed.unjudged ?? 0) } : {}),
     ...(failed.fast_failed || perf.fast_failed ? { fast_failed: (perf.fast_failed ?? 0) + (failed.fast_failed ?? 0) } : {}),
     ...(failed.errors?.length || perf.errors?.length ? { errors: [...(perf.errors ?? []), ...(failed.errors ?? [])] } : {}),
   }
@@ -854,9 +882,8 @@ export function pendingForJudge(sentences: readonly GateSentence[], ledger: read
   for (const s of sentences) {
     if (isPlaceholder(s.text)) continue
     const r = readOf(s)
-    if (r.hard) continue
-    const parent = s.parent !== undefined ? sentences.find((x) => x.i === s.parent) : undefined
-    if (parent && inheritsFrom(s, r, parent, readOf(parent))) continue
+    // v4: a fragment is judged on its own unless a rule decides it; whether it
+    // inherits is settled after its script line has a verdict (classifySentences).
     if (decidedByRule(s, r)) continue
     out.push({ s, r })
   }
@@ -901,10 +928,7 @@ async function judgeSentencesInner(input: JudgeRunInput, deps: JudgeRunDeps, per
     if (isPlaceholder(s.text)) { perf.prefiltered++; continue }
     const r = ruleRead(s, input.ledger, products, target, ctxOf(s))
     reads.set(s.i, r)
-    if (r.hard) { perf.prefiltered++; continue }
-    // v2 rule 2: a fragment that only restates its script line inherits that line's verdict.
-    const parent = s.parent !== undefined ? input.sentences.find((x) => x.i === s.parent) : undefined
-    if (parent && inheritsFrom(s, r, parent, reads.get(parent.i) ?? ruleRead(parent, input.ledger, products, target, ctxOf(parent)))) { perf.prefiltered++; continue }
+    // v4: fragments are judged on their own unless a rule decides them (see pendingForJudge).
     if (decidedByRule(s, r)) { perf.prefiltered++; continue }
     const hit = input.cache?.get(verdictKey(s))
     if (hit) { verdicts.set(s.i, { ...hit, i: s.i }); continue }
@@ -936,36 +960,52 @@ async function judgeSentencesInner(input: JudgeRunInput, deps: JudgeRunDeps, per
   }
   const fast = chunk(pending, size)
   total += fast.length
-  const escalate: Array<{ s: GateSentence; r: RuleRead }> = []
+  const t0run = now()
+  // Failed fast chunks first (they have no verdict at all), then fast I-HARD calls.
+  const escalateFailed: Array<{ s: GateSentence; r: RuleRead }> = []
+  const escalateI: Array<{ s: GateSentence; r: RuleRead }> = []
   let fastFailed = 0
+  let lastError: unknown = null
   await mapLimit(fast, limit, async (group) => {
     let got: Map<number, JudgeVerdict>
     try { got = await run(group, deps.judge) } catch (e) {
-      // A failed fast chunk goes to the strong model whole; with no cascade the gate fails.
-      if (!deps.judgeStrong || e instanceof GateTimeout) throw e
+      // ⚖️ v4: a failed chunk never loses the script. With a cascade it goes to
+      // the strong judge whole; without one its sentences stay unjudged
+      // (judge_missing, which is I) and the rest of the script keeps its verdicts.
       fastFailed++
+      lastError = e
       perf.errors = [...(perf.errors ?? []), errorClass(e)]
-      escalate.push(...group)
+      if (deps.judgeStrong && !(e instanceof GateTimeout)) escalateFailed.push(...group)
       return
     }
     for (const g of group) {
       const v = got.get(g.s.i)
-      if (v && !(needsStrong(v) && deps.judgeStrong)) verdicts.set(g.s.i, v)
-      else if (deps.judgeStrong) { if (v) verdicts.set(g.s.i, v); escalate.push(g) }
+      if (!v) { if (deps.judgeStrong) escalateFailed.push(g); continue }
+      verdicts.set(g.s.i, v)
+      const hardI = v.cls !== 'I' || !isSoftGeneral(g.s.text, g.r.claim_types, v.claim_types, g.r.subject_product, target, products)
+      if (deps.judgeStrong && needsStrong(v, hardI)) escalateI.push(g)
     }
   })
+  perf.fast_failed = fastFailed
+  const inWindow = now() - t0run < ESCALATE_WINDOW_MS
+  const escalate = [...escalateFailed, ...(inWindow ? escalateI : [])].slice(0, ESCALATE_MAX_PER_SCRIPT)
   if (escalate.length && deps.judgeStrong) {
     perf.escalations = escalate.length
-    perf.fast_failed = fastFailed
     const strong = chunk(escalate.sort((a, b) => a.s.i - b.s.i), size)
     total += strong.length
     deps.onChunk?.(done, total)
     await mapLimit(strong, limit, async (group) => {
-      const got = await run(group, deps.judgeStrong!)
+      let got: Map<number, JudgeVerdict>
+      // A failed strong chunk keeps the fast verdicts (where there are any).
+      try { got = await run(group, deps.judgeStrong!) } catch (e) { lastError = e; perf.errors = [...(perf.errors ?? []), errorClass(e)]; return }
       // The stronger verdict wins; where it gave none, the fast verdict (if any) stands.
       for (const g of group) { const v = got.get(g.s.i); if (v) verdicts.set(g.s.i, { ...v, uncertain: false }) }
     })
   }
+  const unjudged = pending.filter((g) => !verdicts.has(g.s.i)).length
+  if (unjudged) perf.unjudged = unjudged
+  // Nothing judged at all: that is a failed gate (the worker retries), not a degraded one.
+  if (pending.length && unjudged === pending.length && lastError) throw lastError
   if (input.cache) for (const s of input.sentences) { const v = verdicts.get(s.i); if (v) input.cache.set(verdictKey(s), v) }
   return { verdicts, malformed, perf }
 }
@@ -1031,6 +1071,18 @@ export function inheritsFrom(frag: GateSentence, fragRead: RuleRead, parent: Gat
   return parseNumbers(frag.text).every((n) => pNums.includes(n.value))
 }
 
+const STORY_TYPES = new Set<ClaimType>(['event', 'feeling', 'quote'])
+/** v4: only the RISK direction is inherited — a parent's I, G or E, never its S
+ *  or N (a fragment of an S line is judged alone, with the line shown). A
+ *  fragment that is no claim on its own (a rule N) keeps that N unless its
+ *  line is an invented story ("over one winter" carries the story). */
+export function inheritable(pc: Pick<ClassifiedSentence, 'class' | 'claim_types' | 'reason'>, fragRead: RuleRead): boolean {
+  if (pc.class !== 'I' && pc.class !== 'G' && pc.class !== 'E') return false
+  if (!fragRead.soft) return true
+  if (pc.class === 'E') return false
+  return pc.reason === 'event_unbacked' || pc.reason === 'invented_quote' || pc.claim_types.some((x) => STORY_TYPES.has(x))
+}
+
 /** Parent I reasons whose trigger must be IN the fragment for the fragment to
  *  inherit them (a fragment with no number cannot carry an unmatched number). */
 function carriesTrigger(reason: GateReason, fragText: string, fragRead: RuleRead): boolean {
@@ -1068,7 +1120,7 @@ export function classifySentences(input: ClassifyInput): ClassifiedSentence[] {
     if (r.hard) return out('I', r.hard.reason)
     const parent = s.parent !== undefined ? input.sentences.find((x) => x.i === s.parent) : undefined
     const pc = parent ? done.get(parent.i) : undefined
-    if (parent && pc && inheritsFrom(s, r, parent, readOf(parent)) && (pc.class !== 'I' || carriesTrigger(pc.reason, s.text, r))) {
+    if (parent && pc && inheritsFrom(s, r, parent, readOf(parent)) && inheritable(pc, r) && (pc.class !== 'I' || carriesTrigger(pc.reason, s.text, r))) {
       // An undecided parent (no judge verdict) leaves its fragment undecided too.
       return { ...base, class: pc.class, claim_types: [...new Set([...types, ...pc.claim_types])], item_ids: pc.item_ids, reason: pc.reason === 'judge_missing' ? 'judge_missing' : 'inherited', judged: false }
     }
@@ -1546,6 +1598,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       perf.chunk_ms.push(...j.perf.chunk_ms)
       perf.judge_calls += j.perf.judge_calls
       perf.escalations += j.perf.escalations
+      if (j.perf.unjudged) perf.unjudged = (perf.unjudged ?? 0) + j.perf.unjudged
       if (j.perf.fast_failed) perf.fast_failed = (perf.fast_failed ?? 0) + j.perf.fast_failed
       if (j.perf.errors?.length) perf.errors = [...(perf.errors ?? []), ...j.perf.errors]
       perf.prefiltered += j.perf.prefiltered
