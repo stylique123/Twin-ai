@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildLedger, extractSentences, classifySentences, ruleRead, runInventionGate, checkStatusFor, decideOutcome,
   countClasses, listCounts, listDelivery, linkParents, buildJudgePrompt, judgeSentences, isSoftGeneral, summarizeGateRecords,
-  INVENTION_GATE_VERSION,
+  INVENTION_GATE_VERSION, needsStrong, errorClass, pendingForJudge, GateTimeout,
   type GateBlueprint, type GateClass, type GateSentence, type LedgerItem, type InventionGateRecord,
 } from '../inventionGate.js'
 import { dropInventedEvents, narratesEvent } from '../noStoryEvents.js'
@@ -212,5 +212,40 @@ describe('judge prompt', () => {
     const p = buildJudgePrompt([{ i: 1, surface: 'caption', at: 0, k: 0, text: 'x', parent: 0 }], [], [], new Map([[0, 'parent line']]))
     expect(p).toMatch(/paraphrases script line: parent line/)
     expect(p).toMatch(/list-count promise/)
+  })
+})
+
+describe('v3: cascade, failures, one prefilter', () => {
+  it('a fast I is confirmed by the strong judge; S stays with the fast one', async () => {
+    const bp: GateBlueprint = { script: [{ line: 'It lathers like whipped cream on wet skin every time.' }, { line: 'It smells like cedar and moss after rain.' }] }
+    const sentences = extractSentences(bp)
+    const fast = fakeJudge([[/lathers/, 'I']])
+    const strong = fakeJudge([[/lathers/, 'S', ['k-cure']]])
+    const r = await judgeSentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS }, { judge: fast, judgeStrong: strong })
+    expect(needsStrong({ cls: 'I' })).toBe(true)
+    expect(needsStrong({ cls: 'S' })).toBe(false)
+    expect(r.perf.escalations).toBe(1)
+    expect(r.verdicts.get(0)!.cls).toBe('S')
+    expect(strong.calls.join('\n')).not.toMatch(/cedar/)
+  })
+  it('a failed run records an error class and the work it did', async () => {
+    const bp: GateBlueprint = { script: [{ line: 'It lathers like whipped cream on wet skin every time.' }] }
+    const r = await runInventionGate({ blueprint: bp, ledger: fernLedger(), products, targetProductId: MOSS, measureOnly: true }, {
+      judge: async () => { throw new Error('model 429: quota') }, rewrite: async () => '{}',
+    })
+    expect(r.record.error).toBe('http_429')
+    expect(r.record.perf!.judge_calls).toBe(1)
+    expect(errorClass(new GateTimeout())).toBe('timeout')
+    expect(errorClass(Object.assign(new Error('x'), { name: 'AbortError' }))).toBe('abort')
+  })
+  it('pendingForJudge is exactly what the judge is sent', async () => {
+    const bp: GateBlueprint = {
+      script: [{ line: 'Two things ruin a soap bar.' }, { line: 'It lathers like whipped cream on wet skin every time.' }, { line: 'Good soap takes time.' }],
+      captions: ['lathers like whipped cream'], packaging: { titles: ['Moss Bar is a 6 oz bar'] },
+    }
+    const sentences = extractSentences(bp)
+    const judge = fakeJudge([])
+    const r = await judgeSentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS }, { judge })
+    expect(pendingForJudge(sentences, fernLedger(), products, MOSS).map((x) => x.s.i)).toEqual([...r.verdicts.keys()].sort((a, b) => a - b))
   })
 })
