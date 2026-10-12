@@ -224,3 +224,27 @@ describe('a template question already in the script', () => {
     expect(r.record.outcome).toBe('needs_answers')
   })
 })
+
+// ⚠️ REGRESSION (panel-current-3): the brief told the writer to "write exactly
+// [Your answer: …]" for an asked slot while its system prompt forbids any
+// bracket in a spoken line. Briefs with asked slots ran both model attempts to
+// timeout. The brief must never ask for a bracket; the question still reaches
+// her through `plan.questions`.
+describe('writer brief never asks for a bracket', () => {
+  it('asked slots say leave it out, and the questions still exist', () => {
+    const ledger = [item({ id: 'n1', origin: 'her_story', text: 'A made-up morning at the fictional market stall.' })]
+    const plan = planTemplate(T3, ledger)
+    expect(plan.slots.some((s) => s.fill === 'asked')).toBe(true)
+    expect(plan.questions.length).toBeGreaterThan(0)
+    const block = renderTemplateBlock(plan, 'standard', ledger)
+    expect(block).not.toMatch(/\[|\]/)
+    expect(block).not.toMatch(/Your answer/i)
+    for (const s of plan.slots.filter((x) => x.fill === 'asked')) expect(block).toContain(`${s.slot}: not on file yet, leave it out`)
+  })
+  it('every template, empty ledger, any profile: no bracket in the brief', () => {
+    for (const t of SCRIPT_TEMPLATES) {
+      const plan = planTemplate(t, [])
+      for (const p of t.duration_profiles) expect(renderTemplateBlock(plan, p, [])).not.toMatch(/\[|\]/)
+    }
+  })
+})
