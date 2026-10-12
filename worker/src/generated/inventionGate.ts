@@ -19,7 +19,20 @@
 // specifier to a `.ts` source. The record carries ids, indexes and reasons
 // only — never text.
 
-export const INVENTION_GATE_VERSION = 'invention-gate-v1'
+export const INVENTION_GATE_VERSION = 'invention-gate-v2'
+
+// v2 (owner gate tuning, panel-current-2): an unsupported claim is split in two.
+//   I (I-HARD): personal experience/events, what people did or said, numbers,
+//     results, scarcity, customer/audience facts, product claims, and
+//     high-risk health/safety/legal/money claims — with no first-party item or
+//     source. Blocking: repaired, asked or held, exactly as before.
+//   G (G-SOFT): unsupported LOW-RISK general knowledge or advice ("air exposure
+//     ruins beans"). Flagged for sourcing; never repaired, never a
+//     needs-answers trigger. Old records (no G) read the same.
+// Titles, captions and thumbnail text inherit the verdict of the script line
+// they paraphrase; list-count promises ("3 things") are checked against what
+// the script delivers. First-party, live-fact, number-field and scope rules are
+// unchanged.
 
 /** Judge models, as TASK CLASSES of worker/model_routing_v1.json (no model
  *  literal outside the catalog — check_model_routing). Cheapest first:
@@ -274,6 +287,8 @@ export interface GateSentence {
   k: number
   text: string
   section?: string
+  /** Non-script surfaces only: the script sentence this one paraphrases (see `linkParents`). */
+  parent?: number
 }
 
 export interface GateBlueprint {
@@ -318,26 +333,68 @@ export function extractSentences(bp: GateBlueprint): GateSentence[] {
   add('thumbnail_text', 0, pk.thumbnail?.text_overlay)
   arr(bp.captions).forEach((c, at) => add('caption', at, c))
   arr(bp.publish_plan).forEach((p, at) => add('publish_caption', at, (p as { caption?: unknown })?.caption))
-  return out
+  return linkParents(out)
+}
+
+/** Surfaces that paraphrase the script (a hook option is an alternative line, judged alone). */
+const PARAPHRASE_SURFACES = new Set<Surface>(['title', 'caption', 'thumbnail_text', 'publish_caption'])
+/** Share of a fragment's content words its script line must hold to be its parent. */
+export const PARENT_MIN = 0.6
+/** At or above this share (and no claim type the parent lacks) the fragment inherits the parent's verdict. */
+export const INHERIT_MIN = 0.75
+
+function coverage(frag: Set<string>, parent: Set<string>): number {
+  if (!frag.size) return 0
+  let hit = 0
+  for (const w of frag) if (parent.has(w)) hit++
+  return hit / frag.size
+}
+
+/** Titles, captions, thumbnail text, hook and publish captions point at the
+ *  script sentence they paraphrase (most shared content words, at least
+ *  PARENT_MIN of the fragment's). Pure; returns the same sentences with `parent`. */
+export function linkParents(sentences: GateSentence[]): GateSentence[] {
+  const script = sentences.filter((s) => s.surface === 'script').map((s) => ({ s, ws: contentWords(s.text) }))
+  // Consecutive caption fragments usually split one line: on a tie, the line
+  // the previous fragment of the same surface pointed at (or the next one) wins.
+  let prev: { surface: Surface; parent: number } | null = null
+  for (const s of sentences) {
+    if (!PARAPHRASE_SURFACES.has(s.surface) || isPlaceholder(s.text)) continue
+    const ws = contentWords(s.text)
+    const near: number = prev && prev.surface === s.surface ? prev.parent : -1
+    let best: { i: number; c: number; near: boolean } | null = null
+    for (const p of script) {
+      const c = coverage(ws, p.ws)
+      if (c < PARENT_MIN) continue
+      const isNear: boolean = near >= 0 && (p.s.i === near || p.s.i === near + 1)
+      if (!best || c > best.c || (c === best.c && isNear && !best.near)) best = { i: p.s.i, c, near: isNear }
+    }
+    if (best) { s.parent = best.i; prev = { surface: s.surface, parent: best.i } }
+    else delete s.parent
+  }
+  return sentences
 }
 
 // ── RULES ──────────────────────────────────────────────────────────────────
 
-export type GateClass = 'S' | 'E' | 'I' | 'N'
+/** 'G' = G-SOFT (v2): unsupported low-risk general knowledge or advice. Non-blocking. */
+export type GateClass = 'S' | 'E' | 'I' | 'N' | 'G'
 export type ClaimType =
   | 'audience' | 'customer' | 'result' | 'scarcity' | 'number' | 'event' | 'quote' | 'feeling'
   | 'presupposition' | 'cross_product' | 'product' | 'opinion' | 'general' | 'figurative' | 'hyperbole'
+  | 'risk' | 'list_count'
 
 export type GateReason =
   | 'entailed' | 'stronger_than_item' | 'hyperbole' | 'no_item' | 'number_unmatched' | 'cross_product'
   | 'gated_no_first_party' | 'scarcity_not_live' | 'event_unbacked' | 'invented_quote' | 'pure_question'
   | 'figurative' | 'truism' | 'cta' | 'opinion_unbacked' | 'no_claim' | 'judge_missing' | 'e_over_budget'
+  | 'general_unsourced' | 'inherited' | 'list_count_undelivered'
 
 const AUDIENCE_RE = /\b(?:people|everyone|everybody|you guys|y'all|folks|my followers|followers|viewers|so many of you|a lot of you|half of you|most of you)\b[^.!?]{0,30}\b(?:ask|asks|asked|asking|tell|tells|told|say|says|said|think|thinks|dm|message|comment|comments|want|wants|love|loves)\b|\b(?:i (?:always |constantly |keep )?get asked|the (?:number one|#1|most common) question|you (?:always|keep) ask(?:ing)?|you guys always)\b/i
 const CUSTOMER_RE = /\b(?:customers?|clients?|regulars?|buyers?|shoppers?|subscribers?|members|students|users)\b[^.!?]{0,40}\b(?:say|says|said|tell|tells|told|love|loves|loved|rave|keep|come|came|order|orders|ordered|buy|buys|bought|ask|asks|asked|write|wrote|swear|swears|walk|walks|reorder)\b|\b(?:best[- ]?seller|five[- ]star|5[- ]star|reviews? (?:say|call)|rave reviews|fan favou?rite|crowd favou?rite)\b/i
 const SCARCITY_RE = /\b(?:sells? out|sold out|selling (?:out|fast)|only \S+ left|only\b[^.!?]{0,40}\b(?:left|remaining)|limited (?:batch|stock|run|edition|time|supply)|almost gone|last chance|won't last|while (?:supplies|stocks?) last|running out|few left|back in stock|never restock|once it'?s gone)\b/i
 const RESULT_RE = /\b(?:saved my (?:life|mornings?|business|sanity)|changed my life|changed everything|life[- ]changing|you'?ll (?:get|see|feel|notice|save|lose|gain|sleep)|guarantee[ds]?|guaranteed|transform(?:s|ed)? (?:your|my)|cured|fix(?:es|ed)? (?:your|my) \w+ for good|doubled? (?:my|your)|tripled|in (?:just )?\d+ days)\b/i
-const EVENT_RE = /\b(?:i|we|she|he|they|my \w+|a (?:regular|customer|client|friend|neighbou?r|woman|man|guy|lady)|someone|one (?:customer|regular|client))\s+(?:was|were|had|went|came|walked|spilled|dropped|burned|burnt|lost|found|got|started|quit|opened|closed|tried|cried|laughed|realized|realised|decided|moved|ordered|bought|told|asked|said|wrote|messaged|showed|brought|sent|called|comes?|walks?|orders?|asks?|tells?|messages?|shows? up|drives?|drove|stopped|stops|began|begins|almost|nearly|finally|once)\b|\b(?:last (?:week|month|year|night|summer|winter|spring|fall|time)|yesterday|this morning|the other day|years ago|one day|the first time|that'?s how|ever since|back when|when i (?:first|started))\b/i
+const EVENT_RE = /\b(?:i|we|she|he|they|my \w+|a (?:regular|customer|client|friend|neighbou?r|woman|man|guy|lady)|someone|one (?:customer|regular|client))\s+(?:was|were|had|went|came|walked|spilled|dropped|burned|burnt|lost|found|got|started|quit|opened|closed|tried|cried|laughed|realized|realised|decided|moved|ordered|bought|told|asked|said|wrote|messaged|showed|brought|sent|called|comes?|walks?|orders?|asks?|tells?|messages?|shows? up|drives?|drove|stopped|stops|began|begins|almost|nearly|finally|once|spent|kept|grew|learned|learnt|discovered|struggled)\b|\b(?:last (?:week|month|year|night|summer|winter|spring|fall|time)|yesterday|this morning|the other day|years ago|one day|the first time|that'?s how|ever since|back when|when i (?:first|started))\b/i
 const QUOTE_RE = /["“][^"”]{6,}["”]|\b(?:said|says|told me|tells me|wrote|asked me)\s*[,:]\s*\S/i
 const FEELING_RE = /\b(?:i (?:felt|cried|panicked|was (?:terrified|devastated|heartbroken|thrilled|shaking)|nearly cried|almost cried|freaked out)|my heart (?:sank|broke|raced))\b/i
 const PRESUP_Q_RE = /^(?:did you know|ever (?:wonder|wondered|notice|noticed)|have you (?:ever )?(?:noticed|wondered|seen)|guess (?:how|what|why)|want to know why|why (?:do|does|did|is|are) (?:my|our|this|these|the|every)|what (?:makes|made) (?:my|our|this))\b/i
@@ -353,7 +410,44 @@ export const HER_MIN = 0.34
 const PRODUCT_PRONOUN_RE = /\b(?:it|it's|its|this|these|they|they're|ours?)\b/i
 /** A quantified or business-specific statement is never a harmless truism. */
 const SPECIFIC_RE = /\b(?:every|each|always|never|all of|only)\b|\b(?:ships?|shipped|roast(?:s|ed)?|sourced?|handmade|organic|same[- ]day|small[- ]batch(?:es)?|award|certified|imported|local(?:ly)?)\b/i
+const QUANTIFIER_RE = /\b(?:every|each|always|never|all of|only)\b/i
 const SECOND_PERSON_PROMISE_RE = /\byou(?:'ll| will| would)\b/i
+/** A first-person ORIGIN story: "I built the first version over a winter because…".
+ *  "We built X to fix this" (a purpose) is not one; a time, place or cause is. */
+export const ORIGIN_RE = /\b(?:i|we|my \w+ and i)\s+(?:first\s+)?(?:built|founded|launched|created|started|made)\b[^.!?]*\b(?:over (?:a|one|the)|in (?:my|our|a|the) (?:garage|kitchen|basement|bedroom|dorm|spare)|during|back (?:in|when)|because|after (?:i|we|my)|years? ago|months? ago|winter|summer|spring|autumn|first version|from scratch)\b/i
+
+/** High-risk health, safety, legal or money claims: never a truism, never G-SOFT. */
+export const RISK_RE = /\b(?:cures?|cured|treats?|treated|treatment|heals?|healed|diagnos\w*|disease\w*|eczema|psoriasis|rosacea|dermatitis|acne|allerg\w*|toxic\w*|carcinogen\w*|cancer\w*|hormon\w*|pregnan\w*|infection\w*|inflammat\w*|prescription\w*|dosage|overdose|medical(?:ly)?|clinical(?:ly)?|doctors?|dermatologists?|safe (?:for|to|during)|unsafe|poison\w*|lawsuits?|illegal|legally|lawyers?|taxe?s?|irs|insurance|invest\w*|profits?|income|debt|loans?|interest rate|refunds?)\b/i
+/** A title/caption/thumbnail that states an outcome is a result claim, not a truism (v2 rule 4). */
+export const OUTCOME_FRAGMENT_RE = /\b(?:protect(?:s|ion|ed)?|repairs?|repaired|restor(?:e|es|ed)|smooth(?:s|er|ed)?|sooth(?:e|es|ed|ing)|clear(?:s|er|ed)? (?:skin|pores)|built|builds|boost(?:s|ed)?|grew|grows?|growth|doubl(?:e|ed|es)|tripl(?:e|ed|es)|increas(?:e|ed|es)|saved?|saves|won|wins|works|worked|results?|trust|sales|revenue|more (?:sales|customers|orders|followers|clients))\b/i
+/** Nouns a list-count promise counts ("3 things", "five quick tips"). */
+const LIST_NOUN = '(?:things?|tips?|ways?|reasons?|mistakes?|steps?|secrets?|rules?|signs?|questions?|lessons?|ideas?|tricks?|habits?|myths?|hacks?|facts?|checks?|ingredients to avoid)'
+const LIST_COUNT_RE = new RegExp(`\\b(\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\s+(?:[a-z'-]+\\s+){0,2}?${LIST_NOUN}\\b`, 'gi')
+
+/** List-count promises in a sentence ("Two weird things nobody tells you" → [2]). */
+export function listCounts(text: string): number[] {
+  const out: number[] = []
+  for (const m of String(text ?? '').matchAll(LIST_COUNT_RE)) {
+    const w = m[1]!.toLowerCase()
+    const n = /^\d+$/.test(w) ? Number(w) : NUMBER_WORDS[w]
+    if (typeof n === 'number' && n >= 2) out.push(n)
+  }
+  return out
+}
+
+const ORDINAL_RE = /\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|number (?:one|two|three|four|five|six|seven|eight|nine|ten)|#\d|\d+[.)])(?=[\s,:])/gi
+/** How many list items the script delivers: the larger of its ordinal markers
+ *  ("first", "number two", "3.") and its body beats (all beats but the first and the last). */
+export function listDelivery(sentences: readonly GateSentence[]): number {
+  const beats = new Set<number>()
+  let ordinals = 0
+  for (const s of sentences) {
+    if (s.surface !== 'script') continue
+    beats.add(s.at)
+    ordinals += (s.text.match(ORDINAL_RE) ?? []).length
+  }
+  return Math.max(ordinals, Math.max(0, beats.size - 2))
+}
 
 export interface RuleRead {
   claim_types: ClaimType[]
@@ -366,7 +460,7 @@ export interface RuleRead {
   subject_product: string | null
 }
 
-const HARD_TYPES = new Set<ClaimType>(['event', 'number', 'quote', 'scarcity', 'audience', 'customer', 'result', 'cross_product', 'feeling', 'presupposition'])
+const HARD_TYPES = new Set<ClaimType>(['event', 'number', 'quote', 'scarcity', 'audience', 'customer', 'result', 'cross_product', 'feeling', 'presupposition', 'risk'])
 const GATED = new Set<ClaimType>(['audience', 'customer', 'result', 'scarcity'])
 
 export interface ProductName { id: string; name: string }
@@ -407,8 +501,25 @@ function numbersMatch(n: LedgerNumber, items: readonly LedgerItem[]): boolean {
     && (n.unit === 'count' || m.field === n.field || it.field === n.field || it.origin !== 'product_fact')))
 }
 
+/** What a sentence's rules may know about the rest of the script. */
+export interface RuleContext {
+  /** List items the script delivers (`listDelivery`); absent = not checked. */
+  delivered?: number
+  /** The script sentence a fragment paraphrases. */
+  parentText?: string
+}
+
+const FRAGMENT_SURFACES = new Set<Surface>(['title', 'caption', 'thumbnail_text'])
+
+/** The context `ruleRead` gets for each sentence of one blueprint. */
+export function ruleContexts(sentences: readonly GateSentence[]): (s: GateSentence) => RuleContext {
+  const delivered = listDelivery(sentences)
+  const byI = new Map(sentences.map((x) => [x.i, x] as const))
+  return (s) => ({ delivered, ...(s.parent !== undefined && byI.get(s.parent) ? { parentText: byI.get(s.parent)!.text } : {}) })
+}
+
 /** Rule pre-classifier (design A3). Never switched off by "story on file". */
-export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], products: readonly ProductName[], targetId: string | null): RuleRead {
+export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], products: readonly ProductName[], targetId: string | null, ctx: RuleContext = {}): RuleRead {
   const t = s.text
   const types: ClaimType[] = []
   const subject = subjectProduct(t, products, targetId)
@@ -434,12 +545,26 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
   if (SCARCITY_RE.test(t)) types.push('scarcity')
   if (RESULT_RE.test(t)) types.push('result')
   if (HYPERBOLE_RE.test(t)) types.push('hyperbole')
-  if (EVENT_RE.test(t)) types.push('event')
+  if (EVENT_RE.test(t) || ORIGIN_RE.test(t)) types.push('event')
   if (QUOTE_RE.test(t)) types.push('quote')
   if (FEELING_RE.test(t)) types.push('feeling')
   if (FIGURATIVE_RE.test(t)) types.push('figurative')
   if (OPINION_RE.test(t)) types.push('opinion')
-  const nums = parseNumbers(t).filter((n) => !(n.unit === 'count' && n.value <= 1))
+  if (RISK_RE.test(t)) types.push('risk')
+  // v2 rule 4: a title/caption/thumbnail that states an outcome is a result
+  // claim (unless the script line it paraphrases states it too: then the
+  // fragment inherits that line's verdict).
+  if (FRAGMENT_SURFACES.has(s.surface) && !isQuestion && OUTCOME_FRAGMENT_RE.test(t) && !(ctx.parentText && OUTCOME_FRAGMENT_RE.test(ctx.parentText))) types.push('result')
+  // v2 rule 3: a list-count promise ("3 things") is checked against delivery,
+  // not evidence; every other number is still matched digit-to-field.
+  const lists = listCounts(t)
+  if (lists.length) types.push('list_count')
+  const listLeft = [...lists]
+  const nums = parseNumbers(t).filter((n) => !(n.unit === 'count' && n.value <= 1)).filter((n) => {
+    const k = n.unit === 'count' ? listLeft.indexOf(n.value) : -1
+    if (k >= 0) { listLeft.splice(k, 1); return false }
+    return true
+  })
   if (nums.length) types.push('number')
   if (bestOut >= 0.5 && bestScoped < 0.25) types.push('cross_product')
 
@@ -451,6 +576,8 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
 
   // A pure question to the viewer carries no claim.
   if (isQuestion && !presup && !types.some((x) => HARD_TYPES.has(x) && x !== 'presupposition')) return read(null, { cls: 'N', reason: 'pure_question' })
+  // LIST COUNT: the script must deliver as many items as it promises.
+  if (ctx.delivered !== undefined && lists.some((n) => n > ctx.delivered!)) return read({ cls: 'I', reason: 'list_count_undelivered' })
   // SCARCITY needs a LIVE urgency item for this product.
   if (types.includes('scarcity') && !scoped.some((it) => it.origin === 'urgency' && it.live)) return read({ cls: 'I', reason: 'scarcity_not_live' })
   // NUMBER TO FIELD: every number must match an in-scope item's number of the same unit and field.
@@ -472,7 +599,7 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
   // Figurative language with no checkable claim is N (owner amendment e).
   if (types.includes('figurative') && !hardPresent && !COMPARATIVE_RE.test(t)) return read(null, { cls: 'N', reason: 'figurative' })
   // A non-specific, non-risky truism is N (owner amendment f).
-  if (!hardPresent && !FIRST_PERSON_RE.test(t) && !SPECIFIC_RE.test(t) && !PRODUCT_PRONOUN_RE.test(t) && !SECOND_PERSON_PROMISE_RE.test(t) && !COMPARATIVE_RE.test(t)
+  if (!hardPresent && !FIRST_PERSON_RE.test(t) && !SPECIFIC_RE.test(t) && !RISK_RE.test(t) && !PRODUCT_PRONOUN_RE.test(t) && !SECOND_PERSON_PROMISE_RE.test(t) && !COMPARATIVE_RE.test(t)
     && subject === targetId && !mentionsAnyProduct(t, products) && wordCount(t) <= 12 && !types.includes('opinion')) {
     return read(null, { cls: 'N', reason: CTA_RE.test(t) ? 'cta' : 'truism' })
   }
@@ -515,10 +642,13 @@ export const JUDGE_SCHEMA = {
 const fence = (s: string) => s.split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
 
 /** One prompt per chunk of sentences, carrying only the items relevant to that chunk (see `chunkLedger`). */
-export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: readonly LedgerItem[], products: readonly ProductName[] = []): string {
+export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: readonly LedgerItem[], products: readonly ProductName[] = [], parents: ReadonlyMap<number, string> = new Map()): string {
   const prodName = (id: string | null) => (id === null ? 'general' : products.find((p) => p.id === id)?.name ?? id)
   const items = ledger.map((it) => `[${it.id}] (${it.origin}${it.field ? `/${it.field}` : ''}; about: ${prodName(it.product_id)}; ${it.first_party ? 'her own words' : 'outside source'}${it.origin === 'urgency' ? (it.live ? '; LIVE' : '; NOT live') : ''}) ${it.text.slice(0, 400)}`)
-  const lines = sentences.map((s) => `${s.i}. (${s.surface}) ${s.text}`)
+  const lines = sentences.map((s) => {
+    const p = s.parent !== undefined ? parents.get(s.parent) : undefined
+    return p ? `${s.i}. (${s.surface}; paraphrases script line: ${p.slice(0, 300)}) ${s.text}` : `${s.i}. (${s.surface}) ${s.text}`
+  })
   return [
     'Classify EVERY sentence below as exactly one of:',
     'S = every claim is entailed by one listed item about the same product (or a general item); numbers match the item number with the same unit and meaning.',
@@ -528,6 +658,8 @@ export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: rea
     'A question that PRESUPPOSES a fact ("Did you know every bag is roasted the morning it ships?") is judged on that fact.',
     'Hyperbole about her own experience ("this literally saved my mornings") is E when her own item backs the experience, otherwise I.',
     'item_ids: the ids of the items that entail the sentence (empty for I or N). claim_types: any of audience, customer, result, scarcity, number, event, quote, feeling, presupposition, cross_product, opinion, figurative, general. reason: at most 8 words.',
+    'A title, caption or on-screen fragment that shows the script line it paraphrases is judged as that line: only a claim the fragment ADDS is judged on its own.',
+    'A list-count promise ("3 things", "five tips") is not a factual number; judge the rest of the sentence.',
     'uncertain: true when you cannot tell whether the material entails the sentence, or it is only partly backed (a stronger checker looks again); otherwise false.',
     `\nMATERIAL (the only source of truth):\n<<<UNTRUSTED_DATA material\n${fence(items.join('\n'))}\nEND_UNTRUSTED_DATA>>>`,
     `\nSENTENCES:\n<<<UNTRUSTED_DATA sentences\n${fence(lines.join('\n'))}\nEND_UNTRUSTED_DATA>>>`,
@@ -537,7 +669,7 @@ export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: rea
 
 export interface JudgeVerdict { i: number; cls: GateClass; item_ids: string[]; claim_types: ClaimType[]; reason: string; uncertain?: boolean }
 
-const CLAIM_TYPES = new Set<ClaimType>(['audience', 'customer', 'result', 'scarcity', 'number', 'event', 'quote', 'feeling', 'presupposition', 'cross_product', 'product', 'opinion', 'general', 'figurative', 'hyperbole'])
+const CLAIM_TYPES = new Set<ClaimType>(['audience', 'customer', 'result', 'scarcity', 'number', 'event', 'quote', 'feeling', 'presupposition', 'cross_product', 'product', 'opinion', 'general', 'figurative', 'hyperbole', 'risk', 'list_count'])
 
 /** Strict parse of the judge's answer. Never throws; drops anything malformed. */
 export function parseJudge(raw: unknown, sentenceCount: number, ledgerIds: ReadonlySet<string>): { verdicts: Map<number, JudgeVerdict>; malformed: number } {
@@ -693,9 +825,16 @@ export async function judgeSentences(input: JudgeRunInput, deps: JudgeRunDeps): 
   const verdicts = new Map<number, JudgeVerdict>()
   let malformed = 0
   const pending: Array<{ s: GateSentence; r: RuleRead }> = []
+  const ctxOf = ruleContexts(input.sentences)
+  const reads = new Map<number, RuleRead>()
   for (const s of input.sentences) {
     if (isPlaceholder(s.text)) { perf.prefiltered++; continue }
-    const r = ruleRead(s, input.ledger, products, target)
+    const r = ruleRead(s, input.ledger, products, target, ctxOf(s))
+    reads.set(s.i, r)
+    if (r.hard) { perf.prefiltered++; continue }
+    // v2 rule 2: a fragment that only restates its script line inherits that line's verdict.
+    const parent = s.parent !== undefined ? input.sentences.find((x) => x.i === s.parent) : undefined
+    if (parent && inheritsFrom(s, r, parent, reads.get(parent.i) ?? ruleRead(parent, input.ledger, products, target, ctxOf(parent)))) { perf.prefiltered++; continue }
     if (decidedByRule(s, r)) { perf.prefiltered++; continue }
     const hit = input.cache?.get(verdictKey(s))
     if (hit) { verdicts.set(s.i, { ...hit, i: s.i }); continue }
@@ -707,7 +846,9 @@ export async function judgeSentences(input: JudgeRunInput, deps: JudgeRunDeps): 
   let done = 0
   let total = 0
   const run = async (group: Array<{ s: GateSentence; r: RuleRead }>, call: (p: string) => Promise<string>) => {
-    const prompt = buildJudgePrompt(group.map((g) => g.s), chunkLedger(group, input.ledger), products)
+    const parents = new Map<number, string>()
+    for (const g of group) if (g.s.parent !== undefined) { const p = input.sentences.find((x) => x.i === g.s.parent); if (p) parents.set(p.i, p.text) }
+    const prompt = buildJudgePrompt(group.map((g) => g.s), chunkLedger(group, input.ledger), products, parents)
     const t0 = now()
     try {
       const raw = await wrap(call(prompt))
@@ -780,38 +921,101 @@ export interface ClassifyInput {
   judge: Map<number, JudgeVerdict> | null
 }
 
-/** Rules + judge → S/E/I/N per sentence, with ids and a reason (design A4). */
+/** Claim types that keep an unsupported claim I-HARD, whether the rules or the judge named them:
+ *  personal experience/events, what people did or said, numbers, results,
+ *  scarcity, customer/audience facts, product and cross-product claims, high risk. */
+const ALWAYS_HARD = new Set<ClaimType>(['event', 'quote', 'feeling', 'scarcity', 'number', 'cross_product', 'product', 'risk', 'audience', 'customer', 'result'])
+const OUR_RE = /\b(?:our|ours|we|we're|we've|us)\b/i
+
+/** v2 rule 1: is an unsupported claim G-SOFT (low-risk general knowledge or
+ *  advice) rather than I-HARD? Only a claim with NO personal, product,
+ *  people/result, number, scarcity or high-risk content; another product named
+ *  is a scope question and stays hard. */
+export function isSoftGeneral(text: string, ruleTypes: readonly ClaimType[], judgeTypes: readonly ClaimType[], subject: string | null, targetId: string | null, products: readonly ProductName[]): boolean {
+  const all = [...ruleTypes, ...judgeTypes]
+  if (all.some((x) => ALWAYS_HARD.has(x))) return false
+  // "it"/"this"/"they" is the product: a product claim stays hard.
+  if (RISK_RE.test(text) || FIRST_PERSON_RE.test(text) || OUR_RE.test(text) || PRODUCT_PRONOUN_RE.test(text)) return false
+  // A quantified or comparative/scientific statement is a checkable fact, never soft.
+  if (QUANTIFIER_RE.test(text) || COMPARATIVE_RE.test(text)) return false
+  if (SECOND_PERSON_PROMISE_RE.test(text)) return false
+  if (subject !== targetId || mentionsAnyProduct(text, products)) return false
+  const lower = text.toLowerCase()
+  if (products.some((p) => p.name.trim() && lower.includes(p.name.trim().toLowerCase()))) return false
+  return true
+}
+
+/** v2 rule 2: a fragment inherits its script line's verdict when it restates
+ *  that line (INHERIT_MIN of its words) and adds no claim of its own: no hard
+ *  claim type and no number the line lacks. A rule-hard fragment never inherits. */
+export function inheritsFrom(frag: GateSentence, fragRead: RuleRead, parent: GateSentence, parentRead: RuleRead): boolean {
+  if (frag.surface === 'script' || parent.surface !== 'script' || frag.parent !== parent.i || fragRead.hard) return false
+  if (coverage(contentWords(frag.text), contentWords(parent.text)) < INHERIT_MIN) return false
+  const pTypes = new Set(parentRead.claim_types)
+  if (fragRead.claim_types.some((x) => HARD_TYPES.has(x) && x !== 'number' && !pTypes.has(x))) return false
+  const pNums = parseNumbers(parent.text).map((n) => n.value)
+  return parseNumbers(frag.text).every((n) => pNums.includes(n.value))
+}
+
+/** Parent I reasons whose trigger must be IN the fragment for the fragment to
+ *  inherit them (a fragment with no number cannot carry an unmatched number). */
+function carriesTrigger(reason: GateReason, fragText: string, fragRead: RuleRead): boolean {
+  if (reason === 'number_unmatched' || reason === 'list_count_undelivered') return parseNumbers(fragText).length > 0 || listCounts(fragText).length > 0
+  if (reason === 'scarcity_not_live') return fragRead.claim_types.includes('scarcity')
+  return true
+}
+
+/** Rules + judge → S/E/I/G/N per sentence, with ids and a reason (design A4; v2). */
 export function classifySentences(input: ClassifyInput): ClassifiedSentence[] {
   const products = input.products ?? []
   const target = input.targetProductId ?? null
   const byId = new Map(input.ledger.map((it) => [it.id, it] as const))
-  return input.sentences.map((s) => {
+  const ctxOf = ruleContexts(input.sentences)
+  const done = new Map<number, ClassifiedSentence>()
+  const reads = new Map<number, RuleRead>()
+  const readOf = (s: GateSentence) => { let r = reads.get(s.i); if (!r) { r = ruleRead(s, input.ledger, products, target, ctxOf(s)); reads.set(s.i, r) } return r }
+  // Script sentences first (they come first in extractSentences order anyway).
+  const order = [...input.sentences].sort((a, b) => (a.surface === 'script' ? 0 : 1) - (b.surface === 'script' ? 0 : 1) || a.i - b.i)
+  for (const s of order) done.set(s.i, classifyOne(s))
+  return input.sentences.map((s) => done.get(s.i)!)
+
+  function classifyOne(s: GateSentence): ClassifiedSentence {
     if (isPlaceholder(s.text)) return { i: s.i, surface: s.surface, at: s.at, k: s.k, class: 'N' as const, claim_types: [], item_ids: [], reason: 'no_claim' as const, near: [], judged: false }
-    const r = ruleRead(s, input.ledger, products, target)
+    const r = readOf(s)
     const base = { i: s.i, surface: s.surface, at: s.at, k: s.k, near: r.near }
     const v = input.judge?.get(s.i) ?? null
     const types = [...new Set([...r.claim_types, ...(v?.claim_types ?? [])])]
     const out = (cls: GateClass, reason: GateReason, ids: string[] = []): ClassifiedSentence =>
       ({ ...base, class: cls, claim_types: types, item_ids: ids, reason, judged: !!v })
+    // An unsupported claim: I-HARD, or G-SOFT when it is low-risk general knowledge (v2 rule 1).
+    const unsupported = (reason: GateReason): ClassifiedSentence =>
+      reason === 'no_item' && isSoftGeneral(s.text, r.claim_types, v?.claim_types ?? [], r.subject_product, target, products)
+        ? out('G', 'general_unsourced') : out('I', reason)
     if (r.hard) return out('I', r.hard.reason)
+    const parent = s.parent !== undefined ? input.sentences.find((x) => x.i === s.parent) : undefined
+    const pc = parent ? done.get(parent.i) : undefined
+    if (parent && pc && inheritsFrom(s, r, parent, readOf(parent)) && (pc.class !== 'I' || carriesTrigger(pc.reason, s.text, r))) {
+      // An undecided parent (no judge verdict) leaves its fragment undecided too.
+      return { ...base, class: pc.class, claim_types: [...new Set([...types, ...pc.claim_types])], item_ids: pc.item_ids, reason: pc.reason === 'judge_missing' ? 'judge_missing' : 'inherited', judged: false }
+    }
     if (r.soft && (!v || v.cls !== 'I' || !v.claim_types.some((x) => HARD_TYPES.has(x)))) return out('N', r.soft.reason)
     if (!v) {
       if (!input.judge) {
         // No judge (measure-only): the overlap pre-filter is the only evidence.
-        return r.near.length ? out('S', 'entailed', base.near.slice(0, 2)) : out('I', 'no_item')
+        return r.near.length ? out('S', 'entailed', base.near.slice(0, 2)) : unsupported('no_item')
       }
       return out('I', 'judge_missing')
     }
     if (v.cls === 'N') {
-      if (types.some((x) => HARD_TYPES.has(x) && x !== 'presupposition') || types.includes('presupposition')) return out('I', 'no_item')
+      if (types.some((x) => HARD_TYPES.has(x) && x !== 'presupposition') || types.includes('presupposition')) return unsupported('no_item')
       if (types.includes('opinion') && !v.item_ids.length) return out('E', 'opinion_unbacked')
       return out('N', 'no_claim')
     }
-    if (v.cls === 'I') return out('I', types.includes('cross_product') ? 'cross_product' : 'no_item')
+    if (v.cls === 'I') return types.includes('cross_product') ? out('I', 'cross_product') : unsupported('no_item')
     // S or E: the cited items must exist, be in scope, and meet the class's evidence rule.
     const cited = v.item_ids.map((id) => byId.get(id)).filter((x): x is LedgerItem => !!x)
     const scoped = cited.filter((it) => inScope(it, r.subject_product))
-    if (!scoped.length) return out('I', cited.length ? 'cross_product' : 'no_item')
+    if (!scoped.length) return cited.length ? out('I', 'cross_product') : unsupported('no_item')
     if (types.includes('scarcity') && !scoped.some((it) => it.origin === 'urgency' && it.live)) return out('I', 'scarcity_not_live')
     if (types.some((x) => x === 'audience' || x === 'customer' || x === 'result' || x === 'event' || x === 'quote' || x === 'feeling')
       && !scoped.some(isHerOwn)) return out('I', 'gated_no_first_party')
@@ -819,13 +1023,14 @@ export function classifySentences(input: ClassifyInput): ClassifiedSentence[] {
     if (v.cls === 'E') return out('E', types.includes('hyperbole') ? 'hyperbole' : 'stronger_than_item', ids)
     if (types.includes('hyperbole')) return out('E', 'hyperbole', ids)
     return out('S', 'entailed', ids)
-  })
+  }
 }
 
-export interface ClassCounts { S: number; E: number; I: number; N: number }
+/** `G` is new in v2; records written before it have no G (read it as 0). */
+export interface ClassCounts { S: number; E: number; I: number; N: number; G?: number }
 export function countClasses(cs: readonly ClassifiedSentence[]): ClassCounts {
-  const c: ClassCounts = { S: 0, E: 0, I: 0, N: 0 }
-  for (const s of cs) c[s.class]++
+  const c: ClassCounts = { S: 0, E: 0, I: 0, N: 0, G: 0 }
+  for (const s of cs) c[s.class] = (c[s.class] ?? 0) + 1
   return c
 }
 
@@ -1086,7 +1291,8 @@ export type CheckStatus = 'checked' | 'needs_answers' | 'general' | 'unchecked'
 /** 'queued' = the edge saved the script and handed the gate to the durable worker step. */
 export type UncheckedReason = 'timeout' | 'error' | 'queued'
 
-/** Map a gate record to the blueprint's check status. A timeout, or a
+/** Map a gate record to the blueprint's check status. Only the outcome counts:
+ *  G-SOFT sentences never block (decideOutcome ignores them). A timeout, or a
  *  measure-only record from a full run (the judge or rewrite threw), means the
  *  script was NOT checked; the reason says which. */
 export function checkStatusFor(record: Pick<InventionGateRecord, 'outcome' | 'timed_out'> | null | undefined): { status: CheckStatus; reason: UncheckedReason | null } {
@@ -1104,7 +1310,7 @@ export function checkStatusFor(record: Pick<InventionGateRecord, 'outcome' | 'ti
 /** The record stored when the gate did not finish: outcome 'unchecked' plus the
  *  reason, keeping whatever the first classification measured. */
 export function uncheckedRecord(prev: InventionGateRecord | null | undefined, reason: UncheckedReason, ms: number, model: string | null = null): InventionGateRecord {
-  const empty: ClassCounts = { S: 0, E: 0, I: 0, N: 0 }
+  const empty: ClassCounts = { S: 0, E: 0, I: 0, N: 0, G: 0 }
   return {
     version: INVENTION_GATE_VERSION,
     model: prev?.model ?? model,
@@ -1131,7 +1337,8 @@ export function recordSentences(cs: readonly ClassifiedSentence[]): GateRecordSe
   return cs.map((s) => ({ i: s.i, surface: s.surface, class: s.class, claim_types: s.claim_types, item_ids: s.item_ids, reason: s.reason }))
 }
 
-/** Outcome after the last round: an unrepaired I never ships as final. */
+/** Outcome after the last round: an unrepaired I never ships as final. A G
+ *  (unsourced low-risk general claim) is flagged for sourcing and never blocks. */
 export function decideOutcome(after: readonly ClassifiedSentence[], asked: number, fallback: number): GateOutcome {
   if (fallback > 0) return 'general'
   if (after.some((s) => s.class === 'I')) return asked > 0 ? 'needs_answers' : 'general'
@@ -1141,7 +1348,7 @@ export function decideOutcome(after: readonly ClassifiedSentence[], asked: numbe
 /** Owner amendment g: the batch lines, from records alone. */
 export function summarizeGateRecords(records: ReadonlyArray<InventionGateRecord | null | undefined>) {
   const rs = records.filter((r): r is InventionGateRecord => !!r && typeof r === 'object' && !!r.before)
-  const factual = (c: ClassCounts) => c.S + c.E + c.I
+  const factual = (c: ClassCounts) => c.S + c.E + c.I + (c.G ?? 0)
   const sum = (f: (r: InventionGateRecord) => number) => rs.reduce((a, r) => a + f(r), 0)
   const outcomes: Record<string, number> = {}
   for (const r of rs) outcomes[r.outcome] = (outcomes[r.outcome] ?? 0) + 1
@@ -1271,7 +1478,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     }
     return { sentences, classified: classifySentences({ sentences, ledger: input.ledger, products, targetProductId: target, judge }) }
   }
-  const empty: ClassCounts = { S: 0, E: 0, I: 0, N: 0 }
+  const empty: ClassCounts = { S: 0, E: 0, I: 0, N: 0, G: 0 }
   const base = (): InventionGateRecord => ({
     version: INVENTION_GATE_VERSION, model: input.model ?? null, sentences: [], before: { ...empty }, after: { ...empty },
     repaired: { replaced: 0, asked: 0, dropped: 0 }, rounds: 0, outcome: 'measure_only', e_flags: [], ms: 0, timed_out: false,
