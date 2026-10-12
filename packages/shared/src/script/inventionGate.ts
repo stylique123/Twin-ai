@@ -508,6 +508,21 @@ export interface RuleContext {
 }
 
 const FRAGMENT_SURFACES = new Set<Surface>(['title', 'caption', 'thumbnail_text'])
+const FRAGMENT_SURFACES_ALL = new Set<Surface>(['title', 'caption', 'thumbnail_text', 'publish_caption'])
+const PERSON_RE = /\b(?:i|i'm|i've|me|my|we|we're|our|us|you|you're|your|yours)\b/i
+const PROMISE_VERB_RE = /\b(?:fix(?:es|ed)?|stops?|stopped|ends?|ended|cuts?|beats?|improv\w*|transform\w*|chang(?:e|es|ed)|solv\w*|gets? rid|never again|no more|gone|guarantee\w*|unlock\w*|get|gets|got|became|become|feel|felt|lose|lost|gain\w*|earn\w*|land\w*)\b/i
+const TIME_TO_RESULT_RE = /\b(?:in|within|after|over|under) (?:\d+|a|an|one|two|three|four|five|six|seven|a few|just|only) (?:seconds?|minutes?|hours?|days?|nights?|weeks?|months?|years?)\b|\b(?:overnight|instantly|immediately|same[- ]day|in no time)\b/i
+const COMPARATIVE_WORD_RE = /\b(?:better|faster|easier|cheaper|longer|stronger|smoother|softer|fresher|healthier|clearer|calmer|richer|best|worst|most|least|more|less|fewer)\b/i
+
+/** v5 rule 1: does a fragment carry a claim of its own (so it is no truism)? */
+export function fragmentCarriesClaim(t: string, products: readonly ProductName[], subject: string | null, targetId: string | null): boolean {
+  if ((PERSON_RE.test(t) && (PROMISE_VERB_RE.test(t) || OUTCOME_FRAGMENT_RE.test(t))) || PROMISE_VERB_RE.test(t) && OUTCOME_FRAGMENT_RE.test(t)) return true
+  if (OUTCOME_FRAGMENT_RE.test(t) || TIME_TO_RESULT_RE.test(t) || COMPARATIVE_RE.test(t) || COMPARATIVE_WORD_RE.test(t)) return true
+  if (PERSON_RE.test(t) && PROMISE_VERB_RE.test(t)) return true
+  if (mentionsAnyProduct(t, products) || (subject !== null && subject !== targetId)) return true
+  const lower = t.toLowerCase()
+  return products.some((p) => p.name.trim() && lower.includes(p.name.trim().toLowerCase()))
+}
 
 /** The context `ruleRead` gets for each sentence of one blueprint. */
 export function ruleContexts(sentences: readonly GateSentence[]): (s: GateSentence) => RuleContext {
@@ -604,13 +619,18 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
   const hardPresent = types.some((x) => HARD_TYPES.has(x))
   // Figurative language with no checkable claim is N (owner amendment e).
   if (types.includes('figurative') && !hardPresent && !COMPARATIVE_RE.test(t)) return read(null, { cls: 'N', reason: 'figurative' })
+  // v5: a FRAGMENT (title, caption, thumbnail, publish caption) that carries
+  // outcome language, a promise/result verb, a time-to-result, a comparative
+  // or a named product is never a truism or "no claim": it goes to the judge
+  // with its script line shown.
+  const fragmentClaim = FRAGMENT_SURFACES_ALL.has(s.surface) && fragmentCarriesClaim(t, products, subject, targetId)
   // A non-specific, non-risky truism is N (owner amendment f).
-  if (!hardPresent && !FIRST_PERSON_RE.test(t) && !SPECIFIC_RE.test(t) && !RISK_RE.test(t) && !PRODUCT_PRONOUN_RE.test(t) && !SECOND_PERSON_PROMISE_RE.test(t) && !COMPARATIVE_RE.test(t)
+  if (!fragmentClaim && !hardPresent && !FIRST_PERSON_RE.test(t) && !SPECIFIC_RE.test(t) && !RISK_RE.test(t) && !PRODUCT_PRONOUN_RE.test(t) && !SECOND_PERSON_PROMISE_RE.test(t) && !COMPARATIVE_RE.test(t)
     && subject === targetId && !mentionsAnyProduct(t, products) && wordCount(t) <= 12 && !types.includes('opinion')) {
     return read(null, { cls: 'N', reason: CTA_RE.test(t) ? 'cta' : 'truism' })
   }
-  if (CTA_RE.test(t) && !hardPresent && wordCount(t) <= 14) return read(null, { cls: 'N', reason: 'cta' })
-  if (wordCount(t) <= 3 && !hardPresent) return read(null, { cls: 'N', reason: 'no_claim' })
+  if (!fragmentClaim && CTA_RE.test(t) && !hardPresent && wordCount(t) <= 14) return read(null, { cls: 'N', reason: 'cta' })
+  if (!fragmentClaim && wordCount(t) <= 3 && !hardPresent) return read(null, { cls: 'N', reason: 'no_claim' })
   return read(null)
 }
 
@@ -665,7 +685,7 @@ export function buildJudgePrompt(sentences: readonly GateSentence[], ledger: rea
   })
   return [
     'Classify EVERY sentence below as exactly one of:',
-    'S = every claim is entailed by one listed item about the same product (or a general item); numbers match the item number with the same unit and meaning.',
+    'S = every claim is entailed by one listed item about the same product (or a general item); numbers match the item number with the same unit and meaning. S needs the item to SAY it: an inference that goes beyond the item — adding a result, an outcome, a frequency, a quantity, a duration or an experience the item does not state — is never S (E at most when only intensity is added; I when it adds a result, number or event).',
     'E = an item backs it, but the sentence adds intensity, frequency or an experience adjective ("always", "every single time"); the addition is never a number, event, quote, scarcity or result.',
     'I = any claim with no entailing item; a claim backed only by an item about ANOTHER product; a number whose unit or meaning differs ("two parts water" is not "a two-pound bag"); what people/customers/followers ask or say without HER OWN item saying so (outside sources never count); scarcity without a LIVE urgency item; an event, quote or feeling she never gave, in ANY tense ("people always ask me", "a regular comes in every morning").',
     'N = no checkable claim: a pure question to the viewer, a transition, a call to action restating the offer, an opinion she gave, figurative language ("a hug in a mug"), or a non-specific harmless truism ("good coffee takes time").',
@@ -750,9 +770,13 @@ export const ESCALATE_WINDOW_MS = 18_000
 /** Does a fast verdict go to the strong judge? An uncertain one, or an I that
  *  would be I-HARD (a fast I that would only be G-SOFT blocks nothing). Without
  *  the sentence context (`hardI` omitted) every fast I counts as hard. */
-export function needsStrong(v: Pick<JudgeVerdict, 'cls' | 'uncertain'>, hardI: boolean = true): boolean {
-  return v.uncertain === true || (ESCALATE_FAST_I && v.cls === 'I' && hardI)
+export function needsStrong(v: Pick<JudgeVerdict, 'cls' | 'uncertain'> & { claim_types?: readonly ClaimType[] }, hardI: boolean = true, ruleTypes: readonly ClaimType[] = []): boolean {
+  if (v.uncertain === true || (ESCALATE_FAST_I && v.cls === 'I' && hardI)) return true
+  // v5: a fast S on an I-HARD claim (event, result, number, people, scarcity,
+  // risk, quote, feeling) is confirmed by the strong judge before it stands.
+  return v.cls === 'S' && [...ruleTypes, ...(v.claim_types ?? [])].some((x) => CONFIRM_S_TYPES.has(x))
 }
+const CONFIRM_S_TYPES = new Set<ClaimType>(['event', 'quote', 'feeling', 'result', 'customer', 'audience', 'number', 'scarcity', 'risk'])
 
 /** Steps the durable worker run reports on `blueprint.gate_progress`. */
 export type GateStep = 'queued' | 'judging' | 'repairing' | 'done' | 'failed'
@@ -980,7 +1004,7 @@ async function judgeSentencesInner(input: JudgeRunInput, deps: JudgeRunDeps, per
       if (!v) { if (deps.judgeStrong) escalateFailed.push(g); continue }
       verdicts.set(g.s.i, v)
       const hardI = v.cls !== 'I' || !isSoftGeneral(g.s.text, g.r.claim_types, v.claim_types, g.r.subject_product, target, products)
-      if (deps.judgeStrong && needsStrong(v, hardI)) escalateI.push(g)
+      if (deps.judgeStrong && needsStrong(v, hardI, g.r.claim_types)) escalateI.push(g)
     }
   })
   perf.fast_failed = fastFailed
@@ -1069,6 +1093,23 @@ export function inheritsFrom(frag: GateSentence, fragRead: RuleRead, parent: Gat
 }
 
 const STORY_TYPES = new Set<ClaimType>(['event', 'feeling', 'quote'])
+
+/** v5 rule 3: the words of a script line that NO in-scope item contains (its
+ *  unbacked part; product-name words excluded). A fragment inherits the line's
+ *  I/G only when it carries at least one of them; a fragment restating only the
+ *  backed part is judged on its own. */
+export function unbackedWords(parentText: string, ledger: readonly LedgerItem[], subject: string | null, products: readonly ProductName[]): Set<string> {
+  const names = new Set(products.flatMap((p) => [...productWordsOf(p.name)]))
+  const backed = new Set<string>()
+  for (const it of ledger) if (inScope(it, subject)) for (const w of contentWords(it.text)) backed.add(w)
+  return new Set([...contentWords(parentText)].filter((w) => !backed.has(w) && !names.has(w)))
+}
+export function carriesUnbacked(fragText: string, parentText: string, ledger: readonly LedgerItem[], subject: string | null, products: readonly ProductName[]): boolean {
+  const un = unbackedWords(parentText, ledger, subject, products)
+  if (!un.size) return true
+  for (const w of contentWords(fragText)) if (un.has(w)) return true
+  return false
+}
 /** v4: only the RISK direction is inherited — a parent's I, G or E, never its S
  *  or N (a fragment of an S line is judged alone, with the line shown). A
  *  fragment that is no claim on its own (a rule N) keeps that N unless its
@@ -1117,7 +1158,8 @@ export function classifySentences(input: ClassifyInput): ClassifiedSentence[] {
     if (r.hard) return out('I', r.hard.reason)
     const parent = s.parent !== undefined ? input.sentences.find((x) => x.i === s.parent) : undefined
     const pc = parent ? done.get(parent.i) : undefined
-    if (parent && pc && inheritsFrom(s, r, parent, readOf(parent)) && inheritable(pc, r) && (pc.class !== 'I' || carriesTrigger(pc.reason, s.text, r))) {
+    if (parent && pc && inheritsFrom(s, r, parent, readOf(parent)) && inheritable(pc, r) && (pc.class !== 'I' || carriesTrigger(pc.reason, s.text, r))
+      && (pc.class === 'E' || carriesUnbacked(s.text, parent.text, input.ledger, readOf(parent).subject_product, products))) {
       // An undecided parent (no judge verdict) leaves its fragment undecided too.
       return { ...base, class: pc.class, claim_types: [...new Set([...types, ...pc.claim_types])], item_ids: pc.item_ids, reason: pc.reason === 'judge_missing' ? 'judge_missing' : 'inherited', judged: false }
     }
