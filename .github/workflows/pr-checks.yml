@@ -353,6 +353,13 @@ jobs:
       # dependency-free, which is why its guards are plain node scripts.
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      # Dependency-free: parses supabase/migrations and fails when an owner
+      # column (FK to auth.users/profiles, or an owner_id-style uuid) is missing
+      # from panel-remove's RESIDUAL_TABLES, or a claimed cascade is not declared.
+      - name: Panel removal covers every owner table (schema-derived)
+        run: |
+          node scripts/ci/check_panel_remove_coverage.mjs --selftest
+          node scripts/ci/check_panel_remove_coverage.mjs
       - name: No legacy editor references in live code
         run: |
           if grep -rnE 'enqueue-autoedit|handleAutoEdit|autoEditTake|autoEditFromPath|reEditWithEdl|fetchEdl|pollEditJob|EditDecisionList|ManualEditor|TimelineEditor|RefineEditor|manual-rerender|REVIDEO_URL|REVIDEO_TRUSTED|twinai-revideo' \
