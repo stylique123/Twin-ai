@@ -34,9 +34,10 @@ describe('gateMeasureOnly', () => {
     expect(gateMeasureOnly({ isTestAccount: true, isPanel: true, requested: 'repair' })).toBe(false)
   })
   it('the heartbeat repairs by default and may ask to measure', () => {
-    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: undefined })).toBe(false)
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: undefined })).toBe(true)
     expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: 'measure' })).toBe(true)
-    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: true })).toBe(false)
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: true })).toBe(true)
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: 'repair' })).toBe(false)
   })
 })
 

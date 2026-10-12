@@ -26,12 +26,14 @@ export function isPanelAccount(user: { app_metadata?: unknown } | null | undefin
 /** Whether the invention gate runs classify-only for this request.
  *  - a real creator: never (the request field is ignored);
  *  - a panel account: measure by default; `gate_mode: 'repair'` asks for the full gate;
- *  - the heartbeat: full gate by default; `gate_mode: 'measure'` asks for measure. */
+ *  - the heartbeat: measure by default too (owner Reply 13 fallback: the two-judge
+ *    gate missed the 90% validation recall bar, so no test account repairs until
+ *    it is re-tuned); `gate_mode: 'repair'` still asks for the full gate. */
 export function gateMeasureOnly(input: { isTestAccount: boolean; isPanel: boolean; requested: unknown }): boolean {
   if (!input.isTestAccount && !input.isPanel) return false
   if (input.requested === 'measure') return true
   if (input.requested === 'repair') return false
-  return input.isPanel
+  return true
 }
 
 /** A measure-only gate run that finished (not a timeout or failure). Such a
