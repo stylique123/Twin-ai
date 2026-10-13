@@ -233,7 +233,7 @@ export function durationBrief(
     if (available < b.minBeats) {
       line += ` THERE IS ONLY ENOUGH SUBSTANCE FOR ${available} BEATS. Write ${available} and STOP.`
         + ` The video comes out shorter than ${targetSec} seconds and that is the correct outcome —`
-        + ` say in the final beat that this is everything there is to say on it.`
+        + ` end on the last real point — never announce that there is nothing more to say.`
         + ` Do NOT repeat a point, restate the hook, or add a beat that carries no new information to reach the target.`
     } else if (available > b.maxBeats) {
       line += ` THERE IS MORE SUBSTANCE THAN ${targetSec} SECONDS HOLDS — ${available} beats' worth against room for ${b.maxBeats}.`
