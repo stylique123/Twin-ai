@@ -6274,14 +6274,24 @@ function parseRepairRewrites(raw: unknown): Array<{ index?: unknown; line?: unkn
 // ⚠️ BLIND SET 3 (2026-10-06): 12 of 74 requests hit the 150s edge limit and
 // nothing said which step spent the time. Every model call now logs how long
 // it took and which prompt it was, so a timeout's last lines name the step.
-async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
-  return inStage(stageOfCall(system, schema === blueprintSchema), () => callModelStaged(apiKey, system, prompt, schema, record))
+/** ⚖️ TEMPLATE RETRY FALLBACK (2026-10-13, trial only). Since the sprint
+ *  templates went in, writer attempt 0 averages ~50s (max 73s) against its
+ *  75s ceiling, and panel runs lost 5-7 of 24 to GENERATION_FAILED with both
+ *  attempts timing out. When a template block was added to the brief, the
+ *  RETRY (attempt index >= 1) is sent `retryPrompt` instead: the plain brief
+ *  without the template block. `usedAttempt` says which attempt's text was
+ *  returned, so the caller can mark the fallback and skip template checks.
+ *  Timeouts are unchanged. Real creators never pass a ladder. */
+interface WriterLadder { retryPrompt: string; usedAttempt?: number }
+
+async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
+  return inStage(stageOfCall(system, schema === blueprintSchema), () => callModelStaged(apiKey, system, prompt, schema, record, ladder))
 }
 
-async function callModelStaged(apiKey: string, system: string, prompt: string, schema: unknown, record?: AttemptRecorder): Promise<string> {
+async function callModelStaged(apiKey: string, system: string, prompt: string, schema: unknown, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
   const t0 = Date.now()
   try {
-    return await callModelInner(apiKey, system, prompt, schema, record)
+    return await callModelInner(apiKey, system, prompt, schema, record, ladder)
   } finally {
     console.log(JSON.stringify({ event: 'model_call_ms', ms: Date.now() - t0, step: system.slice(0, 48).replace(/\s+/g, ' '), prompt_chars: prompt.length }))
   }
@@ -6296,7 +6306,7 @@ function withDeadline<T>(ms: number, p: Promise<T>): Promise<T> {
   ])
 }
 
-async function callModelInner(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
+async function callModelInner(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
   // on BOTH attempts (edge logs showed repeated 500s at ~70-91s → "We hit a snag"
@@ -6322,14 +6332,17 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
 
   let lastErr: unknown
   let lastParseable: string | null = null // valid JSON, but missing concept/packaging
+  let lastParseableAt = -1
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i]
+    // The retry runs the plain brief when a template block made attempt 0 slow.
+    const attemptPrompt = i >= 1 && ladder ? ladder.retryPrompt : prompt
     // ⚠️ THE ROW IS OPENED BEFORE THE CALL. A record only written afterwards
     // cannot describe the call that never came back, which is the exact failure
     // mode — a 75-second timeout — this table was built to count.
     const rowId = await record?.started(i, a.model) ?? null
     try {
-      const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs, schema)
+      const text = await callOnce(apiKey, system, attemptPrompt, a.model, a.thinkBudget, a.timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
       // ⚠️ ONLY A BLUEPRINT HAS A CONCEPT AND PACKAGING (2026-10-04). Repair
@@ -6339,11 +6352,13 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       // wasted calls per script.
       if (schema !== blueprintSchema || blueprintComplete(parsed)) {
         await record?.settled(rowId, 'succeeded')
+        if (ladder) ladder.usedAttempt = i
         return text // complete → accept
       }
       // Parseable but Flash dropped concept/packaging. Keep it as a last resort and
       // try the next attempt for a COMPLETE one (the retry usually recovers them).
       lastParseable = text
+      lastParseableAt = i
       // ⚖️ NEITHER SUCCESS NOR FAILURE. The creator gets a script and no title, so
       // filing it as either would hide a quality event or claim an outage.
       await record?.settled(rowId, 'incomplete',
@@ -6361,6 +6376,7 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
   // them to regenerate for the title/thumbnail. Only truly fail if nothing parsed.
   if (lastParseable) {
     console.warn('generate-blueprint: all attempts incomplete — shipping the best parseable blueprint')
+    if (ladder) ladder.usedAttempt = lastParseableAt
     return lastParseable
   }
   throw lastErr instanceof Error ? lastErr : new Error('Model call failed')
@@ -12022,12 +12038,13 @@ This is the video's position. Every field below must serve it. If the reference'
       templatePlan = templateChoices[0]!
       templateProfile = pickTemplateProfile(templatePlan.template, body.target_seconds, softwareTargetSec != null)
     }
-    const familyHookRule = renderFamilyHookRule(family) + (templatePlan ? `\n\n${renderTemplateBlock(templatePlan, templateProfile, templateLedger)}` : '')
-    const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
+    const familyHookRulePlain = renderFamilyHookRule(family)
+    const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateBlock(templatePlan, templateProfile, templateLedger)}` : '')
+    const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
 
-${familyHookRule}
+${hookRule}
 
 ${positionBlock}${referenceBlock}${historyBlock ? `
 
@@ -12048,6 +12065,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.
 - shot_list "shot" is the shot's NAME and it is what the creator reads as the heading on the card they are holding their phone against. Write what the shot IS, in three to six plain words — "Opening line, straight to camera", "The still for the thumbnail", "Close on your hands". NEVER write its position in the list: "1", "2", "Shot 3" are not names, and a card headed with a number tells the creator nothing about what to point the camera at.`
+    const userPrompt = buildWriterBrief(familyHookRule)
+    // ⚖️ TEMPLATE RETRY FALLBACK: trial only, and only when a template block
+    // was added. The retry gets today's brief, byte for byte without the block.
+    const writerLadder: WriterLadder | undefined = trialOn && templatePlan
+      ? { retryPrompt: buildWriterBrief(familyHookRulePlain) }
+      : undefined
+    let templateFallback = false
 
     // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
     // generation rather than two. Minted here rather than in the recorder because
@@ -12082,7 +12106,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       const variants = Array.from({ length: draftCount }, (_, k) => k === 0 ? userPrompt
         : `${userPrompt}\n\nDRAFT ${k + 1}: write a genuinely different version — a different hook and a different way into the same material${hookSources[k] ? `; open from ${SOURCE_USE_INLINE[hookSources[k]] ?? hookSources[k]}` : ''}. Same facts, same rules.`)
       const drafts = await Promise.allSettled(variants.map((v, k) => callModel(apiKey, writerSystem, v, blueprintSchema,
-        k === 0 ? attemptRecorder(admin, ownerId, scriptRunId) : undefined)))
+        k === 0 ? attemptRecorder(admin, ownerId, scriptRunId) : undefined, k === 0 ? writerLadder : undefined)))
       const ok = drafts.map((d) => (d.status === 'fulfilled' ? d.value : null))
       const usable = ok.map((t, k) => ({ t, k })).filter((x): x is { t: string; k: number } => typeof x.t === 'string')
       if (!usable.length) throw (drafts[0] as PromiseRejectedResult).reason
@@ -12110,9 +12134,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
       console.log(JSON.stringify({ event: 'drafts_picked', drafts: draftCount, usable: usable.length, picked: pick.k, said: pickSaid }))
       raw = pick.t
+      templateFallback = pick.k === 0 && (writerLadder?.usedAttempt ?? 0) >= 1
     } else {
       raw = await callModel(apiKey, writerSystem, userPrompt, blueprintSchema,
-        attemptRecorder(admin, ownerId, scriptRunId))
+        attemptRecorder(admin, ownerId, scriptRunId), writerLadder)
+      templateFallback = (writerLadder?.usedAttempt ?? 0) >= 1
+    }
+    if (templateFallback && templatePlan) {
+      console.log(JSON.stringify({ event: 'script_template_retry_fallback', template: templatePlan.template.id, attempt: writerLadder?.usedAttempt ?? null }))
     }
 
     // OUTPUT-SIDE LINK VALIDATION — the other half of the fencing above.
@@ -16297,7 +16326,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // Quality sprint stage 2 (trial only): hold the script to its template —
     // hook shapes, bridges, the promised count and the word budget. Every
     // repair removes, reorders or re-numbers; the record is ids only.
-    if (trialOn && templatePlan && blueprint && typeof blueprint === 'object') {
+    // ⚖️ THE RETRY RAN WITHOUT THE TEMPLATE BLOCK: holding the script to a
+    // template it never saw would repair it toward a shape it was not asked
+    // for. Record the fallback (ids only) and skip the checks and repairs.
+    if (trialOn && templatePlan && templateFallback && blueprint && typeof blueprint === 'object') {
+      (blueprint as Record<string, unknown>).template = { id: templatePlan.template.id, fallback: 'retry_without_template' }
+    }
+    if (trialOn && templatePlan && !templateFallback && blueprint && typeof blueprint === 'object') {
       try {
         const bpt = blueprint as Record<string, unknown>
         if (Array.isArray(bpt.script)) {
