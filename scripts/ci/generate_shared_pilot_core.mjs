@@ -225,6 +225,7 @@ const SOURCES = [
   // The sources live one folder down; their `../x.js` imports flatten to the sibling copy.
   ['packages/shared/src/script/templates/templateData.ts', 'supabase/functions/_shared/templateData.ts'],
   ['packages/shared/src/script/templates/scriptTemplates.ts', 'supabase/functions/_shared/scriptTemplates.ts'],
+  ['packages/shared/src/script/templates/templateSkeleton.ts', 'supabase/functions/_shared/templateSkeleton.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

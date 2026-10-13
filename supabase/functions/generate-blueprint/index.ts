@@ -81,6 +81,7 @@ import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, type TemplatePlan } from '../_shared/scriptTemplates.ts'
+import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
@@ -12022,7 +12023,7 @@ This is the video's position. Every field below must serve it. If the reference'
       templatePlan = templateChoices[0]!
       templateProfile = pickTemplateProfile(templatePlan.template, body.target_seconds, softwareTargetSec != null)
     }
-    const familyHookRule = renderFamilyHookRule(family) + (templatePlan ? `\n\n${renderTemplateBlock(templatePlan, templateProfile, templateLedger)}` : '')
+    const familyHookRule = renderFamilyHookRule(family) + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '')
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
@@ -16308,7 +16309,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           })
           bpt.script = f.script
           if (Array.isArray(bpt.hook_options)) bpt.hook_options = f.hook_options
-          bpt.template = f.record
+          bpt.template = { ...f.record, mode: TEMPLATE_SKELETON_MODE }
           if (templatePlan.questions.length) bpt.gate_questions = [...templatePlan.questions]
           console.log(JSON.stringify({ event: 'script_template_applied', template: f.record.id, profile: f.record.profile, asked: templatePlan.questions.length, promise_paid: f.record.promise_paid, promise_repair: f.record.promise_repair, bridges_ok: f.record.bridges_ok, hook_shapes_matched: f.record.hook_shapes.filter(Boolean).length, trimmed: f.record.trimmed }))
         }
