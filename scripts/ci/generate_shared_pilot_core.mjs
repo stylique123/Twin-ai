@@ -225,6 +225,9 @@ const SOURCES = [
   // The sources live one folder down; their `../x.js` imports flatten to the sibling copy.
   ['packages/shared/src/script/templates/templateData.ts', 'supabase/functions/_shared/templateData.ts'],
   ['packages/shared/src/script/templates/scriptTemplates.ts', 'supabase/functions/_shared/scriptTemplates.ts'],
+  // The planner: one spine per script (Phase 4.1, trial only). One folder down like the templates;
+  // its `../x.js` and `../templates/x.js` imports flatten to the sibling copies.
+  ['packages/shared/src/script/planner/spinePlanner.ts', 'supabase/functions/_shared/spinePlanner.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
@@ -274,7 +277,7 @@ const render = (from, src0, to = '') => {
     .replace(/(from\s+'\.\/[A-Za-z0-9_-]+)\.m?js'/g, "$1.ts'")
     // A source in a subfolder (script/templates/) imports its parent's modules
     // as `../x.js`; the edge copies are all flat siblings in _shared/.
-    .replace(/from\s+'\.\.\/([A-Za-z0-9_-]+)\.js'/g, (m, name) => (from.includes('/templates/') ? `from './${name}.ts'` : m))
+    .replace(/from\s+'\.\.\/(?:templates\/)?([A-Za-z0-9_-]+)\.js'/g, (m, name) => (/\/(?:templates|planner)\//.test(from) ? `from './${name}.ts'` : m))
 }
 
 // ⚠️ AND THE RULE IS ASSERTED, because a rewrite that silently stops matching
