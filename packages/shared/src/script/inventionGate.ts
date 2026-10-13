@@ -594,6 +594,30 @@ export function subjectProduct(text: string, products: readonly ProductName[], t
   return best ? best.id : targetId
 }
 
+/** The target product as the gate must see it. An id that names none of the
+ *  owner's loaded products (the product was re-created or deleted after the
+ *  script was written) would make her OWN product read as "another product"
+ *  on every line. Such a stale id is resolved: the only product she has; else
+ *  the product whose offer is the request's offer; else the product the script
+ *  lines name most (ties → unresolved, null). No id given stays null. The
+ *  scope rule itself is untouched. */
+export function resolveTargetProduct(
+  targetId: string | null | undefined,
+  products: ReadonlyArray<{ id?: unknown; name?: unknown; offer?: unknown }>,
+  hints: { offer?: unknown; lines?: readonly string[] } = {},
+): string | null {
+  const ps = products.map((p) => ({ id: str(p?.id), name: str(p?.name), offer: str(p?.offer) })).filter((p) => p.id)
+  if (!targetId) return null
+  if (ps.some((p) => p.id === targetId)) return targetId
+  if (ps.length === 1) return ps[0]!.id
+  const offer = str(hints.offer)
+  if (offer) { const m = ps.filter((p) => p.offer && p.offer === offer); if (m.length === 1) return m[0]!.id }
+  const counts = ps.map((p) => ({ id: p.id, c: (hints.lines ?? []).filter((t) => p.name && mentionsAnyProduct(t, [{ id: p.id, name: p.name }])).length }))
+    .sort((a, b) => b.c - a.c)
+  if (counts[0] && counts[0].c > 0 && counts[0].c > (counts[1]?.c ?? 0)) return counts[0].id
+  return null
+}
+
 export function inScope(item: LedgerItem, subject: string | null): boolean {
   return item.product_id === null || item.product_id === subject
 }

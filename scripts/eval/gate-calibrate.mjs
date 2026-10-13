@@ -13,7 +13,7 @@
 //
 //   node scripts/eval/gate-calibrate.mjs --batch=<label>[,<label>] \
 //        (--labels=<labels.csv> | --labels-file-id=<test_run_files id>) \
-//        [--modes=two-judge,read,extract] [--measure-only] [--script-concurrency=2] \
+//        [--modes=two-judge,read,extract] [--measure-only] [--script-concurrency=1] \
 //        [--dry-run] [--dump=<rows.json>]
 //
 // --modes: `two-judge` (default, what production runs: `read` AND `extract`
@@ -80,7 +80,7 @@
 // instead of the database.
 import { readFileSync } from 'node:fs'
 import {
-  buildLedger, extractSentences, pendingForJudge, errorClass, chunk, chunkLedger, buildJudgePrompt, runInventionGate,
+  buildLedger, extractSentences, resolveTargetProduct, pendingForJudge, errorClass, chunk, chunkLedger, buildJudgePrompt, runInventionGate,
   JUDGE_SYSTEM, JUDGE_SCHEMA, REWRITE_SYSTEM, REWRITE_SCHEMA, JUDGE_THINKING_BUDGET, INVENTION_JUDGE_CASCADE,
   INVENTION_RECHECK_TIMEOUT_MS,
 } from '../../packages/shared/src/script/inventionGate.ts'
@@ -113,7 +113,7 @@ const MODES = MODE_ARG.split(',').map((s) => s.trim()).filter(Boolean).map((m) =
 // The rewrite runs on the fast model, as in the worker.
 const REWRITE_MODEL = modelOf(INVENTION_JUDGE_CASCADE.fast)
 const MEASURE_ONLY = !!args['measure-only']
-const SCRIPT_CONCURRENCY = Math.max(1, Number(args['script-concurrency'] ?? 2) || 2)
+const SCRIPT_CONCURRENCY = Math.max(1, Number(args['script-concurrency'] ?? 1) || 1)
 const DRY = !!args['dry-run']
 if (!BATCHES.length && !args.dump) {
   console.error('usage: node scripts/eval/gate-calibrate.mjs --batch=<label>[,…] --labels=<file.csv> [--models=a,b] [--dry-run] [--dump=rows.json]')
@@ -343,7 +343,14 @@ async function main() {
   const batchless = new Set(typeof args['labels-batch'] === 'string' ? args['labels-batch'].split(',').map((x) => x.trim())
     : [...new Set(rows.map((r) => r.batch))].filter((b) => !keyed.has(b)))
   const labelOf = (x, i) => labelFor(labels, { batch: x.r.batch, n: x.r.n, i, generation_id: x.r.generation_id }, batchless)
-  const prepared = rows.map((r) => {
+  let staleTargets = 0, resolvedTargets = 0
+  const prepared = rows.map((r0) => {
+    // A saved target id that names none of the owner's current products (re-seeded
+    // panel accounts) is resolved the way the worker resolves it.
+    const lines = extractSentences(r0.blueprint ?? {}).filter((s) => s.surface === 'script').map((s) => s.text)
+    const tid = resolveTargetProduct(r0.target_product_id ?? null, r0.products ?? [], { offer: r0.offer, lines })
+    if (r0.target_product_id && tid !== r0.target_product_id) { staleTargets++; if (tid) resolvedTargets++ }
+    const r = { ...r0, target_product_id: tid }
     const products = (r.products ?? []).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id && p.name)
     const ledger = buildLedger({ knowledge: r.knowledge, answers: r.answers, note: r.note, products: r.products, targetProductId: r.target_product_id ?? null, offer: r.offer, outside: r.outside ?? [], now: Date.now() })
     const sentences = extractSentences(r.blueprint ?? {})
@@ -363,6 +370,7 @@ async function main() {
     }
   }
   console.log(`worker payload found for ${prepared.filter((x) => x.r.worker_payload).length}/${prepared.length} scripts; measure-only per payload: ${prepared.filter((x) => x.r.measure_only).length}`)
+  console.log(`stale target ids: ${staleTargets} (resolved ${resolvedTargets}, left unresolved ${staleTargets - resolvedTargets})`)
   console.log(`scripts: ${prepared.length}  sentences: ${prepared.reduce((a, x) => a + x.sentences.length, 0)}  prefiltered by rule: ${prefiltered}  to judge: ${judged}  labelled: ${labels.size}`)
   console.log(`modes: ${MODES.map((m) => m.name).join(', ')}${MEASURE_ONLY ? '  (measure only, no repair)' : ''}  scored surface: ${SURFACE}  batch-less labels apply to: ${[...batchless].join(',') || 'none'}`)
   console.log(`judge calls per judge: ${fastCalls} (two-judge mode makes this many on EACH judge)  est. tokens per judge ~${inTok} in / ~${judged * 30} out (plus rewrites)`)
@@ -374,6 +382,9 @@ async function main() {
     // Tokens per role: the fast judge, the strong judge, and the rewrite (fast model).
     const errors = {}
     const usedBy = { fast: { in: 0, out: 0, errors }, strong: { in: 0, out: 0, errors }, rewrite: { in: 0, out: 0, errors } }
+    // Per judge role: wall ms of every call (incl. retries) and failed calls by error class.
+    const roleMs = { fast: [], strong: [] }
+    const roleErr = { fast: {}, strong: {} }
     const used = { get in() { return usedBy.fast.in + usedBy.strong.in + usedBy.rewrite.in }, get out() { return usedBy.fast.out + usedBy.strong.out + usedBy.rewrite.out }, errors }
     const byClass = { S: 0, E: 0, I: 0, N: 0, G: 0 }
     const perfs = []
@@ -381,13 +392,18 @@ async function main() {
     const records = await mapLimit(prepared, SCRIPT_CONCURRENCY, async (x, k) => {
       // Per-script counters, added to the per-role totals when the gate ends.
       const mine = { fast: { in: 0, out: 0, errors }, strong: { in: 0, out: 0, errors }, rewrite: { in: 0, out: 0, errors } }
-      const judgeWith = (model, u) => (p) => callModel(model, JUDGE_SYSTEM, JUDGE_SCHEMA, p, JUDGE_THINKING_BUDGET, u)
+      const judgeWith = (model, u, role) => async (p) => {
+        const t0 = Date.now()
+        try { return await callModel(model, JUDGE_SYSTEM, JUDGE_SCHEMA, p, JUDGE_THINKING_BUDGET, u) } catch (e) {
+          const k = errorClass(e); roleErr[role][k] = (roleErr[role][k] ?? 0) + 1; throw e
+        } finally { roleMs[role].push(Date.now() - t0) }
+      }
       const r = await runInventionGate({
         blueprint: x.r.blueprint, ledger: x.ledger, products: x.products, targetProductId: x.r.target_product_id ?? null,
         model: mode.name, measureOnly: MEASURE_ONLY || x.r.measure_only === true, timeoutMs: INVENTION_RECHECK_TIMEOUT_MS,
       }, {
-        judge: judgeWith(mode.fast, mine.fast),
-        ...(mode.strong ? { judgeStrong: judgeWith(mode.strong, mine.strong) } : {}),
+        judge: judgeWith(mode.fast, mine.fast, 'fast'),
+        ...(mode.strong ? { judgeStrong: judgeWith(mode.strong, mine.strong, 'strong') } : {}),
         rewrite: (p) => callModel(REWRITE_MODEL, REWRITE_SYSTEM, REWRITE_SCHEMA, p, undefined, mine.rewrite),
       })
       for (const role of ['fast', 'strong', 'rewrite']) { usedBy[role].in += mine[role].in; usedBy[role].out += mine[role].out; scriptTokens[k] += mine[role].in + mine[role].out }
@@ -433,6 +449,10 @@ async function main() {
     console.log(`WHOLE GATE per script: p50 ${pctl(gateMs, 0.5)} ms  p90 ${pctl(gateMs, 0.9)} ms  max ${Math.max(0, ...gateMs)} ms  (target p90 <= 30000)`)
     console.log(`judge calls: ${calls} (${prepared.length ? (calls / prepared.length).toFixed(1) : 0}/script)  per-call p50 ${pctl(chunkMs, 0.5)} ms p90 ${pctl(chunkMs, 0.9)} ms  strong-judge calls ${perfs.reduce((a, p) => a + (p.strong_calls ?? 0), 0)} (escalations ${esc}: always 0 with two judges) over ${jud} judged sentences`)
     console.log(`failed scripts by error class: ${JSON.stringify(failReasons)}; failed model calls by error class (after retries): ${JSON.stringify(used.errors)}`)
+    for (const role of ['fast', 'strong']) {
+      if (!roleMs[role].length) continue
+      console.log(`judge ${role} (${role === 'fast' ? mode.fast : mode.strong}): ${roleMs[role].length} calls, ms p50 ${pctl(roleMs[role], 0.5)} p90 ${pctl(roleMs[role], 0.9)} max ${Math.max(...roleMs[role])}; failed by class ${JSON.stringify(roleErr[role])}`)
+    }
     console.log(`per-script gate (ms, judge calls, strong calls, verdict counts, rounds):\n${scriptLines.join('\n')}`)
     // Reply 14: script lines (or --surface) scored, combined and per batch.
     console.log(formatScriptLineReport(mode.name, sentRows, prepared.map((x, k) => ({ batch: x.r.batch, n: x.r.n, ms: records[k].perf?.ms_total ?? records[k].ms, tokens: scriptTokens[k] })), SURFACE))

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLedger, classifyTwoJudges, extractSentences, fragmentNewClaim, linkParents, normalizeNumbers, parseNumbers,
-  pendingForJudge, ruleRead, type GateBlueprint, type GateClass, type GateSentence, type JudgeVerdict, type LedgerItem,
+  pendingForJudge, resolveTargetProduct, ruleRead, type GateBlueprint, type GateClass, type GateSentence, type JudgeVerdict, type LedgerItem,
 } from '../inventionGate'
 
 const JAR = 'prod-jar'
@@ -130,5 +130,26 @@ describe('rule 1: script lines are the judged unit', () => {
     const cs = classifyTwoJudges({ sentences: s, ledger: ledger(), products, targetProductId: JAR, fast: new Map(), strong: new Map() })
     expect(cs[title.i]!.class).toBe('I')
     expect(cs[title.i]!.reason).not.toBe('inherited')
+  })
+})
+
+describe('stale target product id (calibration diagnosis)', () => {
+  const two = [{ id: 'p-new-a', name: 'Glow Jar', offer: '10% off jars' }, { id: 'p-new-b', name: 'Wick Kit', offer: 'free wick' }]
+  it('a valid id stays; no id stays null', () => {
+    expect(resolveTargetProduct('p-new-a', two)).toBe('p-new-a')
+    expect(resolveTargetProduct(null, two)).toBeNull()
+  })
+  it('a stale id resolves to the only product, the matching offer, or the product the lines name most', () => {
+    expect(resolveTargetProduct('p-old', [two[0]!])).toBe('p-new-a')
+    expect(resolveTargetProduct('p-old', two, { offer: 'free wick' })).toBe('p-new-b')
+    expect(resolveTargetProduct('p-old', two, { lines: ['The Glow Jar burns clean.', 'Glow Jar is $38.', 'Pair it with a Wick Kit.'] })).toBe('p-new-a')
+    expect(resolveTargetProduct('p-old', two, { lines: ['Nothing named here.'] })).toBeNull()
+  })
+  it('with the target resolved, her own product fact backs a line instead of reading as another product', () => {
+    const led = buildLedger({ products: [{ id: 'p-new-a', name: 'Glow Jar', knowledge: [{ id: 'f1', field: 'price', value: 'The Glow Jar is $38' }] }], targetProductId: 'p-new-a', now: 0 })
+    const stale = ruleRead(sent('It is thirty-eight dollars.'), led, [{ id: 'p-new-a', name: 'Glow Jar' }], 'p-old')
+    expect(stale.hard?.reason).toBe('cross_product')
+    const fixed = ruleRead(sent('It is thirty-eight dollars.'), led, [{ id: 'p-new-a', name: 'Glow Jar' }], resolveTargetProduct('p-old', [{ id: 'p-new-a', name: 'Glow Jar' }]))
+    expect(fixed.hard).toBeNull()
   })
 })
