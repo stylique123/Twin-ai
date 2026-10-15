@@ -77,6 +77,8 @@ import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser, capQuestions } from '../_shared/beatCleanup.ts'
+import { robotPass } from '../_shared/robotPhrases.ts'
+import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
@@ -8850,6 +8852,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // The outside board (research, moments, niche notes, audience), kept for the
   // invention gate of a RESCUED script too (panel-current-2 #8 had no gate record).
   let gateBoard: Array<{ id?: unknown; kind?: unknown; text?: unknown }> = []
+  let outsideSelected: { offered: number; kept: number; min_score: number } | null = null
   // Everything the writer was given, kept for the figure audit (Sunflower #23).
   let writerMaterial = ''
   let refunded = false
@@ -9334,7 +9337,18 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         return Array.isArray((data as { items?: unknown } | null)?.items) ? (data as { items: NicheRedditItemInline[] }).items : []
       })().catch((e) => { noteErr('reddit')(e); return [] as NicheRedditItemInline[] })
       try {
-        const [notes, trends, record, moments, research, reddit] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP, redditP])
+        const [notes0, trends0, record, moments0, research0, reddit0] = await Promise.all([notesP, trendsP, recordP, momentsP, researchP, redditP])
+        // ⚖️ OWNER A4 (trial first): only the 3-8 outside items relevant to THIS
+        // request reach the writer. Selected before the board is built, so the
+        // invention-gate ledger (built from gateBoard) is what the writer saw.
+        let notes = notes0, trends = trends0, moments = moments0, research = research0, reddit = reddit0
+        if (trialOn) {
+          const sel = pickOutsideForWriter({ notes: notes0, trends: trends0, moments: moments0, research: research0, reddit: reddit0 },
+            [reference_note, intent.focus, intent.outcome, body.angle, offer !== 'unspecified' ? offer : '', subNiche, niche].map((v) => String(v ?? '')))
+          ;({ notes, trends, moments, research, reddit } = sel.lists)
+          outsideSelected = sel.record
+          console.log(JSON.stringify({ event: 'outside_selected', ...sel.record }))
+        }
         brainNotesUsed = notes.length
         const kindCount = (xs: ReadonlyArray<{ kind?: unknown }>, k: string) => xs.filter((x) => x?.kind === k).length
         routeAvail.niche_objection = kindCount(notes as Array<{ kind?: unknown }>, 'objection')
@@ -16027,6 +16041,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           bp.script = relabelled
           console.log(JSON.stringify({ event: 'leftovers_cleaned', changed: cleaned.changed, labels: labelled, echo_closer: echoDropped }))
         }
+        // ⚖️ OWNER A4 (trial first): robot-phrase blacklist + spoken cadence on
+        // every line. Deletion and splitting only; never below three spoken
+        // beats. Ids and counts only on the blueprint.
+        {
+          const robot = robotPass(bp.script as Array<{ line?: unknown }>, 3)
+          bp.script = robot.beats as typeof bp.script
+          ;(bp as Record<string, unknown>).robot_phrases = robot.record
+          console.log(JSON.stringify({ event: 'robot_phrases', ...robot.record }))
+        }
+        if (outsideSelected) (bp as Record<string, unknown>).outside_selected = outsideSelected
         // Brief 2.8a: a cause she never gave ("because the weather shifts") is cut,
         // clause only. Support = everything the writer was given. Counts only.
         try {

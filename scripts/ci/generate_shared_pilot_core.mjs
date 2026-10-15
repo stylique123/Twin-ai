@@ -152,6 +152,9 @@ const SOURCES = [
   ['packages/shared/src/script/roleClaims.ts', 'supabase/functions/_shared/roleClaims.ts'],
   ['packages/shared/src/script/answerGate.ts', 'supabase/functions/_shared/answerGate.ts'],
   ['packages/shared/src/script/beatCleanup.ts', 'supabase/functions/_shared/beatCleanup.ts'],
+  // Robot-phrase blacklist + spoken cadence (owner A4), and the outside-item relevance cut.
+  ['packages/shared/src/script/robotPhrases.ts', 'supabase/functions/_shared/robotPhrases.ts'],
+  ['packages/shared/src/script/outsideSelect.ts', 'supabase/functions/_shared/outsideSelect.ts'],
   ['packages/shared/src/script/noStoryEvents.ts', 'supabase/functions/_shared/noStoryEvents.ts'],
   // Niche labels after the privacy scrub (owner 13 Oct): lookup vs prompt values.
   ['packages/shared/src/script/nicheLabels.ts', 'supabase/functions/_shared/nicheLabels.ts'],
