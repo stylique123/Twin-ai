@@ -156,7 +156,66 @@ export function dropWriterNotes(line: string): string {
  * sentence; a line left with nothing keeps its original words (the 3-beat
  * floor is enforced by the caller).
  */
-const STOCK_CLOSER = /(?:,\s*|^|(?<=[.!?])\s+)(?:(?:and|so)\s+)?(?:that(?:'s| is)|this is)\s+(?:honestly\s+|really\s+|literally\s+|just\s+|basically\s+)?(?:the whole (?:story|lesson|point|thing)|the entire (?:lesson|story)|(?:really\s+)?everything there is to (?:say|it|know)(?:\s+(?:on|about)\s+[^.!?]{0,20})?|all there is to (?:it|say))\s*([.!])?/gi
+// panel-current-3 (2026-10-13): "That is genuinely everything there is to say
+// on it" slipped past (no "genuinely"); the source was the duration brief
+// itself telling the writer to say it (durationContract.ts, removed).
+const STOCK_CLOSER = /(?:,\s*|^|(?<=[.!?])\s+)(?:(?:and|so)\s+)?(?:that(?:'s| is)|this is)\s+(?:(?:honestly|really|literally|just|basically|genuinely|truly|pretty much|actually)\s+)*(?:the whole (?:story|lesson|point|thing)|the entire (?:lesson|story)|(?:really\s+)?everything there is to (?:say|it|know)(?:\s+(?:on|about)\s+[^.!?]{0,20})?|all there is to (?:it|say))\s*([.!])?/gi
+/**
+ * QUESTION CAP (panel-current-3, 2026-10-13): 22% of spoken sentences were
+ * questions. A script keeps at most one question per four sentences, and never
+ * more than two: the hook's question and ONE engagement question (the last).
+ * Every other question is repaired, rephrase-or-drop only: a tag question
+ * (", right?") becomes a statement; a teaser ("Want to know why?") or any other
+ * question sharing its line with a statement is dropped. A question that is a
+ * beat's only sentence and has no safe rephrase stays (counted, not forced).
+ */
+export const QUESTION_CAP_MAX = 2
+const TAG_Q = /,\s*(?:right|isn'?t it|don'?t you think|you know|huh|no)\?\s*$/i
+
+const sentencesOfLine = (s: string) => (s.match(/[^.!?]+[.!?]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
+const isQuestion = (s: string) => /\?\s*$/.test(s)
+
+export function questionCap(sentences: number): number {
+  return Math.max(1, Math.min(QUESTION_CAP_MAX, Math.floor(sentences / 4)))
+}
+
+export function countQuestions<T extends { line?: unknown }>(beats: readonly T[]): { questions: number; sentences: number; cap: number } {
+  let questions = 0, sentences = 0
+  for (const b of beats) for (const s of sentencesOfLine(typeof b?.line === 'string' ? b.line : '')) { sentences++; if (isQuestion(s)) questions++ }
+  return { questions, sentences, cap: questionCap(sentences) }
+}
+
+export function capQuestions<T extends { line?: unknown }>(beats: readonly T[]): { beats: T[]; repaired: number; questions_before: number; questions_after: number } {
+  const c = countQuestions(beats)
+  const out = beats.map((b) => ({ ...b }))
+  if (c.questions <= c.cap) return { beats: out, repaired: 0, questions_before: c.questions, questions_after: c.questions }
+  // Positions of every question: [beat, sentence].
+  const pos: Array<[number, number]> = []
+  out.forEach((b, bi) => sentencesOfLine(typeof b.line === 'string' ? b.line : '').forEach((s, si) => { if (isQuestion(s)) pos.push([bi, si]) }))
+  const keep = new Set<string>()
+  const firstSpoken = out.findIndex((b) => typeof b.line === 'string' && b.line.trim())
+  const hookQ = pos.find(([bi]) => bi === firstSpoken)
+  if (hookQ) keep.add(hookQ.join(':'))
+  const last = pos[pos.length - 1]!
+  if (keep.size < c.cap) keep.add(last.join(':'))
+  let repaired = 0
+  let remaining = c.questions
+  out.forEach((b, bi) => {
+    if (typeof b.line !== 'string') return
+    const ss = sentencesOfLine(b.line)
+    const next: string[] = []
+    ss.forEach((s, si) => {
+      if (!isQuestion(s) || keep.has(`${bi}:${si}`) || remaining <= c.cap) { next.push(s); return }
+      if (TAG_Q.test(s)) { next.push(s.replace(TAG_Q, '.')); repaired++; remaining--; return }
+      // Dropped only when the line keeps a statement of its own.
+      if (ss.length > 1 && next.length + (ss.length - si - 1) > 0) { repaired++; remaining--; return }
+      next.push(s)
+    })
+    if (next.length) (b as { line?: unknown }).line = next.join(' ')
+  })
+  return { beats: out, repaired, questions_before: c.questions, questions_after: countQuestions(out).questions }
+}
+
 export function dropStockCloser(line: string): string {
   const out = line.replace(STOCK_CLOSER, (_m, end: string | undefined, offset: number) => (offset === 0 ? '' : (end ?? '.'))).replace(/\s+([.,!?])/g, '$1').replace(/([.!?])\1+/g, '$1').replace(/\s{2,}/g, ' ').trim()
   return out.length >= 3 ? out : line
