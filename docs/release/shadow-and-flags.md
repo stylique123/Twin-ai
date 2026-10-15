@@ -67,7 +67,7 @@ component is not routed through `newOn` or if the edge passes a registry.
   (traffic `shadow`), a per-run token cap and a sample rate. When the cap is
   hit, the run records `budget_skipped` and spends nothing. A killed component
   records `killed`.
-- **Storage:** `public.shadow_runs` (migration `0289_shadow_runs.sql`, file
+- **Storage:** `public.shadow_runs` (migration `0290_shadow_runs.sql`, file
   only, **not applied**). The table is service-role only (RLS on, no policies).
   Each row holds ids, latencies, cost, invented counts, postable flags and an
   error code. Live and shadow outputs sit in private jsonb columns for
@@ -126,5 +126,5 @@ so a breach there stops the shadow run (`killed`) and nothing else changes.
 - No registry source is wired (config table or env), and no component is past S0.
 - The shadow runner, the golden-set runner and the monitor job are designed
   here, not built.
-- `0289_shadow_runs` must be applied by hand before any component reaches S1
+- `0290_shadow_runs` must be applied by hand before any component reaches S1
   (it is listed in `EXCLUDED` in `check_staging_migration_coverage.mjs`).
