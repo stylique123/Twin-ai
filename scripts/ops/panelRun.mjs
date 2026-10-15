@@ -27,10 +27,11 @@ export const PANEL_SKIP_ANSWER = 'Nothing specific, keep it general.'
 export const PROFILE_SECONDS = { sprint: 30, standard: 60, deep: 90 }
 const FIXTURE = new URL('./fixtures/fictional-panel.json', import.meta.url)
 
-/** The panel scenarios (40 in the fixture), in fixture order, with the account and product resolved. */
-export function panelScenarios(fixture, accountsDoc) {
+/** The panel scenarios (40 in the fixture), in fixture order, with the account and product resolved.
+ * `limit` is applied BEFORE resolving accounts, so a limited run only needs its own creators seeded. */
+export function panelScenarios(fixture, accountsDoc, limit = Infinity) {
   const byKey = new Map((accountsDoc?.accounts ?? []).map((a) => [a.key, a]))
-  return fixture.requests.map((r, n) => {
+  return fixture.requests.slice(0, limit).map((r, n) => {
     const acct = byKey.get(r.creator)
     if (!acct) throw new Error(`panel: no seeded account for creator ${r.creator}`)
     const productId = r.product ? acct.products?.[r.product] : null
@@ -75,7 +76,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   const accounts = JSON.parse(row.content)
   const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'))
   const budget = Number(process.env.PANEL_BUDGET_USD || 2.5)
-  const list = panelScenarios(fixture, accounts).slice(0, limit)
+  const list = panelScenarios(fixture, accounts, limit)
   const { data: doneRows } = await admin.from('script_batch_results').select('n').eq('batch', batch).eq('status', 200)
   const done = new Set((doneRows ?? []).map((x) => x.n))
   console.log(`panel ${batch}: ${list.length} scenarios, ${done.size} already done, budget $${budget}`)
