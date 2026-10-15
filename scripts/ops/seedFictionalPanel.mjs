@@ -124,7 +124,8 @@ async function seedCreator(admin, c, { credits, domain, now }) {
   chk('knowledge clear', await admin.from('creator_knowledge').delete().eq('owner_id', owner))
   chk('products clear', await admin.from('product_entities').delete().eq('owner_id', owner))
   const ts = new Date(now).toISOString()
-  chk('knowledge', await admin.from('creator_knowledge').insert(c.stories.map((s) => ({
+  // A creator with no stories (quiet-loom) is seeded with no knowledge rows at all.
+  if (c.stories.length) chk('knowledge', await admin.from('creator_knowledge').insert(c.stories.map((s) => ({
     owner_id: owner, voice_id: voice.id, brand_id: brand.id, kind: s.kind, text: s.text,
     basis: 'stated', source: 'asked', confidence: 1, times_seen: 1, sensitive: false, fact_scope: 'account',
     creator_confirmed_at: ts, privacy_checked_at: ts, last_observed_at: ts,
