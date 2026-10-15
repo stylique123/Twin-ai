@@ -82,6 +82,8 @@ import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
+// PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
+import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
@@ -12039,8 +12041,23 @@ This is the video's position. Every field below must serve it. If the reference'
       templatePlan = templateChoices[0]!
       templateProfile = pickTemplateProfile(templatePlan.template, body.target_seconds, softwareTargetSec != null)
     }
+    // ── PLANNER SPINE (trial only) — BEGIN ──
+    // One spine per script, built only from ledger items or her request words; every beat serves it.
+    let spinePlan: SpinePlan | null = null
+    if (trialOn) {
+      try {
+        spinePlan = planSpine({
+          request: { goal: String(videoGoal ?? body.goal ?? ''), angle: pickedAngle ? String(pickedAngle.kind ?? '') : null, note: typeof reference_note === 'string' ? reference_note : '' },
+          ledger: templateLedger, template: templatePlan, profile: templateProfile,
+          targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
+          existingQuestions: templatePlan?.questions ?? [],
+        })
+      } catch { spinePlan = null }
+    }
+    const spinePlanBlock = spinePlan ? renderPlanBlock(spinePlan) : ''
+    // ── PLANNER SPINE — END ──
     const familyHookRulePlain = renderFamilyHookRule(family)
-    const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '')
+    const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '')
     const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
@@ -16393,6 +16410,22 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       const bpn = blueprint as Record<string, unknown>
       if (templateIdOf(bpn.template) === 'none') bpn.template = { id: 'none' }
     }
+    // ── PLANNER SPINE (trial only) — BEGIN ──
+    // Record the plan (ids and counts only) and check each beat cites a planned item or is a transition/CTA.
+    if (trialOn && spinePlan && blueprint && typeof blueprint === 'object') {
+      try {
+        const bpp = blueprint as Record<string, unknown>
+        bpp.plan = planRecord(spinePlan)
+        if (spinePlan.questions.length) {
+          const prior = Array.isArray(bpp.gate_questions) ? (bpp.gate_questions as Array<{ text?: unknown; writes_to?: unknown }>) : []
+          bpp.gate_questions = mergeQuestions(prior, spinePlan.questions)
+        }
+        const adherence = Array.isArray(bpp.script) ? checkPlanAdherence(bpp.script as Array<{ line?: unknown }>, spinePlan, templateLedger) : null
+        if (adherence) (bpp.plan as Record<string, unknown>).adherence = adherence
+        console.log(JSON.stringify({ event: 'plan_adherence', beat_count: spinePlan.beats.length, spine_items: spinePlan.spine?.item_ids.length ?? 0, dropped: spinePlan.dropped.length, questions: spinePlan.questions.length, ...(adherence ?? {}) }))
+      } catch { /* the planner record never fails a build */ }
+    }
+    // ── PLANNER SPINE — END ──
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
     if (trialOn && blueprint && typeof blueprint === 'object') {
       const gateEntity = ownedEntity as { id?: unknown } | null
