@@ -1,6 +1,6 @@
 {
-  "_note": "FICTIONAL CREATOR PANEL (owner, 13 Oct). Every creator, brand, product, number, story and testimonial here is MADE UP for testing. No real person or business. Seeded by scripts/ops/seedFictionalPanel.mjs; run by scriptBatch.mjs --group=panel.",
-  "version": 1,
+  "_note": "FICTIONAL CREATOR PANEL (owner, 13 Oct). Every creator, brand, product, number, story and testimonial here is MADE UP for testing. No real person or business. Seeded by scripts/ops/seedFictionalPanel.mjs; run by scriptBatch.mjs --group=panel. Version 2: forty requests; each names the template (T1-T13) and duration profile it is meant to exercise, and `lacks` lists material deliberately missing so the writer must ask, not invent.",
+  "version": 2,
   "creators": [
     {
       "key": "mayas-coffee",
@@ -27,7 +27,8 @@
             { "field": "price", "value": "$19 for a 12 oz bag" },
             { "field": "process_step", "value": "A darker roast pulled just after second crack, meant for espresso" }
           ] }
-      ]
+      ],
+      "creator_type": "physical_product"
     },
     {
       "key": "glow-lab",
@@ -57,7 +58,8 @@
             { "field": "size", "value": "90 g tin" },
             { "field": "includes", "value": "A cleansing balm that rinses off with warm water" }
           ] }
-      ]
+      ],
+      "creator_type": "physical_product"
     },
     {
       "key": "flowdesk",
@@ -77,7 +79,8 @@
             { "field": "includes", "value": "A shared inbox that turns each email into a card on a board" },
             { "field": "includes", "value": "A 14-day free trial with no card needed" }
           ] }
-      ]
+      ],
+      "creator_type": "software"
     },
     {
       "key": "coach-ana",
@@ -98,7 +101,8 @@
             { "field": "includes", "value": "A weekly plan built around the equipment you already have" },
             { "field": "includes", "value": "One video check-in call every two weeks" }
           ] }
-      ]
+      ],
+      "creator_type": "service_coach"
     },
     {
       "key": "clay-kiln",
@@ -124,7 +128,8 @@
             { "field": "price", "value": "$46 per bowl" },
             { "field": "process_step", "value": "Glazed in a green that pools darker at the rim" }
           ] }
-      ]
+      ],
+      "creator_type": "maker"
     },
     {
       "key": "signal-daily",
@@ -143,38 +148,86 @@
             { "field": "price", "value": "Free" },
             { "field": "includes", "value": "One email every weekday with one AI tool tested" }
           ] }
+      ],
+      "creator_type": "entertainer"
+    },
+    {
+      "key": "pip-sprocket",
+      "creator_type": "entertainer",
+      "display_name": "Pip and Sprocket (fictional)",
+      "handle": "pip_sprocket_fictional",
+      "brand": { "name": "Pip and Sprocket", "description": "A made-up puppet comedy duo that posts short sketches and plays a small live show (fictional)." },
+      "voice": { "niche": "comedy", "sub_niche": "puppet sketch comedy", "tone": "silly, quick, warm, a little chaotic", "audience": "adults who like gentle absurd comedy", "summary": "A puppeteer and her grumpy robot puppet who turn small annoyances into sketches." },
+      "stories": [
+        { "kind": "experience", "text": "The first time I performed Sprocket live, his arm fell off mid-joke and the crowd laughed harder at that than at anything I wrote." },
+        { "kind": "experience", "text": "I rewrote our opening sketch on the train because a stranger told me the ending made her sad." },
+        { "kind": "experience", "text": "I once forgot the whole second act and Sprocket improvised a complaint about the lighting until I remembered it." },
+        { "kind": "opinion", "text": "I think puppets let people laugh at things they would never laugh at if a person said them." }
+      ],
+      "products": [
+        { "key": "live-show", "name": "Pip and Sprocket Live", "type": "SERVICE", "relationship": "OWN_SERVICE", "offer": "Tickets for Pip and Sprocket Live at https://example.com/pip-live",
+          "facts": [
+            { "field": "includes", "value": "A live puppet comedy show with an audience sing-along at the end" },
+            { "field": "hesitation", "value": "People worry a puppet show is meant for kids; the live show is written for adults" }
+          ] }
+      ]
+    },
+    {
+      "key": "quiet-loom",
+      "creator_type": "maker",
+      "display_name": "Quiet Loom weaver (fictional)",
+      "handle": "quiet_loom_fictional",
+      "brand": { "name": "Quiet Loom", "description": "A home weaving studio making wool scarves (fictional). Deliberately has no creator stories on file." },
+      "voice": { "niche": "crafts", "sub_niche": "hand weaving", "tone": "quiet, careful", "audience": "people who like handmade winter things", "summary": "A weaver who has not shared any personal stories yet." },
+      "stories": [],
+      "products": [
+        { "key": "scarf", "name": "Harbor Fog Scarf", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Harbor Fog Scarf at https://example.com/quiet-loom",
+          "facts": [
+            { "field": "includes", "value": "Hand-woven from undyed wool" }
+          ] }
       ]
     }
   ],
   "requests": [
-    { "creator": "mayas-coffee", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to tell if your coffee beans are stale" },
-    { "creator": "mayas-coffee", "kind": "sell", "goal": "sell", "door": "product", "product": "harbor", "note": "Harbor Blend" },
-    { "creator": "mayas-coffee", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "how I started roasting in my garage" },
-    { "creator": "mayas-coffee", "kind": "thin", "goal": "entertain", "door": "idea", "note": "beans" },
-
-    { "creator": "glow-lab", "kind": "educate", "goal": "educate", "door": "idea", "note": "why fragrance-free matters for sensitive skin" },
-    { "creator": "glow-lab", "kind": "sell", "goal": "sell", "door": "product", "product": "calm-cream", "note": "Calm Cream launch" },
-    { "creator": "glow-lab", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "the batch I had to throw out" },
-    { "creator": "glow-lab", "kind": "thin", "goal": "followers", "door": "idea", "note": "skin" },
-
-    { "creator": "flowdesk", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to stop answering the same customer email twice" },
-    { "creator": "flowdesk", "kind": "leads", "goal": "leads", "door": "product", "product": "flowdesk", "note": "FlowDesk trial" },
-    { "creator": "flowdesk", "kind": "story", "goal": "authority", "door": "idea", "note": "our first paying customer found a bug" },
-    { "creator": "flowdesk", "kind": "thin", "goal": "conversations", "door": "idea", "note": "support" },
-
-    { "creator": "coach-ana", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to learn the hip hinge at home" },
-    { "creator": "coach-ana", "kind": "leads", "goal": "leads", "door": "product", "product": "starter", "note": "Home Strength Starter" },
-    { "creator": "coach-ana", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "my first deadlift went wrong" },
-    { "creator": "coach-ana", "kind": "thin", "goal": "followers", "door": "idea", "note": "workout" },
-
-    { "creator": "clay-kiln", "kind": "educate", "goal": "educate", "door": "idea", "note": "why the bottom of a handmade mug is not glazed" },
-    { "creator": "clay-kiln", "kind": "sell", "goal": "sell", "door": "product", "product": "mug", "note": "Tide Mug" },
-    { "creator": "clay-kiln", "kind": "story", "goal": "entertain", "door": "idea", "note": "my first kiln load" },
-    { "creator": "clay-kiln", "kind": "thin", "goal": "conversations", "door": "idea", "note": "clay" },
-
-    { "creator": "signal-daily", "kind": "educate", "goal": "educate", "door": "idea", "note": "why you should ask AI tools to show their sources" },
-    { "creator": "signal-daily", "kind": "leads", "goal": "leads", "door": "product", "product": "newsletter", "note": "Signal Daily Newsletter" },
-    { "creator": "signal-daily", "kind": "story", "goal": "entertain", "door": "idea", "note": "the AI that misquoted my own newsletter" },
-    { "creator": "signal-daily", "kind": "thin", "goal": "authority", "door": "idea", "note": "AI" }
+    { "creator": "mayas-coffee", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to tell if your coffee beans are stale", "template": "T4", "profile": "standard", "lacks": [], "id": "panel-01" },
+    { "creator": "mayas-coffee", "kind": "sell", "goal": "sell", "door": "product", "product": "harbor", "note": "Harbor Blend", "template": "T13", "profile": "sprint", "lacks": ["urgency"], "id": "panel-02" },
+    { "creator": "mayas-coffee", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "how I started roasting in my garage", "template": "T3", "profile": "deep", "lacks": [], "id": "panel-03" },
+    { "creator": "mayas-coffee", "kind": "thin", "goal": "entertain", "door": "idea", "note": "beans", "template": "T12", "profile": "sprint", "lacks": [], "id": "panel-04" },
+    { "creator": "glow-lab", "kind": "educate", "goal": "educate", "door": "idea", "note": "why fragrance-free matters for sensitive skin", "template": "T2", "profile": "standard", "lacks": [], "id": "panel-05" },
+    { "creator": "glow-lab", "kind": "sell", "goal": "sell", "door": "product", "product": "calm-cream", "note": "Calm Cream launch", "template": "T13", "profile": "sprint", "lacks": [], "id": "panel-06" },
+    { "creator": "glow-lab", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "the batch I had to throw out", "template": "T7", "profile": "standard", "lacks": [], "id": "panel-07" },
+    { "creator": "glow-lab", "kind": "thin", "goal": "followers", "door": "idea", "note": "skin", "template": "T1", "profile": "sprint", "lacks": [], "id": "panel-08" },
+    { "creator": "flowdesk", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to stop answering the same customer email twice", "template": "T4", "profile": "deep", "lacks": [], "id": "panel-09" },
+    { "creator": "flowdesk", "kind": "leads", "goal": "leads", "door": "product", "product": "flowdesk", "note": "FlowDesk trial", "template": "T8", "profile": "deep", "lacks": ["hesitation"], "id": "panel-10" },
+    { "creator": "flowdesk", "kind": "story", "goal": "authority", "door": "idea", "note": "our first paying customer found a bug", "template": "T6", "profile": "standard", "lacks": [], "id": "panel-11" },
+    { "creator": "flowdesk", "kind": "thin", "goal": "conversations", "door": "idea", "note": "support", "template": "T11", "profile": "sprint", "lacks": [], "id": "panel-12" },
+    { "creator": "coach-ana", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to learn the hip hinge at home", "template": "T1", "profile": "standard", "lacks": [], "id": "panel-13" },
+    { "creator": "coach-ana", "kind": "leads", "goal": "leads", "door": "product", "product": "starter", "note": "Home Strength Starter", "template": "T9", "profile": "standard", "lacks": ["hesitation"], "id": "panel-14" },
+    { "creator": "coach-ana", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "my first deadlift went wrong", "template": "T3", "profile": "standard", "lacks": [], "id": "panel-15" },
+    { "creator": "coach-ana", "kind": "thin", "goal": "followers", "door": "idea", "note": "workout", "template": "T5", "profile": "sprint", "lacks": ["dated_item"], "id": "panel-16" },
+    { "creator": "clay-kiln", "kind": "educate", "goal": "educate", "door": "idea", "note": "why the bottom of a handmade mug is not glazed", "template": "T11", "profile": "sprint", "lacks": [], "id": "panel-17" },
+    { "creator": "clay-kiln", "kind": "sell", "goal": "sell", "door": "product", "product": "mug", "note": "Tide Mug", "template": "T6", "profile": "standard", "lacks": [], "id": "panel-18" },
+    { "creator": "clay-kiln", "kind": "story", "goal": "entertain", "door": "idea", "note": "my first kiln load", "template": "T12", "profile": "standard", "lacks": [], "id": "panel-19" },
+    { "creator": "clay-kiln", "kind": "thin", "goal": "conversations", "door": "idea", "note": "clay", "template": "T7", "profile": "standard", "lacks": [], "id": "panel-20" },
+    { "creator": "signal-daily", "kind": "educate", "goal": "educate", "door": "idea", "note": "why you should ask AI tools to show their sources", "template": "T2", "profile": "standard", "lacks": [], "id": "panel-21" },
+    { "creator": "signal-daily", "kind": "leads", "goal": "leads", "door": "product", "product": "newsletter", "note": "Signal Daily Newsletter", "template": "T9", "profile": "standard", "lacks": ["hesitation"], "id": "panel-22" },
+    { "creator": "signal-daily", "kind": "story", "goal": "entertain", "door": "idea", "note": "the AI that misquoted my own newsletter", "template": "T12", "profile": "sprint", "lacks": [], "id": "panel-23" },
+    { "creator": "signal-daily", "kind": "thin", "goal": "authority", "door": "idea", "note": "AI", "template": "T10", "profile": "deep", "lacks": ["dated_item"], "id": "panel-24" },
+    { "creator": "pip-sprocket", "kind": "educate", "goal": "educate", "door": "idea", "note": "what every puppet show gets wrong backstage", "template": "T1", "profile": "deep", "lacks": [], "id": "panel-25" },
+    { "creator": "pip-sprocket", "kind": "educate", "goal": "educate", "door": "idea", "note": "the belief that puppets are only for kids", "template": "T2", "profile": "standard", "lacks": [], "id": "panel-26" },
+    { "creator": "pip-sprocket", "kind": "leads", "goal": "leads", "door": "product", "product": "live-show", "note": "our live show before and after we added the sing-along", "template": "T8", "profile": "deep", "lacks": [], "id": "panel-27" },
+    { "creator": "pip-sprocket", "kind": "sell", "goal": "sell", "door": "product", "product": "live-show", "note": "Pip and Sprocket Live tickets", "template": "T13", "profile": "sprint", "lacks": ["urgency"], "id": "panel-28" },
+    { "creator": "quiet-loom", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "how I started weaving", "template": "T3", "profile": "deep", "lacks": ["creator_truth"], "id": "panel-29" },
+    { "creator": "quiet-loom", "kind": "sell", "goal": "sell", "door": "product", "product": "scarf", "note": "how a Harbor Fog Scarf gets made", "template": "T6", "profile": "standard", "lacks": ["creator_truth"], "id": "panel-30" },
+    { "creator": "quiet-loom", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "what I thought weaving would be like", "template": "T7", "profile": "standard", "lacks": ["creator_truth"], "id": "panel-31" },
+    { "creator": "quiet-loom", "kind": "sell", "goal": "sell", "door": "product", "product": "scarf", "note": "Harbor Fog Scarf drop", "template": "T13", "profile": "sprint", "lacks": ["creator_truth", "urgency"], "id": "panel-32" },
+    { "creator": "mayas-coffee", "kind": "educate", "goal": "educate", "door": "idea", "note": "what changed in the roast schedule this week", "template": "T5", "profile": "sprint", "lacks": ["dated_item"], "id": "panel-33" },
+    { "creator": "glow-lab", "kind": "sell", "goal": "sell", "door": "product", "product": "melt-balm", "note": "what is new at Glow Lab this week", "template": "T5", "profile": "sprint", "lacks": ["dated_item"], "id": "panel-34" },
+    { "creator": "signal-daily", "kind": "educate", "goal": "educate", "door": "idea", "note": "my take on the newest AI calendar feature", "template": "T10", "profile": "deep", "lacks": ["dated_item"], "id": "panel-35" },
+    { "creator": "flowdesk", "kind": "educate", "goal": "educate", "door": "idea", "note": "what the latest shared inbox update means for small teams", "template": "T10", "profile": "deep", "lacks": ["dated_item"], "id": "panel-36" },
+    { "creator": "coach-ana", "kind": "leads", "goal": "leads", "door": "product", "product": "starter", "note": "a client before and after learning the hip hinge", "template": "T8", "profile": "deep", "lacks": ["hesitation"], "id": "panel-37" },
+    { "creator": "flowdesk", "kind": "leads", "goal": "leads", "door": "product", "product": "flowdesk", "note": "the kinds of shared inbox setups small teams pick", "template": "T9", "profile": "standard", "lacks": ["hesitation"], "id": "panel-38" },
+    { "creator": "clay-kiln", "kind": "sell", "goal": "sell", "door": "product", "product": "bowl", "note": "can a Moss Bowl go in the microwave", "template": "T11", "profile": "sprint", "lacks": [], "id": "panel-39" },
+    { "creator": "coach-ana", "kind": "leads", "goal": "leads", "door": "product", "product": "starter", "note": "why squats hurt your knees at home", "template": "T4", "profile": "sprint", "lacks": ["hesitation"], "id": "panel-40" }
   ]
 }

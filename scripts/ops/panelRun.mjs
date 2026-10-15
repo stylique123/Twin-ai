@@ -1,6 +1,6 @@
 // THE FICTIONAL CREATOR PANEL RUN (owner, 13 Oct): `scriptBatch.mjs --group=panel`.
 //
-// 24 requests (scripts/ops/fixtures/fictional-panel.json), each run AS its own
+// 40 requests (scripts/ops/fixtures/fictional-panel.json), each run AS its own
 // fictional creator account — not the heartbeat — so each script sees only that
 // creator's voice, stories and products. The accounts and their owner ids live
 // in one PRIVATE `test_run_files` row (kind 'other', written by
@@ -23,9 +23,11 @@ import { createClient } from '@supabase/supabase-js'
 import { templateOf } from './templateOf.mjs'
 
 export const PANEL_SKIP_ANSWER = 'Nothing specific, keep it general.'
+// A request's duration profile (templateData.ts DURATION_PROFILES) sets its target length.
+export const PROFILE_SECONDS = { sprint: 30, standard: 60, deep: 90 }
 const FIXTURE = new URL('./fixtures/fictional-panel.json', import.meta.url)
 
-/** The 24 panel scenarios, in fixture order, with the account and product resolved. */
+/** The panel scenarios (40 in the fixture), in fixture order, with the account and product resolved. */
 export function panelScenarios(fixture, accountsDoc) {
   const byKey = new Map((accountsDoc?.accounts ?? []).map((a) => [a.key, a]))
   return fixture.requests.map((r, n) => {
@@ -33,9 +35,9 @@ export function panelScenarios(fixture, accountsDoc) {
     if (!acct) throw new Error(`panel: no seeded account for creator ${r.creator}`)
     const productId = r.product ? acct.products?.[r.product] : null
     if (r.product && !productId) throw new Error(`panel: creator ${r.creator} has no seeded product ${r.product}`)
-    const body = { goal: r.goal, door: productId ? 'product' : 'idea', reference_note: r.note, target_seconds: [30, 45, 60][n % 3],
+    const body = { goal: r.goal, door: productId ? 'product' : 'idea', reference_note: r.note, target_seconds: PROFILE_SECONDS[r.profile] ?? [30, 45, 60][n % 3],
       ...(productId ? { selected_product_id: productId } : {}) }
-    return { n, group: 'panel', label: `${r.creator} ${r.kind}`, creator: r.creator, kind: r.kind, product: r.product ?? null, owner_id: acct.owner_id, email: acct.email, body }
+    return { n, group: 'panel', label: `${r.creator} ${r.kind}`, id: r.id ?? null, template: r.template ?? null, profile: r.profile ?? null, lacks: r.lacks ?? [], creator: r.creator, kind: r.kind, product: r.product ?? null, owner_id: acct.owner_id, email: acct.email, body }
   })
 }
 
