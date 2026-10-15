@@ -1,0 +1,140 @@
+# risky-path-gate: an automatic, path-filtered merge gate that is NEVER pending.
+#
+# Every PR gets a check named exactly `risky-path-gate`, and it always ends
+# success or failure:
+#   - no risky path changed             -> success ("Not risky")
+#   - risky path, staging-integration
+#     concluded success at the head SHA -> success
+#   - risky path, anything else          -> FAILURE with how-to-fix text
+# Risky paths and the decision table live in scripts/ci/risky_path_gate.mjs
+# (with --selftest). Uses ONLY the default GITHUB_TOKEN -- no stored secrets.
+#
+# Re-evaluation: when staging-integration completes (workflow_run), or by hand
+# (workflow_dispatch with a PR number), the reeval job posts a fresh check run
+# named `risky-path-gate` on the PR head SHA through the Checks API, so a red
+# gate turns green once staging passes. workflow_run always runs the DEFAULT
+# BRANCH's copy of this file, so that half only works after merge.
+#
+# staging-integration itself is NOT triggered from here: it consumes stored
+# secrets and a shared staging project, so starting it stays a manual step.
+name: risky-path-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows: ['staging-integration']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR number to re-evaluate'
+        required: true
+
+concurrency:
+  group: risky-path-gate-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || inputs.pr }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  # On pull_request this job's own check run IS the required `risky-path-gate`.
+  risky-path-gate:
+    if: github.event_name == 'pull_request'
+    name: risky-path-gate
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Judge the head (rules taken from the BASE branch)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > /tmp/files.txt
+          echo "changed files:"; sed 's/^/  /' /tmp/files.txt
+          curl -sS -f -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$REPO/actions/workflows/staging-integration.yml/runs?head_sha=$HEAD_SHA&per_page=100" \
+            > /tmp/runs.json || echo '{}' > /tmp/runs.json
+          # The PR must not ship its own exemption rules: judge with the base copy.
+          # BOOTSTRAP: if the base has no script yet, treat the diff as risky
+          # (fail-closed) and use the head copy only for the run verdict.
+          if git show "$BASE_SHA:scripts/ci/risky_path_gate.mjs" > /tmp/gate.mjs 2>/dev/null; then
+            FILES=/tmp/files.txt
+          else
+            echo "::warning::No gate script on the base branch yet; treating the diff as risky."
+            cp scripts/ci/risky_path_gate.mjs /tmp/gate.mjs
+            echo 'worker/__bootstrap__' > /tmp/all_risky.txt
+            FILES=/tmp/all_risky.txt
+          fi
+          set +e
+          node /tmp/gate.mjs --files "$FILES" --runs /tmp/runs.json --head "$HEAD_SHA" > /tmp/verdict.json
+          RC=$?
+          set -e
+          jq -r '"\(.conclusion): \(.title)\n\(.summary)"' /tmp/verdict.json
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::$(jq -r '.title' /tmp/verdict.json). Run staging-integration on this head, then re-run this check (or dispatch risky-path-gate with pr=$PR)."
+            exit 1
+          fi
+
+  # Re-evaluation path: posts a check run named `risky-path-gate` on the PR head.
+  reeval:
+    if: github.event_name != 'pull_request'
+    name: risky-path-gate-reeval
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
+    steps:
+      - uses: actions/checkout@v4   # default branch: the rules on main
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Re-judge and post the check run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          WR_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_INPUT: ${{ inputs.pr }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          api() { curl -sS -f -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$@"; }
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            case "$PR_INPUT" in (*[!0-9]*|'') echo "::error::pr must be a number"; exit 1;; esac
+            PRS="$PR_INPUT"
+          else
+            PRS=$(api "https://api.github.com/repos/$REPO/commits/$WR_SHA/pulls" | jq -r '.[] | select(.state=="open") | .number')
+          fi
+          if [ -z "$PRS" ]; then echo "No open PR for this head; nothing to post."; exit 0; fi
+          for PR in $PRS; do
+            HEAD_SHA=$(api "https://api.github.com/repos/$REPO/pulls/$PR" | jq -r '.head.sha')
+            : > /tmp/files.txt
+            PAGE=1
+            while :; do
+              RESP=$(api "https://api.github.com/repos/$REPO/pulls/$PR/files?per_page=100&page=$PAGE")
+              N=$(printf '%s' "$RESP" | jq 'length')
+              [ "$N" -eq 0 ] && break
+              printf '%s' "$RESP" | jq -r '.[].filename' >> /tmp/files.txt
+              [ "$N" -lt 100 ] && break
+              PAGE=$((PAGE + 1))
+              # Beyond what the API lists: fail closed by marking the diff risky.
+              if [ "$PAGE" -gt 30 ]; then echo 'worker/__too_many_files__' >> /tmp/files.txt; break; fi
+            done
+            api "https://api.github.com/repos/$REPO/actions/workflows/staging-integration.yml/runs?head_sha=$HEAD_SHA&per_page=100" > /tmp/runs.json || echo '{}' > /tmp/runs.json
+            node scripts/ci/risky_path_gate.mjs --files /tmp/files.txt --runs /tmp/runs.json --head "$HEAD_SHA" > /tmp/verdict.json || true
+            echo "PR #$PR @ $HEAD_SHA:"; jq -r '"  \(.conclusion): \(.title)"' /tmp/verdict.json
+            jq -n --arg sha "$HEAD_SHA" --arg url "$RUN_URL" --slurpfile v /tmp/verdict.json \
+              '{name:"risky-path-gate", head_sha:$sha, status:"completed", conclusion:$v[0].conclusion, details_url:$url, output:{title:$v[0].title, summary:$v[0].summary}}' \
+              | api -X POST "https://api.github.com/repos/$REPO/check-runs" -d @- > /dev/null
+          done
