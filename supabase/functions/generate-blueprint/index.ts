@@ -87,6 +87,7 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
+import { renderHookCandidateRule, runHookEngine, type HookCandidateInput } from '../_shared/hookEngine.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
@@ -5734,6 +5735,9 @@ const blueprintSchema = obj(
       ['opening_frame', 'why_it_interrupts'],
     ),
     hook_options: arr(str),
+    // A5 HOOK ENGINE (trial only). Optional and asked for only in the trial
+    // brief; stripped from real creators' blueprints after the writer returns.
+    hook_candidates: arr(obj({ shape: str, text: str }, ['shape', 'text'])),
     hook_moves: arr(str),
     hook_promise: str,
     script: arr(
@@ -12070,8 +12074,12 @@ This is the video's position. Every field below must serve it. If the reference'
     }
     const spinePlanBlock = spinePlan ? renderPlanBlock(spinePlan) : ''
     // ── PLANNER SPINE — END ──
+    // ── HOOK ENGINE (A5, trial only) — candidates ride the existing writer call ──
+    let hookCandidateBlock = ''
+    if (trialOn) { try { hookCandidateBlock = renderHookCandidateRule(templateLedger) } catch { hookCandidateBlock = '' } }
     const familyHookRulePlain = renderFamilyHookRule(family)
-    const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '')
+    // The template retry keeps today's plain brief, so it carries no candidate block.
+    const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
     const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
@@ -16450,6 +16458,29 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       } catch { /* the planner record never fails a build */ }
     }
     // ── PLANNER SPINE — END ──
+    // ── HOOK ENGINE (A5, trial only) — BEGIN ──
+    // Gate + score the writer's candidates deterministically and record the top 3.
+    // The record holds counts, shape ids, scores and reasons; the log holds no text.
+    if (blueprint && typeof blueprint === 'object') {
+      const bph = blueprint as Record<string, unknown>
+      if (trialOn) {
+        try {
+          const raw = Array.isArray(bph.hook_candidates) ? (bph.hook_candidates as HookCandidateInput[]) : []
+          const engine = runHookEngine(raw, templateLedger)
+          bph.hook_candidates = engine.record
+          bph.hook_pick = engine.pick
+          console.log(JSON.stringify({
+            event: 'hook_engine', eligible: engine.record.eligible_shapes.length, requested: engine.record.requested,
+            received: engine.record.received, passed: engine.record.passed, failed: engine.record.failed,
+            picked_shapes: engine.pick.shapes, picked_scores: engine.pick.scores,
+          }))
+        } catch { delete bph.hook_candidates /* the hook engine never fails a build */ }
+      } else {
+        // Real creators are unchanged: never keep a field they were not asked for.
+        delete bph.hook_candidates
+      }
+    }
+    // ── HOOK ENGINE — END ──
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
     if (trialOn && blueprint && typeof blueprint === 'object') {
       const gateEntity = ownedEntity as { id?: unknown } | null

@@ -234,6 +234,7 @@ const SOURCES = [
   ['packages/shared/src/script/planner/spinePlanner.ts', 'supabase/functions/_shared/spinePlanner.ts'],
   // Hook shape library as data (hook-and-spine plan, hook engine step 1). Not wired yet.
   ['packages/shared/src/script/hooks/hookShapes.ts', 'supabase/functions/_shared/hookShapes.ts'],
+  ['packages/shared/src/script/hooks/hookEngine.ts', 'supabase/functions/_shared/hookEngine.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
