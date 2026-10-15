@@ -73,6 +73,13 @@ assert.equal(sell.body.door, 'product')
 assert.equal(sell.owner_id, 'owner-0')
 assert.equal(list.find((s) => s.kind === 'thin').body.selected_product_id, undefined)
 assert.throws(() => panelScenarios(fixture, { accounts: [] }), /no seeded account/)
+// A limited run resolves only its own creators: accounts seeded before the fixture grew still work.
+{
+  const firstKeys = new Set(fixture.requests.slice(0, 24).map((r) => r.creator))
+  const older = { accounts: accounts.accounts.filter((a) => firstKeys.has(a.key)) }
+  assert.equal(panelScenarios(fixture, older, 24).length, 24)
+  assert.throws(() => panelScenarios(fixture, older), /no seeded account/)
+}
 
 // A stand-in that is asked, skips; it keeps its own product pick.
 const ans = skipAnswers([{ field: 'claims', question: 'q' }, { field: 'selected_product', options: [{ value: 'pid-x' }, { value: 'brand:b' }, { value: 'none' }] }], { selected_product_id: 'pid-x' })
