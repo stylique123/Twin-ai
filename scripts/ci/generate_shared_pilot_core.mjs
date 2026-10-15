@@ -104,6 +104,8 @@ const SOURCES = [
   ['packages/shared/src/script/actionPacing.ts', 'supabase/functions/_shared/actionPacing.ts'],
   ['packages/shared/src/customerReviews.ts', 'supabase/functions/_shared/customerReviews.ts'],
   ['packages/shared/src/script/voiceGate.ts', 'supabase/functions/_shared/voiceGate.ts'],
+  // The voice card: built from her own samples, scored deterministically (owner: the generic AI voice is a bug).
+  ['packages/shared/src/script/voice/voiceCard.ts', 'supabase/functions/_shared/voiceCard.ts'],
   // ⚠️ FIX 5 (Wave 2). The retention-map <-> final-script resync. Generated
   // rather than retyped for the same reason as shotListSync.ts just above —
   // a hand copy is exactly how the coaching panel's drift from the shipped
@@ -140,6 +142,8 @@ const SOURCES = [
   ['packages/shared/src/script/softwareClose.ts', 'supabase/functions/_shared/softwareClose.ts'],
   // One item format + slot map (plan 0.1/0.2): edge and worker read facts the same way.
   ['packages/shared/src/script/itemFormat.ts', 'supabase/functions/_shared/itemFormat.ts'],
+  ['packages/shared/src/script/angleFit.ts', 'supabase/functions/_shared/angleFit.ts'],
+  ['packages/shared/src/script/questionUsefulness.ts', 'supabase/functions/_shared/questionUsefulness.ts'],
   // Showability inferred from the product itself (trial, in memory only).
   ['packages/shared/src/script/inferShowability.ts', 'supabase/functions/_shared/inferShowability.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'supabase/functions/_shared/scriptFamily.ts'],

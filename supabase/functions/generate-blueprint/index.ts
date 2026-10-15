@@ -69,6 +69,8 @@ import { syncShotListSpokenText, collapseDoubledNumbers, carryBeatActions } from
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
+import { pickAngleCards, angleCardsRecord, ANGLE_SPECS } from '../_shared/angleFit.ts'
+import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse } from '../_shared/questionUsefulness.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -107,6 +109,7 @@ import {
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
+import { buildVoiceCard, voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn } from '../_shared/voiceCard.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -6746,6 +6749,12 @@ async function handle(req: Request): Promise<Response> {
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
+  // ANGLE-FIT and QUESTION-USEFULNESS (Master Prompt v3, 15 Oct): trial only,
+  // each with its own kill switch (request flag or env). Real creators never reach them.
+  const angleFitOn = trialOn && (body as { angle_fit?: unknown }).angle_fit !== false && Deno.env.get('ANGLE_FIT_KILL') !== '1'
+  const questionUsefulnessOn = trialOn && (body as { question_usefulness?: unknown }).question_usefulness !== false && Deno.env.get('QUESTION_USEFULNESS_KILL') !== '1'
+  let angleCardsRec: ReturnType<typeof angleCardsRecord> | null = null
+  let questionNecessityRec: ReturnType<typeof questionNecessity> | null = null
   // ONE CLICK-INTENT, ONE REMIX (0119). Bounded because it reaches a unique
   // index; anything longer is a caller bug, not a key.
   const idempotency_key = (body.idempotency_key ?? '').trim().slice(0, 200)
@@ -7970,6 +7979,17 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     if (p && typeof p.offer === 'string') return { ...p, offer: scrubForeignOffer(p.offer, foreignOffer) }
     return p
   })() as (typeof voice)['profile'] | null
+  // ── THE VOICE CARD (owner: the generic AI voice is a bug) ─────────────────
+  // Counted off her own `samples` only (after the privacy scrub above). Behind
+  // the trial AND a kill-switch: `VOICE_CARD_ENABLED` unset = fictional
+  // creators only, 'true' = real creators too, 'false' = nobody.
+  const voiceCard = (() => {
+    try {
+      const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
+      return voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED')) ? buildVoiceCard(voiceMaterial(vp)) : null
+    } catch { return null }
+  })()
+  const voiceCardBlock = voiceCard ? `\n${voiceCardBrief(voiceCard)}` : ''
   // ⚠️ AUDIT 2026-10-03 (part 2): the police story sat in her sample hooks AND
   // came back reworded ("the city inspector walks through our doors"). What
   // the scrub cut is also excluded text for the final guard, so its wording is
@@ -9957,6 +9977,28 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           urgencyFact: facts.some((f) => f?.field === 'urgency' && f?.trust !== 'unconfirmed'),
         })
         console.log(JSON.stringify({ event: 'feature_fired', feature: 'need_check', layers: nc.layers, decision: nc.decision, ask: nc.ask }))
+        if (angleFitOn || questionUsefulnessOn) {
+          const mat = [
+            ...speakable.map((k) => itemFromCreatorKnowledge(k as Record<string, unknown>)),
+            ...facts.map((f) => itemFromProductFact(f, oe?.id ? String(oe.id) : null)),
+          ].filter((x): x is NonNullable<typeof x> => !!x && x.status !== 'unconfirmed').map((x) => ({ id: x.id, slot: x.slot_hint, text: x.text }))
+          const cards = pickAngleCards({ goal: videoGoal ?? body.goal, hasProduct: !!ownedEntity, material: mat })
+          if (angleFitOn) {
+            angleCardsRec = angleCardsRecord(cards)
+            console.log(JSON.stringify({ event: 'feature_fired', feature: 'angle_fit', cards: angleCardsRec }))
+          }
+          if (questionUsefulnessOn) {
+            const chosen = pickedAngle && ANGLE_SPECS[String(pickedAngle.kind ?? '') as keyof typeof ANGLE_SPECS]
+              ? String(pickedAngle.kind) : cards[0]?.angle
+            const spec = chosen ? ANGLE_SPECS[chosen as keyof typeof ANGLE_SPECS] : null
+            const onFile = [...new Set(mat.map((m) => m.slot))]
+            const required = [...new Set([...(spec?.needs ?? []), ...nc.layers.product.missing])]
+            const gaps = required.filter((r) => !onFile.includes(r))
+            const qs = usefulQuestions({ candidates: candidatesFromNeedCheck(nc.ask, gaps), required, onFile })
+            questionNecessityRec = questionNecessity(qs)
+            console.log(JSON.stringify({ event: 'feature_fired', feature: 'question_necessity', ...questionNecessityRec }))
+          }
+        }
       } catch { /* measuring never fails a generation */ }
     }
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
@@ -11297,7 +11339,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
 - Audience: ${trialOn ? 'on file. Owner 2026-10-05: her profile labels were said out loud ("everyday people and beginners"). Never name or label her audience; speak to one viewer as "you".' : `${audienceResolved}${prov('audience')}`}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. ⚠️ Do NOT invent her audience\'s pain, a statistic about them, or a claim about what they feel (owner fabrication audit 2026-10-01). Speak only to the problem this video\'s own topic solves, in general words.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}${voiceCardBlock}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
 - ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}
 - ${knowledgeBoard.split('\n').join('\n  ')}${recentlySaidBlock ? `\n- ${recentlySaidBlock.split('\n').join('\n  ')}` : ''}${reference_url ? `
@@ -14817,6 +14859,31 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
       const lines = vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))
       voiceGateAudit = { rules, flagged: flagged.length, repaired, vocabulary: vocabularyUsed(vProfile.vocabulary, lines) }
+      // The voice card's cleanup: lines carrying a phrase she never uses are
+      // rewritten toward her card; a rewrite that still misses is not kept.
+      if (voiceCard) {
+        const misses = voiceCardMisses(voiceCard, lines)
+        let cardRepaired = 0
+        if (misses.length > 0) {
+          try {
+            const fixed = await callModel(apiKey, VOICE_REPAIR_SYSTEM, voiceCardRepairPrompt(voiceCard, vBeats, misses), REPAIR_SCHEMA)
+            const idx = new Set(misses.map((m) => m.index))
+            for (const r of parseRepairRewrites(fixed)) {
+              const i = typeof r?.index === 'number' ? r.index : -1
+              const line = typeof r?.line === 'string' ? r.line.trim() : ''
+              if (!idx.has(i) || line === '') continue
+              if (voiceCardMisses(voiceCard, [line]).length > 0) continue
+              if (voiceViolations([{ line }], rules.filter((x) => x !== 'no_greeting' || i === 0), vProfile.vocabulary).length > 0) continue
+              if (claimsPersonalUse(line) && !claimsPersonalUse(String(vBeats[i].line ?? ''))) continue
+              vBeats[i].line = line
+              cardRepaired++
+            }
+          } catch (err) {
+            console.warn('voice_card_repair_failed', err instanceof Error ? err.message : err)
+          }
+        }
+        voiceGateAudit.voice_card = { id: voiceCard.id, misses: misses.length, repaired: cardRepaired }
+      }
       if (flagged.length > 0) console.warn(JSON.stringify({ event: 'voice_gate', rules, flagged: flagged.length, repaired }))
     } catch { /* the voice gate never fails a generation */ }
 
@@ -15871,6 +15938,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           traced = traceLines(b2.script, sources)
         }
         bp.line_sources = traced
+        if (angleCardsRec) bp.angle_cards = angleCardsRec
+        if (questionUsefulnessOn) {
+          if (questionNecessityRec) bp.question_necessity = questionNecessityRec
+          const qu = questionUse({ ...(body.readiness_answers ?? {}) }, (bp.script as Array<{ line?: unknown }>).map((b) => String(b?.line ?? '')))
+          bp.question_use = qu
+          console.log(JSON.stringify({ event: 'feature_fired', feature: 'question_use', answered: qu.answered, used: qu.used }))
+        }
         // ⚖️ WHICH KNOWLEDGE SHAPED EACH LINE (material board, measurement only).
         if (boardMaterial.length) {
           const board = traceLines(bp.script as Array<{ line?: unknown }>, boardMaterial)
@@ -16613,6 +16687,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         blueprint: {
           ...(blueprint as Record<string, unknown>),
           ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
+          // The voice card this script was written and cleaned against, and how
+          // well the shipped lines match it (0-100, deterministic).
+          ...(voiceCard ? (() => {
+            try {
+              const lines = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
+                .map((b) => (typeof b?.line === 'string' ? b.line : '')).filter(Boolean)
+              return { voice_card_id: voiceCard.id, voice_match: scoreVoiceMatch(voiceCard, lines).score }
+            } catch { return { voice_card_id: voiceCard.id } }
+          })() : {}),
           ai_usage: currentUsage(),
           ai_usage_by_stage: currentStageUsage(),
           knowledge_route: knowledgeRoute ? { row: knowledgeRoute.row, gaps: knowledgeRoute.gaps, slots: knowledgeRoute.slots, available: routeAvail } : null,
