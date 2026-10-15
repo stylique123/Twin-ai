@@ -119,6 +119,8 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     model: deps.strongModel ? `${deps.model}+${deps.strongModel}` : deps.model,
     timeoutMs: budget,
     ...(measureOnly ? { measureOnly: true } : {}),
+    // Trial only (the edge sets rule_review under trialOn): rule-only event/habit I lines are review, not block.
+    ...(extra.rule_review === true ? { ruleReview: true } : {}),
     ...(deps.now ? { now: deps.now } : {}),
   }, {
     judge: judgeCall(deps.model),

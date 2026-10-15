@@ -1276,6 +1276,25 @@ export function combineJudges(fast: readonly ClassifiedSentence[], strong: reado
   return out
 }
 
+/** ⚖️ GATE RE-CALIBRATION (trial only; panels 2, 3 and 5, line labels).
+ *  Rule-only I reasons whose trigger is an overlap threshold, not a missing
+ *  fact: an event/feeling or a first-person habit with no first-party item
+ *  scoring HER_MIN. Neither judge sees these lines, so on the labelled panels
+ *  they were the largest share of false blocks. Under `ruleReview` they become
+ *  REVIEW (ships, shown to the creator to confirm, edit or remove; never
+ *  repaired) instead of BLOCK. They stay flagged, so recall on invented lines
+ *  is unchanged. Every other rule I, and the combine rule, are untouched. */
+export const RULE_REVIEW_REASONS: ReadonlySet<GateReason> = new Set<GateReason>(['event_unbacked', 'habit_unbacked'])
+
+/** Demote rule-only blocks with a RULE_REVIEW_REASONS reason to review. A
+ *  review line is never I (repair and the outcome read class I), so it takes
+ *  G: unsourced, flagged for sourcing, never blocking. The reason is kept. */
+export function softenRuleBlocks(cs: readonly ClassifiedSentence[]): ClassifiedSentence[] {
+  return cs.map((c) => (c.verdict === 'block' && c.class === 'I' && !c.judged && RULE_REVIEW_REASONS.has(c.reason)
+    ? { ...c, class: 'G' as const, verdict: 'review' as const }
+    : c))
+}
+
 /** Run classifySentences once per judge and combine. */
 export function classifyTwoJudges(input: Omit<ClassifyInput, 'judge'> & { fast: Map<number, JudgeVerdict> | null; strong: Map<number, JudgeVerdict> | null }): ClassifiedSentence[] {
   const f = classifySentences({ ...input, judge: input.fast })
@@ -1800,6 +1819,8 @@ export interface RunGateInput {
   model?: string | null
   /** Measure only: classify, record, never repair. */
   measureOnly?: boolean
+  /** Trial only: rule-only event/habit I lines are review, not block (softenRuleBlocks). */
+  ruleReview?: boolean
   now?: () => number
   timeoutMs?: number
   chunkSize?: number
@@ -1895,7 +1916,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       fastV = j.fast
       strongV = j.strong
     }
-    return { sentences, classified: classifyTwoJudges({ sentences, ledger: input.ledger, products, targetProductId: target, fast: fastV, strong: strongV }) }
+    const classified = classifyTwoJudges({ sentences, ledger: input.ledger, products, targetProductId: target, fast: fastV, strong: strongV })
+    return { sentences, classified: input.ruleReview ? softenRuleBlocks(classified) : classified }
   }
   const empty: ClassCounts = { S: 0, E: 0, I: 0, N: 0, G: 0 }
   const base = (): InventionGateRecord => ({
