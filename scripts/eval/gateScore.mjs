@@ -97,3 +97,59 @@ export function formatTwoJudgeReport(name, rows) {
   }
   return out.join('\n')
 }
+
+// ── SCRIPT-LINE SCORING (owner Reply 14) ───────────────────────────────────
+// Rows carry { batch, n, surface, verdict, label }. `surface` filters rows
+// ('script' = script lines only, the default; 'all' = every row). Labels other
+// than S/E/I/N (e.g. 'unlabeled') are dropped when the labels are read.
+export function surfaceRows(rows, surface = 'script') {
+  return surface === 'all' ? rows : rows.filter((r) => r.surface === surface)
+}
+
+/** The Reply 14 metrics over one set of rows.
+ *  recall strict I     = advisor I lines the gate flagged (review or block) / advisor I
+ *  block precision     = blocks on advisor I or E / blocks (labelled)
+ *  false blocks        = blocks on advisor S or N / blocks (labelled)
+ *  false flags         = review+block on advisor S or N / review+block (labelled)
+ *  scripts with review = scripts with >= 1 review line / scripts */
+export function scriptLineMetrics(rows) {
+  const rs = rows.filter((r) => r.verdict)
+  const lab = rs.filter((r) => r.label)
+  const advI = lab.filter((r) => r.label === 'I')
+  const flag = (r) => r.verdict === 'review' || r.verdict === 'block'
+  const flagged = lab.filter(flag)
+  const blocks = lab.filter((r) => r.verdict === 'block')
+  const key = (r) => `${r.batch}|${r.n}`
+  const scripts = [...new Set(rs.map(key))]
+  const withReview = new Set(rs.filter((r) => r.verdict === 'review').map(key))
+  return {
+    rows: rs.length,
+    labelled: lab.length,
+    recall_strict_I: [advI.filter(flag).length, advI.length],
+    block_recall_strict_I: [advI.filter((r) => r.verdict === 'block').length, advI.length],
+    block_precision_I_or_E: [blocks.filter((r) => r.label === 'I' || r.label === 'E').length, blocks.length],
+    false_blocks: [blocks.filter((r) => r.label === 'S' || r.label === 'N').length, blocks.length],
+    false_flags: [flagged.filter((r) => r.label === 'S' || r.label === 'N').length, flagged.length],
+    scripts_with_review: [withReview.size, scripts.length],
+  }
+}
+
+const p90 = (xs) => { if (!xs.length) return 0; const a = [...xs].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(0.9 * a.length))] }
+
+/** Combined and per-batch report. `scripts` = [{ batch, n, ms, tokens }], one per script. */
+export function formatScriptLineReport(name, rows, scripts = [], surface = 'script') {
+  const rs = surfaceRows(rows, surface)
+  const batches = [...new Set([...rs.map((r) => r.batch), ...scripts.map((s) => s.batch)])].sort()
+  const out = []
+  const parts = [['combined', rs, scripts], ...batches.map((b) => [`batch ${b}`, rs.filter((r) => r.batch === b), scripts.filter((s) => s.batch === b)])]
+  for (const [label, sub, sc] of parts) {
+    const m = scriptLineMetrics(sub)
+    const tok = sc.length ? Math.round(sc.reduce((a, s) => a + (s.tokens ?? 0), 0) / sc.length) : 0
+    out.push(`-- ${name} / surface=${surface} / ${label}: ${m.rows} rows with a verdict, ${m.labelled} labelled, ${sc.length} scripts`)
+    out.push(`   recall strict I (review|block) ${frac(m.recall_strict_I)}; block recall ${frac(m.block_recall_strict_I)}`)
+    out.push(`   block precision (I|E / blocks) ${frac(m.block_precision_I_or_E)}; false blocks (S|N / blocks) ${frac(m.false_blocks)}`)
+    out.push(`   false flags (S|N / review+block) ${frac(m.false_flags)}`)
+    out.push(`   p90 gate ms ${p90(sc.map((s) => s.ms ?? 0))}; tokens per script ${tok}; scripts with >=1 review line ${frac(m.scripts_with_review)}`)
+  }
+  return out.join('\n')
+}
