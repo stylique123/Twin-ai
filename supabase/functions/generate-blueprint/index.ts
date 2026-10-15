@@ -81,6 +81,7 @@ import { robotPass } from '../_shared/robotPhrases.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
+import { componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
@@ -6745,6 +6746,12 @@ async function handle(req: Request): Promise<Response> {
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
+  // RELEASE FLAGS (docs/release/shadow-and-flags.md). Each new component asks the
+  // registry; the default registry is S0 everywhere, so `newOn(c) === trialOn`
+  // for every component and every account. No registry is read here yet: real
+  // creators cannot get any component until a gate is passed and this is wired.
+  const releaseAccount = { userId: user.id, isTestAccount: isHeartbeat, trialOff: isHeartbeat && !trialOn }
+  const newOn = (c: ReleaseComponent): boolean => componentOn(c, releaseAccount)
   // ONE CLICK-INTENT, ONE REMIX (0119). Bounded because it reaches a unique
   // index; anything longer is a caller bug, not a key.
   const idempotency_key = (body.idempotency_key ?? '').trim().slice(0, 200)
@@ -9348,7 +9355,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         // request reach the writer. Selected before the board is built, so the
         // invention-gate ledger (built from gateBoard) is what the writer saw.
         let notes = notes0, trends = trends0, moments = moments0, research = research0, reddit = reddit0
-        if (trialOn) {
+        if (newOn('outside_select')) {
           const sel = pickOutsideForWriter({ notes: notes0, trends: trends0, moments: moments0, research: research0, reddit: reddit0 },
             [reference_note, intent.focus, intent.outcome, body.angle, offer !== 'unspecified' ? offer : '', subNiche, niche].map((v) => String(v ?? '')))
           ;({ notes, trends, moments, research, reddit } = sel.lists)
@@ -12042,7 +12049,7 @@ This is the video's position. Every field below must serve it. If the reference'
     let templatePlan: TemplatePlan | null = null
     let templateProfile: TemplateProfile = 'standard'
     let templateLedger: InventionLedgerItem[] = []
-    const templateChoices: TemplatePlan[] = trialOn ? (() => {
+    const templateChoices: TemplatePlan[] = newOn('templates') ? (() => {
       try {
         templateLedger = buildInventionLedger({
           knowledge: provenanceSupply, answers: { ...(answers ?? {}) }, note: reference_note,
@@ -12064,7 +12071,7 @@ This is the video's position. Every field below must serve it. If the reference'
     // ── PLANNER SPINE (trial only) — BEGIN ──
     // One spine per script, built only from ledger items or her request words; every beat serves it.
     let spinePlan: SpinePlan | null = null
-    if (trialOn) {
+    if (newOn('planner')) {
       try {
         spinePlan = planSpine({
           request: { goal: String(videoGoal ?? body.goal ?? ''), angle: pickedAngle ? String(pickedAngle.kind ?? '') : null, note: typeof reference_note === 'string' ? reference_note : '' },
@@ -12075,7 +12082,7 @@ This is the video's position. Every field below must serve it. If the reference'
       } catch { spinePlan = null }
     }
     let spineBeats: SpineBeats | null = null
-    if (trialOn && spinePlan) {
+    if (newOn('spine') && spinePlan) {
       try {
         spineBeats = planSpineBeats({
           plan: spinePlan, ledger: templateLedger,
@@ -12088,7 +12095,7 @@ This is the video's position. Every field below must serve it. If the reference'
     // ── PLANNER SPINE — END ──
     // ── HOOK ENGINE (A5, trial only) — candidates ride the existing writer call ──
     let hookCandidateBlock = ''
-    if (trialOn) { try { hookCandidateBlock = renderHookCandidateRule(templateLedger) } catch { hookCandidateBlock = '' } }
+    if (newOn('hook_engine')) { try { hookCandidateBlock = renderHookCandidateRule(templateLedger) } catch { hookCandidateBlock = '' } }
     const familyHookRulePlain = renderFamilyHookRule(family)
     // The template retry keeps today's plain brief, so it carries no candidate block.
     const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
@@ -16064,7 +16071,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // ⚖️ OWNER A4 (trial first): robot-phrase blacklist + spoken cadence on
         // every line. Deletion and splitting only; never below three spoken
         // beats. Ids and counts only on the blueprint.
-        {
+        if (newOn('robot_phrases')) {
           const robot = robotPass(bp.script as Array<{ line?: unknown }>, 3)
           bp.script = robot.beats as typeof bp.script
           ;(bp as Record<string, unknown>).robot_phrases = robot.record
@@ -16456,7 +16463,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     }
     // ── PLANNER SPINE (trial only) — BEGIN ──
     // Record the plan (ids and counts only) and check each beat cites a planned item or is a transition/CTA.
-    if (trialOn && spinePlan && blueprint && typeof blueprint === 'object') {
+    if (newOn('planner') && spinePlan && blueprint && typeof blueprint === 'object') {
       try {
         const bpp = blueprint as Record<string, unknown>
         bpp.plan = planRecord(spinePlan)
@@ -16487,7 +16494,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // The record holds counts, shape ids, scores and reasons; the log holds no text.
     if (blueprint && typeof blueprint === 'object') {
       const bph = blueprint as Record<string, unknown>
-      if (trialOn) {
+      if (newOn('hook_engine')) {
         try {
           const raw = Array.isArray(bph.hook_candidates) ? (bph.hook_candidates as HookCandidateInput[]) : []
           const engine = runHookEngine(raw, templateLedger)
@@ -16517,7 +16524,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     }
     // ── HOOK ENGINE — END ──
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
-    if (trialOn && blueprint && typeof blueprint === 'object') {
+    if (newOn('invention_gate') && blueprint && typeof blueprint === 'object') {
       const gateEntity = ownedEntity as { id?: unknown } | null
       const gateTarget = gateEntity?.id ? String(gateEntity.id) : null
       let gateAnswers: Record<string, unknown> = {}
@@ -16762,7 +16769,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // Same as the success path: check_status 'unchecked', record 'queued',
         // the worker's `invention_recheck` enqueued after the save.
         let rescueRecheck: { ledger: Record<string, unknown> } | null = null
-        if (trialOn && rescuedBp && typeof rescuedBp === 'object') {
+        if (newOn('invention_gate') && rescuedBp && typeof rescuedBp === 'object') {
           try {
             const rbp = rescuedBp as Record<string, unknown>
             const gateEntity = ownedEntity as { id?: unknown } | null
