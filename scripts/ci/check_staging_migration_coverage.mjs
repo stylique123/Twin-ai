@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0290_shadow_runs':
+    'New service-role-only table (RLS on, no policies) for release S1 shadow comparisons; NOT yet applied (file only, owner applies by hand before any component reaches S1). Nothing reads or writes it yet. No staging-only surface.',
   '0289_audience_pain_map':
     'Service-role-only table (RLS on, no policies) for hand-written audience pain rows; NOT yet applied (file only, owner applies by hand). Written only by the ops importer; the editor never reads it. No staging-only surface.',
   '0288_metrics_exclude_panel_test_accounts':

@@ -159,6 +159,8 @@ const SOURCES = [
   // Robot-phrase blacklist + spoken cadence (owner A4), and the outside-item relevance cut.
   ['packages/shared/src/script/robotPhrases.ts', 'supabase/functions/_shared/robotPhrases.ts'],
   ['packages/shared/src/script/outsideSelect.ts', 'supabase/functions/_shared/outsideSelect.ts'],
+  // Release flags (owner rule): per-component stage, rollout and kill switch. Default S0 = today's trialOn.
+  ['packages/shared/src/script/releaseFlags.ts', 'supabase/functions/_shared/releaseFlags.ts'],
   ['packages/shared/src/script/noStoryEvents.ts', 'supabase/functions/_shared/noStoryEvents.ts'],
   // Niche labels after the privacy scrub (owner 13 Oct): lookup vs prompt values.
   ['packages/shared/src/script/nicheLabels.ts', 'supabase/functions/_shared/nicheLabels.ts'],
