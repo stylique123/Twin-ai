@@ -17,11 +17,39 @@
 export type OutsideVerification = 'sourced' | 'measured' | 'corpus' | 'audience'
 export interface OutsideItem { id: string; kind: string; text: string; when?: string | null; verification: OutsideVerification }
 export interface OutsideScored extends OutsideItem { score: number; overlap: number }
-export interface OutsideSelectOptions { minScore?: number; cap?: number; now?: number }
-export interface OutsideSelected { offered: number; kept: number; min_score: number }
+export interface OutsideSelectOptions {
+  minScore?: number; cap?: number; now?: number
+  /**
+   * REAL MINIMUM (owner, panel-current-5; trial, kill switch OUTSIDE_MIN_RELEVANCE).
+   * When given, only words from THESE texts (her note, focus, outcome, angle,
+   * offer) count as overlap; niche / sub-niche words in `topicTexts` no longer
+   * count, because every item in her niche shares them. An item must share
+   * `min(OUTSIDE_MIN_REQUEST_OVERLAP, request words)` request words, and ZERO
+   * items is a valid result.
+   */
+  requestTexts?: readonly string[]
+}
+export interface OutsideSelected {
+  offered: number; kept: number; min_score: number
+  /** v2 only: rows cut by the request-overlap floor, the floor itself and the request's word count. */
+  mode?: 'v1' | 'request_floor'
+  cut_below_min?: number
+  min_request_overlap?: number
+  request_words?: number
+}
 
 export const OUTSIDE_MIN_SCORE = 1.25
 export const OUTSIDE_CAP = 8
+/**
+ * Request words an outside item must share (fewer only when the request itself
+ * has fewer content words). CALIBRATED on panel-current-5 (140 outside rows
+ * across 23 scripts, request = note + offer): 67 rows share 0 request words, 63
+ * share exactly 1 and 10 share 2+. Both rows the advisor's worst invented lines
+ * came from (a home-gym product on a hip-hinge video; a conference on a
+ * customer-email video) share exactly ONE generic request word ("home",
+ * "customer"), so a floor of 2 cuts both and keeps the 10 that share two.
+ */
+export const OUTSIDE_MIN_REQUEST_OVERLAP = 2
 
 const STOP = new Set(('a an and are as at be but by can do does for from has have her his how i if in into is it its just me my no not of on or our she so than that the their them then there these they this to too up us was we what when where which who why will with you your about after all also any been being more most much only other over some such very want get got make made like one two new'
   ).split(' '))
@@ -62,6 +90,15 @@ export function selectOutside(items: readonly OutsideItem[], topicTexts: readonl
   const minScore = opts.minScore ?? OUTSIDE_MIN_SCORE
   const cap = opts.cap ?? OUTSIDE_CAP
   const now = opts.now ?? Date.now()
+  if (opts.requestTexts) {
+    const request = new Set<string>()
+    for (const t of opts.requestTexts) for (const w of contentWords(t)) request.add(w)
+    const need = Math.min(OUTSIDE_MIN_REQUEST_OVERLAP, request.size)
+    const scored = items.map((i) => scoreOutside(i, request, now))
+    const pass = need === 0 ? [] : scored.filter((s) => s.overlap >= need)
+    const kept = pass.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, cap)
+    return { kept, record: { offered: items.length, kept: kept.length, min_score: need, mode: 'request_floor', cut_below_min: items.length - pass.length, min_request_overlap: need, request_words: request.size } }
+  }
   const topic = new Set<string>()
   for (const t of topicTexts) for (const w of contentWords(t)) topic.add(w)
   const kept = items.map((i) => scoreOutside(i, topic, now))

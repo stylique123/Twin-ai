@@ -158,6 +158,8 @@ const SOURCES = [
   ['packages/shared/src/script/robotPhrases.ts', 'supabase/functions/_shared/robotPhrases.ts'],
   ['packages/shared/src/script/outsideSelect.ts', 'supabase/functions/_shared/outsideSelect.ts'],
   ['packages/shared/src/script/noStoryEvents.ts', 'supabase/functions/_shared/noStoryEvents.ts'],
+  // Story first: her named story told verbatim, once (owner, panel-current-5; trial).
+  ['packages/shared/src/script/storyFirst.ts', 'supabase/functions/_shared/storyFirst.ts'],
   // Niche labels after the privacy scrub (owner 13 Oct): lookup vs prompt values.
   ['packages/shared/src/script/nicheLabels.ts', 'supabase/functions/_shared/nicheLabels.ts'],
   ['packages/shared/src/script/novelDetail.ts', 'supabase/functions/_shared/novelDetail.ts'],
@@ -231,6 +233,8 @@ const SOURCES = [
   ['packages/shared/src/script/templates/templateData.ts', 'supabase/functions/_shared/templateData.ts'],
   ['packages/shared/src/script/templates/scriptTemplates.ts', 'supabase/functions/_shared/scriptTemplates.ts'],
   ['packages/shared/src/script/templates/templateSkeleton.ts', 'supabase/functions/_shared/templateSkeleton.ts'],
+  // Duration profile from how much material is on file (owner, panel-current-5; trial).
+  ['packages/shared/src/script/templates/durationFromMaterial.ts', 'supabase/functions/_shared/durationFromMaterial.ts'],
   // The planner: one spine per script (Phase 4.1, trial only). One folder down like the templates;
   // its `../x.js` and `../templates/x.js` imports flatten to the sibling copies.
   ['packages/shared/src/script/planner/spinePlanner.ts', 'supabase/functions/_shared/spinePlanner.ts'],
