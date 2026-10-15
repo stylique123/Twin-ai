@@ -16,7 +16,7 @@
 import { HOOK_MOVES } from './scriptFamily.ts'
 import { DURATION_PROFILES, type DurationProfile } from './templateData.ts'
 import type { TemplatePlan } from './scriptTemplates.ts'
-import type { LedgerItem } from './inventionGate.ts'
+import { isScaffoldText, type LedgerItem } from './inventionGate.ts'
 
 export const TEMPLATE_SKELETON_MODE = 'skeleton' as const
 
@@ -30,8 +30,10 @@ export function skeletonLines(plan: TemplatePlan, ledger: readonly LedgerItem[])
     if (!s.item_id || s.fill === 'asked' || s.fill === 'empty' || s.fill === 'skipped') continue
     const it = byId.get(s.item_id)
     const text = String(it?.text ?? '').replace(/[[\]{}<>]/g, '').replace(/"/g, "'").replace(/\s+/g, ' ').trim().slice(0, 200)
-    if (!text) continue
-    out.push({ role: plan.template.beats[s.beat]?.role ?? 'build', text, item_id: s.item_id })
+    if (!text || isScaffoldText(text)) continue
+    // Another person's words stay theirs: never polished into her voice.
+    const quoted = /testimonial|review|quote/i.test(it?.field ?? '')
+    out.push({ role: plan.template.beats[s.beat]?.role ?? 'build', text: quoted ? `a customer's own words, quoted as theirs and only as written: '${text}'` : text, item_id: s.item_id })
   }
   return out
 }

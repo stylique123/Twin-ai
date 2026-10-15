@@ -13,10 +13,12 @@ const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/inde
 
 describe('the writer retry drops the template block', () => {
   it('builds the retry brief from the plain hook rule, not the one carrying the template block', () => {
-    expect(EDGE).toMatch(/const familyHookRulePlain = renderFamilyHookRule\(family\)\n/)
+    expect(EDGE).toMatch(/const familyHookRulePlain = renderFamilyHookRule\(family, trialOn \? \{ examples: false \} : \{\}\)\n/)
+    // The retry keeps the hook-candidate block (panel-current-5) but never the template block.
+    expect(EDGE).toMatch(/const familyHookRuleRetry = familyHookRulePlain \+ \(hookCandidateBlock \? `\\n\\n\$\{hookCandidateBlock\}` : ''\)\n/)
     expect(EDGE).toMatch(/const familyHookRule = familyHookRulePlain \+ \(templatePlan \? `\\n\\n\$\{renderTemplate(?:Block|Skeleton)\(/)
     expect(EDGE).toMatch(/const userPrompt = buildWriterBrief\(familyHookRule\)/)
-    expect(EDGE).toMatch(/retryPrompt: buildWriterBrief\(familyHookRulePlain\)/)
+    expect(EDGE).toMatch(/retryPrompt: buildWriterBrief\(familyHookRuleRetry\)/)
     // the brief interpolates only its argument, never the template-carrying rule
     const brief = EDGE.slice(EDGE.indexOf('const buildWriterBrief'), EDGE.indexOf('const userPrompt = buildWriterBrief'))
     expect(brief).toContain('${hookRule}')

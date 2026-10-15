@@ -108,21 +108,39 @@ export function planSpineBeats(input: SpineBeatsInput): SpineBeats {
   return { beats, questions, objection_used: !!objection, objection_item_id: objection?.id ?? null, creator_truth_missing: !truth }
 }
 
-/** The writer's brief for the spine beats: roles, ids and purposes only. */
+/** How a beat with NO material is briefed: as a question to the viewer, or dropped.
+ *  ⚠️ panel-current-5: a bare "reality_check: what the viewer currently believes"
+ *  with no item invited "Most people …" claims the gate then blocked, and a bare
+ *  "cta: the one real place" with no offer left most scripts with no ask. */
+const NO_MATERIAL_BRIEF: Partial<Record<SpineBeatRole, string>> = {
+  reality_check: 'nothing on file about what viewers believe: ask it as a question to the viewer ("Do you …?", "Have you ever …?"), never state what people or most people do',
+  cta: 'no offer on file: close by asking the viewer to save, share or answer one question in the comments',
+}
+
+/** The writer's brief for the spine beats: roles, ids and purposes only. A beat
+ *  with no material becomes a question (reality check, CTA) or is left out
+ *  (creator's truth); it is never a stand-in. */
 export function renderSpineBeatsBlock(sb: SpineBeats): string {
-  const lines = sb.beats.map((b, i) => `${i + 1}. ${b.role}${b.item_ids.length ? ` [${b.item_ids.join(', ')}]` : ''}: ${b.purpose}`)
+  const shown = sb.beats.filter((b) => b.item_ids.length || b.role === 'hook' || NO_MATERIAL_BRIEF[b.role])
+  const lines = shown.map((b, i) => `${i + 1}. ${b.role}${b.item_ids.length ? ` [${b.item_ids.join(', ')}]: ${b.purpose}` : b.role === 'hook' ? `: ${b.purpose}` : `: ${NO_MATERIAL_BRIEF[b.role]}`}`)
   return [
     'SPINE BEATS (in this order, every script carries them):',
     ...lines,
-    sb.creator_truth_missing ? "creator_truth has no material: do not write her stance or experience; keep the beat to what is listed or leave it out." : '',
+    sb.creator_truth_missing ? "No creator's truth on file: do not write her stance, habit or experience (no \"I always\", \"I use\", \"my team\"); she is asked for it separately." : '',
     sb.objection_used ? '' : 'No objection move: do not name or answer a hesitation.',
   ].filter(Boolean).join('\n')
 }
 
 // ── PER-BEAT ADHERENCE ─────────────────────────────────────────────────────
 
-const CTA_RE = /\b(?:link in (?:my )?bio|follow|save this|comment|share|subscribe|dm me|shop|buy|order|use (?:my )?code|sign up|book|tap|click|grab (?:one|yours|it)|get yours)\b/i
-const REALITY_RE = /\b(?:you(?:'re| are)? (?:probably|still|always|usually)|most (?:people|of you)|you (?:think|believe|assume|were told)|everyone (?:says|thinks))\b/i
+// ⚠️ panel-current-5: the CTA detector missed "the link is in my bio", "tell me in
+// the comments", "tell me below", "send this to someone" and "drop your … below"
+// (\bcomment\b does not match "comments"), so real asks read as missing.
+const CTA_RE = /\b(?:link (?:is )?in (?:my |the )?bio|links? below|follow|save this|comments?|share|send this|subscribe|dm me|shop|buy|order|use (?:my )?code|sign up|book|tap|click|grab (?:one|yours|it|your)|get (?:yours|your)|tell me|let me know|drop (?:a|your|it)\b[^.!?]{0,30}\bbelow|head to)\b/i
+// The reality check is the viewer's current belief or habit, framed AT the viewer.
+// "Most people …" / "everyone says …" no longer count: they are the universal
+// claims the invention gate blocks, so the detector rewarded the invented form.
+const REALITY_RE = /\b(?:you(?:'re| are)? (?:probably|still|always|usually)|you (?:think|believe|assume|were told|might think|may think)|you'?ve (?:probably )?(?:heard|been told)|(?:have|do|did|are) you (?:ever )?(?:noticed|wondered|tried|think|believe|feel|assume))\b|^(?:if you(?:'ve| have)? ever|ever (?:wonder|notice|turn|try))\b/i
 
 export interface SpineBeatAdherence { role: SpineBeatRole; met: boolean; reason: 'cited' | 'pattern' | 'no_material' | 'missing' }
 

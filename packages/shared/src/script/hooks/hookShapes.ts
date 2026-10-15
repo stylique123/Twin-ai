@@ -194,10 +194,19 @@ function meets(shape: HookShape, have: Set<EvidenceClass>): EvidenceClass[][] {
   return shape.requires.filter((g) => !g.some((c) => have.has(c))).map((g) => [...g])
 }
 
+/** A shape whose line IS a number (a count, a price) needs a number on file to
+ *  say. panel-current-5: an undated, number-free outside item made
+ *  number_promise eligible, every candidate invented its count, and the script
+ *  shipped with 0 passing hooks. */
+const NUMBER_SHAPES: Record<string, (it: LedgerItem) => boolean> = {
+  number_promise: (it) => it.numbers.length > 0 && it.origin !== 'audience_question' && (it.first_party || it.origin === 'outside_research' || it.origin === 'outside_moment'),
+  price_or_proof: (it) => it.numbers.length > 0 && (it.origin === 'product_fact' || it.origin === 'offer'),
+}
+
 /** Shapes whose required evidence the ledger holds. No evidence, no shape. */
 export function eligibleShapes(ledger: readonly LedgerItem[]): HookShape[] {
   const have = availableEvidence(ledger)
-  return HOOK_SHAPES.filter((s) => meets(s, have).length === 0)
+  return HOOK_SHAPES.filter((s) => meets(s, have).length === 0 && (!NUMBER_SHAPES[s.id] || ledger.some(NUMBER_SHAPES[s.id]!)))
 }
 
 // ── the cheap rule check ──────────────────────────────────────────────────────

@@ -65,7 +65,7 @@
             { "field": "size", "value": "50 ml glass jar" },
             { "field": "includes", "value": "Fragrance-free, with no essential oils" },
             { "field": "process_step", "value": "Made in small batches of sixty jars" },
-            { "field": "testimonial", "value": "MADE-UP TESTIMONIAL: 'The first moisturizer that has not made my cheeks sting.' (fictional customer)", "trust": "confirmed" },
+            { "field": "testimonial", "value": "The first moisturizer that has not made my cheeks sting.", "trust": "confirmed", "test_data": "fictional_customer" },
             { "field": "urgency", "value": "Launch price of $24 until the end of the month", "expires_at": "LIVE_PLUS_20_DAYS", "source": "creator: launch price note (fictional)" }
           ] },
         { "key": "melt-balm", "name": "Melt Balm", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Melt Balm, link in bio",
