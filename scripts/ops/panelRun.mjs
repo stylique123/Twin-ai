@@ -20,6 +20,7 @@
 // UNCONFIRMED prices) is read; past PANEL_BUDGET_USD (default 2.5) the run stops.
 import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
+import { templateOf } from './templateOf.mjs'
 
 export const PANEL_SKIP_ANSWER = 'Nothing specific, keep it general.'
 const FIXTURE = new URL('./fixtures/fictional-panel.json', import.meta.url)
@@ -92,7 +93,9 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     const client = clients.get(sc.creator)
     const token = async () => (await client.auth.getSession()).data?.session?.access_token
     await new Promise((r) => setTimeout(r, paceMs))
-    let body = { ...sc.body, lengthen: false, idempotency_key: `${batch}-${sc.n}` }
+    // The model lengthen pass is OFF on panel measure runs unless BATCH_LENGTHEN=on
+    // (cost). The deterministic word-budget repair runs either way.
+    let body = { ...sc.body, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), idempotency_key: `${batch}-${sc.n}` }
     const post = async () => {
       const t0 = Date.now()
       const res = await fetch(`${url}/functions/v1/generate-blueprint`, {
@@ -119,10 +122,11 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     await admin.from('script_batch_results').insert({
       batch, n: sc.n,
-      scenario: { group: 'panel', label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? 'skip' : null, body },
+      scenario: { group: 'panel', label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? 'skip' : null, template: templateOf(bp), word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [
+        ...(bp ? [{ k: `template_${templateOf(bp)}`, d: bp?.word_budget ? `${bp.word_budget.action} ${bp.word_budget.words_before}->${bp.word_budget.words_after}/${bp.word_budget.budget}` : '' }] : []),
         ...(asked.length ? [{ k: 'asked_first', d: asked.join(' | ').slice(0, 300) }] : []),
         ...(bp?.invention_gate ? [{ k: `gate_${bp.invention_gate.outcome}`, d: JSON.stringify(bp.invention_gate.before ?? {}) }] : bp ? [{ k: 'gate_missing', d: '' }] : []),
       ],

@@ -410,6 +410,8 @@ jobs:
       # "fine", and an unrecognised conclusion must never read as success.
       - name: Staging-matrix gate predicates (offline selftest — silence is never a pass)
         run: node scripts/ci/staging_matrix_gate.mjs --selftest
+      - name: Risky-path gate classification + decision table (offline selftest — never pending)
+        run: node scripts/ci/risky_path_gate.mjs --selftest
       - name: VPS sign-off assertion logic (offline selftest — bad states must fail)
         run: bash worker/scripts/vps_signoff_assert.sh --selftest
       - name: VPS-diag authority (no caller SHA override; pinned strict host key)

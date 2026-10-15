@@ -13,7 +13,7 @@
 //
 //   node scripts/eval/gate-calibrate.mjs --batch=<label>[,<label>] \
 //        (--labels=<labels.csv> | --labels-file-id=<test_run_files id>) \
-//        [--modes=two-judge,read,extract] [--measure-only] [--script-concurrency=2] \
+//        [--modes=two-judge,read,extract] [--measure-only] [--script-concurrency=1] \
 //        [--dry-run] [--dump=<rows.json>]
 //
 // --modes: `two-judge` (default, what production runs: `read` AND `extract`
@@ -57,23 +57,43 @@
 // --dump-row stores per-sentence {batch,n,i,surface,cls,fc,sc,verdict,reason,label}
 // (NO text) in a private test_run_files row and prints only its id.
 //
+// REPLY 14 (script lines are the judged unit): --surface=script (the default)
+// scores ONLY script-line rows; --surface=all scores every row. --batches is an
+// alias of --batch (e.g. --batches=panel-current-2,panel-current-3).
+// --labels-file-id takes SEVERAL ids (--labels-file-id=14,<new>); their labels
+// are merged. Two CSV shapes are read:
+//   `batch,n,sentence_i,label` (panel 2), and
+//   `script_id,creator,kind,sentence_i,surface,text,script_n,advisor_label`
+//   (panel 3; quoted fields allowed; rows with surface != script carry
+//   'unlabeled' and are ignored). A panel-3 row is matched by generation id
+//   (script_id) when the run knows it, else by script_n within the batch named
+//   by --labels-batch (default: the requested batches that no batch-keyed label
+//   covers). The text column is never read into the report.
+// Report per batch and combined: recall on strict I (review|block), block
+// precision vs advisor I|E, false blocks (block on S|N)/blocks, false flags
+// (review|block on S|N)/(review+block), p90 gate ms, tokens per script, share
+// of scripts with >=1 review line.
+//
 // --dry-run prints how many judge calls and roughly how many tokens a run
 // would use, and calls nothing. --dump reads the joined rows from a JSON file
 // ([{batch,n,blueprint,knowledge,products,note,answers,target_product_id}])
 // instead of the database.
 import { readFileSync } from 'node:fs'
 import {
-  buildLedger, extractSentences, pendingForJudge, errorClass, chunk, chunkLedger, buildJudgePrompt, runInventionGate,
+  buildLedger, extractSentences, resolveTargetProduct, pendingForJudge, errorClass, chunk, chunkLedger, buildJudgePrompt, runInventionGate,
   JUDGE_SYSTEM, JUDGE_SCHEMA, REWRITE_SYSTEM, REWRITE_SCHEMA, JUDGE_THINKING_BUDGET, INVENTION_JUDGE_CASCADE,
   INVENTION_RECHECK_TIMEOUT_MS,
 } from '../../packages/shared/src/script/inventionGate.ts'
-import { formatReport, formatTwoJudgeReport, HALVES } from './gateScore.mjs'
+import { formatReport, formatTwoJudgeReport, formatScriptLineReport, HALVES } from './gateScore.mjs'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/)
   return m ? [m[1], m[2] ?? true] : [a, true]
 }))
-const BATCHES = typeof args.batch === 'string' ? args.batch.split(',').map((s) => s.trim()).filter(Boolean) : []
+const BATCH_ARG = typeof args.batch === 'string' ? args.batch : typeof args.batches === 'string' ? args.batches : ''
+const BATCHES = BATCH_ARG.split(',').map((s) => s.trim()).filter(Boolean)
+/** Which rows are scored: 'script' (default, Reply 14) or 'all'. */
+const SURFACE = typeof args.surface === 'string' ? args.surface : 'script'
 // --models takes task classes of the routing catalog (read, extract) or model ids.
 const ROUTING = JSON.parse(readFileSync(new URL('../../worker/model_routing_v1.json', import.meta.url), 'utf8')).taskClasses ?? {}
 /** USD per million tokens for a task class, from the routing catalog's price fields; null when absent. */
@@ -93,7 +113,7 @@ const MODES = MODE_ARG.split(',').map((s) => s.trim()).filter(Boolean).map((m) =
 // The rewrite runs on the fast model, as in the worker.
 const REWRITE_MODEL = modelOf(INVENTION_JUDGE_CASCADE.fast)
 const MEASURE_ONLY = !!args['measure-only']
-const SCRIPT_CONCURRENCY = Math.max(1, Number(args['script-concurrency'] ?? 2) || 2)
+const SCRIPT_CONCURRENCY = Math.max(1, Number(args['script-concurrency'] ?? 1) || 1)
 const DRY = !!args['dry-run']
 if (!BATCHES.length && !args.dump) {
   console.error('usage: node scripts/eval/gate-calibrate.mjs --batch=<label>[,…] --labels=<file.csv> [--models=a,b] [--dry-run] [--dump=rows.json]')
@@ -105,21 +125,67 @@ export function readLabels(path) {
   return parseLabels(path ? readFileSync(path, 'utf8') : '')
 }
 
-export function parseLabels(text) {
-  const out = new Map()
-  if (!text) return out
-  const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-  const head = lines.shift()?.toLowerCase().split(',').map((s) => s.trim()) ?? []
-  const col = (name) => head.indexOf(name)
-  const [cb, cn, ci, cl] = ['batch', 'n', 'sentence_i', 'label'].map(col)
-  if ([cb, cn, ci, cl].some((x) => x < 0)) throw new Error('labels CSV needs columns batch,n,sentence_i,label')
-  for (const l of lines) {
-    const c = l.split(',').map((s) => s.trim())
-    const label = (c[cl] ?? '').toUpperCase()
-    if (!['S', 'E', 'I', 'N'].includes(label)) continue
-    out.set(`${c[cb]}|${c[cn]}|${c[ci]}`, label)
+/** One CSV line → fields (double quotes, "" escapes, commas inside quotes). */
+export function csvFields(line) {
+  const out = []
+  let cur = '', q = false
+  for (let k = 0; k < line.length; k++) {
+    const ch = line[k]
+    if (q) {
+      if (ch === '"' && line[k + 1] === '"') { cur += '"'; k++ } else if (ch === '"') q = false; else cur += ch
+    } else if (ch === '"') q = true
+    else if (ch === ',') { out.push(cur.trim()); cur = '' } else cur += ch
   }
+  out.push(cur.trim())
   return out
+}
+
+/** CSV records (a quoted field may span lines). */
+function csvRecords(text) {
+  const recs = []
+  let buf = ''
+  for (const line of String(text).split(/\r?\n/)) {
+    buf = buf ? `${buf}\n${line}` : line
+    if (((buf.match(/"/g) ?? []).length % 2) === 0) { if (buf.trim()) recs.push(buf); buf = '' }
+  }
+  if (buf.trim()) recs.push(buf)
+  return recs
+}
+
+/** Labels → Map. Keys: `batch|n|i` (panel 2 shape), `gen:<script_id>|i` and
+ *  `*|n|i` (panel 3 shape, batch-less). Only S, E, I, N are kept. */
+export function parseLabels(text, out = new Map()) {
+  if (!text) return out
+  const recs = csvRecords(text)
+  const head = csvFields(recs.shift() ?? '').map((s) => s.toLowerCase())
+  const col = (name) => head.indexOf(name)
+  const keep = (v) => { const l = String(v ?? '').trim().toUpperCase(); return ['S', 'E', 'I', 'N'].includes(l) ? l : null }
+  if (col('batch') >= 0 && col('n') >= 0 && col('sentence_i') >= 0 && col('label') >= 0) {
+    const [cb, cn, ci, cl] = ['batch', 'n', 'sentence_i', 'label'].map(col)
+    for (const r of recs) { const c = csvFields(r); const l = keep(c[cl]); if (l) out.set(`${c[cb]}|${c[cn]}|${c[ci]}`, l) }
+    return out
+  }
+  if (col('sentence_i') >= 0 && col('advisor_label') >= 0 && (col('script_id') >= 0 || col('script_n') >= 0)) {
+    const [cs, cn, ci, cl, csu] = ['script_id', 'script_n', 'sentence_i', 'advisor_label', 'surface'].map(col)
+    for (const r of recs) {
+      const c = csvFields(r)
+      if (csu >= 0 && c[csu] && c[csu] !== 'script') continue
+      const l = keep(c[cl])
+      if (!l) continue
+      if (cs >= 0 && c[cs]) out.set(`gen:${c[cs]}|${c[ci]}`, l)
+      if (cn >= 0 && c[cn] !== '') out.set(`*|${c[cn]}|${c[ci]}`, l)
+    }
+    return out
+  }
+  throw new Error('labels CSV needs columns batch,n,sentence_i,label or script_id,script_n,sentence_i,surface,advisor_label')
+}
+
+/** The label of one gate sentence: batch key, then generation id, then the batch-less key for `batchless` batches. */
+export function labelFor(labels, { batch, n, i, generation_id }, batchless) {
+  return labels.get(`${batch}|${n}|${i}`)
+    ?? (generation_id ? labels.get(`gen:${generation_id}|${i}`) : undefined)
+    ?? (batchless.has(batch) ? labels.get(`*|${n}|${i}`) : undefined)
+    ?? null
 }
 
 // ── statistics ────────────────────────────────────────────────────────────
@@ -150,13 +216,13 @@ async function getDb() {
 }
 
 /** Labels CSV text from a private test_run_files row, by id. Never printed. */
-async function loadLabelsFile(id) {
+async function loadLabelsFile(id, into) {
   const n = Number(id)
   if (!Number.isInteger(n) || n <= 0) throw new Error('--labels-file-id must be a positive integer')
   const { data, error } = await (await getDb()).from('test_run_files').select('kind, content').eq('id', n).maybeSingle()
   if (error) throw error
   if (!data || !['ratings', 'other'].includes(data.kind)) throw new Error(`labels: test_run_files row ${n} not found or not kind=ratings/other`)
-  return parseLabels(data.content)
+  return parseLabels(data.content, into)
 }
 
 async function loadLive() {
@@ -193,7 +259,7 @@ async function loadLive() {
     const target = led ? (typeof led.target_product_id === 'string' && led.target_product_id ? led.target_product_id : null) : fromBody
     const products = productsByOwner.get(g.user_id)
     rows.push({
-      batch: r.batch, n: r.n, blueprint: g.blueprint, knowledge, products, note: g.reference_note ?? '',
+      batch: r.batch, n: r.n, generation_id: g.id, blueprint: g.blueprint, knowledge, products, note: g.reference_note ?? '',
       answers: led?.answers ?? body.readiness_answers ?? {}, target_product_id: target,
       offer: typeof led?.offer === 'string' ? led.offer : (products.find((p) => p.id === target)?.offer ?? ''),
       outside: Array.isArray(led?.outside) ? led.outside : [],
@@ -269,10 +335,22 @@ async function callModel(model, system, schema, prompt, thinkingBudget, used) {
 // ── main ──────────────────────────────────────────────────────────────────
 async function main() {
   const rows = args.dump ? JSON.parse(readFileSync(args.dump, 'utf8')).filter((r) => !BATCHES.length || BATCHES.includes(r.batch)) : await loadLive()
-  const labels = typeof args['labels-file-id'] === 'string'
-    ? await loadLabelsFile(args['labels-file-id'])
-    : readLabels(typeof args.labels === 'string' ? args.labels : '')
-  const prepared = rows.map((r) => {
+  const labels = new Map()
+  if (typeof args['labels-file-id'] === 'string') for (const id of args['labels-file-id'].split(',').map((x) => x.trim()).filter(Boolean)) await loadLabelsFile(id, labels)
+  if (typeof args.labels === 'string') for (const f of args.labels.split(',').map((x) => x.trim()).filter(Boolean)) parseLabels(readFileSync(f, 'utf8'), labels)
+  // Batch-less (panel 3) labels apply to --labels-batch, else to the batches no batch-keyed label covers.
+  const keyed = new Set([...labels.keys()].filter((k) => !k.startsWith('gen:') && !k.startsWith('*|')).map((k) => k.split('|')[0]))
+  const batchless = new Set(typeof args['labels-batch'] === 'string' ? args['labels-batch'].split(',').map((x) => x.trim())
+    : [...new Set(rows.map((r) => r.batch))].filter((b) => !keyed.has(b)))
+  const labelOf = (x, i) => labelFor(labels, { batch: x.r.batch, n: x.r.n, i, generation_id: x.r.generation_id }, batchless)
+  let staleTargets = 0, resolvedTargets = 0
+  const prepared = rows.map((r0) => {
+    // A saved target id that names none of the owner's current products (re-seeded
+    // panel accounts) is resolved the way the worker resolves it.
+    const lines = extractSentences(r0.blueprint ?? {}).filter((s) => s.surface === 'script').map((s) => s.text)
+    const tid = resolveTargetProduct(r0.target_product_id ?? null, r0.products ?? [], { offer: r0.offer, lines })
+    if (r0.target_product_id && tid !== r0.target_product_id) { staleTargets++; if (tid) resolvedTargets++ }
+    const r = { ...r0, target_product_id: tid }
     const products = (r.products ?? []).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id && p.name)
     const ledger = buildLedger({ knowledge: r.knowledge, answers: r.answers, note: r.note, products: r.products, targetProductId: r.target_product_id ?? null, offer: r.offer, outside: r.outside ?? [], now: Date.now() })
     const sentences = extractSentences(r.blueprint ?? {})
@@ -292,8 +370,9 @@ async function main() {
     }
   }
   console.log(`worker payload found for ${prepared.filter((x) => x.r.worker_payload).length}/${prepared.length} scripts; measure-only per payload: ${prepared.filter((x) => x.r.measure_only).length}`)
+  console.log(`stale target ids: ${staleTargets} (resolved ${resolvedTargets}, left unresolved ${staleTargets - resolvedTargets})`)
   console.log(`scripts: ${prepared.length}  sentences: ${prepared.reduce((a, x) => a + x.sentences.length, 0)}  prefiltered by rule: ${prefiltered}  to judge: ${judged}  labelled: ${labels.size}`)
-  console.log(`modes: ${MODES.map((m) => m.name).join(', ')}${MEASURE_ONLY ? '  (measure only, no repair)' : ''}`)
+  console.log(`modes: ${MODES.map((m) => m.name).join(', ')}${MEASURE_ONLY ? '  (measure only, no repair)' : ''}  scored surface: ${SURFACE}  batch-less labels apply to: ${[...batchless].join(',') || 'none'}`)
   console.log(`judge calls per judge: ${fastCalls} (two-judge mode makes this many on EACH judge)  est. tokens per judge ~${inTok} in / ~${judged * 30} out (plus rewrites)`)
   notice(`scripts ${prepared.length}, labelled sentences ${labels.size}${args['labels-file-id'] ? ` (labels row ${args['labels-file-id']})` : ''}; prefiltered ${prefiltered}, judged ${judged}; fast-pass calls ${fastCalls} per mode; est. tokens ~${inTok * MODES.length} in${DRY ? ' (dry run)' : ''}`)
   if (DRY) { console.log('dry run: no model called.'); return }
@@ -303,19 +382,31 @@ async function main() {
     // Tokens per role: the fast judge, the strong judge, and the rewrite (fast model).
     const errors = {}
     const usedBy = { fast: { in: 0, out: 0, errors }, strong: { in: 0, out: 0, errors }, rewrite: { in: 0, out: 0, errors } }
+    // Per judge role: wall ms of every call (incl. retries) and failed calls by error class.
+    const roleMs = { fast: [], strong: [] }
+    const roleErr = { fast: {}, strong: {} }
     const used = { get in() { return usedBy.fast.in + usedBy.strong.in + usedBy.rewrite.in }, get out() { return usedBy.fast.out + usedBy.strong.out + usedBy.rewrite.out }, errors }
     const byClass = { S: 0, E: 0, I: 0, N: 0, G: 0 }
     const perfs = []
-    const records = await mapLimit(prepared, SCRIPT_CONCURRENCY, async (x) => {
-      const judgeWith = (model, u) => (p) => callModel(model, JUDGE_SYSTEM, JUDGE_SCHEMA, p, JUDGE_THINKING_BUDGET, u)
+    const scriptTokens = new Array(prepared.length).fill(0)
+    const records = await mapLimit(prepared, SCRIPT_CONCURRENCY, async (x, k) => {
+      // Per-script counters, added to the per-role totals when the gate ends.
+      const mine = { fast: { in: 0, out: 0, errors }, strong: { in: 0, out: 0, errors }, rewrite: { in: 0, out: 0, errors } }
+      const judgeWith = (model, u, role) => async (p) => {
+        const t0 = Date.now()
+        try { return await callModel(model, JUDGE_SYSTEM, JUDGE_SCHEMA, p, JUDGE_THINKING_BUDGET, u) } catch (e) {
+          const k = errorClass(e); roleErr[role][k] = (roleErr[role][k] ?? 0) + 1; throw e
+        } finally { roleMs[role].push(Date.now() - t0) }
+      }
       const r = await runInventionGate({
         blueprint: x.r.blueprint, ledger: x.ledger, products: x.products, targetProductId: x.r.target_product_id ?? null,
         model: mode.name, measureOnly: MEASURE_ONLY || x.r.measure_only === true, timeoutMs: INVENTION_RECHECK_TIMEOUT_MS,
       }, {
-        judge: judgeWith(mode.fast, usedBy.fast),
-        ...(mode.strong ? { judgeStrong: judgeWith(mode.strong, usedBy.strong) } : {}),
-        rewrite: (p) => callModel(REWRITE_MODEL, REWRITE_SYSTEM, REWRITE_SCHEMA, p, undefined, usedBy.rewrite),
+        judge: judgeWith(mode.fast, mine.fast, 'fast'),
+        ...(mode.strong ? { judgeStrong: judgeWith(mode.strong, mine.strong, 'strong') } : {}),
+        rewrite: (p) => callModel(REWRITE_MODEL, REWRITE_SYSTEM, REWRITE_SCHEMA, p, undefined, mine.rewrite),
       })
+      for (const role of ['fast', 'strong', 'rewrite']) { usedBy[role].in += mine[role].in; usedBy[role].out += mine[role].out; scriptTokens[k] += mine[role].in + mine[role].out }
       return r.record
     })
     const sentRows = []
@@ -326,7 +417,7 @@ async function main() {
       const byI = new Map(rec.sentences.map((c) => [c.i, c]))
       for (const s of x.sentences) {
         const c = byI.get(s.i)
-        sentRows.push({ batch: x.r.batch, n: x.r.n, i: s.i, surface: s.surface, cls: c ? c.class : 'X', fc: c?.fast_class ?? null, sc: c?.strong_class ?? null, verdict: c?.verdict ?? null, reason: c ? c.reason : (rec.error ?? (rec.timed_out ? 'timeout' : 'none')), label: labels.get(`${x.r.batch}|${x.r.n}|${s.i}`) ?? null })
+        sentRows.push({ batch: x.r.batch, n: x.r.n, i: s.i, surface: s.surface, cls: c ? c.class : 'X', fc: c?.fast_class ?? null, sc: c?.strong_class ?? null, verdict: c?.verdict ?? null, reason: c ? c.reason : (rec.error ?? (rec.timed_out ? 'timeout' : 'none')), label: labelOf(x, s.i) })
       }
       const p = rec.perf ?? {}
       scriptLines.push(`  n=${x.r.n} ms=${p.ms_total ?? rec.ms} calls=${p.judge_calls ?? 0} strong_calls=${p.strong_calls ?? 0} fast_failed=${p.fast_failed ?? 0} strong_failed=${p.strong_failed ?? 0} review=${rec.verdicts?.review ?? 0} block=${rec.verdicts?.block ?? 0} rounds=${rec.rounds} outcome=${rec.outcome}${rec.error ? ` error=${rec.error}` : ''}${rec.timed_out ? ' timed_out' : ''}`)
@@ -336,8 +427,8 @@ async function main() {
       if (rec.perf) perfs.push(rec.perf)
       for (const c of rec.sentences) {
         byClass[c.class]++
-        const gold = labels.get(`${x.r.batch}|${x.r.n}|${c.i}`)
-        if (!gold) continue
+        const gold = labelOf(x, c.i)
+        if (!gold || (SURFACE !== 'all' && c.surface !== SURFACE)) continue
         const predI = c.class === 'I', goldI = gold === 'I'
         if (predI && goldI) tp++; else if (predI) fp++; else if (goldI) fn++; else tn++
         if (gold === 'S') { labelledS++; if (predI) falseIonS++ }
@@ -358,7 +449,13 @@ async function main() {
     console.log(`WHOLE GATE per script: p50 ${pctl(gateMs, 0.5)} ms  p90 ${pctl(gateMs, 0.9)} ms  max ${Math.max(0, ...gateMs)} ms  (target p90 <= 30000)`)
     console.log(`judge calls: ${calls} (${prepared.length ? (calls / prepared.length).toFixed(1) : 0}/script)  per-call p50 ${pctl(chunkMs, 0.5)} ms p90 ${pctl(chunkMs, 0.9)} ms  strong-judge calls ${perfs.reduce((a, p) => a + (p.strong_calls ?? 0), 0)} (escalations ${esc}: always 0 with two judges) over ${jud} judged sentences`)
     console.log(`failed scripts by error class: ${JSON.stringify(failReasons)}; failed model calls by error class (after retries): ${JSON.stringify(used.errors)}`)
+    for (const role of ['fast', 'strong']) {
+      if (!roleMs[role].length) continue
+      console.log(`judge ${role} (${role === 'fast' ? mode.fast : mode.strong}): ${roleMs[role].length} calls, ms p50 ${pctl(roleMs[role], 0.5)} p90 ${pctl(roleMs[role], 0.9)} max ${Math.max(...roleMs[role])}; failed by class ${JSON.stringify(roleErr[role])}`)
+    }
     console.log(`per-script gate (ms, judge calls, strong calls, verdict counts, rounds):\n${scriptLines.join('\n')}`)
+    // Reply 14: script lines (or --surface) scored, combined and per batch.
+    console.log(formatScriptLineReport(mode.name, sentRows, prepared.map((x, k) => ({ batch: x.r.batch, n: x.r.n, ms: records[k].perf?.ms_total ?? records[k].ms, tokens: scriptTokens[k] })), SURFACE))
     console.log(formatReport(mode.name, sentRows))
     // Two-judge metrics, by half and combined; whole-gate p90 per half; tokens and cost.
     console.log(formatTwoJudgeReport(mode.name, sentRows))
