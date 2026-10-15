@@ -232,6 +232,8 @@ const SOURCES = [
   // The planner: one spine per script (Phase 4.1, trial only). One folder down like the templates;
   // its `../x.js` and `../templates/x.js` imports flatten to the sibling copies.
   ['packages/shared/src/script/planner/spinePlanner.ts', 'supabase/functions/_shared/spinePlanner.ts'],
+  // The spine contract (A6, trial only): spine beats, the objection move, title inherits the hook.
+  ['packages/shared/src/script/planner/spineContract.ts', 'supabase/functions/_shared/spineContract.ts'],
   // Hook shape library as data (hook-and-spine plan, hook engine step 1). Not wired yet.
   ['packages/shared/src/script/hooks/hookShapes.ts', 'supabase/functions/_shared/hookShapes.ts'],
   ['packages/shared/src/script/hooks/hookEngine.ts', 'supabase/functions/_shared/hookEngine.ts'],

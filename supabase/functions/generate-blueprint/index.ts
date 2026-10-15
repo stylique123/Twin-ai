@@ -86,6 +86,8 @@ import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBloc
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
+// SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
+import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, type SpineBeats } from '../_shared/spineContract.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { renderHookCandidateRule, runHookEngine, type HookCandidateInput } from '../_shared/hookEngine.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
@@ -12072,7 +12074,17 @@ This is the video's position. Every field below must serve it. If the reference'
         })
       } catch { spinePlan = null }
     }
-    const spinePlanBlock = spinePlan ? renderPlanBlock(spinePlan) : ''
+    let spineBeats: SpineBeats | null = null
+    if (trialOn && spinePlan) {
+      try {
+        spineBeats = planSpineBeats({
+          plan: spinePlan, ledger: templateLedger,
+          targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
+          existingQuestions: templatePlan?.questions ?? [],
+        })
+      } catch { spineBeats = null }
+    }
+    const spinePlanBlock = spinePlan ? [renderPlanBlock(spinePlan), spineBeats && spinePlan.spine ? renderSpineBeatsBlock(spineBeats) : ''].filter(Boolean).join('\n\n') : ''
     // ── PLANNER SPINE — END ──
     // ── HOOK ENGINE (A5, trial only) — candidates ride the existing writer call ──
     let hookCandidateBlock = ''
@@ -16454,6 +16466,18 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
         const adherence = Array.isArray(bpp.script) ? checkPlanAdherence(bpp.script as Array<{ line?: unknown }>, spinePlan, templateLedger) : null
         if (adherence) (bpp.plan as Record<string, unknown>).adherence = adherence
+        if (spineBeats) {
+          const plan = bpp.plan as Record<string, unknown>
+          const beatAdh = Array.isArray(bpp.script) ? checkSpineBeatAdherence(bpp.script as Array<{ line?: unknown }>, spineBeats, templateLedger, spinePlan.spine?.claim ?? '') : undefined
+          plan.spine_beats = spineBeatsRecord(spineBeats, beatAdh)
+          plan.objection_used = spineBeats.objection_used
+          plan.objection_item_id = spineBeats.objection_item_id
+          if (spineBeats.questions.length) {
+            const prior = Array.isArray(bpp.gate_questions) ? (bpp.gate_questions as Array<{ text?: unknown; writes_to?: unknown }>) : []
+            bpp.gate_questions = mergeQuestions(prior, spineBeats.questions)
+          }
+          console.log(JSON.stringify({ event: 'spine_beats', roles: spineBeats.beats.map((x) => x.role), objection_used: spineBeats.objection_used, creator_truth_missing: spineBeats.creator_truth_missing, met: (beatAdh ?? []).map((x) => `${x.role}:${x.met ? 1 : 0}`) }))
+        }
         console.log(JSON.stringify({ event: 'plan_adherence', beat_count: spinePlan.beats.length, spine_items: spinePlan.spine?.item_ids.length ?? 0, dropped: spinePlan.dropped.length, questions: spinePlan.questions.length, ...(adherence ?? {}) }))
       } catch { /* the planner record never fails a build */ }
     }
@@ -16469,6 +16493,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const engine = runHookEngine(raw, templateLedger)
           bph.hook_candidates = engine.record
           bph.hook_pick = engine.pick
+          // Title inherits the hook (A6): deterministic promise check; rewrite from the hook or flag. No text logged.
+          try {
+            const pk = bph.packaging as { titles?: unknown[] } | undefined
+            const pickedHook = engine.pick.hooks[0]
+            if (pk && Array.isArray(pk.titles) && pk.titles.length) {
+              const tp = enforceTitlePromise(pk.titles, pickedHook)
+              pk.titles = tp.titles
+              bph.title_promise_match = tp.record
+              console.log(JSON.stringify({ event: 'title_promise', match: tp.record.match, action: tp.record.action, reasons: tp.record.reasons }))
+            }
+          } catch { /* the title check never fails a build */ }
           console.log(JSON.stringify({
             event: 'hook_engine', eligible: engine.record.eligible_shapes.length, requested: engine.record.requested,
             received: engine.record.received, passed: engine.record.passed, failed: engine.record.failed,
