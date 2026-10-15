@@ -42,9 +42,18 @@ export function itemFits(it: LedgerItem, slot: TemplateSlot, targetProductId: st
     case 'first_party': return it.first_party && !OUTSIDE.has(it.origin)
     case 'sourced': return it.first_party || it.origin === 'outside_research'
     case 'live_urgency': return it.origin === 'urgency' && it.live
+    case 'dated': return (it.origin === 'urgency' ? it.live : it.origin === 'outside_moment' || it.origin === 'outside_research') && hasDate(it.text)
     case 'any': return true
   }
 }
+
+const MONTHS = /\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)\b/i
+/** Does the item's own text carry a date (a month name, a d/m numeric date, or a year)? */
+export const hasDate = (text: string): boolean =>
+  MONTHS.test(text) || /\b\d{1,4}[/.-]\d{1,2}([/.-]\d{1,4})?\b/.test(text) || /\b(19|20)\d{2}\b/.test(text)
+
+/** Evidence that is never asked: a missing one makes the template ineligible (no invented date or scarcity). */
+const NEVER_ASKED = new Set(['live_urgency', 'dated'])
 
 export type SlotFill = string | 'asked' | 'skipped' | 'empty'
 
@@ -63,7 +72,7 @@ export interface TemplatePlan {
   questions: GateQuestion[]
   eligible: boolean
   /** Why not eligible (no text from her material). */
-  reason: 'ok' | 'declined_required' | 'too_many_questions'
+  reason: 'ok' | 'declined_required' | 'too_many_questions' | 'no_verified_material'
 }
 
 /** How many copies of a beat the plan uses (the minimum of its count range). */
@@ -90,6 +99,7 @@ export function planTemplate(t: ScriptTemplate, ledger: readonly LedgerItem[], o
         const hit = own ?? pool.find((it) => it.field === s.name) ?? pool[0]
         if (hit) { used.add(hit.id); slots.push({ key, slot: s.name, beat: bi, required: s.required, item_id: hit.id, fill: hit.id }); continue }
         if (!s.required) { slots.push({ key, slot: s.name, beat: bi, required: false, item_id: null, fill: 'empty' }); continue }
+        if (NEVER_ASKED.has(s.evidence)) { slots.push({ key, slot: s.name, beat: bi, required: true, item_id: null, fill: 'skipped' }); if (reason === 'ok') reason = 'no_verified_material'; continue }
         if (declined.has(key)) { slots.push({ key, slot: s.name, beat: bi, required: true, item_id: null, fill: 'skipped' }); reason = 'declined_required'; continue }
         const q = QUESTION_TEMPLATES[s.ask]
         questions.push({ scope: 'script', kind: q.kind as AskKind, text: q.text, writes_to: key })
