@@ -31,6 +31,7 @@ import { createHash } from 'node:crypto'
 import { join, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClient } from '@supabase/supabase-js'
+import { templateOf } from './templateOf.mjs'
 
 const REPO = resolve(fileURLToPath(import.meta.url), '..', '..', '..')
 
@@ -115,6 +116,8 @@ async function main() {
       captions: bp.captions ?? [], publish_captions: Array.isArray(bp.publish_plan) ? bp.publish_plan.map((p) => p?.caption ?? null) : [],
       sentences: sentences.map((s) => ({ i: s.i, surface: s.surface, text: s.text })),
       material_ledger: ledgerWithText({ gateLedger: bp.gate_ledger, knowledge, products, answers: row.scenario?.body?.readiness_answers ?? {}, note: g?.reference_note ?? row.scenario?.body?.reference_note, offer: target?.offer ?? null, outside }),
+      template: templateOf(bp),
+      word_budget: bp.word_budget ?? null,
       writer_supply: bp.writer_supply ?? null,
       invention_gate: bp.invention_gate ?? null,
       check_status: bp.check_status ?? null,

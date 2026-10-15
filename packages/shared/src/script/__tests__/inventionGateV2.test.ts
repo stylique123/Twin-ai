@@ -117,25 +117,28 @@ describe('v2 rule 2: fragments inherit their script line', () => {
     expect(caps[0]!.class).toBe('I')
     expect(caps[1]!.class).toBe('I')
     expect(caps[1]!.reason).toBe('inherited')
-    // v4: a no-claim fragment of a non-story line keeps its own N.
-    expect(caps[2]!.class).toBe('N')
+    // Reply 14 rule 1: a fragment with no claim of its own takes its line's verdict (was: kept its own N).
+    // (the judge's I on that general line reads as G-SOFT; the fragment takes the same G)
+    expect(caps[2]!.class).toBe(cs[1]!.class)
+    expect(caps[2]!.reason).toBe('inherited')
   })
   it('a fragment that adds a claim is judged alone, and the judge sees the parent line', async () => {
-    const bp2: GateBlueprint = { script: [{ line: 'Lye soap needs curing before use.' }], captions: ['lye soap needs curing so it feels milder'] }
+    const bp2: GateBlueprint = { script: [{ line: 'Lye soap needs curing before use.' }], captions: ['lye soap needs curing and the Moss Bar is 4 oz'] }
     const s = extractSentences(bp2)
     expect(s[1]!.parent).toBe(0)
     const judge = fakeJudge([])
     await judgeSentences({ sentences: s, ledger: fernLedger(), products, targetProductId: MOSS }, { judge })
     expect(judge.calls.join('\n')).toMatch(/paraphrases script line: Lye soap needs curing before use\./)
   })
-  it('hook options are alternatives, judged alone', () => {
+  it('hook options point at their script line too (Reply 14 rule 1)', () => {
     const s = linkParents([{ i: 0, surface: 'script', at: 0, k: 0, text: 'Soap is fat plus lye.' }, { i: 1, surface: 'hook_option', at: 0, k: 0, text: 'Soap is fat plus lye.' }])
-    expect(s[1]!.parent).toBeUndefined()
+    expect(s[1]!.parent).toBe(0)
   })
-  it('a caption without a number does not inherit its line\'s unmatched number', () => {
+  it('a caption with no claim of its own inherits its line, unmatched number included (Reply 14 rule 1)', () => {
     const { cs } = classify({ script: [{ line: 'The bar weighs 9 oz and lathers fast.' }], captions: ['lathers fast'] }, [[/lathers fast$/, 'S', ['f-size']]])
     expect(cs[0]!.class).toBe('I')
-    expect(cs[1]!.reason).not.toBe('inherited')
+    expect(cs[1]!.class).toBe('I')
+    expect(cs[1]!.reason).toBe('inherited')
   })
 })
 
@@ -293,13 +296,13 @@ describe('v4: inheritance only in the risk direction', () => {
     expect(inheritable({ class: 'I', claim_types: ['general'], reason: 'no_item' }, soft)).toBe(false)
     expect(inheritable({ class: 'I', claim_types: ['event'], reason: 'event_unbacked' }, soft)).toBe(true)
   })
-  it('a caption of a line the judge called S is judged on its own', () => {
+  it('a caption of a line the judge called S inherits S when it adds no claim (Reply 14 rule 1)', () => {
     const bp: GateBlueprint = { script: [{ line: 'I cure every Moss Bar for six weeks on a pine rack.' }], captions: ['every Moss Bar cures six weeks on pine'] }
     const sentences = extractSentences(bp)
     const cs = classifySentences({ sentences, ledger: fernLedger(), products, targetProductId: MOSS, judge: verdicts(sentences, [[/^every Moss/, 'I']]) })
     expect(cs[0]!.class).toBe('S')
-    expect(cs[1]!.class).toBe('I')
-    expect(cs[1]!.reason).not.toBe('inherited')
+    expect(cs[1]!.class).toBe('S')
+    expect(cs[1]!.reason).toBe('inherited')
   })
 })
 

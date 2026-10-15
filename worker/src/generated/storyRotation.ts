@@ -200,17 +200,17 @@ export function gateStories<T extends StoryCandidate>(
       // Paired set pair 17 (2026-10-07): "my small batch roasting routine"
       // let a cart story through on the one word "small". With a topic of 3+
       // words, a story must share 2 of them, generic words not counted.
-      const specific = [...topicTerms].filter((w) => !TOPIC_GENERIC.has(w))
-      const need = specific.length >= 3 ? 2 : 1
-      const stem = (w: string) => w.slice(0, 5)
-      const topicStems = new Set(specific.map(stem))
-      const ownStems = new Set([...own].filter((w) => !TOPIC_GENERIC.has(w)).map(stem))
-      let shared = 0
-      for (const st of ownStems) if (topicStems.has(st)) shared++
-      if (topicTerms.size === 0 || shared < need) { offTopic.push(item); continue }
+      // panel-current-3 #8 (2026-10-13): "my first deadlift went wrong" has
+      // three specific words (deadlift, went, wrong) so it needed two shared,
+      // and her deadlift story shares one — off topic. Two shared words are
+      // now required only for a long topic (5+ specific words).
+      const m = storyTopicMatch(own, topicTerms)
+      if (topicTerms.size === 0 || m.shared < m.need) { offTopic.push(item); continue }
     }
     const id = String(item.id ?? '').trim()
-    if (id !== '' && ((recent.get(id) ?? 0) >= STORY_REST_AFTER || last.has(id))) { resting.push(item); continue }
+    // A story this very request asks for (it matches her topic) never rests.
+    const asked = topicTerms !== null && isAskedStory(own, topicTerms)
+    if (!asked && id !== '' && ((recent.get(id) ?? 0) >= STORY_REST_AFTER || last.has(id))) { resting.push(item); continue }
     kept.push(item)
   }
   return { kept, offProduct, resting, sensitive, offTopic }
@@ -227,7 +227,9 @@ export function gateStories<T extends StoryCandidate>(
  */
 export function oneStory<T extends StoryCandidate>(
   rows: readonly T[],
-  opts: { recent?: ReadonlyMap<string, number> | null; last?: ReadonlySet<string> | null; idsByText?: ReadonlyMap<string, string[]> | null } = {},
+  opts: { recent?: ReadonlyMap<string, number> | null; last?: ReadonlySet<string> | null; idsByText?: ReadonlyMap<string, string[]> | null
+    /** What this request is about (her note). The story it names is kept first and never rests. */
+    topicText?: string | null } = {},
 ): { rows: T[]; dropped: T[]; kept: T | null } {
   const recent = opts.recent ?? new Map<string, number>()
   const last = opts.last ?? new Set<string>()
@@ -238,9 +240,36 @@ export function oneStory<T extends StoryCandidate>(
     return uses >= STORY_REST_AFTER || ids.some((id) => last.has(id))
   }
   const stories = rows.filter((r) => STORY_KINDS.has(String(r?.kind ?? '')))
-  const kept = stories.find((s) => !resting(s)) ?? null
+  // panel-current-3 #8: the first non-resting story won even when the request
+  // named a different one of hers. The story her request names comes first.
+  const topic = contentTerms(opts.topicText ?? '')
+  const askedStory = topic.size ? stories
+    .map((s) => ({ s, m: storyTopicMatch(contentTerms(`${String(s.text ?? '')} ${String(s.evidence ?? '')}`), topic) }))
+    .filter((x) => isAskedStory(contentTerms(`${String(x.s.text ?? '')} ${String(x.s.evidence ?? '')}`), topic))
+    .sort((a, b) => b.m.shared - a.m.shared)[0]?.s ?? null : null
+  const kept = askedStory ?? stories.find((s) => !resting(s)) ?? null
   const dropped = stories.filter((s) => s !== kept)
   return { rows: rows.filter((r) => !STORY_KINDS.has(String(r?.kind ?? '')) || r === kept), dropped, kept }
+}
+
+const topicStem = (w: string) => w.slice(0, 5)
+
+/** How many specific topic words a story shares, and how many it needs. */
+export function storyTopicMatch(own: ReadonlySet<string>, topicTerms: ReadonlySet<string>): { shared: number; need: number; specific: number } {
+  const specific = [...topicTerms].filter((w) => !TOPIC_GENERIC.has(w))
+  const need = specific.length >= 5 ? 2 : 1
+  const topicStems = new Set(specific.map(topicStem))
+  const ownStems = new Set([...own].filter((w) => !TOPIC_GENERIC.has(w)).map(topicStem))
+  let shared = 0
+  for (const st of ownStems) if (topicStems.has(st)) shared++
+  return { shared, need, specific: topicStems.size }
+}
+
+/** The request names this story: it shares 2+ specific words with the topic,
+ *  or one of a short (3 or fewer specific words) topic. */
+export function isAskedStory(own: ReadonlySet<string>, topicTerms: ReadonlySet<string>): boolean {
+  const m = storyTopicMatch(own, topicTerms)
+  return m.specific > 0 && (m.shared >= 2 || (m.specific <= 3 && m.shared >= 1))
 }
 
 /** Ids of rows whose text is the same story, so a twin rests with it. */
