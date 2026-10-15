@@ -69,6 +69,8 @@ import { syncShotListSpokenText, collapseDoubledNumbers, carryBeatActions } from
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
+import { pickAngleCards, angleCardsRecord, ANGLE_SPECS } from '../_shared/angleFit.ts'
+import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse } from '../_shared/questionUsefulness.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -6752,6 +6754,12 @@ async function handle(req: Request): Promise<Response> {
   // creators cannot get any component until a gate is passed and this is wired.
   const releaseAccount = { userId: user.id, isTestAccount: isHeartbeat, trialOff: isHeartbeat && !trialOn }
   const newOn = (c: ReleaseComponent): boolean => componentOn(c, releaseAccount)
+  // ANGLE-FIT and QUESTION-USEFULNESS (Master Prompt v3, 15 Oct): trial only,
+  // each with its own kill switch (request flag or env). Real creators never reach them.
+  const angleFitOn = trialOn && (body as { angle_fit?: unknown }).angle_fit !== false && Deno.env.get('ANGLE_FIT_KILL') !== '1'
+  const questionUsefulnessOn = trialOn && (body as { question_usefulness?: unknown }).question_usefulness !== false && Deno.env.get('QUESTION_USEFULNESS_KILL') !== '1'
+  let angleCardsRec: ReturnType<typeof angleCardsRecord> | null = null
+  let questionNecessityRec: ReturnType<typeof questionNecessity> | null = null
   // ONE CLICK-INTENT, ONE REMIX (0119). Bounded because it reaches a unique
   // index; anything longer is a caller bug, not a key.
   const idempotency_key = (body.idempotency_key ?? '').trim().slice(0, 200)
@@ -9944,6 +9952,28 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
           urgencyFact: facts.some((f) => f?.field === 'urgency' && f?.trust !== 'unconfirmed'),
         })
         console.log(JSON.stringify({ event: 'feature_fired', feature: 'need_check', layers: nc.layers, decision: nc.decision, ask: nc.ask }))
+        if (angleFitOn || questionUsefulnessOn) {
+          const mat = [
+            ...speakable.map((k) => itemFromCreatorKnowledge(k as Record<string, unknown>)),
+            ...facts.map((f) => itemFromProductFact(f, oe?.id ? String(oe.id) : null)),
+          ].filter((x): x is NonNullable<typeof x> => !!x && x.status !== 'unconfirmed').map((x) => ({ id: x.id, slot: x.slot_hint, text: x.text }))
+          const cards = pickAngleCards({ goal: videoGoal ?? body.goal, hasProduct: !!ownedEntity, material: mat })
+          if (angleFitOn) {
+            angleCardsRec = angleCardsRecord(cards)
+            console.log(JSON.stringify({ event: 'feature_fired', feature: 'angle_fit', cards: angleCardsRec }))
+          }
+          if (questionUsefulnessOn) {
+            const chosen = pickedAngle && ANGLE_SPECS[String(pickedAngle.kind ?? '') as keyof typeof ANGLE_SPECS]
+              ? String(pickedAngle.kind) : cards[0]?.angle
+            const spec = chosen ? ANGLE_SPECS[chosen as keyof typeof ANGLE_SPECS] : null
+            const onFile = [...new Set(mat.map((m) => m.slot))]
+            const required = [...new Set([...(spec?.needs ?? []), ...nc.layers.product.missing])]
+            const gaps = required.filter((r) => !onFile.includes(r))
+            const qs = usefulQuestions({ candidates: candidatesFromNeedCheck(nc.ask, gaps), required, onFile })
+            questionNecessityRec = questionNecessity(qs)
+            console.log(JSON.stringify({ event: 'feature_fired', feature: 'question_necessity', ...questionNecessityRec }))
+          }
+        }
       } catch { /* measuring never fails a generation */ }
     }
     // ⚖️ THE LEDGER'S UNIT IS WHAT THE WRITER WAS SHOWN. These ten are the spend;
@@ -15858,6 +15888,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           traced = traceLines(b2.script, sources)
         }
         bp.line_sources = traced
+        if (angleCardsRec) bp.angle_cards = angleCardsRec
+        if (questionUsefulnessOn) {
+          if (questionNecessityRec) bp.question_necessity = questionNecessityRec
+          const qu = questionUse({ ...(body.readiness_answers ?? {}) }, (bp.script as Array<{ line?: unknown }>).map((b) => String(b?.line ?? '')))
+          bp.question_use = qu
+          console.log(JSON.stringify({ event: 'feature_fired', feature: 'question_use', answered: qu.answered, used: qu.used }))
+        }
         // ⚖️ WHICH KNOWLEDGE SHAPED EACH LINE (material board, measurement only).
         if (boardMaterial.length) {
           const board = traceLines(bp.script as Array<{ line?: unknown }>, boardMaterial)
