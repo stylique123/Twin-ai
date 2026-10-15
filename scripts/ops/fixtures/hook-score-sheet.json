@@ -1,0 +1,47 @@
+{
+  "_note": "Fictional only. Two made-up creators; no creator, third-party or server material.",
+  "cases": [
+    {
+      "id": "fictional-potter",
+      "ledger": [
+        { "id": "q1", "origin": "audience_question", "first_party": false, "text": "Why does my glaze crawl off the rim?" },
+        { "id": "s1", "origin": "her_fact", "field": "stance", "text": "Thin glaze coats beat thick ones on mugs" },
+        { "id": "n1", "origin": "her_fact", "text": "Sold 40 mugs at the winter fair", "numbers": [{ "value": 40, "unit": "count", "field": "mugs" }] },
+        { "id": "t1", "origin": "her_story", "text": "The first kiln load cracked half the mugs" }
+      ],
+      "candidates": [
+        { "shape": "audience_question", "text": "Why does your glaze crawl off the rim?" },
+        { "shape": "if_then_check", "text": "Glaze crawling off the rim? Check how thick you dipped." },
+        { "shape": "stop_doing", "text": "Stop dipping mugs in thick glaze coats." },
+        { "shape": "number_promise", "text": "40 mugs at the winter fair, and the one glaze lesson." },
+        { "shape": "number_promise", "text": "Five glaze rules for better mugs." },
+        { "shape": "story_open", "text": "My first kiln load cracked half the mugs." },
+        { "shape": "if_then_check", "text": "Mugs cracking? Check the 12 hour cool down." },
+        { "shape": "stop_doing", "text": "Nobody is talking about thin glaze, stop ignoring it." },
+        { "shape": "audience_question", "text": "Why?" },
+        { "shape": "story_open", "text": "The winter fair taught me that thin glaze coats on mugs sell better than thick ones every single time I set up the stall." }
+      ]
+    },
+    {
+      "id": "fictional-gardener",
+      "ledger": [
+        { "id": "q2", "origin": "audience_question", "field": "pain", "first_party": false, "text": "My basil keeps wilting on the windowsill" },
+        { "id": "s2", "origin": "her_fact", "field": "opinion", "text": "Bottom watering keeps windowsill basil alive" },
+        { "id": "r2", "origin": "outside_research", "first_party": false, "text": "Extension guide on herb watering" },
+        { "id": "p2", "origin": "product_fact", "text": "Self-watering herb pot, $18", "numbers": [{ "value": 18, "unit": "money", "field": "price" }] }
+      ],
+      "candidates": [
+        { "shape": "if_then_check", "text": "Basil wilting on the windowsill? Check where the water goes in." },
+        { "shape": "stop_doing", "text": "Stop watering windowsill basil from the top." },
+        { "shape": "contrarian_gap", "text": "A lot of advice says water daily. Here is the part that gets skipped." },
+        { "shape": "price_or_proof", "text": "$18 for a self-watering herb pot. Here is what you get." },
+        { "shape": "price_or_proof", "text": "$25 for a herb pot that waters itself." },
+        { "shape": "number_promise", "text": "Three ways to keep basil alive." },
+        { "shape": "stop_doing", "text": "Most people kill basil, stop it." },
+        { "shape": "timely", "text": "This week everything changed for herb growers." },
+        { "shape": "if_then_check", "text": "Basil drooping? Check the bottom of the pot." },
+        { "shape": "contrarian_gap", "text": "I tested bottom watering for a month and it worked." }
+      ]
+    }
+  ]
+}
