@@ -8,7 +8,7 @@ const none = new Set<string>()
 describe('materialFloorOn', () => {
   it('needs the trial and the kill switch', () => {
     expect(materialFloorOn(true, 'true')).toBe(true)
-    expect(materialFloorOn(true, undefined)).toBe(false)
+    expect(materialFloorOn(true, undefined)).toBe(true)
     expect(materialFloorOn(true, 'false')).toBe(false)
     expect(materialFloorOn(false, 'true')).toBe(false)
   })

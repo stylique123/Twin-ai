@@ -41,7 +41,7 @@ export function floorEligible(r: FloorRow, excludedIds: ReadonlySet<string>): bo
 
 /** Whether the floor is on: the trial AND the kill switch, both required. */
 export function materialFloorOn(trialOn: boolean, flag: string | undefined | null): boolean {
-  return trialOn === true && String(flag ?? '').trim().toLowerCase() === 'true'
+  return trialOn === true && String(flag ?? '').trim().toLowerCase() !== 'false'
 }
 
 /**

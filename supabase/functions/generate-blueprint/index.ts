@@ -7689,7 +7689,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       console.log(JSON.stringify({ event: 'knowledge_off_ask', held_back: rel.dropped.length, kept: knowledgeRows.length, examples: rel.dropped.slice(0, 3).map((r) => String(r.text ?? '').slice(0, 60)) }))
     }
   }
-  // ⚖️ THE MATERIAL FLOOR (owner 15 Oct; trial + MATERIAL_FLOOR_ENABLED only).
+  // ⚖️ THE MATERIAL FLOOR (owner 15 Oct; trial only; MATERIAL_FLOOR_ENABLED=false is the kill switch).
   // 20 of 30 recent generations were handed none of her stored items: her own
   // labeled answers were held as off-purpose or off-ask. When those two
   // filters leave nothing, her own stated answers come back. Sensitive,
