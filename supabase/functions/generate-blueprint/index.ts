@@ -72,15 +72,15 @@ import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProdu
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
-import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose, offerIsSpeakable } from '../_shared/ctaAllocation.ts'
+import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose, offerIsSpeakable, closeAsk } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
-import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
+import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser, capQuestions } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
-import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, type TemplatePlan } from '../_shared/scriptTemplates.ts'
+import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
@@ -4943,7 +4943,7 @@ function durationBriefInline(
     if (availableBeats < minBeats) {
       line += ` THERE IS ONLY ENOUGH SUBSTANCE FOR ${availableBeats} BEATS. Write ${availableBeats} and STOP.`
         + ` The video comes out shorter than ${targetSec} seconds and that is the correct outcome —`
-        + ` say in the final beat that this is everything there is to say on it.`
+        + ` end on the last real point — never announce that there is nothing more to say.`
         + ` Do NOT repeat a point, restate the hook, or add a beat that carries no new information to reach the target.`
     } else if (availableBeats > maxBeats) {
       line += ` THERE IS MORE SUBSTANCE THAN ${targetSec} SECONDS HOLDS — ${availableBeats} beats' worth against room for ${maxBeats}.`
@@ -9865,7 +9865,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // of her last five — her reserved answers included. Not when she picked
     // the list herself on the plan screen.
     const storyCut = trialOn && !chosenRows
-      ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>) })
+      ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>), topicText: ownedEntity ? null : String(reference_note ?? '') })
       : null
     // Set 4 #18: "no numbers, just first steps" was her note TO Twin stored
     // inside a fact, and the writer said it. Notes are cut from the fact text
@@ -15973,7 +15973,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const lastIdx = beats.map((b, i) => (typeof b.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0).at(-1)
           if (lastIdx !== undefined && !beats.some((b) => closeDescribesOffer(b.line, pName, offerText))) {
             const her = pickHerCta(goalNow, { typed: brief.defaultCta, recurring: heardCtasWithoutCommercialTerms((vp as Record<string, unknown>)?.recurring_ctas), topic: pName })?.text ?? ''
-            const how = her && !isHedgedCta(her) ? her : 'Send me a message if you want it.'
+            // ⚠️ panel-current-3 (4 of 17): "…link in bio. Send me a message if
+            // you want it." A link-in-bio offer (or a pointer already said in
+            // another beat) gets no second ask; the two are exclusive.
+            const how = closeAsk(offerText, her && !isHedgedCta(her) ? her : 'Send me a message if you want it.',
+              beats.filter((_, i) => i !== lastIdx).map((b) => b.line))
             beats[lastIdx] = { ...beats[lastIdx], line: offerClose(pName, offerText, how) }
             offerFixed = true
           }
@@ -16348,6 +16352,45 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           console.log(JSON.stringify({ event: 'script_template_applied', template: f.record.id, profile: f.record.profile, asked: templatePlan.questions.length, promise_paid: f.record.promise_paid, promise_repair: f.record.promise_repair, bridges_ok: f.record.bridges_ok, hook_shapes_matched: f.record.hook_shapes.filter(Boolean).length, trimmed: f.record.trimmed }))
         }
       } catch { /* a template check never fails a build */ }
+    }
+    // ⚖️ panel-current-3 (2026-10-13; trial): THE WORD BUDGET IS A CHECK +
+    // REPAIR ON EVERY SCRIPT, not only templated ones, and the QUESTION CAP.
+    // Median script was 75 words against Standard 140. Trim when over; when
+    // under, add only unused ledger items' own text (deterministic, no model
+    // call, so it runs even when the model lengthen pass is off). Questions
+    // over one per four sentences (max two: hook + one engagement) are
+    // rephrased or dropped.
+    if (trialOn && blueprint && typeof blueprint === 'object') {
+      const bpw = blueprint as Record<string, unknown>
+      try {
+        if (Array.isArray(bpw.script)) {
+          const targetId = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const ledgerForBudget = templateLedger.length ? templateLedger : buildInventionLedger({
+            knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+            products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+            targetProductId: targetId, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+          })
+          const profile = templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null)
+          const wb = enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId)
+          bpw.script = wb.script
+          bpw.word_budget = wb.record
+          console.log(JSON.stringify({ event: 'word_budget_enforced', ...wb.record, added: wb.record.added.length }))
+        }
+      } catch { /* the budget never fails a build */ }
+      try {
+        if (Array.isArray(bpw.script)) {
+          const qc = capQuestions(bpw.script as Array<{ line?: unknown }>)
+          bpw.script = qc.beats
+          bpw.question_cap = { before: qc.questions_before, after: qc.questions_after, repaired: qc.repaired }
+          if (qc.repaired) console.log(JSON.stringify({ event: 'questions_capped', ...bpw.question_cap }))
+        }
+      } catch { /* the cap never fails a build */ }
+    }
+    // ⚖️ WHICH TEMPLATE, ALWAYS RECORDED (panel-current-3 item g): the
+    // template record, or `{ id: 'none' }`, so its effect is measurable.
+    if (blueprint && typeof blueprint === 'object') {
+      const bpn = blueprint as Record<string, unknown>
+      if (templateIdOf(bpn.template) === 'none') bpn.template = { id: 'none' }
     }
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
     if (trialOn && blueprint && typeof blueprint === 'object') {

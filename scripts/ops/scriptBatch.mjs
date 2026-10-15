@@ -18,6 +18,7 @@ import { findNovelDetails, novelCounts } from './.novelDetail.bundle.mjs'
 import { storyCraft } from './.storyCraft.bundle.mjs'
 import { blueprintCompliance } from './.blueprintCompliance.bundle.mjs'
 import { runPanel } from './panelRun.mjs'
+import { templateOf } from './templateOf.mjs'
 
 const URL_ = process.env.SUPABASE_URL
 const ANON = process.env.SUPABASE_ANON_KEY
@@ -745,7 +746,7 @@ async function main() {
       // Panel off: claim the script before the worker's panel poll can.
       if (!PANEL_ON && r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: owner, status: 'failed', failure: 'skipped: test batch with the panel off', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
       await admin.from('script_batch_results').insert({
-        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, simulated_material: sc.simulatedMaterial ?? false, pair: sc.pairKey ?? null, compliance, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, body },
+        batch: BATCH, n: sc.n, scenario: { group: sc.group, label: sc.label, product: sc.product ?? null, simulated_material: sc.simulatedMaterial ?? false, pair: sc.pairKey ?? null, compliance, answer_style: sc.answerStyle ?? null, answers_simulated: sc.answerStyle ? true : false, template: templateOf(bp), body },
         status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
         generation_id: r.json?.id ?? null, duration_ms: r.ms, findings: a.findings, script_text: a.text, hooks: a.hooks,
         // Scored after the viewer panel has remade it (see scoreAfterPanel).
