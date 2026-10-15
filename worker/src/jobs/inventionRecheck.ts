@@ -20,7 +20,7 @@
 import type { Job } from '../db.js'
 import { PermanentJobError } from '../errors.js'
 import {
-  buildLedger, runInventionGate, checkStatusFor, gateProgress, GATE_REWRITTEN_KEYS,
+  buildLedger, runInventionGate, resolveTargetProduct, extractSentences, checkStatusFor, gateProgress, GATE_REWRITTEN_KEYS,
   INVENTION_RECHECK_TIMEOUT_MS, INVENTION_JUDGE_CASCADE, JUDGE_THINKING_BUDGET, JUDGE_SYSTEM, JUDGE_SCHEMA, REWRITE_SYSTEM, REWRITE_SCHEMA,
   type GateBlueprint, type GateProgress, type InventionGateRecord,
 } from '../generated/inventionGate.js'
@@ -75,7 +75,9 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   const extra = rec(payload.ledger)
   const knowledge = await deps.loadKnowledge(generationId)
   const productRows = await deps.loadProducts(gen.user_id)
-  const target = typeof extra.target_product_id === 'string' && extra.target_product_id ? extra.target_product_id : null
+  // A stale target id (product re-created after the edge enqueued) is resolved, never read as "another product".
+  const target = resolveTargetProduct(typeof extra.target_product_id === 'string' ? extra.target_product_id : null, productRows,
+    { offer: extra.offer, lines: extractSentences(bp as GateBlueprint).filter((x) => x.surface === 'script').map((x) => x.text) })
   const products = productRows.map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id && p.name)
   const ledger = buildLedger({
     knowledge,
