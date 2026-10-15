@@ -22,7 +22,10 @@ for (const c of fixture.creators) {
   else assert.ok(c.stories.length >= 3 && c.stories.length <= 5, `${c.key}: 3-5 stories`)
   assert.ok(c.products.length >= 1 && c.products.length <= 3, `${c.key}: 1-3 products`)
   for (const s of c.stories) assert.ok(s.text.length <= 240, `${c.key}: story fits creator_knowledge`)
-  for (const p of c.products) for (const f of p.facts) if (f.field === 'testimonial') assert.match(f.value, /MADE-UP/, 'a testimonial is marked made-up')
+  for (const p of c.products) for (const f of p.facts) if (f.field === 'testimonial') {
+    assert.ok(f.test_data, 'a testimonial is flagged as test data')
+    assert.doesNotMatch(f.value, /made[- ]?up|fictional|testimonial/i, 'the test-data label is a flag, never inside the text')
+  }
 }
 // Glow Lab carries the one live urgency fact, with a source.
 const glow = fixture.creators.find((c) => c.key === 'glow-lab')

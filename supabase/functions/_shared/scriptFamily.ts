@@ -85,12 +85,19 @@ export const FAMILY_MOVES: Record<ScriptFamily, readonly string[]> = {
 export const MIN_DISTINCT_MOVES = 3
 
 /** The writer's hook brief for this family. */
-export function renderFamilyHookRule(family: ScriptFamily): string {
+// ⚖️ \`examples: false\` (trial, panel-current-5): the example lines carry other
+// people's numbers, ages and first-person events ("I literally bought every
+// single item in five stores"), and the writer copied that SHAPE of claim into
+// scripts with nothing behind it. The trial brief names the move and its how only.
+export function renderFamilyHookRule(family: ScriptFamily, opts: { examples?: boolean } = {}): string {
   const moves = FAMILY_MOVES[family].map((id) => HOOK_MOVES[id]!)
+  const withExamples = opts.examples !== false
   return [
     `THIS VIDEO'S FAMILY: ${SCRIPT_FAMILY_LABEL[family].toUpperCase()}. Real high-reach videos of this kind open with these moves (best first):`,
-    ...moves.map((m) => `  - ${m.id}: ${m.how}. Real: "${m.examples[0]}" / "${m.examples[1]}"`),
-    `- Draw the 5 hooks from AT LEAST ${MIN_DISTINCT_MOVES} DIFFERENT moves above, the strongest first. Use her words, never the examples' words — they show the SHAPE only.`,
+    ...moves.map((m) => withExamples ? `  - ${m.id}: ${m.how}. Real: "${m.examples[0]}" / "${m.examples[1]}"` : `  - ${m.id}: ${m.how}.`),
+    withExamples
+      ? `- Draw the 5 hooks from AT LEAST ${MIN_DISTINCT_MOVES} DIFFERENT moves above, the strongest first. Use her words, never the examples' words — they show the SHAPE only.`
+      : `- Draw the 5 hooks from AT LEAST ${MIN_DISTINCT_MOVES} DIFFERENT moves above, the strongest first, built only from her material: no number, person, result or event she did not give you.`,
     `- hook_moves: one move id per hook, same order as hook_options.`,
     OPEN_GAP_RULE,
     `- hook_promise: one line — what the recommended hook (hook_options[0]) opens that the video must close (the count it promised, the question it asked, the result it teased).`,

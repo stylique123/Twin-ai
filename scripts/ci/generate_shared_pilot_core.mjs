@@ -244,6 +244,8 @@ const SOURCES = [
   // Hook shape library as data (hook-and-spine plan, hook engine step 1). Not wired yet.
   ['packages/shared/src/script/hooks/hookShapes.ts', 'supabase/functions/_shared/hookShapes.ts'],
   ['packages/shared/src/script/hooks/hookEngine.ts', 'supabase/functions/_shared/hookEngine.ts'],
+  // Deterministic writer guards + picked-hook wiring (panel-current-5, trial only).
+  ['packages/shared/src/script/writerGuards.ts', 'supabase/functions/_shared/writerGuards.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

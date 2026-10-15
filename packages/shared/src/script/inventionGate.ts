@@ -472,7 +472,26 @@ export type GateReason =
   | 'gated_no_first_party' | 'scarcity_not_live' | 'event_unbacked' | 'invented_quote' | 'pure_question'
   | 'figurative' | 'truism' | 'cta' | 'opinion_unbacked' | 'no_claim' | 'judge_missing' | 'e_over_budget'
   | 'general_unsourced' | 'inherited' | 'list_count_undelivered'
-  | 'advice' | 'habit_unbacked'
+  | 'advice' | 'habit_unbacked' | 'scaffold_text'
+
+/** Test-data labels, example scaffolding and template placeholders (panel-current-5:
+ *  a fixture's "made-up testimonial (fictional customer)" label was spoken aloud,
+ *  and the gate passed it because the ledger item said the same words). A hard
+ *  block no item can back: such text is never a creator's line. */
+const SCAFFOLD_RE = new RegExp([
+  String.raw`\bmade[- ]up\s+(?:testimonial|review|quote|customer|example|story|number|stat)`,
+  String.raw`\bfictional\s+(?:customer|client|buyer|person|creator|testimonial|review|quote|example)`,
+  String.raw`\(\s*fictional\b`,
+  String.raw`\btestimonial\s*:`,
+  String.raw`\b(?:sample|example|placeholder|dummy|fake)\s+(?:testimonial|review|quote|customer)\b`,
+  String.raw`\[\s*(?:insert|add|customer|name|number|product|placeholder)\b`,
+  String.raw`\{\{\s*\w+\s*\}\}`,
+  String.raw`\blorem ipsum\b`,
+  String.raw`\b(?:TBD|TODO|XXX)\b`,
+].join('|'), 'i')
+
+/** Does this text carry test-data or example scaffolding? */
+export const isScaffoldText = (text: unknown): boolean => SCAFFOLD_RE.test(String(text ?? ''))
 
 const AUDIENCE_RE = /\b(?:people|everyone|everybody|you guys|y'all|folks|my followers|followers|viewers|so many of you|a lot of you|half of you|most of you)\b[^.!?]{0,30}\b(?:ask|asks|asked|asking|tell|tells|told|say|says|said|think|thinks|dm|message|comment|comments|want|wants|love|loves)\b|\b(?:i (?:always |constantly |keep )?get asked|the (?:number one|#1|most common) question|you (?:always|keep) ask(?:ing)?|you guys always)\b/i
 const CUSTOMER_RE = /\b(?:customers?|clients?|regulars?|buyers?|shoppers?|subscribers?|members|students|users)\b[^.!?]{0,40}\b(?:say|says|said|tell|tells|told|love|loves|loved|rave|keep|come|came|order|orders|ordered|buy|buys|bought|ask|asks|asked|write|wrote|swear|swears|walk|walks|reorder)\b|\b(?:best[- ]?seller|five[- ]star|5[- ]star|reviews? (?:say|call)|rave reviews|fan favou?rite|crowd favou?rite)\b/i
@@ -692,6 +711,8 @@ export function ruleRead(s: GateSentence, ledger: readonly LedgerItem[], product
   const t = s.text
   const types: ClaimType[] = []
   const subject = subjectProduct(t, products, targetId)
+  // Scaffolding is never a claim to check: it is blocked before any evidence is read.
+  if (!isPlaceholder(t) && isScaffoldText(t)) return { claim_types: [], hard: { cls: 'I', reason: 'scaffold_text' }, soft: null, near: [], subject_product: subject }
   if (subject && targetId && subject !== targetId) types.push('product')
   const scoped = ledger.filter((it) => inScope(it, subject))
   const outOfScope = ledger.filter((it) => !inScope(it, subject))

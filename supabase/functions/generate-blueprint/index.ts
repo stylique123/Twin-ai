@@ -93,6 +93,8 @@ import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuesti
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, type SpineBeats } from '../_shared/spineContract.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { renderHookCandidateRule, runHookEngine, type HookCandidateInput } from '../_shared/hookEngine.ts'
+import { guardScript, applyHookPick } from '../_shared/writerGuards.ts'
+import { hookShape } from '../_shared/hookShapes.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
@@ -12158,8 +12160,14 @@ This is the video's position. Every field below must serve it. If the reference'
     // ── HOOK ENGINE (A5, trial only) — candidates ride the existing writer call ──
     let hookCandidateBlock = ''
     if (newOn('hook_engine')) { try { hookCandidateBlock = renderHookCandidateRule(templateLedger) } catch { hookCandidateBlock = '' } }
-    const familyHookRulePlain = renderFamilyHookRule(family)
-    // The template retry keeps today's plain brief, so it carries no candidate block.
+    // Trial: the hook moves without their example lines (panel-current-5: the
+    // examples' numbers and first-person events were copied as claims).
+    const familyHookRulePlain = renderFamilyHookRule(family, trialOn ? { examples: false } : {})
+    // ⚠️ panel-current-5: the template retry dropped the hook-candidate block with
+    // the template block, so every fallback script returned candidates with no
+    // shape id, 0 passing hooks and an empty pick. The retry drops ONLY the
+    // template skeleton (the slow part); the candidate block is a few lines.
+    const familyHookRuleRetry = familyHookRulePlain + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
     const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
     const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
@@ -12190,7 +12198,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // ⚖️ TEMPLATE RETRY FALLBACK: trial only, and only when a template block
     // was added. The retry gets today's brief, byte for byte without the block.
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
-      ? { retryPrompt: buildWriterBrief(familyHookRulePlain) }
+      ? { retryPrompt: buildWriterBrief(familyHookRuleRetry) }
       : undefined
     let templateFallback = false
 
@@ -16548,6 +16556,31 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           if (qc.repaired) console.log(JSON.stringify({ event: 'questions_capped', ...bpw.question_cap }))
         }
       } catch { /* the cap never fails a build */ }
+      // ⚖️ DETERMINISTIC WRITER GUARDS (panel-current-5, trial only). Drop-only:
+      // scaffolding, unbacked first-person habits/team facts, scarcity with no
+      // live urgency, timing with no dated item, an outside thing described as
+      // hers. The record is rule ids and counts, never text.
+      try {
+        if (Array.isArray(bpw.script)) {
+          const g = guardScript({
+            script: bpw.script as Array<Record<string, unknown>>,
+            hook_options: Array.isArray(bpw.hook_options) ? bpw.hook_options as unknown[] : [],
+            ledger: templateLedger,
+            targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
+          })
+          bpw.script = g.script
+          if (Array.isArray(bpw.hook_options) && g.record.dropped_hooks > 0) {
+            const before = bpw.hook_options as unknown[]
+            const keep = new Set(g.hook_options)
+            const moves = Array.isArray(bpw.hook_moves) ? bpw.hook_moves as unknown[] : null
+            const idx = before.map((h, i) => (typeof h === 'string' && keep.has(h) ? i : -1)).filter((i) => i >= 0)
+            bpw.hook_options = idx.map((i) => before[i])
+            if (moves) bpw.hook_moves = idx.map((i) => moves[i] ?? null)
+          }
+          bpw.writer_guards = g.record
+          if (g.record.dropped_sentences || g.record.dropped_hooks) console.log(JSON.stringify({ event: 'writer_guards', ...g.record }))
+        }
+      } catch { /* a guard never fails a build */ }
     }
     // ⚖️ WHICH TEMPLATE, ALWAYS RECORDED (panel-current-3 item g): the
     // template record, or `{ id: 'none' }`, so its effect is measurable.
@@ -16591,9 +16624,38 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       if (newOn('hook_engine')) {
         try {
           const raw = Array.isArray(bph.hook_candidates) ? (bph.hook_candidates as HookCandidateInput[]) : []
-          const engine = runHookEngine(raw, templateLedger)
+          // #1272: the trial scorer and the story-open / fact-open candidates.
+          const engineTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const engine = runHookEngine(raw, templateLedger, {
+            trial: trialOn,
+            request: [String(videoGoal ?? body.goal ?? ''), typeof reference_note === 'string' ? reference_note : ''].filter(Boolean).join(' '),
+            products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
+            targetProductId: engineTarget,
+          })
           bph.hook_candidates = engine.record
           bph.hook_pick = engine.pick
+          // ⚠️ panel-current-5: the pick was recorded and never shipped. The
+          // picked hooks (guarded like every other line) now lead hook_options
+          // and open script line 1; the record keeps ids and counts only.
+          try {
+            const gp = guardScript({ script: [], hook_options: engine.pick.hooks, ledger: templateLedger,
+              targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null })
+            const okPick = new Set(gp.hook_options)
+            const pickedIdx = engine.pick.hooks.map((h, i) => (okPick.has(h) ? i : -1)).filter((i) => i >= 0)
+            const ap = applyHookPick({
+              script: Array.isArray(bph.script) ? bph.script as Array<Record<string, unknown>> : [],
+              hook_options: Array.isArray(bph.hook_options) ? bph.hook_options as unknown[] : [],
+              hook_moves: Array.isArray(bph.hook_moves) ? bph.hook_moves as unknown[] : null,
+              picked: pickedIdx.map((i) => engine.pick.hooks[i]!),
+              picked_moves: pickedIdx.map((i) => hookShape(engine.pick.shapes[i] ?? '')?.moves[0] ?? null),
+            })
+            if (ap.applied) {
+              bph.script = ap.script
+              bph.hook_options = ap.hook_options
+              if (ap.hook_moves) bph.hook_moves = ap.hook_moves
+            }
+            bph.hook_pick_shipped = { applied: ap.applied, picked: engine.pick.hooks.length, shipped: pickedIdx.length }
+          } catch { /* shipping the pick never fails a build */ }
           // Title inherits the hook (A6): deterministic promise check; rewrite from the hook or flag. No text logged.
           try {
             const pk = bph.packaging as { titles?: unknown[] } | undefined

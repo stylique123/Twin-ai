@@ -59,6 +59,9 @@ export function productKnowledge(creatorKey, product, now = Date.now()) {
     id: `panel:${creatorKey}:${product.key}:${n}`,
     field: f.field, value: f.value, trust: f.trust === 'unconfirmed' ? 'unconfirmed' : 'usable', source: f.source ?? 'creator',
     ...(f.expires_at ? { expires_at: resolveExpiry(f.expires_at, now) } : {}),
+    // ⚖️ A TEST-DATA LABEL IS A FLAG, NEVER TEXT (panel-current-5): a label
+    // written inside the value was handed to the writer as her fact and spoken.
+    ...(f.test_data ? { test_data: String(f.test_data) } : {}),
   }))
 }
 

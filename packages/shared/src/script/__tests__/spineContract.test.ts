@@ -79,7 +79,7 @@ describe('per-beat adherence', () => {
     const sb = planSpineBeats({ plan, ledger, targetProductId: 'c1' })
     const script = [
       { line: 'Your soy candle wick keeps tunneling?' },
-      { line: 'Most people think it is the wax.' },
+      { line: 'You probably think it is the wax.' }, // viewer framing; "most people …" no longer counts (panel-current-5)
       { line: 'I burned through ten soy candle batches before the wick stopped tunneling.' },
       { line: 'Worried the wicks tunnel and waste wax? Trim before every burn.' },
       { line: 'The soy candles are in my shop, link in bio.' },

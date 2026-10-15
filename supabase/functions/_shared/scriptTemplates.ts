@@ -18,12 +18,13 @@
 // inventionGate.ts (#1245); this module reads the promised count with it and
 // does not keep a second regex.
 
-import { listCounts, isNonAnswerText, declinedSlots, MAX_ASKS, type LedgerItem, type GateQuestion, type AskKind } from './inventionGate.ts'
+import { listCounts, isNonAnswerText, isScaffoldText, declinedSlots, MAX_ASKS, type LedgerItem, type GateQuestion, type AskKind } from './inventionGate.ts'
 import { HOOK_MOVES } from './scriptFamily.ts'
 import {
   SCRIPT_TEMPLATES, DURATION_PROFILES, QUESTION_TEMPLATES,
   type ScriptTemplate, type TemplateSlot, type TemplateBeat, type BeatRole, type DurationProfile,
 } from './templateData.ts'
+import { hasEventDate } from './writerGuards.ts'
 
 export const SCRIPT_TEMPLATES_VERSION = 'templates-v1'
 
@@ -40,13 +41,17 @@ export function itemFits(it: LedgerItem, slot: TemplateSlot, targetProductId: st
   if (it.product_id && targetProductId && it.product_id !== targetProductId) return false
   if (it.product_id && !targetProductId && it.origin !== 'offer') return false
   if (isNonAnswerText(it.text)) return false
+  if (isScaffoldText(it.text)) return false
   // An answer to ANOTHER template question never fills this slot.
   if (it.origin === 'her_answer' && it.field?.startsWith('template.') && !it.field.includes(`.${slot.name}`)) return false
   switch (slot.evidence) {
     case 'first_party': return it.first_party && !OUTSIDE.has(it.origin)
     case 'sourced': return it.first_party || it.origin === 'outside_research'
     case 'live_urgency': return it.origin === 'urgency' && it.live
-    case 'dated': return (it.origin === 'urgency' ? it.live : it.origin === 'outside_moment' || it.origin === 'outside_research') && hasDate(it.text)
+    // ⚠️ panel-current-5: a bare year in an event's NAME ("Summit 2026") made T5
+    // eligible with no date for the event, and the writer supplied "this week".
+    // A dated slot needs a day-level date in the item's own text.
+    case 'dated': return (it.origin === 'urgency' ? it.live : it.origin === 'outside_moment' || it.origin === 'outside_research') && hasEventDate(it.text)
     case 'any': return true
   }
 }
@@ -404,6 +409,7 @@ export function checkWordBand(script: readonly ScriptBeat[], profile: DurationPr
   return { words: total, budget, min, max, under: total < min, over: total > max }
 }
 
+const QUOTED_FIELD_RE = /testimonial|review|quote/i
 const LENGTHEN_ORIGINS = new Set(['her_story', 'her_fact', 'her_answer', 'product_fact'])
 const termsOf = (s: string) => new Set((s.toLowerCase().match(/[a-z0-9']{4,}/g) ?? []))
 
@@ -425,6 +431,10 @@ export function lengthenCandidates(script: readonly ScriptBeat[], ledger: readon
     if (it.field === 'note' || it.field?.startsWith('template.')) return false
     if (it.product_id && it.product_id !== targetProductId) return false
     if (isNonAnswerText(it.text)) return false
+    // ⚠️ panel-current-5: lengthening pasted a testimonial item's text verbatim as
+    // her spoken line. Another person's words are never added as hers, and
+    // scaffolding is never added at all.
+    if (isScaffoldText(it.text) || QUOTED_FIELD_RE.test(it.field ?? '')) return false
     const n = words(it.text)
     if (n < 5 || n > 45 || /\n/.test(it.text)) return false
     return !alreadySaid(it.text, lines)
@@ -515,7 +525,7 @@ export function finishTemplate(i: FinishInput): { script: ScriptBeat[]; hook_opt
   const t = i.plan.template
   const usedIds = new Set(i.plan.slots.map((s) => s.item_id).filter(Boolean) as string[])
   const itemsSlot = t.beats.find((b) => b.count)?.slots[0]
-  const spare = itemsSlot ? i.ledger.filter((it) => !usedIds.has(it.id) && itemFits(it, itemsSlot, null)) : []
+  const spare = itemsSlot ? i.ledger.filter((it) => !usedIds.has(it.id) && itemFits(it, itemsSlot, null) && !QUOTED_FIELD_RE.test(it.field ?? '')) : []
   let hooks = repairHookShapes(i.hook_options.map(String), t.hook_shapes)
   let script = repairBridges(i.script, t)
   const p = repairPromise(script, hooks, t, spare)
