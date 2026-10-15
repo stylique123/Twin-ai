@@ -225,6 +225,7 @@ const SOURCES = [
   // The sources live one folder down; their `../x.js` imports flatten to the sibling copy.
   ['packages/shared/src/script/templates/templateData.ts', 'supabase/functions/_shared/templateData.ts'],
   ['packages/shared/src/script/templates/scriptTemplates.ts', 'supabase/functions/_shared/scriptTemplates.ts'],
+  ['packages/shared/src/script/templates/templateSkeleton.ts', 'supabase/functions/_shared/templateSkeleton.ts'],
   // The planner: one spine per script (Phase 4.1, trial only). One folder down like the templates;
   // its `../x.js` and `../templates/x.js` imports flatten to the sibling copies.
   ['packages/shared/src/script/planner/spinePlanner.ts', 'supabase/functions/_shared/spinePlanner.ts'],

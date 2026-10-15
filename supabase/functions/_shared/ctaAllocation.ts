@@ -81,8 +81,39 @@ export function offerIsSpeakable(offer: unknown): boolean {
 
 /** The close rewritten from her offer, in her ask's place. */
 export function offerClose(name: string, offer: string, how: string): string {
-  const o = offer.trim().replace(/[.\s]+$/, '')
-  return `${name}: ${o.charAt(0).toLowerCase()}${o.slice(1)}. ${how.trim()}`
+  const o = offerBody(name, offer)
+  const ask = offerHasPointer(offer) ? '' : how.trim()
+  return `${name}: ${o}.${ask ? ` ${ask}` : ''}`
+}
+
+/** Where to get it, already said ("link in bio", "DM me", "on my site"). */
+const POINTER = /\b(?:link (?:is )?in (?:my |the )?bio|in my bio|bio link|dm me|message me|send me a (?:message|dm)|on my (?:site|website|store|shop)|in my (?:store|shop)|at [a-z0-9-]+\.[a-z]{2,})\b/i
+export function offerHasPointer(text: unknown): boolean {
+  return POINTER.test(String(text ?? ''))
+}
+
+/** The ask to put after an offer: none when the offer or the script already points somewhere. */
+export function closeAsk(offer: unknown, how: string, otherLines: readonly unknown[] = []): string {
+  if (offerHasPointer(offer) || otherLines.some((l) => offerHasPointer(l))) return ''
+  return how.trim()
+}
+
+// Words that start a sentence and are lowercased after "Name:"; anything else
+// (a brand like "FlowDesk", a name like "Maya's") keeps its own casing.
+const LOWER_OK = new Set('a an the free our my one two three every each get try save book join start your this these'.split(' '))
+
+/** panel-current-3 (2026-10-13): "FlowDesk: flowDesk free 14-day trial". The
+ *  offer's leading product name is dropped (the close already names it), and a
+ *  first word is lowercased only when it is a common word. */
+export function offerBody(name: string, offer: string): string {
+  let o = offer.trim().replace(/[.\s]+$/, '')
+  const n = name.trim()
+  if (n && o.toLowerCase().startsWith(n.toLowerCase())) {
+    const rest = o.slice(n.length).replace(/^(?:'s)?\s*[:,—–-]?\s*/, '')
+    if (rest.split(/\s+/).filter(Boolean).length >= 2) o = rest
+  }
+  const first = o.split(/\s+/)[0] ?? ''
+  return LOWER_OK.has(first.toLowerCase()) ? `${o.charAt(0).toLowerCase()}${o.slice(1)}` : o
 }
 
 /** Which jobs each goal wants, best first. */

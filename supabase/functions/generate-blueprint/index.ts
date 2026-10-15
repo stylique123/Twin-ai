@@ -72,15 +72,16 @@ import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProdu
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
-import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose, offerIsSpeakable } from '../_shared/ctaAllocation.ts'
+import { pickHerCta, looksLikeCta, isHedgedCta, closeDescribesOffer, offerClose, offerIsSpeakable, closeAsk } from '../_shared/ctaAllocation.ts'
 import { recentlySaid, renderRecentlySaid } from '../_shared/recentlySaid.ts'
 import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
-import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser } from '../_shared/beatCleanup.ts'
+import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser, capQuestions } from '../_shared/beatCleanup.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
-import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, type TemplatePlan } from '../_shared/scriptTemplates.ts'
+import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
+import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
@@ -4945,7 +4946,7 @@ function durationBriefInline(
     if (availableBeats < minBeats) {
       line += ` THERE IS ONLY ENOUGH SUBSTANCE FOR ${availableBeats} BEATS. Write ${availableBeats} and STOP.`
         + ` The video comes out shorter than ${targetSec} seconds and that is the correct outcome —`
-        + ` say in the final beat that this is everything there is to say on it.`
+        + ` end on the last real point — never announce that there is nothing more to say.`
         + ` Do NOT repeat a point, restate the hook, or add a beat that carries no new information to reach the target.`
     } else if (availableBeats > maxBeats) {
       line += ` THERE IS MORE SUBSTANCE THAN ${targetSec} SECONDS HOLDS — ${availableBeats} beats' worth against room for ${maxBeats}.`
@@ -6276,14 +6277,24 @@ function parseRepairRewrites(raw: unknown): Array<{ index?: unknown; line?: unkn
 // ⚠️ BLIND SET 3 (2026-10-06): 12 of 74 requests hit the 150s edge limit and
 // nothing said which step spent the time. Every model call now logs how long
 // it took and which prompt it was, so a timeout's last lines name the step.
-async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
-  return inStage(stageOfCall(system, schema === blueprintSchema), () => callModelStaged(apiKey, system, prompt, schema, record))
+/** ⚖️ TEMPLATE RETRY FALLBACK (2026-10-13, trial only). Since the sprint
+ *  templates went in, writer attempt 0 averages ~50s (max 73s) against its
+ *  75s ceiling, and panel runs lost 5-7 of 24 to GENERATION_FAILED with both
+ *  attempts timing out. When a template block was added to the brief, the
+ *  RETRY (attempt index >= 1) is sent `retryPrompt` instead: the plain brief
+ *  without the template block. `usedAttempt` says which attempt's text was
+ *  returned, so the caller can mark the fallback and skip template checks.
+ *  Timeouts are unchanged. Real creators never pass a ladder. */
+interface WriterLadder { retryPrompt: string; usedAttempt?: number }
+
+async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
+  return inStage(stageOfCall(system, schema === blueprintSchema), () => callModelStaged(apiKey, system, prompt, schema, record, ladder))
 }
 
-async function callModelStaged(apiKey: string, system: string, prompt: string, schema: unknown, record?: AttemptRecorder): Promise<string> {
+async function callModelStaged(apiKey: string, system: string, prompt: string, schema: unknown, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
   const t0 = Date.now()
   try {
-    return await callModelInner(apiKey, system, prompt, schema, record)
+    return await callModelInner(apiKey, system, prompt, schema, record, ladder)
   } finally {
     console.log(JSON.stringify({ event: 'model_call_ms', ms: Date.now() - t0, step: system.slice(0, 48).replace(/\s+/g, ' '), prompt_chars: prompt.length }))
   }
@@ -6298,7 +6309,7 @@ function withDeadline<T>(ms: number, p: Promise<T>): Promise<T> {
   ])
 }
 
-async function callModelInner(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder): Promise<string> {
+async function callModelInner(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
   // on BOTH attempts (edge logs showed repeated 500s at ~70-91s → "We hit a snag"
@@ -6324,14 +6335,17 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
 
   let lastErr: unknown
   let lastParseable: string | null = null // valid JSON, but missing concept/packaging
+  let lastParseableAt = -1
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i]
+    // The retry runs the plain brief when a template block made attempt 0 slow.
+    const attemptPrompt = i >= 1 && ladder ? ladder.retryPrompt : prompt
     // ⚠️ THE ROW IS OPENED BEFORE THE CALL. A record only written afterwards
     // cannot describe the call that never came back, which is the exact failure
     // mode — a 75-second timeout — this table was built to count.
     const rowId = await record?.started(i, a.model) ?? null
     try {
-      const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs, schema)
+      const text = await callOnce(apiKey, system, attemptPrompt, a.model, a.thinkBudget, a.timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
       // ⚠️ ONLY A BLUEPRINT HAS A CONCEPT AND PACKAGING (2026-10-04). Repair
@@ -6341,11 +6355,13 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       // wasted calls per script.
       if (schema !== blueprintSchema || blueprintComplete(parsed)) {
         await record?.settled(rowId, 'succeeded')
+        if (ladder) ladder.usedAttempt = i
         return text // complete → accept
       }
       // Parseable but Flash dropped concept/packaging. Keep it as a last resort and
       // try the next attempt for a COMPLETE one (the retry usually recovers them).
       lastParseable = text
+      lastParseableAt = i
       // ⚖️ NEITHER SUCCESS NOR FAILURE. The creator gets a script and no title, so
       // filing it as either would hide a quality event or claim an outage.
       await record?.settled(rowId, 'incomplete',
@@ -6363,6 +6379,7 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
   // them to regenerate for the title/thumbnail. Only truly fail if nothing parsed.
   if (lastParseable) {
     console.warn('generate-blueprint: all attempts incomplete — shipping the best parseable blueprint')
+    if (ladder) ladder.usedAttempt = lastParseableAt
     return lastParseable
   }
   throw lastErr instanceof Error ? lastErr : new Error('Model call failed')
@@ -9851,7 +9868,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // of her last five — her reserved answers included. Not when she picked
     // the list herself on the plan screen.
     const storyCut = trialOn && !chosenRows
-      ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>) })
+      ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>), topicText: ownedEntity ? null : String(reference_note ?? '') })
       : null
     // Set 4 #18: "no numbers, just first steps" was her note TO Twin stored
     // inside a fact, and the writer said it. Notes are cut from the fact text
@@ -12039,12 +12056,13 @@ This is the video's position. Every field below must serve it. If the reference'
     }
     const spinePlanBlock = spinePlan ? renderPlanBlock(spinePlan) : ''
     // ── PLANNER SPINE — END ──
-    const familyHookRule = renderFamilyHookRule(family) + (templatePlan ? `\n\n${renderTemplateBlock(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '')
-    const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
+    const familyHookRulePlain = renderFamilyHookRule(family)
+    const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '')
+    const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
 
-${familyHookRule}
+${hookRule}
 
 ${positionBlock}${referenceBlock}${historyBlock ? `
 
@@ -12065,6 +12083,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.
 - shot_list "shot" is the shot's NAME and it is what the creator reads as the heading on the card they are holding their phone against. Write what the shot IS, in three to six plain words — "Opening line, straight to camera", "The still for the thumbnail", "Close on your hands". NEVER write its position in the list: "1", "2", "Shot 3" are not names, and a card headed with a number tells the creator nothing about what to point the camera at.`
+    const userPrompt = buildWriterBrief(familyHookRule)
+    // ⚖️ TEMPLATE RETRY FALLBACK: trial only, and only when a template block
+    // was added. The retry gets today's brief, byte for byte without the block.
+    const writerLadder: WriterLadder | undefined = trialOn && templatePlan
+      ? { retryPrompt: buildWriterBrief(familyHookRulePlain) }
+      : undefined
+    let templateFallback = false
 
     // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
     // generation rather than two. Minted here rather than in the recorder because
@@ -12099,7 +12124,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       const variants = Array.from({ length: draftCount }, (_, k) => k === 0 ? userPrompt
         : `${userPrompt}\n\nDRAFT ${k + 1}: write a genuinely different version — a different hook and a different way into the same material${hookSources[k] ? `; open from ${SOURCE_USE_INLINE[hookSources[k]] ?? hookSources[k]}` : ''}. Same facts, same rules.`)
       const drafts = await Promise.allSettled(variants.map((v, k) => callModel(apiKey, writerSystem, v, blueprintSchema,
-        k === 0 ? attemptRecorder(admin, ownerId, scriptRunId) : undefined)))
+        k === 0 ? attemptRecorder(admin, ownerId, scriptRunId) : undefined, k === 0 ? writerLadder : undefined)))
       const ok = drafts.map((d) => (d.status === 'fulfilled' ? d.value : null))
       const usable = ok.map((t, k) => ({ t, k })).filter((x): x is { t: string; k: number } => typeof x.t === 'string')
       if (!usable.length) throw (drafts[0] as PromiseRejectedResult).reason
@@ -12127,9 +12152,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
       console.log(JSON.stringify({ event: 'drafts_picked', drafts: draftCount, usable: usable.length, picked: pick.k, said: pickSaid }))
       raw = pick.t
+      templateFallback = pick.k === 0 && (writerLadder?.usedAttempt ?? 0) >= 1
     } else {
       raw = await callModel(apiKey, writerSystem, userPrompt, blueprintSchema,
-        attemptRecorder(admin, ownerId, scriptRunId))
+        attemptRecorder(admin, ownerId, scriptRunId), writerLadder)
+      templateFallback = (writerLadder?.usedAttempt ?? 0) >= 1
+    }
+    if (templateFallback && templatePlan) {
+      console.log(JSON.stringify({ event: 'script_template_retry_fallback', template: templatePlan.template.id, attempt: writerLadder?.usedAttempt ?? null }))
     }
 
     // OUTPUT-SIDE LINK VALIDATION — the other half of the fencing above.
@@ -15961,7 +15991,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const lastIdx = beats.map((b, i) => (typeof b.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0).at(-1)
           if (lastIdx !== undefined && !beats.some((b) => closeDescribesOffer(b.line, pName, offerText))) {
             const her = pickHerCta(goalNow, { typed: brief.defaultCta, recurring: heardCtasWithoutCommercialTerms((vp as Record<string, unknown>)?.recurring_ctas), topic: pName })?.text ?? ''
-            const how = her && !isHedgedCta(her) ? her : 'Send me a message if you want it.'
+            // ⚠️ panel-current-3 (4 of 17): "…link in bio. Send me a message if
+            // you want it." A link-in-bio offer (or a pointer already said in
+            // another beat) gets no second ask; the two are exclusive.
+            const how = closeAsk(offerText, her && !isHedgedCta(her) ? her : 'Send me a message if you want it.',
+              beats.filter((_, i) => i !== lastIdx).map((b) => b.line))
             beats[lastIdx] = { ...beats[lastIdx], line: offerClose(pName, offerText, how) }
             offerFixed = true
           }
@@ -16314,7 +16348,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // Quality sprint stage 2 (trial only): hold the script to its template —
     // hook shapes, bridges, the promised count and the word budget. Every
     // repair removes, reorders or re-numbers; the record is ids only.
-    if (trialOn && templatePlan && blueprint && typeof blueprint === 'object') {
+    // ⚖️ THE RETRY RAN WITHOUT THE TEMPLATE BLOCK: holding the script to a
+    // template it never saw would repair it toward a shape it was not asked
+    // for. Record the fallback (ids only) and skip the checks and repairs.
+    if (trialOn && templatePlan && templateFallback && blueprint && typeof blueprint === 'object') {
+      (blueprint as Record<string, unknown>).template = { id: templatePlan.template.id, fallback: 'retry_without_template' }
+    }
+    if (trialOn && templatePlan && !templateFallback && blueprint && typeof blueprint === 'object') {
       try {
         const bpt = blueprint as Record<string, unknown>
         if (Array.isArray(bpt.script)) {
@@ -16325,11 +16365,50 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           })
           bpt.script = f.script
           if (Array.isArray(bpt.hook_options)) bpt.hook_options = f.hook_options
-          bpt.template = f.record
+          bpt.template = { ...f.record, mode: TEMPLATE_SKELETON_MODE }
           if (templatePlan.questions.length) bpt.gate_questions = [...templatePlan.questions]
           console.log(JSON.stringify({ event: 'script_template_applied', template: f.record.id, profile: f.record.profile, asked: templatePlan.questions.length, promise_paid: f.record.promise_paid, promise_repair: f.record.promise_repair, bridges_ok: f.record.bridges_ok, hook_shapes_matched: f.record.hook_shapes.filter(Boolean).length, trimmed: f.record.trimmed }))
         }
       } catch { /* a template check never fails a build */ }
+    }
+    // ⚖️ panel-current-3 (2026-10-13; trial): THE WORD BUDGET IS A CHECK +
+    // REPAIR ON EVERY SCRIPT, not only templated ones, and the QUESTION CAP.
+    // Median script was 75 words against Standard 140. Trim when over; when
+    // under, add only unused ledger items' own text (deterministic, no model
+    // call, so it runs even when the model lengthen pass is off). Questions
+    // over one per four sentences (max two: hook + one engagement) are
+    // rephrased or dropped.
+    if (trialOn && blueprint && typeof blueprint === 'object') {
+      const bpw = blueprint as Record<string, unknown>
+      try {
+        if (Array.isArray(bpw.script)) {
+          const targetId = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const ledgerForBudget = templateLedger.length ? templateLedger : buildInventionLedger({
+            knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+            products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+            targetProductId: targetId, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+          })
+          const profile = templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null)
+          const wb = enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId)
+          bpw.script = wb.script
+          bpw.word_budget = wb.record
+          console.log(JSON.stringify({ event: 'word_budget_enforced', ...wb.record, added: wb.record.added.length }))
+        }
+      } catch { /* the budget never fails a build */ }
+      try {
+        if (Array.isArray(bpw.script)) {
+          const qc = capQuestions(bpw.script as Array<{ line?: unknown }>)
+          bpw.script = qc.beats
+          bpw.question_cap = { before: qc.questions_before, after: qc.questions_after, repaired: qc.repaired }
+          if (qc.repaired) console.log(JSON.stringify({ event: 'questions_capped', ...bpw.question_cap }))
+        }
+      } catch { /* the cap never fails a build */ }
+    }
+    // ⚖️ WHICH TEMPLATE, ALWAYS RECORDED (panel-current-3 item g): the
+    // template record, or `{ id: 'none' }`, so its effect is measurable.
+    if (blueprint && typeof blueprint === 'object') {
+      const bpn = blueprint as Record<string, unknown>
+      if (templateIdOf(bpn.template) === 'none') bpn.template = { id: 'none' }
     }
     // ── PLANNER SPINE (trial only) — BEGIN ──
     // Record the plan (ids and counts only) and check each beat cites a planned item or is a transition/CTA.

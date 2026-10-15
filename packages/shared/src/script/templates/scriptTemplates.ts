@@ -355,6 +355,124 @@ export function trimToBudget(script: readonly ScriptBeat[], profile: DurationPro
   return out
 }
 
+// ── WORD BUDGET FOR EVERY SCRIPT (panel-current-3, 2026-10-13) ─────────────
+// Median 75 words (~30 s) against a Standard budget of 140: the budget was a
+// prompt hint plus a template-only trim, and the model "lengthen" pass is off
+// on test traffic. This is the CHECK + deterministic REPAIR for every script,
+// template or not: trim when over, lengthen when under. The lengthen only ever
+// adds a ledger item's OWN text (her story, her fact, her answer, the target
+// product's fact) that the script does not already say. Nothing she did not
+// supply is written; short with nothing left on file stays short and is
+// recorded as `short_no_material`.
+
+/** Lower edge of the budget band: under this, the script is lengthened. */
+export const WORD_BUDGET_FLOOR = 0.85
+/** Upper edge (matches `checkWordBudget`): over this, the script is trimmed. */
+export const WORD_BUDGET_CEIL = 1.1
+
+/** The profile for a requested length, with no template involved. */
+export function profileForSeconds(targetSeconds: unknown, software = false): DurationProfile {
+  const sec = Number(targetSeconds)
+  if (!Number.isFinite(sec) || sec <= 0) return 'standard'
+  if (sec <= (software ? 35 : 40)) return 'sprint'
+  if (sec >= 75) return 'deep'
+  return 'standard'
+}
+
+export interface WordBand { words: number; budget: number; min: number; max: number; under: boolean; over: boolean }
+
+/** Spoken words against the profile band [85%, 110%]. */
+export function checkWordBand(script: readonly ScriptBeat[], profile: DurationProfile): WordBand {
+  const total = script.reduce((n, b) => n + words(lineOf(b)), 0)
+  const budget = DURATION_PROFILES[profile].words
+  const min = Math.round(budget * WORD_BUDGET_FLOOR)
+  const max = Math.round(budget * WORD_BUDGET_CEIL)
+  return { words: total, budget, min, max, under: total < min, over: total > max }
+}
+
+const LENGTHEN_ORIGINS = new Set(['her_story', 'her_fact', 'her_answer', 'product_fact'])
+const termsOf = (s: string) => new Set((s.toLowerCase().match(/[a-z0-9']{4,}/g) ?? []))
+
+/** Already said: half the item's content words are in the script. */
+function alreadySaid(text: string, lines: readonly string[]): boolean {
+  const own = termsOf(text)
+  if (own.size === 0) return true
+  const all = termsOf(lines.join(' '))
+  let inAll = 0
+  for (const w of own) if (all.has(w)) inAll++
+  return inAll / own.size >= 0.5
+}
+
+/** Ledger items that may lengthen a script: first-party, on this product, not already said. */
+export function lengthenCandidates(script: readonly ScriptBeat[], ledger: readonly LedgerItem[], targetProductId: string | null = null): LedgerItem[] {
+  const lines = script.map(lineOf)
+  return ledger.filter((it) => {
+    if (!LENGTHEN_ORIGINS.has(it.origin) || !it.first_party) return false
+    if (it.field === 'note' || it.field?.startsWith('template.')) return false
+    if (it.product_id && it.product_id !== targetProductId) return false
+    if (isNonAnswerText(it.text)) return false
+    const n = words(it.text)
+    if (n < 5 || n > 45 || /\n/.test(it.text)) return false
+    return !alreadySaid(it.text, lines)
+  })
+}
+
+const asSentence = (t: string) => {
+  const s = t.trim().replace(/\s+/g, ' ')
+  return (s.charAt(0).toUpperCase() + s.slice(1)).replace(/([^.!?])$/, '$1.')
+}
+
+/** Add unused ledger items (their own text) as build beats before the close until the band floor is met. */
+export function lengthenFromLedger(script: readonly ScriptBeat[], profile: DurationProfile, ledger: readonly LedgerItem[], targetProductId: string | null = null): { script: ScriptBeat[]; added: string[] } {
+  let out = script.map((b) => ({ ...b }))
+  const added: string[] = []
+  for (const it of lengthenCandidates(out, ledger, targetProductId)) {
+    const band = checkWordBand(out, profile)
+    if (!band.under) break
+    if (band.words + words(it.text) > band.max) continue
+    if (alreadySaid(it.text, out.map(lineOf))) continue
+    const spoken = out.map((b, i) => (lineOf(b) ? i : -1)).filter((i) => i >= 0)
+    const at = spoken.length >= 2 ? spoken[spoken.length - 1]! : out.length
+    out = [...out.slice(0, at), { line: asSentence(it.text), section: 'build', source_item: it.id }, ...out.slice(at)]
+    added.push(it.id)
+  }
+  return { script: out, added }
+}
+
+export interface WordBudgetRecord {
+  profile: DurationProfile
+  budget: number
+  words_before: number
+  words_after: number
+  action: 'none' | 'trimmed' | 'lengthened' | 'short_no_material'
+  added: string[]
+}
+
+/** The check + repair for every script: trim when over, lengthen from the ledger when under. */
+export function enforceWordBudget(script: readonly ScriptBeat[], profile: DurationProfile, ledger: readonly LedgerItem[], targetProductId: string | null = null): { script: ScriptBeat[]; record: WordBudgetRecord } {
+  const before = checkWordBand(script, profile)
+  let out = script.map((b) => ({ ...b }))
+  let action: WordBudgetRecord['action'] = 'none'
+  let added: string[] = []
+  if (before.over) {
+    out = trimToBudget(out, profile)
+    action = 'trimmed'
+  } else if (before.under) {
+    const l = lengthenFromLedger(out, profile, ledger, targetProductId)
+    out = l.script
+    added = l.added
+    action = added.length ? 'lengthened' : 'short_no_material'
+  }
+  const after = checkWordBand(out, profile)
+  return { script: out, record: { profile, budget: before.budget, words_before: before.words, words_after: after.words, action, added } }
+}
+
+/** The template id a blueprint records: the template's id, or 'none'. Always a string. */
+export function templateIdOf(template: unknown): string {
+  const id = (template as { id?: unknown } | null)?.id
+  return typeof id === 'string' && id.trim() ? id : 'none'
+}
+
 // ── FINISH + RECORD ────────────────────────────────────────────────────────
 
 export interface TemplateRecord {
