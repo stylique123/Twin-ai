@@ -211,7 +211,7 @@ describe('edge parity and trial gate', () => {
     const calls = [...src.matchAll(/chooseTemplates\(/g)]
     expect(calls.length).toBe(1)
     const at = calls[0]!.index!
-    expect(src.slice(at - 1500, at)).toMatch(/trialOn \?/)
+    expect(src.slice(at - 1500, at)).toMatch(/newOn\('templates'\) \?/) // releaseFlags: S0 default = trialOn
     expect(src).toMatch(/if \(trialOn && templatePlan/)
   })
 })

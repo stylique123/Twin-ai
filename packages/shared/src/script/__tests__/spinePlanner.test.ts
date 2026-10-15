@@ -172,11 +172,11 @@ describe('edge parity and trial gate', () => {
     const src = readFileSync(new URL(`${root}supabase/functions/generate-blueprint/index.ts`, import.meta.url), 'utf8')
     const calls = [...src.matchAll(/planSpine\(/g)]
     expect(calls.length).toBe(1)
-    expect(src.slice(calls[0]!.index! - 300, calls[0]!.index!)).toMatch(/if \(trialOn\) \{/)
-    expect(src).toMatch(/if \(trialOn && spinePlan && blueprint/)
+    expect(src.slice(calls[0]!.index! - 300, calls[0]!.index!)).toMatch(/if \(newOn\('planner'\)\) \{/) // releaseFlags: S0 default = trialOn
+    expect(src).toMatch(/if \(newOn\('planner'\) && spinePlan && blueprint/)
     for (const fn of ['planRecord(', 'checkPlanAdherence(']) {
       const at = src.indexOf(fn)
-      expect(src.slice(at - 1500, at)).toMatch(/if \(trialOn && spinePlan/)
+      expect(src.slice(at - 1500, at)).toMatch(/if \(newOn\('planner'\) && spinePlan/)
     }
   })
 })
