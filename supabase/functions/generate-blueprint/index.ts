@@ -92,6 +92,9 @@ import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuesti
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, type SpineBeats } from '../_shared/spineContract.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
+import { DURATION_PROFILES } from '../_shared/templateData.ts'
+import { chooseDuration, fitProfile, type DurationChoice } from '../_shared/durationFromMaterial.ts'
+import { askedStory, enforceStoryFirst } from '../_shared/storyFirst.ts'
 import { renderHookCandidateRule, runHookEngine, type HookCandidateInput } from '../_shared/hookEngine.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
@@ -6759,6 +6762,10 @@ async function handle(req: Request): Promise<Response> {
   // ANGLE-FIT and QUESTION-USEFULNESS (Master Prompt v3, 15 Oct): trial only,
   // each with its own kill switch (request flag or env). Real creators never reach them.
   const angleFitOn = trialOn && (body as { angle_fit?: unknown }).angle_fit !== false && Deno.env.get('ANGLE_FIT_KILL') !== '1'
+  // Owner (panel-current-5): each item has its own kill switch, ON for trial, off with env 'false'.
+  const storyFirstOn = trialOn && Deno.env.get('STORY_FIRST') !== 'false'
+  const outsideFloorOn = trialOn && Deno.env.get('OUTSIDE_MIN_RELEVANCE') !== 'false'
+  const durationFromMaterialOn = trialOn && Deno.env.get('DURATION_FROM_MATERIAL') !== 'false'
   const questionUsefulnessOn = trialOn && (body as { question_usefulness?: unknown }).question_usefulness !== false && Deno.env.get('QUESTION_USEFULNESS_KILL') !== '1'
   let angleCardsRec: ReturnType<typeof angleCardsRecord> | null = null
   let questionNecessityRec: ReturnType<typeof questionNecessity> | null = null
@@ -8901,6 +8908,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   let provenanceSupply: Array<{ id?: unknown; kind?: unknown; text?: unknown }> = []
   // No-story trial rule: set where the note moment is read; story items read from provenanceSupply.
   let noteMomentForVideo = false
+  // STORY FIRST / DURATION FROM MATERIAL (owner, panel-current-5; trial).
+  let storyFirstPick: { id: string; text: string } | null = null
+  let durationChoice: DurationChoice | null = null
   let rescue: { bp: unknown; allow: LinkAllowlist; runId: string } | null = null
   // The outside board (research, moments, niche notes, audience), kept for the
   // invention gate of a RESCUED script too (panel-current-2 #8 had no gate record).
@@ -9396,8 +9406,12 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         // invention-gate ledger (built from gateBoard) is what the writer saw.
         let notes = notes0, trends = trends0, moments = moments0, research = research0, reddit = reddit0
         if (newOn('outside_select')) {
+          // Owner (panel-current-5, trial; kill switch OUTSIDE_MIN_RELEVANCE='false'):
+          // a real floor of request words, niche words not counted, zero allowed.
+          const outsideRequest = [reference_note, intent.focus, intent.outcome, body.angle, offer !== 'unspecified' ? offer : ''].map((v) => String(v ?? ''))
           const sel = pickOutsideForWriter({ notes: notes0, trends: trends0, moments: moments0, research: research0, reddit: reddit0 },
-            [reference_note, intent.focus, intent.outcome, body.angle, offer !== 'unspecified' ? offer : '', subNiche, niche].map((v) => String(v ?? '')))
+            [...outsideRequest, subNiche, niche].map((v) => String(v ?? '')),
+            outsideFloorOn ? { requestTexts: outsideRequest } : {})
           ;({ notes, trends, moments, research, reddit } = sel.lists)
           outsideSelected = sel.record
           console.log(JSON.stringify({ event: 'outside_selected', ...sel.record }))
@@ -9760,9 +9774,18 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         // sensitive item in, and (with no product) what a story must match.
         chosenText: [reference_note, ...Object.values(brief ?? {}), ...Object.values(answers ?? {})]
           .filter((v): v is string => typeof v === 'string').join(' '),
+        // STORY FIRST (panel-current-5 #22): stored brief values from other
+        // videos and skip answers ("Nothing specific, keep it general.") padded
+        // the topic until her named story needed two shared words. Under the
+        // switch the topic is this request's words only: her note, her idea and
+        // the answers she actually gave.
         topicText: ownedEntity ? null
-          : [reference_note, ...Object.values(brief ?? {}), ...Object.values(answers ?? {})]
-          .filter((v): v is string => typeof v === 'string').join(' '),
+          : storyFirstOn
+            ? [reference_note, brief.idea ?? '', ...Object.values(answers ?? {}).filter((v) => typeof v === 'string' && herSaid(v))]
+              .filter((v): v is string => typeof v === 'string').join(' ')
+            : [reference_note, ...Object.values(brief ?? {}), ...Object.values(answers ?? {})]
+              .filter((v): v is string => typeof v === 'string').join(' '),
+        askedText: storyFirstOn && !ownedEntity ? String(reference_note ?? '') : null,
         // Owner brief v2 Part 1 item 6: on the trial, only hard limits keep a story out.
         hardLimitsOnly: trialOn,
       })
@@ -9934,6 +9957,12 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // Owner 2026-10-05 (trial): one story per script, and not one told in two
     // of her last five — her reserved answers included. Not when she picked
     // the list herself on the plan screen.
+    // STORY FIRST: the story her request names is supplied even when the
+    // ten-slot ranking left it out, so `oneStory` below can keep it.
+    const namedStory = storyFirstOn && !ownedEntity && !chosenRows
+      ? askedStory(storyGate.kept as Array<{ id?: unknown; kind: string; text?: unknown }>, String(reference_note ?? ''))
+      : null
+    if (namedStory && !speakableAll.some((k) => String((k as { text?: unknown }).text ?? '') === String(namedStory.text ?? ''))) speakableAll.unshift(namedStory as (typeof speakableAll)[number])
     const storyCut = trialOn && !chosenRows
       ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>), topicText: ownedEntity ? null : String(reference_note ?? '') })
       : null
@@ -10147,7 +10176,15 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // story is kept, the writer tells it ONCE in her words, bridges it to the
     // viewer, and earns the ask from what it meant. Blind set 2: stories
     // stitched (#3), told twice (#3), embellished (#2), asks bolted on (#12).
-    if (storyCut?.kept) {
+    if (storyCut?.kept && namedStory && String(storyCut.kept.text ?? '') === String(namedStory.text ?? '')) {
+      const told = String(storyCut.kept.text ?? '').trim()
+      storyFirstPick = { id: String((storyCut.kept as { id?: unknown }).id ?? ''), text: told }
+      console.log(JSON.stringify({ event: 'story_first', id: storyFirstPick.id }))
+      knowledgeParts.push(`\nHER STORY FOR THIS VIDEO, ON FILE AND NAMED BY HER REQUEST: "${told.slice(0, 600)}"\n`
+        + '- Say this story WORD FOR WORD as one line of the script. Do not reword it, shorten it or add to it.\n'
+        + '- Add nothing around it: no other event, result, object, number, feeling, time word or person that is not in it. Do not retell it in other words elsewhere.\n'
+        + '- The other lines only set it up (one line) and turn it to the viewer (one line). If that is short, the video is short.\n')
+    } else if (storyCut?.kept) {
       const told = String(storyCut.kept.text ?? '').trim()
       knowledgeParts.push(`\nTHE ONE STORY IN THIS VIDEO (her words): "${told.slice(0, 600)}"\n`
         + '- Tell it ONCE, in one or two beats, keeping her own wording and every detail she gave. Add no detail she did not give: no time words ("recently", "early on"), no relatives, no feelings, no numbers.\n'
@@ -12013,6 +12050,28 @@ ${fenced('claims this creator may NOT make', forbidden)}
         console.log(JSON.stringify({ event: 'software_target_applied', target_sec: t }))
       }
     }
+    // DURATION FROM MATERIAL (owner, panel-current-5; trial, kill switch
+    // DURATION_FROM_MATERIAL='false'): the requested profile is lowered to what
+    // her material on file can fill. A thin creator gets an honest Sprint.
+    if (durationFromMaterialOn) {
+      try {
+        const kindOf = (k: { kind?: unknown }) => String(k?.kind ?? '')
+        const software = softwareTargetSec != null
+        const want = resolveTargetInline(body.target_seconds, softwareTargetSec).targetSec
+        durationChoice = chooseDuration(profileForSeconds(want, software), {
+          stories: provenanceSupply.filter((k) => STORY_KINDS.has(kindOf(k))).length,
+          facts: provenanceSupply.filter((k) => !STORY_KINDS.has(kindOf(k)) && !['topic', 'covered'].includes(kindOf(k))).length,
+          answers: Object.entries(answers ?? {}).filter(([f, v]) => !['goal', 'relationship', 'selected_product'].includes(f) && typeof v === 'string' && herSaid(v)).length,
+          product_facts: productFactCountOf(ownedEntity),
+          note_moment: noteMomentForVideo,
+        })
+        if (durationChoice.chosen !== durationChoice.requested) {
+          const p = DURATION_PROFILES[durationChoice.chosen]
+          body.target_seconds = software ? p.software_seconds : p.seconds
+        }
+        console.log(JSON.stringify({ event: 'duration_choice', requested: durationChoice.requested, chosen: durationChoice.chosen, units: durationChoice.units }))
+      } catch { durationChoice = null }
+    }
     const lengthResolved = resolveTargetInline(body.target_seconds, softwareTargetSec)
     lengthTarget = lengthResolved.targetSec
     lengthTargetSource = lengthResolved.source
@@ -12129,6 +12188,15 @@ This is the video's position. Every field below must serve it. If the reference'
     if (templateChoices.length) {
       templatePlan = templateChoices[0]!
       templateProfile = pickTemplateProfile(templatePlan.template, body.target_seconds, softwareTargetSec != null)
+    }
+    // DURATION FROM MATERIAL: a template may not stretch the script past what
+    // her material fills. The first eligible template that allows the chosen
+    // profile (or a shorter one) is used; when none does, no template.
+    if (durationChoice && templateChoices.length) {
+      const fit = templateChoices.map((p) => ({ p, prof: fitProfile(p.template.duration_profiles, durationChoice!.chosen) })).find((x) => x.prof !== null)
+      templatePlan = fit ? fit.p : null
+      if (fit) templateProfile = fit.prof!
+      durationChoice = { ...durationChoice, reason: `${durationChoice.reason}${fit ? `; template ${fit.p.template.id} at ${fit.prof}` : '; no eligible template allows it, so no template'}` }
     }
     // ── PLANNER SPINE (trial only) — BEGIN ──
     // One spine per script, built only from ledger items or her request words; every beat serves it.
@@ -16548,6 +16616,19 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           if (qc.repaired) console.log(JSON.stringify({ event: 'questions_capped', ...bpw.question_cap }))
         }
       } catch { /* the cap never fails a build */ }
+      // STORY FIRST (owner, panel-current-5): her named story is in the script
+      // word for word, once, with its key facts; recorded with its id.
+      if (storyFirstOn && storyFirstPick) {
+        try {
+          if (Array.isArray(bpw.script)) {
+            const sf = enforceStoryFirst(bpw.script as Array<Record<string, unknown>>, storyFirstPick.text)
+            bpw.script = sf.script
+            bpw.story_used = { id: storyFirstPick.id, ...sf.record }
+            console.log(JSON.stringify({ event: 'story_used', id: storyFirstPick.id, ...sf.record }))
+          }
+        } catch { /* the story check never fails a build */ }
+      }
+      if (durationChoice) bpw.duration_choice = durationChoice
     }
     // ⚖️ WHICH TEMPLATE, ALWAYS RECORDED (panel-current-3 item g): the
     // template record, or `{ id: 'none' }`, so its effect is measurable.

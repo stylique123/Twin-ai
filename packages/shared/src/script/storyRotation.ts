@@ -170,6 +170,16 @@ export function gateStories<T extends StoryCandidate>(
     topicText?: string | null
     /** Trial: only HARD_LIMIT keeps a story out; topic alone never does. */
     hardLimitsOnly?: boolean
+    /**
+     * STORY FIRST (owner, panel-current-5; trial). Her request alone (the note).
+     * A story this request names (`isAskedStory` against these words) is never
+     * off topic, however many other words `topicText` carries. panel-current-5
+     * #22: "the AI that misquoted my own newsletter" names her newsletter story,
+     * but `topicText` also carried stored brief values and skip answers ("Nothing
+     * specific, keep it general."), so the topic had 5+ specific words, two were
+     * needed, the story shared one, and it was withheld as off topic.
+     */
+    askedText?: string | null
   },
 ): StoryGateResult<T> {
   const SENS = opts.hardLimitsOnly ? HARD_LIMIT : SENSITIVE
@@ -180,6 +190,7 @@ export function gateStories<T extends StoryCandidate>(
   const chosenTerms = contentTerms(chosen)
   const raisedSensitive = SENS.test(chosen)
   const topicTerms = opts.topicText == null ? null : contentTerms(opts.topicText)
+  const askedTerms = opts.askedText == null ? null : contentTerms(opts.askedText)
   const kept: T[] = []
   const offProduct: T[] = []
   const resting: T[] = []
@@ -202,11 +213,13 @@ export function gateStories<T extends StoryCandidate>(
       // and her deadlift story shares one — off topic. Two shared words are
       // now required only for a long topic (5+ specific words).
       const m = storyTopicMatch(own, topicTerms)
-      if (topicTerms.size === 0 || m.shared < m.need) { offTopic.push(item); continue }
+      const namedByRequest = askedTerms !== null && askedTerms.size > 0 && isAskedStory(own, askedTerms)
+      if (!namedByRequest && (topicTerms.size === 0 || m.shared < m.need)) { offTopic.push(item); continue }
     }
     const id = String(item.id ?? '').trim()
     // A story this very request asks for (it matches her topic) never rests.
-    const asked = topicTerms !== null && isAskedStory(own, topicTerms)
+    const asked = (topicTerms !== null && isAskedStory(own, topicTerms))
+      || (askedTerms !== null && askedTerms.size > 0 && isAskedStory(own, askedTerms))
     if (!asked && id !== '' && ((recent.get(id) ?? 0) >= STORY_REST_AFTER || last.has(id))) { resting.push(item); continue }
     kept.push(item)
   }
