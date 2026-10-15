@@ -83,6 +83,7 @@ import { robotPass } from '../_shared/robotPhrases.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
+import { componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
@@ -112,6 +113,7 @@ import {
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
+import { buildVoiceCard, voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn } from '../_shared/voiceCard.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -128,6 +130,7 @@ import {
 } from '../_shared/productScenes.ts'
 import { placeFacts } from '../_shared/factPlacement.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { applyMaterialFloor, materialFloorOn } from '../_shared/materialFloor.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -6750,6 +6753,12 @@ async function handle(req: Request): Promise<Response> {
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
+  // RELEASE FLAGS (docs/release/shadow-and-flags.md). Each new component asks the
+  // registry; the default registry is S0 everywhere, so `newOn(c) === trialOn`
+  // for every component and every account. No registry is read here yet: real
+  // creators cannot get any component until a gate is passed and this is wired.
+  const releaseAccount = { userId: user.id, isTestAccount: isHeartbeat, trialOff: isHeartbeat && !trialOn }
+  const newOn = (c: ReleaseComponent): boolean => componentOn(c, releaseAccount)
   // ANGLE-FIT and QUESTION-USEFULNESS (Master Prompt v3, 15 Oct): trial only,
   // each with its own kill switch (request flag or env). Real creators never reach them.
   const angleFitOn = trialOn && (body as { angle_fit?: unknown }).angle_fit !== false && Deno.env.get('ANGLE_FIT_KILL') !== '1'
@@ -7703,6 +7712,25 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       console.log(JSON.stringify({ event: 'knowledge_off_ask', held_back: rel.dropped.length, kept: knowledgeRows.length, examples: rel.dropped.slice(0, 3).map((r) => String(r.text ?? '').slice(0, 60)) }))
     }
   }
+  // ⚖️ THE MATERIAL FLOOR (owner 15 Oct; trial only; MATERIAL_FLOOR_ENABLED=false is the kill switch).
+  // 20 of 30 recent generations were handed none of her stored items: her own
+  // labeled answers were held as off-purpose or off-ask. When those two
+  // filters leave nothing, her own stated answers come back. Sensitive,
+  // inferred, excluded and on-hold rows never do; the commercial and expiry
+  // checks are re-applied. Real creators: unchanged (trialOn is false).
+  {
+    const floor = applyMaterialFloor(
+      knowledgeRows,
+      [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) =>
+        !unconfirmedCommercial(r as never) && !expiredAnswer(r as never)),
+      excludedIds,
+      materialFloorOn(trialOn, Deno.env.get('MATERIAL_FLOOR_ENABLED')),
+    )
+    if (floor.restored) {
+      knowledgeRows.splice(0, knowledgeRows.length, ...floor.rows)
+      console.log(JSON.stringify({ event: 'material_floor_restored', restored: floor.restored }))
+    }
+  }
   // ⚖️ CONFLICTING FACTS ARE HELD, NEVER CHOSEN (owner 2026-10-06). Facts
   // about this product that state different origins are all kept from the
   // writer; she is asked which is current (below), and her answer marks the
@@ -7965,6 +7993,17 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     if (p && typeof p.offer === 'string') return { ...p, offer: scrubForeignOffer(p.offer, foreignOffer) }
     return p
   })() as (typeof voice)['profile'] | null
+  // ── THE VOICE CARD (owner: the generic AI voice is a bug) ─────────────────
+  // Counted off her own `samples` only (after the privacy scrub above). Behind
+  // the trial AND a kill-switch: `VOICE_CARD_ENABLED` unset = fictional
+  // creators only, 'true' = real creators too, 'false' = nobody.
+  const voiceCard = (() => {
+    try {
+      const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
+      return voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED')) ? buildVoiceCard(voiceMaterial(vp)) : null
+    } catch { return null }
+  })()
+  const voiceCardBlock = voiceCard ? `\n${voiceCardBrief(voiceCard)}` : ''
   // ⚠️ AUDIT 2026-10-03 (part 2): the police story sat in her sample hooks AND
   // came back reworded ("the city inspector walks through our doors"). What
   // the scrub cut is also excluded text for the final guard, so its wording is
@@ -9366,7 +9405,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         // request reach the writer. Selected before the board is built, so the
         // invention-gate ledger (built from gateBoard) is what the writer saw.
         let notes = notes0, trends = trends0, moments = moments0, research = research0, reddit = reddit0
-        if (trialOn) {
+        if (newOn('outside_select')) {
           // Owner (panel-current-5, trial; kill switch OUTSIDE_MIN_RELEVANCE='false'):
           // a real floor of request words, niche words not counted, zero allowed.
           const outsideRequest = [reference_note, intent.focus, intent.outcome, body.angle, offer !== 'unspecified' ? offer : ''].map((v) => String(v ?? ''))
@@ -11344,7 +11383,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
 - Audience: ${trialOn ? 'on file. Owner 2026-10-05: her profile labels were said out loud ("everyday people and beginners"). Never name or label her audience; speak to one viewer as "you".' : `${audienceResolved}${prov('audience')}`}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. ⚠️ Do NOT invent her audience\'s pain, a statistic about them, or a claim about what they feel (owner fabrication audit 2026-10-01). Speak only to the problem this video\'s own topic solves, in general words.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}${voiceCardBlock}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
 - ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}
 - ${knowledgeBoard.split('\n').join('\n  ')}${recentlySaidBlock ? `\n- ${recentlySaidBlock.split('\n').join('\n  ')}` : ''}${reference_url ? `
@@ -12131,7 +12170,7 @@ This is the video's position. Every field below must serve it. If the reference'
     let templatePlan: TemplatePlan | null = null
     let templateProfile: TemplateProfile = 'standard'
     let templateLedger: InventionLedgerItem[] = []
-    const templateChoices: TemplatePlan[] = trialOn ? (() => {
+    const templateChoices: TemplatePlan[] = newOn('templates') ? (() => {
       try {
         templateLedger = buildInventionLedger({
           knowledge: provenanceSupply, answers: { ...(answers ?? {}) }, note: reference_note,
@@ -12162,7 +12201,7 @@ This is the video's position. Every field below must serve it. If the reference'
     // ── PLANNER SPINE (trial only) — BEGIN ──
     // One spine per script, built only from ledger items or her request words; every beat serves it.
     let spinePlan: SpinePlan | null = null
-    if (trialOn) {
+    if (newOn('planner')) {
       try {
         spinePlan = planSpine({
           request: { goal: String(videoGoal ?? body.goal ?? ''), angle: pickedAngle ? String(pickedAngle.kind ?? '') : null, note: typeof reference_note === 'string' ? reference_note : '' },
@@ -12173,7 +12212,7 @@ This is the video's position. Every field below must serve it. If the reference'
       } catch { spinePlan = null }
     }
     let spineBeats: SpineBeats | null = null
-    if (trialOn && spinePlan) {
+    if (newOn('spine') && spinePlan) {
       try {
         spineBeats = planSpineBeats({
           plan: spinePlan, ledger: templateLedger,
@@ -12186,7 +12225,7 @@ This is the video's position. Every field below must serve it. If the reference'
     // ── PLANNER SPINE — END ──
     // ── HOOK ENGINE (A5, trial only) — candidates ride the existing writer call ──
     let hookCandidateBlock = ''
-    if (trialOn) { try { hookCandidateBlock = renderHookCandidateRule(templateLedger) } catch { hookCandidateBlock = '' } }
+    if (newOn('hook_engine')) { try { hookCandidateBlock = renderHookCandidateRule(templateLedger) } catch { hookCandidateBlock = '' } }
     const familyHookRulePlain = renderFamilyHookRule(family)
     // The template retry keeps today's plain brief, so it carries no candidate block.
     const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
@@ -14895,6 +14934,31 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
       const lines = vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))
       voiceGateAudit = { rules, flagged: flagged.length, repaired, vocabulary: vocabularyUsed(vProfile.vocabulary, lines) }
+      // The voice card's cleanup: lines carrying a phrase she never uses are
+      // rewritten toward her card; a rewrite that still misses is not kept.
+      if (voiceCard) {
+        const misses = voiceCardMisses(voiceCard, lines)
+        let cardRepaired = 0
+        if (misses.length > 0) {
+          try {
+            const fixed = await callModel(apiKey, VOICE_REPAIR_SYSTEM, voiceCardRepairPrompt(voiceCard, vBeats, misses), REPAIR_SCHEMA)
+            const idx = new Set(misses.map((m) => m.index))
+            for (const r of parseRepairRewrites(fixed)) {
+              const i = typeof r?.index === 'number' ? r.index : -1
+              const line = typeof r?.line === 'string' ? r.line.trim() : ''
+              if (!idx.has(i) || line === '') continue
+              if (voiceCardMisses(voiceCard, [line]).length > 0) continue
+              if (voiceViolations([{ line }], rules.filter((x) => x !== 'no_greeting' || i === 0), vProfile.vocabulary).length > 0) continue
+              if (claimsPersonalUse(line) && !claimsPersonalUse(String(vBeats[i].line ?? ''))) continue
+              vBeats[i].line = line
+              cardRepaired++
+            }
+          } catch (err) {
+            console.warn('voice_card_repair_failed', err instanceof Error ? err.message : err)
+          }
+        }
+        voiceGateAudit.voice_card = { id: voiceCard.id, misses: misses.length, repaired: cardRepaired }
+      }
       if (flagged.length > 0) console.warn(JSON.stringify({ event: 'voice_gate', rules, flagged: flagged.length, repaired }))
     } catch { /* the voice gate never fails a generation */ }
 
@@ -16169,7 +16233,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // ⚖️ OWNER A4 (trial first): robot-phrase blacklist + spoken cadence on
         // every line. Deletion and splitting only; never below three spoken
         // beats. Ids and counts only on the blueprint.
-        {
+        if (newOn('robot_phrases')) {
           const robot = robotPass(bp.script as Array<{ line?: unknown }>, 3)
           bp.script = robot.beats as typeof bp.script
           ;(bp as Record<string, unknown>).robot_phrases = robot.record
@@ -16574,7 +16638,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     }
     // ── PLANNER SPINE (trial only) — BEGIN ──
     // Record the plan (ids and counts only) and check each beat cites a planned item or is a transition/CTA.
-    if (trialOn && spinePlan && blueprint && typeof blueprint === 'object') {
+    if (newOn('planner') && spinePlan && blueprint && typeof blueprint === 'object') {
       try {
         const bpp = blueprint as Record<string, unknown>
         bpp.plan = planRecord(spinePlan)
@@ -16605,7 +16669,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // The record holds counts, shape ids, scores and reasons; the log holds no text.
     if (blueprint && typeof blueprint === 'object') {
       const bph = blueprint as Record<string, unknown>
-      if (trialOn) {
+      if (newOn('hook_engine')) {
         try {
           const raw = Array.isArray(bph.hook_candidates) ? (bph.hook_candidates as HookCandidateInput[]) : []
           const engine = runHookEngine(raw, templateLedger)
@@ -16635,7 +16699,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     }
     // ── HOOK ENGINE — END ──
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
-    if (trialOn && blueprint && typeof blueprint === 'object') {
+    if (newOn('invention_gate') && blueprint && typeof blueprint === 'object') {
       const gateEntity = ownedEntity as { id?: unknown } | null
       const gateTarget = gateEntity?.id ? String(gateEntity.id) : null
       let gateAnswers: Record<string, unknown> = {}
@@ -16711,6 +16775,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         blueprint: {
           ...(blueprint as Record<string, unknown>),
           ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
+          // The voice card this script was written and cleaned against, and how
+          // well the shipped lines match it (0-100, deterministic).
+          ...(voiceCard ? (() => {
+            try {
+              const lines = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
+                .map((b) => (typeof b?.line === 'string' ? b.line : '')).filter(Boolean)
+              return { voice_card_id: voiceCard.id, voice_match: scoreVoiceMatch(voiceCard, lines).score }
+            } catch { return { voice_card_id: voiceCard.id } }
+          })() : {}),
           ai_usage: currentUsage(),
           ai_usage_by_stage: currentStageUsage(),
           knowledge_route: knowledgeRoute ? { row: knowledgeRoute.row, gaps: knowledgeRoute.gaps, slots: knowledgeRoute.slots, available: routeAvail } : null,
@@ -16880,7 +16953,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // Same as the success path: check_status 'unchecked', record 'queued',
         // the worker's `invention_recheck` enqueued after the save.
         let rescueRecheck: { ledger: Record<string, unknown> } | null = null
-        if (trialOn && rescuedBp && typeof rescuedBp === 'object') {
+        if (newOn('invention_gate') && rescuedBp && typeof rescuedBp === 'object') {
           try {
             const rbp = rescuedBp as Record<string, unknown>
             const gateEntity = ownedEntity as { id?: unknown } | null

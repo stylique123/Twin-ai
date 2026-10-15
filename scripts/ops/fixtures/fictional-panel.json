@@ -7,7 +7,15 @@
       "display_name": "Maya (fictional)",
       "handle": "mayas_coffee_fictional",
       "brand": { "name": "Maya's Coffee", "description": "A one-person small-batch coffee roaster selling beans online and at a weekend market (fictional)." },
-      "voice": { "niche": "coffee", "sub_niche": "home coffee roasting", "tone": "warm, plain-spoken, a little nerdy about roast dates", "audience": "people who brew coffee at home every morning", "summary": "A small roaster who explains coffee without the snobbery." },
+      "voice": { "niche": "coffee", "sub_niche": "home coffee roasting", "tone": "warm, plain-spoken, a little nerdy about roast dates", "audience": "people who brew coffee at home every morning", "summary": "A small roaster who explains coffee without the snobbery.",
+        "style_note": "Warm, mid-length sentences, gentle nerdy asides about roast dates, says 'honestly' and 'here's the thing', talks to you, rarely exclaims.",
+        "samples": [
+          "Here's the thing about roast dates. Honestly, the date on the bag tells you more than the fancy name on the front.",
+          "I check every batch by smell before it goes in a bag, which my neighbours find a bit odd. Honestly, it's the best test I've got.",
+          "If your beans taste flat, here's the thing: they're probably just old. Keep them in a jar, away from the light, and use them within a month.",
+          "You don't need a scale to start, you know. Honestly, a spoon and a little patience will get you most of the way.",
+          "Here's the thing nobody tells you about light roast. It wants hotter water than you think, and it rewards you for it."
+        ] },
       "stories": [
         { "kind": "experience", "text": "I started roasting in my garage with a secondhand popcorn popper, and the first batch set off the smoke alarm twice." },
         { "kind": "experience", "text": "At my first market stall I sold out of Harbor Blend by ten in the morning and spent the rest of the day handing out samples from an empty table." },
@@ -35,7 +43,15 @@
       "display_name": "Glow Lab (fictional)",
       "handle": "glowlab_fictional",
       "brand": { "name": "Glow Lab", "description": "A small skincare seller making a fragrance-free moisturizer and a cleansing balm (fictional).", "forbidden_claims": ["cures acne", "clinically proven", "anti-aging results guaranteed", "treats eczema"] },
-      "voice": { "niche": "skincare", "sub_niche": "fragrance-free skincare for sensitive skin", "tone": "calm, careful, never promises results", "audience": "people with sensitive skin who are tired of products that sting", "summary": "A small skincare maker who explains ingredients plainly and avoids medical claims." },
+      "voice": { "niche": "skincare", "sub_niche": "fragrance-free skincare for sensitive skin", "tone": "calm, careful, never promises results", "audience": "people with sensitive skin who are tired of products that sting", "summary": "A small skincare maker who explains ingredients plainly and avoids medical claims.",
+        "style_note": "Calm, careful, formal-leaning full sentences, no contractions, hedged ('in my experience', 'gently'), no exclamations, no slang.",
+        "samples": [
+          "In my experience, sensitive skin responds best to fewer ingredients, not more. I would always patch test first, gently, on the inside of the arm.",
+          "I cannot tell you what your skin will do. What I can tell you is exactly what is in the jar, and why each ingredient is there.",
+          "Fragrance is added for the person shopping, not for the skin. In my experience, leaving it out is the kinder choice.",
+          "Please apply a small amount to damp skin and wait a moment. If anything stings, rinse it off gently and stop using it.",
+          "I test each batch on my own arm for a full week before it is sold. That is slow, and I am comfortable with slow."
+        ] },
       "stories": [
         { "kind": "experience", "text": "I made the first jar of the moisturizer in my kitchen because every store cream I tried left my cheeks red by lunchtime." },
         { "kind": "experience", "text": "My first batch separated in the jar overnight, and I threw out forty jars before I got the emulsion right." },
@@ -66,7 +82,15 @@
       "display_name": "FlowDesk founder (fictional)",
       "handle": "flowdesk_fictional",
       "brand": { "name": "FlowDesk", "description": "A small SaaS tool that turns a shared inbox into a simple task board for tiny support teams (fictional)." },
-      "voice": { "niche": "software", "sub_niche": "SaaS for small support teams", "tone": "direct, practical, a founder talking to other small teams", "audience": "owners of small online shops who answer customer email themselves", "summary": "A solo founder building in public and explaining support workflows." },
+      "voice": { "niche": "software", "sub_niche": "SaaS for small support teams", "tone": "direct, practical, a founder talking to other small teams", "audience": "owners of small online shops who answer customer email themselves", "summary": "A solo founder building in public and explaining support workflows.",
+        "style_note": "Clipped founder talk, very short sentences, numbers, 'look', 'ship it', 'we', direct questions to the viewer, dry.",
+        "samples": [
+          "Look. Your inbox is not a to-do list. Stop treating it like one.",
+          "We shipped saved replies on Tuesday. Took two days. Ship it, then fix it.",
+          "How many emails did you answer twice this week? Count them. We did. Forty-one.",
+          "Look, tags beat folders. Every time. We tested both.",
+          "Small team? Same five questions every day? Write the answer once. Ship it."
+        ] },
       "stories": [
         { "kind": "experience", "text": "I built the first version of FlowDesk over a winter because my partner and I kept answering the same customer email twice." },
         { "kind": "experience", "text": "Our first paying customer found a bug in the first hour, and I fixed it on a call with her while she watched." },
@@ -87,7 +111,15 @@
       "display_name": "Coach Ana (fictional)",
       "handle": "coach_ana_fictional",
       "brand": { "name": "Coach Ana", "description": "An online strength coach for beginners who train at home (fictional).", "forbidden_claims": ["lose 10 pounds", "guaranteed weight loss", "cures back pain"] },
-      "voice": { "niche": "fitness", "sub_niche": "beginner strength training at home", "tone": "encouraging, no-nonsense, small steps", "audience": "adults starting strength training at home with little equipment", "summary": "A coach who keeps beginner training simple and safe." },
+      "voice": { "niche": "fitness", "sub_niche": "beginner strength training at home", "tone": "encouraging, no-nonsense, small steps", "audience": "adults starting strength training at home with little equipment", "summary": "A coach who keeps beginner training simple and safe.",
+        "style_note": "High-energy coach, short punchy imperatives, lots of exclamations, 'you've got this', 'one more rep', always 'you', some slang ('legit', 'gonna').",
+        "samples": [
+          "Okay, you! Grab a chair. We're gonna do ten slow sit-to-stands. You've got this!",
+          "Legit, the hardest rep is the first one. Get it done and the rest is easy. One more rep!",
+          "Don't skip the warm-up, okay? Two minutes. That's it. You've got this!",
+          "Your knees go where your toes go. Simple! Gonna say it again: knees follow toes.",
+          "Tired? Good, that means it's working. One more rep, then you're done!"
+        ] },
       "stories": [
         { "kind": "experience", "text": "The first time I tried a deadlift I copied a video and my lower back felt it for a week, which is why I teach the hip hinge with a broomstick first." },
         { "kind": "experience", "text": "One of my first clients trained in a hallway with one pair of dumbbells, and we built her whole plan around that hallway." },
@@ -109,7 +141,15 @@
       "display_name": "Clay & Kiln maker (fictional)",
       "handle": "clay_and_kiln_fictional",
       "brand": { "name": "Clay & Kiln", "description": "A home studio making hand-thrown stoneware mugs and bowls (fictional)." },
-      "voice": { "niche": "crafts", "sub_niche": "handmade pottery", "tone": "slow, tactile, quietly funny", "audience": "people who like handmade things for their kitchen", "summary": "A potter showing the process behind each piece." },
+      "voice": { "niche": "crafts", "sub_niche": "handmade pottery", "tone": "slow, tactile, quietly funny", "audience": "people who like handmade things for their kitchen", "summary": "A potter showing the process behind each piece.",
+        "style_note": "Slow, long winding sentences with commas and dashes, sensory detail, gentle self-mocking humour, 'mind you', 'the clay decides', mostly 'I'.",
+        "samples": [
+          "I sat at the wheel for most of the morning, mind you, and the clay decides when it is ready, not me, which is a humbling thing to learn at forty.",
+          "There is a sound a good pot makes when you tap the rim, a sort of low hum, and I have been chasing that sound for years, mostly in vain.",
+          "The kiln opens slowly, the way a parcel opens when you are not sure you ordered it, and half the time the glaze has had other ideas, mind you.",
+          "I made six mugs this week, and one of them leans like it has heard some gossip, so that one is staying with me.",
+          "The clay decides, really; I just keep my hands wet and try not to argue with it too loudly in front of the cat."
+        ] },
       "stories": [
         { "kind": "experience", "text": "My first kiln load came out with every mug glued to the shelf because I glazed the bottoms." },
         { "kind": "experience", "text": "I threw the same mug shape about two hundred times before the handles stopped cracking in the kiln." },
@@ -136,7 +176,15 @@
       "display_name": "Signal Daily (fictional)",
       "handle": "signal_daily_fictional",
       "brand": { "name": "Signal Daily", "description": "A short daily commentary channel on AI tools for working people (fictional)." },
-      "voice": { "niche": "technology", "sub_niche": "AI tools commentary", "tone": "skeptical, quick, explains why it matters", "audience": "working professionals curious about AI tools but short on time", "summary": "A creator who tests AI tools and says plainly what is useful." },
+      "voice": { "niche": "technology", "sub_niche": "AI tools commentary", "tone": "skeptical, quick, explains why it matters", "audience": "working professionals curious about AI tools but short on time", "summary": "A creator who tests AI tools and says plainly what is useful.",
+        "style_note": "Rapid skeptic, rhetorical questions, 'so what?', 'the catch', 'real talk', second person, mid-short sentences, no hype words.",
+        "samples": [
+          "New AI tool dropped. So what? Does it save you ten minutes on Monday or not?",
+          "Real talk: most of these demos are the best case. The catch is what happens on your messy files.",
+          "I tested it on a real spreadsheet. The catch? It invented two columns. So what does that tell you?",
+          "Do you need it? Probably not yet. Real talk, wait a month and see who still uses it.",
+          "So what changed? The price. That's the whole story, and the catch is the free tier."
+        ] },
       "stories": [
         { "kind": "experience", "text": "I asked an AI tool to summarize my own newsletter and it confidently quoted a sentence I never wrote." },
         { "kind": "experience", "text": "I spent a week letting an AI assistant plan my calendar and it double-booked me on the one day I had a dentist appointment." },
@@ -157,7 +205,15 @@
       "display_name": "Pip and Sprocket (fictional)",
       "handle": "pip_sprocket_fictional",
       "brand": { "name": "Pip and Sprocket", "description": "A made-up puppet comedy duo that posts short sketches and plays a small live show (fictional)." },
-      "voice": { "niche": "comedy", "sub_niche": "puppet sketch comedy", "tone": "silly, quick, warm, a little chaotic", "audience": "adults who like gentle absurd comedy", "summary": "A puppeteer and her grumpy robot puppet who turn small annoyances into sketches." },
+      "voice": { "niche": "comedy", "sub_niche": "puppet sketch comedy", "tone": "silly, quick, warm, a little chaotic", "audience": "adults who like gentle absurd comedy", "summary": "A puppeteer and her grumpy robot puppet who turn small annoyances into sketches.",
+        "style_note": "Chaotic comedy, fragments, sound effects in caps, 'oh no', 'Sprocket says', lots of exclamations and questions, silly 'we'.",
+        "samples": [
+          "Oh no. Oh no no no. Sprocket found the toaster again! BZZT. We are not doing this today!",
+          "Sprocket says the printer is a liar. Is he wrong? Is he? We'll never know!",
+          "BEEP. Who left one sock in the hallway? Sprocket says it's evidence. Oh no!",
+          "We tried to fold a fitted sheet. Sprocket says never again. Never! BZZT.",
+          "Oh no, it's Monday. Sprocket says Mondays are a bug. Can we report it? Can we?"
+        ] },
       "stories": [
         { "kind": "experience", "text": "The first time I performed Sprocket live, his arm fell off mid-joke and the crowd laughed harder at that than at anything I wrote." },
         { "kind": "experience", "text": "I rewrote our opening sketch on the train because a stranger told me the ending made her sad." },
@@ -178,7 +234,15 @@
       "display_name": "Quiet Loom weaver (fictional)",
       "handle": "quiet_loom_fictional",
       "brand": { "name": "Quiet Loom", "description": "A home weaving studio making wool scarves (fictional). Deliberately has no creator stories on file." },
-      "voice": { "niche": "crafts", "sub_niche": "hand weaving", "tone": "quiet, careful", "audience": "people who like handmade winter things", "summary": "A weaver who has not shared any personal stories yet." },
+      "voice": { "niche": "crafts", "sub_niche": "hand weaving", "tone": "quiet, careful", "audience": "people who like handmade winter things", "summary": "A weaver who has not shared any personal stories yet.",
+        "style_note": "Sparse and quiet, very short calm statements, present tense, 'slowly', 'thread by thread', no questions, no exclamations.",
+        "samples": [
+          "The loom is warped. Slowly now. Thread by thread.",
+          "Grey wool today. It is soft. It is quiet work.",
+          "I pull the weft through. Slowly. The pattern shows itself thread by thread.",
+          "Winter light is short. I weave while it lasts.",
+          "One scarf a week. Slowly. That is enough."
+        ] },
       "stories": [],
       "products": [
         { "key": "scarf", "name": "Harbor Fog Scarf", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Harbor Fog Scarf at https://example.com/quiet-loom",

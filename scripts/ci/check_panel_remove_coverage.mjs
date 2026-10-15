@@ -123,6 +123,9 @@ export const NOT_TARGET_OWNED = {
   'admin_audit_log.target_user': 'audit history of admin actions, kept by policy',
   // ops_events is the operations log; the removal writes its own row there.
   'ops_events.user_id': 'operations log, no key; kept as audit trail',
+  // Release S1 shadow runs (0289): test and panel accounts are served the new
+  // path (stageFor returns new), never shadowed, so no row holds a panel id.
+  'shadow_runs.owner_id': 'shadow runs are for real creators only; panel accounts are never shadowed',
 }
 
 /** Problems (strings) comparing scanned columns with the residual list. */

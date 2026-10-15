@@ -104,6 +104,8 @@ const SOURCES = [
   ['packages/shared/src/script/actionPacing.ts', 'supabase/functions/_shared/actionPacing.ts'],
   ['packages/shared/src/customerReviews.ts', 'supabase/functions/_shared/customerReviews.ts'],
   ['packages/shared/src/script/voiceGate.ts', 'supabase/functions/_shared/voiceGate.ts'],
+  // The voice card: built from her own samples, scored deterministically (owner: the generic AI voice is a bug).
+  ['packages/shared/src/script/voice/voiceCard.ts', 'supabase/functions/_shared/voiceCard.ts'],
   // ⚠️ FIX 5 (Wave 2). The retention-map <-> final-script resync. Generated
   // rather than retyped for the same reason as shotListSync.ts just above —
   // a hand copy is exactly how the coaching panel's drift from the shipped
@@ -157,6 +159,8 @@ const SOURCES = [
   // Robot-phrase blacklist + spoken cadence (owner A4), and the outside-item relevance cut.
   ['packages/shared/src/script/robotPhrases.ts', 'supabase/functions/_shared/robotPhrases.ts'],
   ['packages/shared/src/script/outsideSelect.ts', 'supabase/functions/_shared/outsideSelect.ts'],
+  // Release flags (owner rule): per-component stage, rollout and kill switch. Default S0 = today's trialOn.
+  ['packages/shared/src/script/releaseFlags.ts', 'supabase/functions/_shared/releaseFlags.ts'],
   ['packages/shared/src/script/noStoryEvents.ts', 'supabase/functions/_shared/noStoryEvents.ts'],
   // Story first: her named story told verbatim, once (owner, panel-current-5; trial).
   ['packages/shared/src/script/storyFirst.ts', 'supabase/functions/_shared/storyFirst.ts'],
@@ -167,6 +171,7 @@ const SOURCES = [
   ['packages/shared/src/script/lineRepeat.ts', 'supabase/functions/_shared/lineRepeat.ts'],
   ['packages/shared/src/script/productSlots.ts', 'supabase/functions/_shared/productSlots.ts'],
   ['packages/shared/src/script/askRelevance.ts', 'supabase/functions/_shared/askRelevance.ts'],
+  ['packages/shared/src/script/materialFloor.ts', 'supabase/functions/_shared/materialFloor.ts'],
   ['packages/shared/src/script/factConflicts.ts', 'supabase/functions/_shared/factConflicts.ts'],
   ['packages/shared/src/script/ctaAllocation.ts', 'supabase/functions/_shared/ctaAllocation.ts'],
   ['packages/shared/src/script/recentlySaid.ts', 'supabase/functions/_shared/recentlySaid.ts'],
