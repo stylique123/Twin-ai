@@ -819,6 +819,7 @@ const EVENTS = {
   novel_detail_removed: { kind: 'counter_ephemeral', why: 'Per script (trial): sentences with a specific absent from her material removed. Visible in the stored script; the batch reviewer logs novel_details.' },
   empty_product_answer_fills_no_slot: { kind: 'counter_ephemeral', why: 'Per request: her answer about an empty product named no slot, so the question is asked again. Durable as the readiness question shown.' },
   knowledge_off_ask: { kind: 'counter_ephemeral', why: 'Per script (trial): scanned rows sharing no distinctive word with the product or ask, held back. Rows stay in creator_knowledge.' },
+  material_floor_restored: { kind: 'counter_ephemeral', why: 'Per script (trial + MATERIAL_FLOOR_ENABLED): her own stated answers restored when the purpose and ask filters left none. Count only; the ids land in writer_supply.' },
   spec_confirm: {
     kind: 'counter_ephemeral',
     why: 'Per tap: her yes or no on a held answer. Durable as creator_knowledge.creator_confirmed_at / creator_excluded_at.',

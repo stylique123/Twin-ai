@@ -123,6 +123,7 @@ import {
 } from '../_shared/productScenes.ts'
 import { placeFacts } from '../_shared/factPlacement.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { applyMaterialFloor, materialFloorOn } from '../_shared/materialFloor.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -7686,6 +7687,25 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       const drop = new Set(rel.dropped)
       for (let i = knowledgeRows.length - 1; i >= 0; i--) if (drop.has(knowledgeRows[i] as never)) knowledgeRows.splice(i, 1)
       console.log(JSON.stringify({ event: 'knowledge_off_ask', held_back: rel.dropped.length, kept: knowledgeRows.length, examples: rel.dropped.slice(0, 3).map((r) => String(r.text ?? '').slice(0, 60)) }))
+    }
+  }
+  // ⚖️ THE MATERIAL FLOOR (owner 15 Oct; trial + MATERIAL_FLOOR_ENABLED only).
+  // 20 of 30 recent generations were handed none of her stored items: her own
+  // labeled answers were held as off-purpose or off-ask. When those two
+  // filters leave nothing, her own stated answers come back. Sensitive,
+  // inferred, excluded and on-hold rows never do; the commercial and expiry
+  // checks are re-applied. Real creators: unchanged (trialOn is false).
+  {
+    const floor = applyMaterialFloor(
+      knowledgeRows,
+      [...(askedRows ?? []), ...(rankedRows ?? [])].filter((r) =>
+        !unconfirmedCommercial(r as never) && !expiredAnswer(r as never)),
+      excludedIds,
+      materialFloorOn(trialOn, Deno.env.get('MATERIAL_FLOOR_ENABLED')),
+    )
+    if (floor.restored) {
+      knowledgeRows.splice(0, knowledgeRows.length, ...floor.rows)
+      console.log(JSON.stringify({ event: 'material_floor_restored', restored: floor.restored }))
     }
   }
   // ⚖️ CONFLICTING FACTS ARE HELD, NEVER CHOSEN (owner 2026-10-06). Facts

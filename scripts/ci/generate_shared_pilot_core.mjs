@@ -163,6 +163,7 @@ const SOURCES = [
   ['packages/shared/src/script/lineRepeat.ts', 'supabase/functions/_shared/lineRepeat.ts'],
   ['packages/shared/src/script/productSlots.ts', 'supabase/functions/_shared/productSlots.ts'],
   ['packages/shared/src/script/askRelevance.ts', 'supabase/functions/_shared/askRelevance.ts'],
+  ['packages/shared/src/script/materialFloor.ts', 'supabase/functions/_shared/materialFloor.ts'],
   ['packages/shared/src/script/factConflicts.ts', 'supabase/functions/_shared/factConflicts.ts'],
   ['packages/shared/src/script/ctaAllocation.ts', 'supabase/functions/_shared/ctaAllocation.ts'],
   ['packages/shared/src/script/recentlySaid.ts', 'supabase/functions/_shared/recentlySaid.ts'],
