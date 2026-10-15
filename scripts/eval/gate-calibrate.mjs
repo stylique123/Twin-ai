@@ -14,7 +14,7 @@
 //   node scripts/eval/gate-calibrate.mjs --batch=<label>[,<label>] \
 //        (--labels=<labels.csv> | --labels-file-id=<test_run_files id>) \
 //        [--modes=two-judge,read,extract] [--measure-only] [--script-concurrency=1] \
-//        [--dry-run] [--dump=<rows.json>]
+//        [--dry-run] [--dump=<rows.json>] [--rule-review]
 //
 // --modes: `two-judge` (default, what production runs: `read` AND `extract`
 // each judge every chunk; `cascade` is kept as an alias for old workflow
@@ -113,6 +113,8 @@ const MODES = MODE_ARG.split(',').map((s) => s.trim()).filter(Boolean).map((m) =
 // The rewrite runs on the fast model, as in the worker.
 const REWRITE_MODEL = modelOf(INVENTION_JUDGE_CASCADE.fast)
 const MEASURE_ONLY = !!args['measure-only']
+/** --rule-review: score the trial-only rule re-calibration (softenRuleBlocks); else what each payload asked for. */
+const RULE_REVIEW = !!args['rule-review']
 const SCRIPT_CONCURRENCY = Math.max(1, Number(args['script-concurrency'] ?? 1) || 1)
 const DRY = !!args['dry-run']
 if (!BATCHES.length && !args.dump) {
@@ -264,6 +266,7 @@ async function loadLive() {
       offer: typeof led?.offer === 'string' ? led.offer : (products.find((p) => p.id === target)?.offer ?? ''),
       outside: Array.isArray(led?.outside) ? led.outside : [],
       measure_only: led?.measure_only === true,
+      rule_review: led?.rule_review === true,
       worker_payload: !!led,
     })
   }
@@ -401,6 +404,7 @@ async function main() {
       const r = await runInventionGate({
         blueprint: x.r.blueprint, ledger: x.ledger, products: x.products, targetProductId: x.r.target_product_id ?? null,
         model: mode.name, measureOnly: MEASURE_ONLY || x.r.measure_only === true, timeoutMs: INVENTION_RECHECK_TIMEOUT_MS,
+        ruleReview: RULE_REVIEW || x.r.rule_review === true,
       }, {
         judge: judgeWith(mode.fast, mine.fast, 'fast'),
         ...(mode.strong ? { judgeStrong: judgeWith(mode.strong, mine.strong, 'strong') } : {}),
