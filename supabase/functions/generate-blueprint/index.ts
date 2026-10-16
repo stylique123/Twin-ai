@@ -83,7 +83,9 @@ import { robotPass } from '../_shared/robotPhrases.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { isPanelAccount, gateMeasureOnly } from '../_shared/testAccount.ts'
-import { componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
+import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
+import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
+import { readOnlyClient } from '../_shared/readOnlyClient.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
@@ -6511,15 +6513,32 @@ async function handle(req: Request): Promise<Response> {
     global: { headers: { Authorization: authHeader } },
   })
   // Service client — used to spend credits and insert the generation.
-  const admin = createClient(supabaseUrl, serviceKey)
+  const adminRw = createClient(supabaseUrl, serviceKey)
 
-  const {
-    data: { user },
-  } = await userClient.auth.getUser()
+  // RELEASE S1 SHADOW RE-RUN (docs/release/shadow-and-flags.md §3; _shared/shadowRun.ts).
+  // Only the shadow runner can send this: it needs the SERVICE KEY as the bearer
+  // and names one release component. The re-run acts as that owner with a
+  // READ-ONLY service client, so it saves no generation, spends no credit and
+  // writes nothing; it returns its blueprint to the runner instead.
+  const shadowHeader = req.headers.get(SHADOW_HEADER)
+  const shadowComponent: ReleaseComponent | null = shadowHeader != null && serviceKey !== '' && authHeader === `Bearer ${serviceKey}`
+    && (RELEASE_COMPONENTS as readonly string[]).includes(shadowHeader) ? shadowHeader as ReleaseComponent : null
+  const isShadowRun = shadowComponent !== null
+  const admin = isShadowRun ? readOnlyClient(adminRw) : adminRw
+
+  const user = isShadowRun
+    ? await (async () => {
+      const owner = req.headers.get(SHADOW_OWNER_HEADER) ?? ''
+      if (!/^[0-9a-f-]{36}$/i.test(owner)) return null
+      const { data } = await adminRw.auth.admin.getUserById(owner)
+      return data?.user ?? null
+    })()
+    : (await userClient.auth.getUser()).data.user
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
   // Idea Mode questions: no credit, no build, its own light rate limit.
   const peek = await req.clone().json().catch(() => null) as { mode?: unknown; paragraph?: unknown } | null
+  if (isShadowRun && peek?.mode != null) return json({ error: 'shadow runs build scripts only', code: 'SHADOW_MODE' }, 400)
   if (peek?.mode === 'idea_questions') {
     const { data: ok } = await createClient(supabaseUrl, serviceKey).rpc('check_rate_limit', {
       p_user: user.id, p_action: 'idea_questions', p_max: 20, p_window_secs: 60,
@@ -6759,8 +6778,20 @@ async function handle(req: Request): Promise<Response> {
   // registry; the default registry is S0 everywhere, so `newOn(c) === trialOn`
   // for every component and every account. No registry is read here yet: real
   // creators cannot get any component until a gate is passed and this is wired.
+  // The registry is read only when RELEASE_REGISTRY_SOURCE=table (_shared/shadowRun.ts);
+  // otherwise `releaseRegistry` is undefined and the default (S0) applies.
+  // A shadow re-run serves the old path for everything except its one component.
   const releaseAccount = { userId: user.id, isTestAccount: isHeartbeat, trialOff: isHeartbeat && !trialOn }
-  const newOn = (c: ReleaseComponent): boolean => componentOn(c, releaseAccount)
+  const releaseRegistry = isShadowRun ? undefined : await loadReleaseRegistry(adminRw, Deno.env)
+  // Golden set (scripts/ops/goldenSet.mjs): a TEST account may send `release_off`
+  // naming components to run on the old path for this request (the per-component
+  // twin of `trial_off`). Ignored for real creators.
+  const releaseOff = new Set(isHeartbeat && Array.isArray((body as { release_off?: unknown }).release_off)
+    ? ((body as { release_off: unknown[] }).release_off).map(String) : [])
+  const newOn = (c: ReleaseComponent): boolean =>
+    isShadowRun ? c === shadowComponent || componentOn(c, releaseAccount, releaseRegistry)
+    : releaseOff.has(c) ? false
+    : componentOn(c, releaseAccount, releaseRegistry)
   // ANGLE-FIT and QUESTION-USEFULNESS (Master Prompt v3, 15 Oct): trial only,
   // each with its own kill switch (request flag or env). Real creators never reach them.
   const angleFitOn = trialOn && (body as { angle_fit?: unknown }).angle_fit !== false && Deno.env.get('ANGLE_FIT_KILL') !== '1'
@@ -8924,6 +8955,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // A panel account spent nothing (see spend above), so every refund path is a
   // no-op: the one-refund latch starts closed for it.
   if (isPanel) refunded = true
+  if (isShadowRun) refunded = true // a shadow re-run spends nothing (read-only client)
   const refundOnce = async (reason: string) => {
     if (refunded) return
     refunded = true
@@ -15771,6 +15803,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     })
     const unbillable = isPanel
       ? 'panel_test_account'
+      : isShadowRun
+      ? 'shadow_run'
       : asksCreator
       ? 'script_asks_creator_for_context'
       : (finalBeats.length > 0 && askedBeats / finalBeats.length >= 0.4)
@@ -16821,6 +16855,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         throw new Error(`${SCRIPT_EMPTIED}: ${spoken.length} spoken lines left after the checks`)
       }
     }
+    // A SHADOW RE-RUN STOPS HERE: nothing is saved; the runner gets the blueprint.
+    if (isShadowRun) {
+      return json({ shadow: true, component: shadowComponent, blueprint, ai_usage: currentUsage(), latency_ms: Date.now() - reqStartedAt })
+    }
     const { data: gen, error: insErr } = await admin
       .from('generations')
       .insert({
@@ -16981,6 +17019,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // a props blob that analytics queries and dashboards read back.
       .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, tone_requested: tone, tone_applied: appliedTone, cta_sell_intent: sellIntent, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path), placeholder_hooks_dropped: templated.hooksDropped, placeholder_lines: templated.linesAffected, contentless_unit: weakUnit } })
       .then(() => {}, () => {})
+
+    // RELEASE S1: a silent re-run with one shadowed component, after this response
+    // (EdgeRuntime.waitUntil). A no-op unless the registry is loaded and a component is past S0.
+    if (!isShadowRun) scheduleShadowRun({ admin: adminRw, env: Deno.env, supabaseUrl, serviceKey, account: releaseAccount, registry: releaseRegistry, body: body as Record<string, unknown>, generationId: gen?.id ?? null, liveLatencyMs: Date.now() - reqStartedAt, liveBlueprint: gen?.blueprint ?? null })
 
     return json(gen)
   } catch (err) {

@@ -81,7 +81,22 @@ describe('edge wiring', () => {
   it('every component is routed through newOn', () => {
     for (const c of COMPONENTS) expect(src).toContain(`newOn('${c}')`)
   })
-  it('the edge never passes a registry (default S0 only until a gate is passed)', () => {
-    expect(src).toMatch(/componentOn\(c, releaseAccount\)\n/)
+  it('the edge passes only the registry loaded behind RELEASE_REGISTRY_SOURCE (default S0 otherwise)', () => {
+    expect(src).toContain('const releaseRegistry = isShadowRun ? undefined : await loadReleaseRegistry(adminRw, Deno.env)')
+    expect(src).not.toMatch(/componentOn\(c, releaseAccount, (?!releaseRegistry\))/)
+    const shared = readFileSync(join(here, '../../../../../supabase/functions/_shared/shadowRun.ts'), 'utf8')
+    expect(shared).toContain("if (env.get('RELEASE_REGISTRY_SOURCE') !== 'table') return undefined")
+  })
+  it('release_off is honoured for test accounts only', () => {
+    expect(src).toMatch(/const releaseOff = new Set\(isHeartbeat && /)
+  })
+  it('a shadow re-run is authorised by the service key and gets a read-only client', () => {
+    expect(src).toContain('authHeader === `Bearer ${serviceKey}`')
+    expect(src).toContain('const admin = isShadowRun ? readOnlyClient(adminRw) : adminRw')
+    expect(src).toContain('if (isShadowRun) refunded = true') // spend_credits is blocked by the read-only client
+    // It returns before the generation insert.
+    const ret = src.indexOf('if (isShadowRun) {\n      return json({ shadow: true')
+    expect(ret).toBeGreaterThan(0)
+    expect(ret).toBeLessThan(src.indexOf(".from('generations')\n      .insert({\n        user_id: user.id,"))
   })
 })

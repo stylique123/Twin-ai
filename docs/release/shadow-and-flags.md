@@ -121,10 +121,33 @@ event is raised and the owner is notified. Only a person can clear a kill. It
 is never cleared automatically. Shadow-only stages (S1) cannot harm creators,
 so a breach there stops the shadow run (`killed`) and nothing else changes.
 
-## 7. Out of scope here
+## 7. Built (inert until the owner acts)
 
-- No registry source is wired (config table or env), and no component is past S0.
-- The shadow runner, the golden-set runner and the monitor job are designed
-  here, not built.
-- `0290_shadow_runs` must be applied by hand before any component reaches S1
-  (it is listed in `EXCLUDED` in `check_staging_migration_coverage.mjs`).
+- **Registry source:** `public.release_flags` (migration `0291_release_flags.sql`, file only,
+  seeded S0 everywhere). The edge reads it only when `RELEASE_REGISTRY_SOURCE=table`;
+  otherwise it passes no registry and the default (S0) applies. A read error falls back to S0.
+- **Shadow runner:** `_shared/shadowRun.ts` (edge) + `shadowRunner.ts` (pure, generated).
+  After a live script is saved, `scheduleShadowRun` hands a task to `EdgeRuntime.waitUntil`.
+  It picks ONE shadowed component, checks `SHADOW_SAMPLE_RATE` (default 0.1), that
+  `shadow_runs` exists (one warning if not), and today's shadow spend in `ai_usage_ledger`
+  (traffic `shadow`) against `SHADOW_DAILY_USD` (default 0 = off). It re-sends the request
+  to generate-blueprint with the service key and `x-twin-shadow: <component>`; that re-run
+  uses a read-only service client (`_shared/readOnlyClient.ts`), returns before the
+  generation insert, and is never shown or charged. The runner writes one `shadow_runs`
+  row and the ledger rows. Logs: ids, counts, status. Optional: `SHADOW_RUN_MAX_TOKENS`
+  (flags `token_cap`), `SHADOW_TIMEOUT_MS`.
+- **Golden set:** `scripts/ops/goldenSet.mjs` (`golden-v1`: first 24 panel requests).
+  Old arm sends `release_off: [component]` (test accounts only); new arm does not.
+  Dry run by default; `--live` capped by `GOLDEN_BUDGET_USD` (default 2.0). Local JSON report.
+- **Monitor:** `scripts/ops/releaseMonitor.mjs` + `releaseMonitor.ts` (rules of §6; no rule
+  trips below 20 completed runs). Dry-run report unless `--apply` AND
+  `RELEASE_MONITOR_ENABLED=1`; then it sets `release_flags.killed` and inserts an
+  `ops_events` row (`release_rollback`, critical). It never clears a kill.
+
+### Turning S1 on for one component
+
+1. Apply `0290_shadow_runs.sql` and `0291_release_flags.sql`.
+2. Run the golden set for the component with `--live` and check the §5 gate.
+3. `update public.release_flags set stage = 'S1', updated_at = now() where component = '<c>';`
+4. Edge secrets: `RELEASE_REGISTRY_SOURCE=table`, `SHADOW_DAILY_USD=<cap>`, optionally `SHADOW_SAMPLE_RATE`.
+5. Schedule the monitor; set `RELEASE_MONITOR_ENABLED=1` and pass `--apply` when ready.

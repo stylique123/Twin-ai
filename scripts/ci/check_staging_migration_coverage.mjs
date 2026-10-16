@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0291_release_flags':
+    'Service-role-only release registry and kill switch (RLS on, no policies), seeded S0 everywhere, plus the `shadow` traffic tag on ai_usage_ledger; NOT yet applied (file only, owner applies by hand with 0290 before any component reaches S1). Read by the edge only when RELEASE_REGISTRY_SOURCE=table. No staging-only surface.',
   '0290_shadow_runs':
     'New service-role-only table (RLS on, no policies) for release S1 shadow comparisons; NOT yet applied (file only, owner applies by hand before any component reaches S1). Nothing reads or writes it yet. No staging-only surface.',
   '0289_audience_pain_map':
