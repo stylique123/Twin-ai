@@ -98,7 +98,7 @@ import { DURATION_PROFILES } from '../_shared/templateData.ts'
 import { chooseDuration, fitProfile, type DurationChoice } from '../_shared/durationFromMaterial.ts'
 import { askedStory, enforceStoryFirst } from '../_shared/storyFirst.ts'
 import { renderHookCandidateRule, runHookEngine, type HookCandidateInput } from '../_shared/hookEngine.ts'
-import { guardScript, applyHookPick } from '../_shared/writerGuards.ts'
+import { guardScript as writerGuardScript, applyHookPick } from '../_shared/writerGuards.ts'
 import { hookShape } from '../_shared/hookShapes.ts'
 import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
@@ -16677,7 +16677,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // hers. The record is rule ids and counts, never text.
       try {
         if (Array.isArray(bpw.script)) {
-          const g = guardScript({
+          const g = writerGuardScript({
             script: bpw.script as Array<Record<string, unknown>>,
             hook_options: Array.isArray(bpw.hook_options) ? bpw.hook_options as unknown[] : [],
             ledger: templateLedger,
@@ -16753,7 +16753,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           // picked hooks (guarded like every other line) now lead hook_options
           // and open script line 1; the record keeps ids and counts only.
           try {
-            const gp = guardScript({ script: [], hook_options: engine.pick.hooks, ledger: templateLedger,
+            const gp = writerGuardScript({ script: [], hook_options: engine.pick.hooks, ledger: templateLedger,
               targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null })
             const okPick = new Set(gp.hook_options)
             const pickedIdx = engine.pick.hooks.map((h, i) => (okPick.has(h) ? i : -1)).filter((i) => i >= 0)
