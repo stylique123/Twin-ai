@@ -65,6 +65,14 @@ jobs:
       # Both are things the compiler names; nothing was asking the compiler.
       - name: Edge functions compile (a syntax error here cannot deploy)
         run: node scripts/ci/check_edge_functions_parse.mjs
+      # generate-blueprint imported two different `guardScript`s from two
+      # modules; Deno refused to boot it ("Identifier has already been
+      # declared") and the parse check above passed it. #1279 fixed the clash.
+      # Needs the TypeScript compiler API, so it lives here after `npm ci`.
+      - name: No name bound twice in an edge module (duplicate imports cannot boot)
+        run: |
+          node scripts/ci/check_edge_duplicate_imports.mjs --selftest
+          node scripts/ci/check_edge_duplicate_imports.mjs
       # ⚠️ THE CREDENTIAL 25 FUNCTIONS ASKED FOR COULD NOT BE ROTATED. They read
       # `SUPABASE_SERVICE_ROLE_KEY`, which the platform injects and an operator
       # CANNOT set — the `SUPABASE_` prefix is reserved, refused with "Name must
