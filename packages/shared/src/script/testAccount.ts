@@ -7,9 +7,8 @@
 //
 // A panel account is treated as the heartbeat is: its generations carry
 // `is_heartbeat` (every corpus reader and the lesson learner already exclude
-// that flag), the trial is on, and the invention gate runs — in MEASURE mode
-// (classify and record, never repair) unless the request explicitly asks for
-// the full gate.
+// that flag), the trial is on, and the invention gate runs in REPAIR mode (owner, 16 Oct)
+// unless GATE_REPAIR_TRIAL='false' or the request asks for measure.
 //
 // Mirrored byte-for-byte at supabase/functions/_shared/testAccount.ts
 // (scripts/ci/check_test_account_parity.mjs).
@@ -23,17 +22,29 @@ export function isPanelAccount(user: { app_metadata?: unknown } | null | undefin
   return (meta as { twin_test_account?: unknown }).twin_test_account === PANEL_ACCOUNT_TAG
 }
 
+/** The test-account repair trial's kill switch (owner, 16 Oct): on unless the
+ *  edge env GATE_REPAIR_TRIAL is exactly 'false' (any case, trimmed). */
+export function gateRepairTrialOn(envValue: unknown): boolean {
+  return String(envValue ?? '').trim().toLowerCase() !== 'false'
+}
+
 /** Whether the invention gate runs classify-only for this request.
- *  - a real creator: never (the request field is ignored);
- *  - a panel account: measure by default; `gate_mode: 'repair'` asks for the full gate;
- *  - the heartbeat: measure by default too (owner Reply 13 fallback: the two-judge
- *    gate missed the 90% validation recall bar, so no test account repairs until
- *    it is re-tuned); `gate_mode: 'repair'` still asks for the full gate. */
-export function gateMeasureOnly(input: { isTestAccount: boolean; isPanel: boolean; requested: unknown }): boolean {
+ *  - a real creator: never (the request field is ignored) — unchanged;
+ *  - a test account (heartbeat or panel): REPAIR by default since the gate
+ *    re-calibration passed its targets (owner, 16 Oct: recall 25/25, false
+ *    blocks 12%, false flags 15.4%); `repairTrial: false` (GATE_REPAIR_TRIAL=
+ *    'false') returns them to measure mode;
+ *  - an explicit `gate_mode: 'measure' | 'repair'` on a test account wins. */
+export function gateMeasureOnly(input: { isTestAccount: boolean; isPanel: boolean; requested: unknown; repairTrial?: boolean }): boolean {
   if (!input.isTestAccount && !input.isPanel) return false
   if (input.requested === 'measure') return true
   if (input.requested === 'repair') return false
-  return true
+  return input.repairTrial === false
+}
+
+/** The gate mode recorded on each blueprint. */
+export function gateModeLabel(measureOnly: boolean): 'measure' | 'repair' {
+  return measureOnly ? 'measure' : 'repair'
 }
 
 /** A measure-only gate run that finished (not a timeout or failure). Such a
