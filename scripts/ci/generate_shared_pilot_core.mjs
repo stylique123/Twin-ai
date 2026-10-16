@@ -161,6 +161,9 @@ const SOURCES = [
   ['packages/shared/src/script/outsideSelect.ts', 'supabase/functions/_shared/outsideSelect.ts'],
   // Release flags (owner rule): per-component stage, rollout and kill switch. Default S0 = today's trialOn.
   ['packages/shared/src/script/releaseFlags.ts', 'supabase/functions/_shared/releaseFlags.ts'],
+  // S1 shadow runner (pure part) and the rollback monitor's rules (docs/release/shadow-and-flags.md §3, §6).
+  ['packages/shared/src/script/shadowRunner.ts', 'supabase/functions/_shared/shadowRunner.ts'],
+  ['packages/shared/src/script/releaseMonitor.ts', 'supabase/functions/_shared/releaseMonitor.ts'],
   ['packages/shared/src/script/noStoryEvents.ts', 'supabase/functions/_shared/noStoryEvents.ts'],
   // Story first: her named story told verbatim, once (owner, panel-current-5; trial).
   ['packages/shared/src/script/storyFirst.ts', 'supabase/functions/_shared/storyFirst.ts'],

@@ -71,39 +71,6 @@ const MIG = join(REPO, 'supabase', 'migrations')
 // ⚠️ EVERY ENTRY IS A DECISION SOMEBODY MADE, WITH A DATE. An unregistered
 // unread column fails the build; a registered one is a debt that was named.
 export const REGISTRY = {
-  'shadow_runs.error_code': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.live_invented': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.live_latency_ms': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.live_output': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.live_postable': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.registry_version': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.shadow_cost_usd': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.shadow_invented': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.shadow_latency_ms': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.shadow_output': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
-  'shadow_runs.shadow_postable': {
-    why: 'Release S1 shadow comparison (0289, file only, not applied). Read by the golden-set and monitor jobs designed in docs/release/shadow-and-flags.md. WIRE with the shadow runner.',
-  },
   'creator_knowledge.superseded_reason': {
     why: 'Audit trail for 0282: why a fact was retired (duplicate, or a claim held until she confirms '
       + 'a softer wording). Read by hand when a decision is undone. WIRE with the My Twin "Left out" list.',
