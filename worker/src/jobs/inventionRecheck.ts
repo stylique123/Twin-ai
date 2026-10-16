@@ -109,6 +109,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   // Test accounts only (the edge sets this for the fictional panel and on the
   // heartbeat's request): classify and record, never repair (owner, 13 Oct).
   const measureOnly = extra.measure_only === true
+  bp.gate_mode = measureOnly ? 'measure' : 'repair'
   const budget = INVENTION_RECHECK_TIMEOUT_MS
   const judgeCall = (model: string) => (p: string) => deps.callModel(JUDGE_SYSTEM, p, JUDGE_SCHEMA, budget, { model, thinkingBudget: JUDGE_THINKING_BUDGET })
   const gate = await runInventionGate({

@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { isPanelAccount, gateMeasureOnly, isMeasuredRun, PANEL_ACCOUNT_TAG } from '../testAccount.js'
+import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel, isMeasuredRun, PANEL_ACCOUNT_TAG } from '../testAccount.js'
 import { buildLedger, runInventionGate, type GateBlueprint } from '../inventionGate.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -23,21 +23,41 @@ describe('isPanelAccount', () => {
   })
 })
 
-describe('gateMeasureOnly', () => {
-  it('a real creator never measures, whatever the request says', () => {
+describe('gateMeasureOnly (repair trial, owner 16 Oct)', () => {
+  it('a real creator never measures, whatever the request or the kill switch says', () => {
     for (const requested of [undefined, 'measure', 'repair', true]) {
-      expect(gateMeasureOnly({ isTestAccount: false, isPanel: false, requested })).toBe(false)
+      for (const repairTrial of [undefined, true, false]) {
+        expect(gateMeasureOnly({ isTestAccount: false, isPanel: false, requested, repairTrial })).toBe(false)
+      }
     }
   })
-  it('a panel account measures by default and may ask for repair', () => {
-    expect(gateMeasureOnly({ isTestAccount: true, isPanel: true, requested: undefined })).toBe(true)
-    expect(gateMeasureOnly({ isTestAccount: true, isPanel: true, requested: 'repair' })).toBe(false)
+  it('a panel account repairs by default and may ask to measure', () => {
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: true, requested: undefined })).toBe(false)
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: true, requested: undefined, repairTrial: true })).toBe(false)
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: true, requested: 'measure' })).toBe(true)
   })
   it('the heartbeat repairs by default and may ask to measure', () => {
-    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: undefined })).toBe(true)
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: undefined })).toBe(false)
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: true })).toBe(false)
     expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: 'measure' })).toBe(true)
-    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: true })).toBe(true)
     expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: 'repair' })).toBe(false)
+  })
+  it('the kill switch returns test accounts to measure mode', () => {
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: true, requested: undefined, repairTrial: false })).toBe(true)
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: false, requested: undefined, repairTrial: false })).toBe(true)
+    // an explicit repair request still wins
+    expect(gateMeasureOnly({ isTestAccount: true, isPanel: true, requested: 'repair', repairTrial: false })).toBe(false)
+  })
+  it("GATE_REPAIR_TRIAL: only 'false' switches the trial off", () => {
+    expect(gateRepairTrialOn(undefined)).toBe(true)
+    expect(gateRepairTrialOn('')).toBe(true)
+    expect(gateRepairTrialOn('true')).toBe(true)
+    expect(gateRepairTrialOn('false')).toBe(false)
+    expect(gateRepairTrialOn(' FALSE ')).toBe(false)
+  })
+  it('the mode label', () => {
+    expect(gateModeLabel(true)).toBe('measure')
+    expect(gateModeLabel(false)).toBe('repair')
   })
 })
 
@@ -84,6 +104,10 @@ describe('edge wiring', () => {
     // sends it with the queued job.
     expect(edge).toMatch(/const gateMeasure = gateMeasureOnly\(\{ isTestAccount: isHeartbeat, isPanel, requested:/)
     expect(edge).toMatch(/\.\.\.\(gateMeasure \? \{ measure_only: true \} : \{\}\)/)
+    // Kill switch read from the edge env; the mode is recorded on both blueprint paths.
+    expect(edge.match(/repairTrial: gateRepairTrialOn\(Deno\.env\.get\('GATE_REPAIR_TRIAL'\)\)/g)?.length).toBe(2)
+    expect(edge).toMatch(/bpg\.gate_mode = gateModeLabel\(gateMeasure\)/)
+    expect(edge).toMatch(/rbp\.gate_mode = gateModeLabel\(gateMeasure\)/)
     const worker = readFileSync(new URL('../../../../../worker/src/jobs/inventionRecheck.ts', import.meta.url), 'utf8')
     expect(worker).toMatch(/const measureOnly = extra\.measure_only === true/)
   })

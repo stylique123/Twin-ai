@@ -94,6 +94,14 @@ describe('invention_recheck', () => {
     expect((bp.invention_gate as Record<string, unknown>).outcome).toBe('measure_only')
     expect(bp.gate_questions).toBeUndefined()
     expect(out).toMatchObject({ outcome: 'measure_only', check_status: 'unchecked' })
+    expect(bp.gate_mode).toBe('measure')
+  })
+
+  it('repair mode (the default, incl. the test-account trial) records gate_mode repair', async () => {
+    const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+    const { d, saved } = deps()
+    await runInventionRecheck(job({ generation_id: GEN, owner_id: OWNER, reason: 'queued', ledger: { target_product_id: HARBOR } }), d)
+    expect(saved.at(-1)!.blueprint.gate_mode).toBe('repair')
   })
 
   it('a re-check that fails writes nothing (check_status stays unchecked) and throws so the job retries', async () => {
