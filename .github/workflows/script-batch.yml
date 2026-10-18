@@ -42,6 +42,11 @@ on:
         description: 'Fictional panel: stop once the estimated spend passes this (USD)'
         required: false
         default: '2.5'
+      panel_answer_mode:
+        description: 'Fictional panel: how a 409 question is answered. skip = "Nothing specific" (default); fixture = the creator''s fictional fixture answer'
+        type: choice
+        options: [skip, fixture]
+        default: skip
       drafts:
         description: 'Drafts per script, best one kept (1-3; test account only)'
         required: false
@@ -101,6 +106,7 @@ jobs:
           PANEL_FILE_ID: ${{ inputs.panel_file_id }}
           PANEL_BUDGET_USD: ${{ inputs.panel_budget_usd }}
           PANEL_SEED: ${{ inputs.panel_seed }}
+          PANEL_ANSWER_MODE: ${{ inputs.panel_answer_mode }}
           BATCH_DRAFTS: ${{ inputs.drafts }}
           BATCH_PANEL: ${{ inputs.cost_mode == 'checkpoint' && 'on' || 'off' }}
           BATCH_LENGTHEN: ${{ inputs.cost_mode == 'checkpoint' && 'on' || 'off' }}

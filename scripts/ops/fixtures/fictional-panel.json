@@ -36,7 +36,8 @@
             { "field": "process_step", "value": "A darker roast pulled just after second crack, meant for espresso" }
           ] }
       ],
-      "creator_type": "physical_product"
+      "creator_type": "physical_product",
+      "answers": { "story": "Here's the thing, a customer once brought back a bag because it smelled like toast, and honestly she was right, I had pushed that batch too dark.", "product_slot": "Harbor Blend is a medium roast I make for drip and pour-over, honestly it's the one I drink every morning.", "niche": "Here's the thing, I talk about home coffee, roast dates and keeping beans fresh, not latte art.", "profile": "Honestly, I'm a one-person roaster talking to people who brew at home before work." }
     },
     {
       "key": "glow-lab",
@@ -75,7 +76,8 @@
             { "field": "includes", "value": "A cleansing balm that rinses off with warm water" }
           ] }
       ],
-      "creator_type": "physical_product"
+      "creator_type": "physical_product",
+      "answers": { "story": "In my experience, the first time I tested Calm Cream on my own cheek, I waited a full day before I trusted that it did not sting.", "product_slot": "Calm Cream is a gentle, unscented moisturiser that I made for skin that reacts to almost everything.", "niche": "I speak about sensitive skin, gentle routines and reading ingredient lists calmly.", "profile": "I am a small skincare maker, and I speak to people whose skin is tired of stinging products." }
     },
     {
       "key": "flowdesk",
@@ -104,7 +106,8 @@
             { "field": "includes", "value": "A 14-day free trial with no card needed" }
           ] }
       ],
-      "creator_type": "software"
+      "creator_type": "software",
+      "answers": { "story": "Look. I answered every support email myself for a year. Missed a refund once. Customer waited a week. That's why we built FlowDesk.", "product_slot": "FlowDesk sorts your shop inbox. Replies drafted. You approve. Ship it.", "niche": "Small online shops. Customer email. Less time in the inbox.", "profile": "Founder. Tiny team. We talk to shop owners who still answer email themselves." }
     },
     {
       "key": "coach-ana",
@@ -134,7 +137,8 @@
             { "field": "includes", "value": "One video check-in call every two weeks" }
           ] }
       ],
-      "creator_type": "service_coach"
+      "creator_type": "service_coach",
+      "answers": { "story": "My very first home workout I used water bottles as weights and dropped one on my toe, legit, and I still finished the set!", "product_slot": "The Home Strength Starter is my beginner plan, bands and bodyweight, you're gonna do it right in your living room!", "niche": "Strength training at home, beginners, little equipment, you've got this!", "profile": "I'm a coach for adults starting out at home, no gym needed, one more rep!" }
     },
     {
       "key": "clay-kiln",
@@ -169,7 +173,8 @@
             { "field": "process_step", "value": "Glazed in a green that pools darker at the rim" }
           ] }
       ],
-      "creator_type": "maker"
+      "creator_type": "maker",
+      "answers": { "story": "I once opened the kiln to find a whole shelf of mugs had slumped sideways, mind you, the glaze came out lovely, so the clay decides, as ever.", "product_slot": "The Tide Mug is a wheel-thrown mug with a soft blue glaze that pools at the bottom, a bit like the tide going out.", "niche": "I make handmade kitchen pottery, mugs and bowls, mostly slow work at the wheel.", "profile": "I'm a potter working alone in a small studio, making things for people who like handmade things in their kitchen." }
     },
     {
       "key": "signal-daily",
@@ -197,11 +202,13 @@
             { "field": "includes", "value": "One email every weekday with one AI tool tested" }
           ] }
       ],
-      "creator_type": "entertainer"
+      "creator_type": "entertainer",
+      "answers": { "story": "Real talk, I once tested an AI tool that promised to save an hour a day, and the catch was it took an hour to set up.", "product_slot": "Signal Daily is a short newsletter that tells you which AI tools matter this week, and so what for your job.", "niche": "AI tools for busy professionals, minus the hype, what's the catch, what's useful.", "profile": "I'm a skeptic writing for working people who are curious about AI but short on time." }
     },
     {
       "key": "pip-sprocket",
       "creator_type": "entertainer",
+      "answers": { "story": "Oh no! Sprocket once tried to fold a fitted sheet on stage, CRUNCH, and we never found the corner again!", "product_slot": "Pip and Sprocket Live is our silly stage show, puppets, sound effects, and Sprocket says it is VERY serious!", "niche": "Gentle absurd comedy, sketches, puppets, a lot of BONK.", "profile": "We are a comedy duo, one human and one sprocket, for adults who like silly things!" },
       "display_name": "Pip and Sprocket (fictional)",
       "handle": "pip_sprocket_fictional",
       "brand": { "name": "Pip and Sprocket", "description": "A made-up puppet comedy duo that posts short sketches and plays a small live show (fictional)." },
@@ -231,6 +238,7 @@
     {
       "key": "quiet-loom",
       "creator_type": "maker",
+      "answers": { "story": "The first scarf took a whole winter. I unpicked it twice. Slowly, it came right.", "product_slot": "The Harbor Fog Scarf is hand-woven wool. Soft grey. Thread by thread.", "niche": "Handmade winter weaving. Scarves. Slow craft.", "profile": "I weave alone, slowly. For people who like handmade winter things." },
       "display_name": "Quiet Loom weaver (fictional)",
       "handle": "quiet_loom_fictional",
       "brand": { "name": "Quiet Loom", "description": "A home weaving studio making wool scarves (fictional). Deliberately has no creator stories on file." },
