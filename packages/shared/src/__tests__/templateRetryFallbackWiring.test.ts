@@ -32,8 +32,8 @@ describe('the writer retry drops the template block', () => {
   })
 
   it('the attempt loop sends the retry prompt on attempt index >= 1 and keeps the timeouts', () => {
-    expect(EDGE).toMatch(/const attemptPrompt = i >= 1 && ladder \? ladder\.retryPrompt : prompt/)
-    expect(EDGE).toMatch(/callOnce\(apiKey, system, attemptPrompt, a\.model/)
+    expect(EDGE).toMatch(/const attemptPrompt = i >= 1 && ladder\?\.retryPrompt \? ladder\.retryPrompt : prompt/)
+    expect(EDGE).toMatch(/callOnce\(apiKey, system, attemptPrompt, a\.model, a\.thinkBudget, timeoutMs/)
     expect(EDGE).toMatch(/\{ model, thinkBudget, timeoutMs: 75_000 \}/)
     expect(EDGE).toMatch(/\{ model: fallbackModel, thinkBudget: 0, timeoutMs: 55_000 \}/)
   })

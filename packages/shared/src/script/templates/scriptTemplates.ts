@@ -452,8 +452,20 @@ export function lengthenFromLedger(script: readonly ScriptBeat[], profile: Durat
     if (band.words + words(it.text) > band.max) continue
     if (alreadySaid(it.text, out.map(lineOf))) continue
     const spoken = out.map((b, i) => (lineOf(b) ? i : -1)).filter((i) => i >= 0)
-    const at = spoken.length >= 2 ? spoken[spoken.length - 1]! : out.length
-    out = [...out.slice(0, at), { line: asSentence(it.text), section: 'build', source_item: it.id }, ...out.slice(at)]
+    // ⚠️ PANEL-6: her opinion was pasted as its own beat just before the close,
+    // wherever that fell. It now joins the body beat it shares the most words
+    // with (never the hook or the close); other items follow that beat.
+    const body = spoken.slice(1, -1)
+    const terms = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9']{4,}/g) ?? [])
+    const own = terms(it.text)
+    let best = -1, bestHit = 0
+    for (const i of body) { let h = 0; for (const w of terms(lineOf(out[i]))) if (own.has(w)) h++; if (h > bestHit) { bestHit = h; best = i } }
+    if (it.origin === 'her_fact' && best >= 0) {
+      out[best] = { ...out[best], line: `${lineOf(out[best]).replace(/\s+$/, '')} ${asSentence(it.text)}` }
+    } else {
+      const at = best >= 0 ? best + 1 : spoken.length >= 2 ? spoken[spoken.length - 1]! : out.length
+      out = [...out.slice(0, at), { line: asSentence(it.text), section: 'build', source_item: it.id }, ...out.slice(at)]
+    }
     added.push(it.id)
   }
   return { script: out, added }

@@ -113,3 +113,24 @@ export function enforceStoryFirst<B extends { line?: unknown }>(script: readonly
   const after = checkStoryInScript(told, out.map(lineOf))
   return { script: out, record: { verbatim_as_written: before.verbatim, verbatim: after.verbatim, repaired, key_facts_found: after.found, key_facts_total: after.total, dropped_retellings: dropped } }
 }
+
+/**
+ * THE NAMED STORY SURVIVES THE FILTERS (panel-6 #14, #22; trial). Her note
+ * named a story on file, but the purpose / ask filters upstream of the story
+ * gate held it, and the material floor only restores when NOTHING is left.
+ * When the kept rows hold no story her request names, the best-matching
+ * eligible story from the full candidate set is put back first. `eligible`
+ * carries the same guards as the floor (stated, her own, not sensitive, not
+ * excluded, not on hold). Pure.
+ */
+export function restoreAskedStory<R extends StoryRow>(
+  kept: readonly R[],
+  candidates: readonly R[],
+  requestText: string | null | undefined,
+  eligible: (r: R) => boolean,
+): { rows: R[]; restored: R | null } {
+  if (askedStory(kept, requestText)) return { rows: [...kept], restored: null }
+  const s = askedStory(candidates.filter(eligible), requestText)
+  if (!s) return { rows: [...kept], restored: null }
+  return { rows: [s, ...kept.filter((k) => k !== s)], restored: s }
+}

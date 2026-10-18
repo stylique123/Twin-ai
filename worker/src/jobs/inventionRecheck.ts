@@ -20,7 +20,7 @@
 import type { Job } from '../db.js'
 import { PermanentJobError } from '../errors.js'
 import {
-  buildLedger, runInventionGate, resolveTargetProduct, extractSentences, checkStatusFor, gateProgress, GATE_REWRITTEN_KEYS,
+  buildLedger, runInventionGate, reconcileHookPick, resolveTargetProduct, extractSentences, checkStatusFor, gateProgress, GATE_REWRITTEN_KEYS,
   INVENTION_RECHECK_TIMEOUT_MS, INVENTION_JUDGE_CASCADE, JUDGE_THINKING_BUDGET, JUDGE_SYSTEM, JUDGE_SCHEMA, REWRITE_SYSTEM, REWRITE_SCHEMA,
   type GateBlueprint, type GateProgress, type InventionGateRecord,
 } from '../generated/inventionGate.js'
@@ -125,6 +125,8 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     ...(extra.rule_review === true ? { ruleReview: true } : {}),
     // Trial only, behind CHECK_LINE_KILL on the edge: review lines carry their reason id.
     ...(extra.check_lines === true ? { checkLines: true } : {}),
+    // Trial only (the edge sets hold_asks under trialOn): no "[Your answer: …]" in spoken text.
+    ...(extra.hold_asks === true ? { holdAsks: true } : {}),
     ...(deps.now ? { now: deps.now } : {}),
   }, {
     judge: judgeCall(deps.model),
@@ -160,6 +162,17 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
       if (k in gate.blueprint) bp[k] = (gate.blueprint as Record<string, unknown>)[k]
     }
     resyncShotListToScript(bp)
+  }
+  // Trial (hold_asks): a pick the gate rewrote or dropped is no longer a pick,
+  // and the picks that remain lead hook_options with no duplicate option.
+  if (extra.hold_asks === true) {
+    const rp = reconcileHookPick(bp)
+    if (rp) {
+      bp.hook_options = rp.hook_options
+      bp.hook_pick = rp.hook_pick
+      if (rp.hook_moves) bp.hook_moves = rp.hook_moves
+      if (rp.removed) bp.hook_pick_gate_removed = rp.removed
+    }
   }
   if (gate.questions.length) bp.gate_questions = [...(Array.isArray(bp.gate_questions) ? bp.gate_questions : []), ...gate.questions]
   const prior = rec(bp.invention_gate) as Partial<InventionGateRecord>

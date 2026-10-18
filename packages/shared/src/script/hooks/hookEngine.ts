@@ -177,6 +177,12 @@ export function pickTop(records: readonly HookCandidateRecord[], n = HOOK_PICK_C
 // lines drag. `appealScore` encodes those as fixed weights (no fitting at
 // runtime). It is used only when the caller passes `trial: true`.
 
+// ⚖️ RE-SCORED ON PANEL-6 RATINGS (owner, 19 Oct; 145 blind-rated hooks, ratings
+// kept out of the repo). Two-fold fits agreed on two moves only, so only those
+// changed: a trailing question reads weaker (-0.05 → -0.10), and LENGTH IS NOT
+// A PENALTY — hooks of 7 words or fewer were rated lowest, 11-13 words highest,
+// so each word past 9 now adds a little (-0.02 → +0.03). Spearman against the
+// ratings 0.29 → 0.48; mean rating of the top-scored third 3.35 → 3.63.
 export const APPEAL_WEIGHTS = {
   base: 0.5,
   story: 0.35,
@@ -185,9 +191,9 @@ export const APPEAL_WEIGHTS = {
   generic: -0.1,
   stop_open: 0.12,
   you_open: 0.12,
-  question: -0.05,
+  question: -0.1,
   if_open: -0.08,
-  per_word_over_9: -0.02,
+  per_word_over_9: 0.03,
 } as const
 
 const STORY_LEAD_RE = /^(?:(?:my|our)\b[^.?!]*\b(?:was|were|found|separated|broke|cracked|failed|sold|went|came|took)\b|i\s+\w+ed\b|i\s+(?:threw|lost|made|sold|broke|found|tried|spent|wrote|got|had|ran|took|burned|forgot)\b)/i
@@ -239,10 +245,10 @@ function storyBacking(text: string, ledger: readonly LedgerItem[]): number {
  * text plus her ledger. A line is a story when it reads as a first-person
  * event OR is mostly her story item's words.
  */
-export function appealScore(text: string, ledger: readonly LedgerItem[]): number {
+export function appealScore(text: string, ledger: readonly LedgerItem[], weights: { readonly [K in keyof typeof APPEAL_WEIGHTS]: number } = APPEAL_WEIGHTS): number {
   const f = hookFeatures(text)
   if (f.words === 0) return 0
-  const W = APPEAL_WEIGHTS
+  const W = weights
   const story = f.story || storyBacking(text, ledger) >= 0.6
   let s = W.base
   if (story) s += W.story
@@ -289,6 +295,20 @@ function isSpecificFact(it: LedgerItem): boolean {
   return it.numbers.length > 0 || contentWords(it.text).size >= 4
 }
 
+const SURPRISE_RE = /\b(?:but|never|only|instead|actually|than|without|stopped|wrong|mistake|nobody|most people|zero|half|twice|every)\b/i
+/**
+ * ⚠️ PANEL-6: a bare product spec (a plan description, a monthly price)
+ * opened 16 picked hooks and rated low. A
+ * fact opens a hook only when it carries a SURPRISING specific: a number inside
+ * a real sentence (6+ words), or a contrast / reversal word. Her own fact or
+ * answer qualifies the same way; a product fact with neither never does.
+ */
+export function isSurprisingSpecific(it: LedgerItem): boolean {
+  const words = wordCount(it.text)
+  if (it.numbers.length > 0 && words >= 6) return true
+  return SURPRISE_RE.test(it.text) && isSpecificFact(it)
+}
+
 const FACT_SHAPES = ['price_or_proof', 'number_promise', 'stop_doing', 'if_then_check'] as const
 
 /** STORY-OPEN then FACT-OPEN candidates for this request, story first, ledger order. */
@@ -311,7 +331,7 @@ export function openCandidates(
     if (it.origin === 'her_story' && it.first_party && matchesRequest(it, request, target)) push(openLine(it.text), 'story_open', 'story_open')
   }
   for (const it of ledger) {
-    if (!FACT_ORIGINS.has(it.origin) || !it.first_party || !isSpecificFact(it) || !matchesRequest(it, request, target)) continue
+    if (!FACT_ORIGINS.has(it.origin) || !it.first_party || !isSurprisingSpecific(it) || !matchesRequest(it, request, target)) continue
     const line = openLine(it.text)
     if (!line) continue
     const shape = FACT_SHAPES.find((id) => eligible.has(id) && checkHookAgainstShape(line, hookShape(id)!, ledger).ok)
@@ -368,7 +388,9 @@ function runTrial(
     }
     const appeal = text ? appealScore(text, ledger) : 0
     // Opens are offered FIRST: a passing open outranks any writer line.
-    const total = (ok ? 1 : 0.5) * appeal + (c.source !== 'writer' && ok ? 1 : 0)
+    // Story-open is preferred over fact-open (owner 19 Oct): both outrank a
+    // writer line, a story-open outranks a fact-open.
+    const total = (ok ? 1 : 0.5) * appeal + (ok ? (c.source === 'story_open' ? 1.2 : c.source === 'fact_open' ? 1 : 0) : 0)
     records.push({ ...rec, index, ok, reasons, source: c.source, score: { ...rec.score, appeal: round3(appeal), total: round3(total) } })
     texts.push(text)
   })

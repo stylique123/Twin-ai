@@ -64,7 +64,7 @@ describe('wiring: an unchecked gate enqueues a durable re-check', () => {
     expect(at).toBeGreaterThan(0)
     const block = EDGE.slice(EDGE.lastIndexOf('if (trialOn && blueprint', at), EDGE.indexOf("traceBeats('shipped'", at))
     expect(block).toMatch(/bpg\.check_status = 'unchecked'/)
-    expect(block).toMatch(/inventionRecheck = \{ reason: 'queued', ledger: \{ answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, \.\.\.\(gateMeasure \? \{ measure_only: true \} : \{\}\), \.\.\.\(trialOn \? \{ rule_review: true \} : \{\}\), \.\.\.\(trialOn && checkLineOn\(Deno\.env\.get\('CHECK_LINE_KILL'\)\) \? \{ check_lines: true \} : \{\}\) \} \}/)
+    expect(block).toMatch(/inventionRecheck = \{ reason: 'queued', ledger: \{ answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, \.\.\.\(gateMeasure \? \{ measure_only: true \} : \{\}\), \.\.\.\(trialOn \? \{ rule_review: true, hold_asks: true \} : \{\}\), \.\.\.\(trialOn && checkLineOn\(Deno\.env\.get\('CHECK_LINE_KILL'\)\) \? \{ check_lines: true \} : \{\}\) \} \}/)
     expect(block).toContain("event: 'invention_gate_queued'")
   })
   it('enqueues an invention_recheck jobs row keyed on the saved generation id, right after the save', () => {

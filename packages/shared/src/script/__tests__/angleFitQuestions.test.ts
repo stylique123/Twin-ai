@@ -76,6 +76,6 @@ describe('question usefulness', () => {
     const qs = usefulQuestions({ candidates: [{ kind: 'story', piece: 'story', fallback: 'invented' }], required: ['story'], onFile: [] })
     expect(questionNecessity(qs).avoided_invented).toBe(1)
     const use = questionUse({ story: 'The garage froze my wax overnight', other: 'unrelated tangent here' }, ['The garage froze my wax solid overnight.'])
-    expect(use).toEqual({ answered: 2, used: 1, used_keys: ['story'] })
+    expect(use).toEqual({ answered: 2, skipped: 0, used: 1, used_keys: ['story'] })
   })
 })

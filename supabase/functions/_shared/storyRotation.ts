@@ -206,8 +206,12 @@ export function gateStories<T extends StoryCandidate>(
     if (SENS.test(`${String(item?.text ?? '')} ${String(item?.evidence ?? '')}`)
       && !(raisedSensitive && overlaps(chosenTerms))) { sensitive.push(item); continue }
     if (!STORY_KINDS.has(String(item?.kind ?? ''))) { kept.push(item); continue }
+    // ⚠️ PANEL-6 (#14, #22): with her offer attached, the story her note named
+    // shared no word with the product and was withheld as off-product. A story
+    // this request names is never off-product (askedText is trial only).
+    const namedByNote = askedTerms !== null && askedTerms.size > 0 && isAskedStory(own, askedTerms)
     if (productTerms.size > 0) {
-      if (!overlaps(productTerms)) { offProduct.push(item); continue }
+      if (!namedByNote && !overlaps(productTerms)) { offProduct.push(item); continue }
     } else if (topicTerms !== null) {
       // Paired set pair 17 (2026-10-07): "my small batch roasting routine"
       // let a cart story through on the one word "small". With a topic of 3+

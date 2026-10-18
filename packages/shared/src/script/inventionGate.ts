@@ -1601,13 +1601,15 @@ export interface ApplyResult {
   dropped: number
   fallback: number
   questions: GateQuestion[]
+  /** holdAsks: removed spoken lines refilled from her unused first-party items. */
+  refilled?: number
 }
 
 /** Apply a plan to the blueprint. `rewrites` maps sentence index → new text
  *  (an empty or missing rewrite turns that replace into a drop). Pure: returns
  *  a new object. The shot list and teleprompter are re-synced by the caller
  *  from the repaired script. */
-export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence[], steps: readonly RepairStep[], rewrites: ReadonlyMap<number, string> = new Map()): ApplyResult {
+export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence[], steps: readonly RepairStep[], rewrites: ReadonlyMap<number, string> = new Map(), opts: { holdAsks?: boolean; refill?: string[] } = {}): ApplyResult {
   const res: ApplyResult = { bp, replaced: 0, asked: 0, dropped: 0, fallback: 0, questions: [] }
   // Per-entry sentence arrays, edited then re-joined.
   const key = (s: GateSentence) => `${s.surface}:${s.at}`
@@ -1623,15 +1625,22 @@ export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence
     if (!s) continue
     const e = entries.get(key(s))!
     touched.add(key(s))
+    // ⚖️ REFILL, DON'T SHRINK (owner 19 Oct; holdAsks only). A spoken line the
+    // gate removes is replaced by her next unused first-party item, verbatim,
+    // so the script keeps its length when her material allows.
+    const refill = () => (opts.holdAsks && s.surface === 'script' && opts.refill?.length ? opts.refill.shift()! : null)
     if (st.action === 'replace') {
       const nt = (rewrites.get(st.i) ?? '').trim()
-      if (nt) { e[s.k] = nt; res.replaced++ } else { e[s.k] = null; res.dropped++ }
+      if (nt) { e[s.k] = nt; res.replaced++ } else { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.dropped++ }
     } else if (st.action === 'ask' || st.action === 'fallback') {
-      e[s.k] = placeholderFor(st.question!)
+      // ⚠️ PANEL-6: 9 needs_answers scripts shipped "[Your answer: …]" inside
+      // the spoken text. Under holdAsks the sentence is dropped instead; the
+      // question still counts (outcome stays needs_answers) and is returned.
+      if (opts.holdAsks) { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1 } else e[s.k] = placeholderFor(st.question!)
       if (st.action === 'ask') res.asked++
       else res.fallback++
       res.questions.push(st.question!)
-    } else { e[s.k] = null; res.dropped++ }
+    } else { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.dropped++ }
   }
   if (!touched.size) return res
   const joined = (k: string) => (entries.get(k) ?? []).filter((x): x is string => typeof x === 'string' && x.trim() !== '').join(' ')
@@ -1664,6 +1673,85 @@ export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence
   return res
 }
 
+/** Any `[...]` span: never spoken (mirror of spokenPlaceholders.ts). */
+const BRACKET_SPAN = /\[[^\]]*\]/
+
+/** THE LAST CHECK (deterministic, no model). Every sentence of a spoken script
+ *  line that carries a bracket span is removed; a beat left empty is dropped.
+ *  Hook options with a bracket are dropped too. Pure. */
+export function blockSpokenPlaceholders<T extends { script?: unknown; hook_options?: unknown }>(bp: T): { bp: T; removed: number; beatsDropped: number } {
+  let removed = 0
+  let beatsDropped = 0
+  const out = { ...bp }
+  if (Array.isArray(bp.script)) {
+    const next: unknown[] = []
+    for (const b of bp.script as unknown[]) {
+      const line = b && typeof b === 'object' ? (b as { line?: unknown }).line : undefined
+      if (typeof line !== 'string' || !BRACKET_SPAN.test(line)) { next.push(b); continue }
+      const kept = splitSentences(line).filter((x) => { const bad = BRACKET_SPAN.test(x); if (bad) removed++; return !bad })
+      // Strays (an unclosed "[" split oddly) are caught by a last pass.
+      const t = kept.join(' ').replace(/\[[^\]]*\]?/g, '').replace(/\s{2,}/g, ' ').trim()
+      if (t && /[A-Za-z0-9]/.test(t)) next.push({ ...(b as object), line: t })
+      else beatsDropped++
+    }
+    ;(out as { script?: unknown }).script = next
+  }
+  if (Array.isArray(bp.hook_options)) {
+    const hooks = (bp.hook_options as unknown[]).filter((h) => !(typeof h === 'string' && BRACKET_SPAN.test(h)))
+    removed += (bp.hook_options as unknown[]).length - hooks.length
+    ;(out as { hook_options?: unknown }).hook_options = hooks
+  }
+  return { bp: out, removed, beatsDropped }
+}
+
+/** PICKED HOOKS STAY IN hook_options (panel-6: 5 scripts recorded picks the
+ *  gate had since rewritten or dropped). A pick the gate removed is no longer a
+ *  pick; surviving picks lead hook_options, and every option appears once.
+ *  Pure; returns null when the blueprint has no pick. */
+export function reconcileHookPick(bp: { hook_options?: unknown; hook_pick?: unknown; hook_moves?: unknown }): { hook_options: string[]; hook_pick: Record<string, unknown>; hook_moves: unknown[] | null; removed: number } | null {
+  const pick = bp.hook_pick && typeof bp.hook_pick === 'object' ? bp.hook_pick as Record<string, unknown> : null
+  if (!pick || !Array.isArray(pick.hooks) || !Array.isArray(bp.hook_options)) return null
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const opts = (bp.hook_options as unknown[]).map((h, i) => ({ h: typeof h === 'string' ? h : '', m: Array.isArray(bp.hook_moves) ? (bp.hook_moves as unknown[])[i] ?? null : null }))
+  const byKey = new Map<string, { h: string; m: unknown }>()
+  for (const o of opts) { const k = norm(o.h); if (k && !byKey.has(k)) byKey.set(k, o) }
+  const hooks = pick.hooks as unknown[]
+  const keep: number[] = []
+  const seenPick = new Set<string>()
+  hooks.forEach((h, i) => { const k = norm(String(h ?? '')); if (k && byKey.has(k) && !seenPick.has(k)) { seenPick.add(k); keep.push(i) } })
+  const sub = (v: unknown) => (Array.isArray(v) ? keep.map((i) => v[i]) : v)
+  const nextPick = { ...pick, hooks: keep.map((i) => byKey.get(norm(String(hooks[i])))!.h), shapes: sub(pick.shapes), scores: sub(pick.scores), indices: sub(pick.indices) }
+  const seen = new Set<string>()
+  const ordered = [...keep.map((i) => byKey.get(norm(String(hooks[i])))!), ...opts].filter((o) => { const k = norm(o.h); if (!k || seen.has(k)) return false; seen.add(k); return true })
+  return { hook_options: ordered.map((o) => o.h), hook_pick: nextPick, hook_moves: Array.isArray(bp.hook_moves) ? ordered.map((o) => o.m) : null, removed: hooks.length - keep.length }
+}
+
+const REFILL_ORIGINS: ReadonlySet<string> = new Set(['her_story', 'her_fact', 'her_answer', 'product_fact'])
+const spokenText = (bp: GateBlueprint): string => (Array.isArray(bp.script) ? bp.script : [])
+  .map((b) => String((b as { line?: unknown })?.line ?? '')).join(' ')
+const contentSet = (t: string) => new Set((t.toLowerCase().match(/[a-z0-9']{4,}/g) ?? []))
+
+/** Her unused first-party items, in ledger order, as spoken sentences: on this
+ *  product, not a skip, not the note, 5-45 words, a bracket never, and not
+ *  already said (half its content words in the script). Pure. */
+export function refillCandidates(ledger: readonly LedgerItem[], targetProductId: string | null, script: string): string[] {
+  const said = contentSet(script)
+  const out: string[] = []
+  for (const it of ledger) {
+    if (!REFILL_ORIGINS.has(it.origin) || !it.first_party) continue
+    if (it.field === 'note' || it.field?.startsWith('template.')) continue
+    if (it.product_id && it.product_id !== targetProductId) continue
+    const t = it.text.trim().replace(/\s+/g, ' ')
+    if (!t || isNonAnswerText(t) || /[\[\]\n]/.test(t)) continue
+    const n = t.split(' ').length
+    if (n < 5 || n > 45) continue
+    const own = [...contentSet(t)]
+    if (own.length && own.filter((w) => said.has(w)).length / own.length >= 0.5) continue
+    out.push((t.charAt(0).toUpperCase() + t.slice(1)).replace(/([^.!?])$/, '$1.'))
+  }
+  return out
+}
+
 // ── THE RECORD ─────────────────────────────────────────────────────────────
 
 /** 'timeout' = the gate ran out of time and fell back to measure-only for this request.
@@ -1677,7 +1765,13 @@ export interface GateRecordSentence {
   fast_class?: GateClass; strong_class?: GateClass; verdict?: GateVerdict
 }
 
+export interface PlaceholderBlock { removed: number; beats_dropped: number }
+
 export interface InventionGateRecord {
+  /** Trial (holdAsks): bracket placeholders the final check removed from spoken lines. */
+  placeholder_block?: PlaceholderBlock
+  /** Trial (holdAsks): removed spoken lines refilled from her unused items. */
+  refill?: { refilled: number }
   version: string
   model: string | null
   sentences: GateRecordSentence[]
@@ -1824,6 +1918,12 @@ export interface RunGateInput {
   ruleReview?: boolean
   /** Trial only (CHECK THIS LINE): review lines are recorded with their reason id. */
   checkLines?: boolean
+  /** Trial only (edge sets `hold_asks` under trialOn). An ask never leaves a
+   *  "[Your answer: …]" placeholder in a spoken line: the sentence is dropped
+   *  (its beat too when emptied) and the question ships separately in
+   *  `questions`. A final deterministic check then blocks any bracket span left
+   *  in a spoken line. */
+  holdAsks?: boolean
   now?: () => number
   timeoutMs?: number
   chunkSize?: number
@@ -1855,7 +1955,7 @@ function parseRewrites(raw: string): Map<number, string> {
 /** Classes for a repaired blueprint WITHOUT a new judge call: no new text was
  *  written (only drops, asks and placeholders), so each surviving sentence
  *  keeps the class it already had; a placeholder carries no claim (N). */
-export function carryClasses(prev: { sentences: readonly GateSentence[]; classified: readonly ClassifiedSentence[] }, next: readonly GateSentence[]): ClassifiedSentence[] {
+export function carryClasses(prev: { sentences: readonly GateSentence[]; classified: readonly ClassifiedSentence[] }, next: readonly GateSentence[], supported: ReadonlySet<string> = new Set()): ClassifiedSentence[] {
   const pool = prev.classified.map((c) => ({ c, text: prev.sentences[c.i]?.text ?? '', used: false }))
   return next.map((s) => {
     if (isPlaceholder(s.text)) {
@@ -1863,6 +1963,8 @@ export function carryClasses(prev: { sentences: readonly GateSentence[]; classif
     }
     const hit = pool.find((p) => !p.used && p.c.surface === s.surface && p.text === s.text)
     if (hit) { hit.used = true; return { ...hit.c, i: s.i, at: s.at, k: s.k } }
+    // A refill is her own item, verbatim: supported by construction.
+    if (supported.has(s.text)) return { i: s.i, surface: s.surface, at: s.at, k: s.k, class: 'S' as const, claim_types: [], item_ids: [], reason: 'entailed' as const, near: [], judged: false, fast_class: 'S' as const, strong_class: 'S' as const, verdict: 'pass' as const }
     return { i: s.i, surface: s.surface, at: s.at, k: s.k, class: 'I' as const, claim_types: [], item_ids: [], reason: 'judge_missing' as const, near: [], judged: false, fast_class: 'I' as const, strong_class: 'I' as const, verdict: 'block' as const }
   })
 }
@@ -1947,8 +2049,13 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     // slot asked before the writer ran, quality sprint stage 2). It counts
     // toward the 3-question cap and the script is never 'final' while it stands.
     const preAsked = first.sentences.filter((s) => s.surface === 'script' && isPlaceholder(s.text)).length
+    const refillQueue = input.holdAsks ? refillCandidates(input.ledger, input.targetProductId ?? null, spokenText(bp)) : []
+    let refilled = 0
+    // Each refill may be split into several sentences by the extractor.
+    const refillSet = new Set(refillQueue.flatMap((t) => splitSentences(t)))
     const apply = (steps: RepairStep[], rewrites?: Map<number, string>) => {
-      const a = applyRepairs(bp, cur.sentences, steps, rewrites)
+      const a = applyRepairs(bp, cur.sentences, steps, rewrites, { holdAsks: input.holdAsks === true, refill: refillQueue })
+      refilled += a.refilled ?? 0
       bp = a.bp
       repaired.replaced += a.replaced
       repaired.asked += a.asked
@@ -1967,7 +2074,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
         const prev = cur
         apply(steps)
         const sentences = extractSentences(bp)
-        cur = { sentences, classified: carryClasses(prev, sentences) }
+        cur = { sentences, classified: carryClasses(prev, sentences, refillSet) }
         continue
       }
       progress('repairing')
@@ -1984,8 +2091,15 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: overLast, spokenBeats: spokenBeats(bp), finalRound: true, asksSoFar: questions.length + preAsked, declined })
       apply(steps)
       const sentences = extractSentences(bp)
-      cur = { sentences, classified: carryClasses(prev, sentences) }
+      cur = { sentences, classified: carryClasses(prev, sentences, refillSet) }
     }
+    let placeholderBlock: PlaceholderBlock | null = null
+    if (input.holdAsks) {
+      const pb = blockSpokenPlaceholders(bp)
+      bp = pb.bp
+      if (pb.removed) placeholderBlock = { removed: pb.removed, beats_dropped: pb.beatsDropped }
+    }
+    const refillRecord = input.holdAsks ? { refilled } : null
     const ebudget = eBudget(spokenWords(bp))
     const record: InventionGateRecord = {
       ...base(),
@@ -1998,6 +2112,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       perf: { ...perf, ms_total: now() - t0 },
       verdicts: verdictCounts(first.classified),
       review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(cur.classified),
+      ...(placeholderBlock ? { placeholder_block: placeholderBlock } : {}),
+      ...(refillRecord ? { refill: refillRecord } : {}),
     }
     // A declined slot that fell back to the general version is not offered again.
     return { blueprint: bp, record, questions: questions.filter((q) => !declined.has(q.writes_to)) }

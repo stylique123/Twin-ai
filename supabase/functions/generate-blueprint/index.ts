@@ -87,7 +87,7 @@ import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } fro
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
-import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
+import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
@@ -96,8 +96,8 @@ import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuesti
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, type SpineBeats } from '../_shared/spineContract.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { DURATION_PROFILES } from '../_shared/templateData.ts'
-import { chooseDuration, fitProfile, type DurationChoice } from '../_shared/durationFromMaterial.ts'
-import { askedStory, enforceStoryFirst } from '../_shared/storyFirst.ts'
+import { chooseDuration, fitProfile, countsFromLedger, type DurationChoice } from '../_shared/durationFromMaterial.ts'
+import { askedStory, enforceStoryFirst, restoreAskedStory } from '../_shared/storyFirst.ts'
 import { renderHookCandidateRule, runHookEngine, type HookCandidateInput } from '../_shared/hookEngine.ts'
 import { guardScript as writerGuardScript, applyHookPick } from '../_shared/writerGuards.ts'
 import { hookShape } from '../_shared/hookShapes.ts'
@@ -6306,7 +6306,31 @@ function parseRepairRewrites(raw: unknown): Array<{ index?: unknown; line?: unkn
  *  without the template block. `usedAttempt` says which attempt's text was
  *  returned, so the caller can mark the fallback and skip template checks.
  *  Timeouts are unchanged. Real creators never pass a ladder. */
-interface WriterLadder { retryPrompt: string; usedAttempt?: number }
+interface WriterLadder { retryPrompt?: string; usedAttempt?: number
+  /** Trial (panel-6): when the request started. Story requests timed out at
+   *  ~136 s ("Thread killed by timeout manager"): attempt 0 ran its full 75 s,
+   *  then the fallback its full 55 s, after ~6 s of setup — 136 s before any
+   *  post pass. With this set, attempt 0 is capped at WRITER_TRIAL_PRIMARY_MS
+   *  and each later attempt gets only what is left before the reserve, so a
+   *  slow primary leaves the plain fallback room to finish. WRITER_DEADLINE=off
+   *  is the kill switch. */
+  startedAt?: number }
+
+const EDGE_WALL_MS = 150_000
+/** Kept back for the post-writer passes (guards, gate enqueue, save). */
+const WRITER_RESERVE_MS = 30_000
+const WRITER_TRIAL_PRIMARY_MS = 65_000
+const WRITER_MIN_ATTEMPT_MS = 15_000
+
+/** Per-attempt timeouts under a deadline (pure; exported shape for tests via the
+ *  shared mirror is not needed: the arithmetic is three lines). Null = skip. */
+function deadlineTimeout(i: number, base: number, startedAt: number | undefined, now: number): number | null {
+  if (startedAt == null) return base
+  const left = EDGE_WALL_MS - WRITER_RESERVE_MS - (now - startedAt)
+  const cap = i === 0 ? Math.min(base, WRITER_TRIAL_PRIMARY_MS) : base
+  const t = Math.min(cap, left)
+  return t >= WRITER_MIN_ATTEMPT_MS ? t : null
+}
 
 async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
   return inStage(stageOfCall(system, schema === blueprintSchema), () => callModelStaged(apiKey, system, prompt, schema, record, ladder))
@@ -6360,13 +6384,18 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i]
     // The retry runs the plain brief when a template block made attempt 0 slow.
-    const attemptPrompt = i >= 1 && ladder ? ladder.retryPrompt : prompt
+    const attemptPrompt = i >= 1 && ladder?.retryPrompt ? ladder.retryPrompt : prompt
+    const timeoutMs = deadlineTimeout(i, a.timeoutMs, ladder?.startedAt, Date.now())
+    if (timeoutMs === null) {
+      console.warn(JSON.stringify({ event: 'writer_attempt_skipped_deadline', attempt: i, elapsed_ms: Date.now() - (ladder?.startedAt ?? Date.now()) }))
+      continue
+    }
     // ⚠️ THE ROW IS OPENED BEFORE THE CALL. A record only written afterwards
     // cannot describe the call that never came back, which is the exact failure
     // mode — a 75-second timeout — this table was built to count.
     const rowId = await record?.started(i, a.model) ?? null
     try {
-      const text = await callOnce(apiKey, system, attemptPrompt, a.model, a.thinkBudget, a.timeoutMs, schema)
+      const text = await callOnce(apiKey, system, attemptPrompt, a.model, a.thinkBudget, timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
       // ⚠️ ONLY A BLUEPRINT HAS A CONCEPT AND PACKAGING (2026-10-04). Repair
@@ -7825,6 +7854,27 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       knowledgeRows.splice(0, knowledgeRows.length, ...floor.rows)
       console.log(JSON.stringify({ event: 'material_floor_restored', restored: floor.restored }))
     }
+  }
+  // ⚖️ THE STORY HER NOTE NAMES (trial, STORY_FIRST; panel-6 #14, #22). The
+  // purpose / ask filters held it, and the floor above restores only when
+  // nothing is left. Same guards as the floor; commercial and expiry re-applied.
+  if (storyFirstOn && String(reference_note ?? '').trim()) {
+    try {
+      const rs = restoreAskedStory(
+        knowledgeRows as Array<{ id?: unknown; kind?: unknown; text?: unknown; evidence?: unknown }>,
+        [...(askedRows ?? []), ...(rankedRows ?? [])] as Array<{ id?: unknown; kind?: unknown; text?: unknown; evidence?: unknown }>,
+        String(reference_note ?? ''),
+        (r) => {
+          const x = r as { id?: unknown; basis?: unknown; sensitive?: unknown; creator_excluded_at?: unknown; source_ref?: unknown }
+          return x.basis === 'stated' && x.sensitive !== true && !x.creator_excluded_at && !excludedIds.has(String(x.id ?? ''))
+            && !String(x.source_ref ?? '').startsWith('asked:hold:') && !unconfirmedCommercial(r as never) && !expiredAnswer(r as never)
+        },
+      )
+      if (rs.restored) {
+        knowledgeRows.unshift(rs.restored as (typeof knowledgeRows)[number])
+        console.log(JSON.stringify({ event: 'asked_story_restored', id: String(rs.restored.id ?? '') }))
+      }
+    } catch { /* restoring never fails a build */ }
   }
   // ⚖️ CONFLICTING FACTS ARE HELD, NEVER CHOSEN (owner 2026-10-06). Facts
   // about this product that state different origins are all kept from the
@@ -9881,7 +9931,10 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
               .filter((v): v is string => typeof v === 'string').join(' ')
             : [reference_note, ...Object.values(brief ?? {}), ...Object.values(answers ?? {})]
               .filter((v): v is string => typeof v === 'string').join(' '),
-        askedText: storyFirstOn && !ownedEntity ? String(reference_note ?? '') : null,
+        // Panel-6 (#14, #22): her offer was attached, so `!ownedEntity` turned
+        // story-first off and the named story was withheld as off-product.
+        // Under the switch the note names a story with or without a product.
+        askedText: storyFirstOn ? String(reference_note ?? '') : null,
         // Owner brief v2 Part 1 item 6: on the trial, only hard limits keep a story out.
         hardLimitsOnly: trialOn,
       })
@@ -10055,12 +10108,12 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // the list herself on the plan screen.
     // STORY FIRST: the story her request names is supplied even when the
     // ten-slot ranking left it out, so `oneStory` below can keep it.
-    const namedStory = storyFirstOn && !ownedEntity && !chosenRows
+    const namedStory = storyFirstOn && !chosenRows
       ? askedStory(storyGate.kept as Array<{ id?: unknown; kind: string; text?: unknown }>, String(reference_note ?? ''))
       : null
     if (namedStory && !speakableAll.some((k) => String((k as { text?: unknown }).text ?? '') === String(namedStory.text ?? ''))) speakableAll.unshift(namedStory as (typeof speakableAll)[number])
     const storyCut = trialOn && !chosenRows
-      ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>), topicText: ownedEntity ? null : String(reference_note ?? '') })
+      ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>), topicText: ownedEntity && !storyFirstOn ? null : String(reference_note ?? '') })
       : null
     // Set 4 #18: "no numbers, just first steps" was her note TO Twin stored
     // inside a fact, and the writer said it. Notes are cut from the fact text
@@ -12151,16 +12204,20 @@ ${fenced('claims this creator may NOT make', forbidden)}
     // her material on file can fill. A thin creator gets an honest Sprint.
     if (durationFromMaterialOn) {
       try {
-        const kindOf = (k: { kind?: unknown }) => String(k?.kind ?? '')
         const software = softwareTargetSec != null
         const want = resolveTargetInline(body.target_seconds, softwareTargetSec).targetSec
-        durationChoice = chooseDuration(profileForSeconds(want, software), {
-          stories: provenanceSupply.filter((k) => STORY_KINDS.has(kindOf(k))).length,
-          facts: provenanceSupply.filter((k) => !STORY_KINDS.has(kindOf(k)) && !['topic', 'covered'].includes(kindOf(k))).length,
-          answers: Object.entries(answers ?? {}).filter(([f, v]) => !['goal', 'relationship', 'selected_product'].includes(f) && typeof v === 'string' && herSaid(v)).length,
-          product_facts: productFactCountOf(ownedEntity),
-          note_moment: noteMomentForVideo,
+        // ⚠️ PANEL-6: the count read the stored rows before the floor, counted
+        // a story as one sentence, and never counted the outside items the
+        // floor kept, so 18 of 22 went to sprint. It now reads the ledger the
+        // writer is handed (same builder as the template ledger below).
+        const durTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+        const durLedger = buildInventionLedger({
+          knowledge: provenanceSupply, answers: { ...(answers ?? {}) }, note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: durTarget, offer: typeof readyOffer === 'string' ? readyOffer : '',
+          outside: boardMaterial.map((m, n) => ({ id: m.id ?? `${m.kind}:${n}`, kind: m.kind, text: m.text })), now: Date.now(),
         })
+        durationChoice = chooseDuration(profileForSeconds(want, software), { ...countsFromLedger(durLedger, durTarget), note_moment: noteMomentForVideo })
         if (durationChoice.chosen !== durationChoice.requested) {
           const p = DURATION_PROFILES[durationChoice.chosen]
           body.target_seconds = software ? p.software_seconds : p.seconds
@@ -12359,9 +12416,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     const userPrompt = buildWriterBrief(familyHookRule)
     // ⚖️ TEMPLATE RETRY FALLBACK: trial only, and only when a template block
     // was added. The retry gets today's brief, byte for byte without the block.
+    const writerDeadline = trialOn && (Deno.env.get('WRITER_DEADLINE') ?? 'on') !== 'off' ? reqStartedAt : undefined
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
-      ? { retryPrompt: buildWriterBrief(familyHookRuleRetry) }
-      : undefined
+      ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...(writerDeadline != null ? { startedAt: writerDeadline } : {}) }
+      : writerDeadline != null ? { startedAt: writerDeadline } : undefined
     let templateFallback = false
 
     // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
@@ -16832,6 +16890,19 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
               if (ap.hook_moves) bph.hook_moves = ap.hook_moves
             }
             bph.hook_pick_shipped = { applied: ap.applied, picked: engine.pick.hooks.length, shipped: pickedIdx.length }
+            // ⚠️ PANEL-6 (#9, #17): a pick the writer guard dropped stayed in
+            // hook_pick and never reached hook_options. Trial: the record keeps
+            // only picks that shipped, and those lead hook_options once each.
+            if (trialOn) {
+              const rp = reconcileHookPick({ hook_options: bph.hook_options, hook_moves: bph.hook_moves, hook_pick: {
+                ...engine.pick, indices: pickedIdx.map((i) => engine.pick.indices[i]), shapes: pickedIdx.map((i) => engine.pick.shapes[i]),
+                scores: pickedIdx.map((i) => engine.pick.scores[i]), hooks: pickedIdx.map((i) => engine.pick.hooks[i]) } })
+              if (rp) {
+                bph.hook_options = rp.hook_options
+                bph.hook_pick = rp.hook_pick
+                if (rp.hook_moves) bph.hook_moves = rp.hook_moves
+              }
+            }
           } catch { /* shipping the pick never fails a build */ }
           // Title inherits the hook (A6): deterministic promise check; rewrite from the hook or flag. No text logged.
           try {
@@ -16856,6 +16927,23 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
     }
     // ── HOOK ENGINE — END ──
+    // ⚖️ THE LAST CHECK ON SPOKEN TEXT (trial only, panel-6). Deterministic: any
+    // bracket span ("[Your answer: …]" or a template stand-in) left in a spoken
+    // line is removed with its sentence, and an emptied beat is dropped. The
+    // question itself reaches her as gate_questions, never as a line.
+    if (trialOn && blueprint && typeof blueprint === 'object') {
+      try {
+        const pb = blockSpokenPlaceholders(blueprint as { script?: unknown; hook_options?: unknown })
+        if (pb.removed) {
+          const bpb = blueprint as Record<string, unknown>
+          bpb.script = (pb.bp as { script?: unknown }).script
+          bpb.hook_options = (pb.bp as { hook_options?: unknown }).hook_options
+          if (Array.isArray(bpb.shot_list) && Array.isArray(bpb.script)) bpb.shot_list = syncShotListSpokenText(bpb.shot_list as Array<{ spoken_text?: unknown }>, bpb.script).shots
+          bpb.placeholder_block = { removed: pb.removed, beats_dropped: pb.beatsDropped }
+          console.warn(JSON.stringify({ event: 'spoken_placeholder_blocked', removed: pb.removed, beats_dropped: pb.beatsDropped }))
+        }
+      } catch { /* the check never fails a build */ }
+    }
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
     if (newOn('invention_gate') && blueprint && typeof blueprint === 'object') {
       const gateEntity = ownedEntity as { id?: unknown } | null
@@ -16885,7 +16973,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       bpg.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
       // Test accounts: repair trial (16 Oct); GATE_REPAIR_TRIAL='false' = measure.
       const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
-      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}) } }
+      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}) } }
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
@@ -17139,7 +17227,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             rbp.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
             const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
             rbp.gate_mode = gateModeLabel(gateMeasure)
-            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}) } }
+            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}) } }
             console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
           } catch { /* the gate bookkeeping never loses a rescued script */ }
         }
