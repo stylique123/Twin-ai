@@ -19,7 +19,17 @@ export const REDDIT_CHECK_MS = 10 * 60 * 1000
 export const REDDIT_TTL_DAYS = 7
 let lastCheck = 0
 
+/**
+ * Automated Reddit collection is OFF unless NICHE_REDDIT_ENABLED is exactly
+ * 'true' (owner rule, 15 Oct: no automated Reddit until counsel's written
+ * conditions). Default off, so a deploy can never restart it by itself.
+ */
+export function nicheRedditEnabled(v: string | undefined = process.env.NICHE_REDDIT_ENABLED): boolean {
+  return String(v ?? '').trim().toLowerCase() === 'true'
+}
+
 export async function runNicheReddit(log: Log): Promise<void> {
+  if (!nicheRedditEnabled()) return
   if (!env.apifyToken || Date.now() - lastCheck < REDDIT_CHECK_MS) return
   lastCheck = Date.now()
   // The sub-niches the researcher already knows are the ones creators brought.
