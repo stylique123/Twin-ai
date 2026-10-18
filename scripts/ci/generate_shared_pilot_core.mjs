@@ -253,6 +253,9 @@ const SOURCES = [
   ['packages/shared/src/script/hooks/hookEngine.ts', 'supabase/functions/_shared/hookEngine.ts'],
   // Deterministic writer guards + picked-hook wiring (panel-current-5, trial only).
   ['packages/shared/src/script/writerGuards.ts', 'supabase/functions/_shared/writerGuards.ts'],
+  // CHECK THIS LINE (backlog d, trial only): the worker builds check_lines, the edge applies a decision.
+  ['packages/shared/src/script/checkLines.ts', 'supabase/functions/_shared/checkLines.ts'],
+  ['packages/shared/src/script/checkLines.ts', 'worker/src/generated/checkLines.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

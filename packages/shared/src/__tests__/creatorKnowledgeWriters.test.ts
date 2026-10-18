@@ -144,7 +144,14 @@ describe('creator_knowledge writers', () => {
     // Its ONLY inserts are the creator's own typed answers (source 'asked'):
     // the objective answer, and a spec-question answer (2026-10-04) — never a
     // line of the generated script.
-    const inserts = [...code.matchAll(/\.from\(\s*['"]creator_knowledge['"]\s*\)\.insert\(\{([\s\S]*?)\}\)/g)].map((m) => m[1])
+    const allInserts = [...code.matchAll(/\.from\(\s*['"]creator_knowledge['"]\s*\)\.insert\(\{([\s\S]*?)\}\)/g)].map((m) => m[1])
+    // CHECK THIS LINE (backlog d, trial only): the one insert of a script line,
+    // and only after HER tap says it is true for her — owner-confirmed, its own source.
+    const checkLine = allInserts.filter((i) => /source:\s*'check_line'/.test(i))
+    expect(checkLine).toHaveLength(1)
+    expect(checkLine[0]).toMatch(/creator_confirmed_at: now/)
+    expect(checkLine[0]).toMatch(/basis: 'stated'/)
+    const inserts = allInserts.filter((i) => !checkLine.includes(i))
     // 2026-10-05: an answer is split into what is hers now and the claim
     // sentences held for her yes — still only her own words, two rows each.
     expect(inserts.length).toBe(4)

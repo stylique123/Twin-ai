@@ -75,6 +75,7 @@
  *    asked           the creator answered a BEAT ASK — the same authority as
  *                    `user`, reached through a different door.
  *    previous_video  carried forward from an earlier generation of their own.
+ *    check_line      she confirmed a CHECK THIS LINE script line as true for her (trial).
  *    reply           her own written reply to an audience question under one of
  *                    her posts (24-ideas #9). Her words, public, first person —
  *                    stored with the question it answered as its evidence.
@@ -101,7 +102,7 @@
  * `TWO_SPELLINGS_OF_A_STATED_SOURCE`. Neither has a stored row, so whichever
  * survives, no data has to move.
  */
-export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'asked', 'previous_video', 'reply', 'comment'] as const
+export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'asked', 'previous_video', 'reply', 'comment', 'check_line'] as const
 export type KnowledgeSource = (typeof KNOWLEDGE_SOURCES)[number]
 
 export const KNOWLEDGE_BASIS = ['stated', 'demonstrated', 'inferred'] as const
