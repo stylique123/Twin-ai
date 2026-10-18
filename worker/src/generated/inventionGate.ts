@@ -1700,7 +1700,8 @@ export interface InventionGateRecord {
   perf?: GatePerf
   /** Lines of the SHIPPED blueprint (its sentence indices) the creator should
    *  check: one judge said I-HARD, or a judge said G-SOFT. Never hidden. */
-  review_lines?: Array<{ i: number; surface: Surface }>
+  /** `reason` is present only on a CHECK THIS LINE run (trial, `checkLines`). */
+  review_lines?: Array<{ i: number; surface: Surface; reason?: GateReason }>
   /** Verdict counts on the first classification (before repair). */
   verdicts?: { review: number; block: number }
 }
@@ -1765,6 +1766,10 @@ export function verdictCounts(cs: readonly ClassifiedSentence[]): { review: numb
 export function reviewLines(cs: readonly ClassifiedSentence[]): Array<{ i: number; surface: Surface }> {
   return cs.filter((s) => s.verdict === 'review').map((s) => ({ i: s.i, surface: s.surface }))
 }
+/** Review lines with the reason id (trial, CHECK THIS LINE). Ids only, never text. */
+export function reviewLinesWithReason(cs: readonly ClassifiedSentence[]): Array<{ i: number; surface: Surface; reason: GateReason }> {
+  return cs.filter((s) => s.verdict === 'review').map((s) => ({ i: s.i, surface: s.surface, reason: s.reason }))
+}
 
 /** Outcome after the last round: an unrepaired I never ships as final. A G
  *  (unsourced low-risk general claim) is flagged for sourcing and never blocks. */
@@ -1820,6 +1825,8 @@ export interface RunGateInput {
   measureOnly?: boolean
   /** Trial only: rule-only event/habit I lines are review, not block (softenRuleBlocks). */
   ruleReview?: boolean
+  /** Trial only (CHECK THIS LINE): review lines are recorded with their reason id. */
+  checkLines?: boolean
   now?: () => number
   timeoutMs?: number
   chunkSize?: number
@@ -1930,7 +1937,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     if (input.measureOnly) {
       // Measure only: verdicts recorded, nothing repaired, review lines as classified.
       return { blueprint: input.blueprint, questions: [], record: { ...base(), sentences: recordSentences(first.classified), before, after: before, ms: now() - t0, judge_malformed: malformed, perf: { ...perf, ms_total: now() - t0 },
-        verdicts: verdictCounts(first.classified), review_lines: reviewLines(first.classified) } }
+        verdicts: verdictCounts(first.classified), review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(first.classified) } }
     }
     let bp = input.blueprint
     let cur: State = first
@@ -1993,7 +2000,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       judge_malformed: malformed,
       perf: { ...perf, ms_total: now() - t0 },
       verdicts: verdictCounts(first.classified),
-      review_lines: reviewLines(cur.classified),
+      review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(cur.classified),
     }
     // A declined slot that fell back to the general version is not offered again.
     return { blueprint: bp, record, questions: questions.filter((q) => !declined.has(q.writes_to)) }
