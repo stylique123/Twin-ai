@@ -25,6 +25,7 @@ import {
   type GateBlueprint, type GateProgress, type InventionGateRecord,
 } from '../generated/inventionGate.js'
 import { resyncShotListToScript } from '../generated/shotListSync.js'
+import { buildCheckLines, checkLinesLog, CHECK_LINES_VERSION } from '../generated/checkLines.js'
 
 /** The fast judge and the rewrite (task class of model_routing_v1.json). */
 export const INVENTION_RECHECK_TASK = INVENTION_JUDGE_CASCADE.fast
@@ -122,6 +123,8 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     ...(measureOnly ? { measureOnly: true } : {}),
     // Trial only (the edge sets rule_review under trialOn): rule-only event/habit I lines are review, not block.
     ...(extra.rule_review === true ? { ruleReview: true } : {}),
+    // Trial only, behind CHECK_LINE_KILL on the edge: review lines carry their reason id.
+    ...(extra.check_lines === true ? { checkLines: true } : {}),
     ...(deps.now ? { now: deps.now } : {}),
   }, {
     judge: judgeCall(deps.model),
@@ -165,6 +168,15 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   // Review lines never change check_status (they ship as written); the count is
   // for the UI's "check this line" prompt (follow-up, not built here).
   bp.review_count = gate.record.review_lines?.length ?? 0
+  // ⚖️ CHECK THIS LINE (backlog d; trial only: the edge sets `check_lines`
+  // under trialOn unless CHECK_LINE_KILL=1). Script review lines with their
+  // reason id and the sentence's offsets. Logs carry offsets only, never text.
+  if (extra.check_lines === true) {
+    const lines = buildCheckLines(bp as GateBlueprint, gate.record.review_lines)
+    bp.check_lines = lines
+    bp.check_lines_version = CHECK_LINES_VERSION
+    if (lines.length) console.log(JSON.stringify({ event: 'check_lines', generation_id: generationId, lines: checkLinesLog(lines) }))
+  }
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
   // No progress write may land after (and clobber) the result.
   await chain

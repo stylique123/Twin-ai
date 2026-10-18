@@ -65,7 +65,8 @@ import { findPhraseOverlaps, MIN_OVERLAP_CONTENT_WORDS } from '../_shared/phrase
 import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPOSURE, type ReferenceUseLevel } from '../_shared/referenceExposure.ts'
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
-import { syncShotListSpokenText, collapseDoubledNumbers, carryBeatActions } from '../_shared/shotListSync.ts'
+import { syncShotListSpokenText, collapseDoubledNumbers, carryBeatActions, resyncShotListToScript } from '../_shared/shotListSync.ts'
+import { applyCheckLineDecision, checkLineOn, CHECK_LINE_SOURCE } from '../_shared/checkLines.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
@@ -6568,6 +6569,67 @@ async function handle(req: Request): Promise<Response> {
   // account, not just the test one. Only her own row, by her own tap.
   //   fact_confirm {knowledge_id, yes}  → held answer becomes hers, or leaves scripts
   //   fact_private {knowledge_id, private:false} → she turns a private fact back on
+  // ⚖️ CHECK THIS LINE (backlog d). TRIAL ONLY: test accounts (heartbeat or
+  // fictional panel, derived from identity, never the body), and off when
+  // CHECK_LINE_KILL=1. A real creator gets `disabled` and nothing is read or
+  // written. The caller must own the generation (owner-checked in the query).
+  //   check_line {generation_id, line_index, decision: confirm|edit|remove, text?}
+  //   confirm → her claim saved as a confirmed first-party fact (source 'check_line'), line kept
+  //   edit    → her text replaces the line, then the deterministic writer guards run on it
+  //   remove  → the line is dropped
+  // The decision is recorded on blueprint.check_line_decisions. Logs: ids, index, reason.
+  if (specMode === 'check_line') {
+    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    if (!testAccount || !checkLineOn(Deno.env.get('CHECK_LINE_KILL'))) return json({ disabled: true })
+    const sb = createClient(supabaseUrl, serviceKey)
+    const b = (peek ?? {}) as { generation_id?: unknown; line_index?: unknown; decision?: unknown; text?: unknown }
+    const gid = String(b.generation_id ?? '')
+    if (!/^[0-9a-f-]{36}$/i.test(gid)) return json({ error: 'generation_id (uuid) is required' }, 400)
+    const { data: gen } = await sb.from('generations').select('id, user_id, brand_voice_id, blueprint')
+      .eq('id', gid).eq('user_id', user.id).maybeSingle()
+    if (!gen || !gen.blueprint || typeof gen.blueprint !== 'object') return json({ error: 'Generation not found' }, 404)
+    const guard = async () => {
+      // The same ledger the worker's re-check rebuilds: the knowledge this
+      // generation spent, plus her products.
+      const { data: uses } = await sb.from('creator_knowledge_uses').select('knowledge_id').eq('generation_id', gid)
+      const ids = (uses ?? []).map((u: { knowledge_id?: unknown }) => u.knowledge_id).filter((x): x is string => typeof x === 'string')
+      const { data: k } = ids.length ? await sb.from('creator_knowledge').select('id,kind,text').in('id', ids) : { data: [] }
+      const { data: prods } = await sb.from('product_entities').select('id,name,knowledge,offer').eq('owner_id', user.id).is('archived_at', null)
+      return buildInventionLedger({ knowledge: k ?? [], answers: {}, note: '', products: prods ?? [], targetProductId: null, offer: '', outside: [], now: Date.now() })
+    }
+    const ledger = b.decision === 'edit' ? await guard().catch(() => []) : []
+    const res = applyCheckLineDecision({
+      blueprint: gen.blueprint as Record<string, unknown>,
+      line_index: b.line_index, decision: b.decision, text: b.text,
+      guard: (line) => {
+        const g = writerGuardScript({ script: [{ line }], hook_options: [], ledger })
+        return { line: String(g.script[0]?.line ?? ''), rules: Object.keys(g.record.rules ?? {}) }
+      },
+    })
+    if (!res.ok) {
+      console.log(JSON.stringify({ event: 'check_line_refused', generation_id: gid, code: res.code, ...(res.rules ? { rules: res.rules } : {}) }))
+      return json({ error: res.code, ...(res.rules ? { rules: res.rules } : {}) }, 400)
+    }
+    const next = res.blueprint
+    if (res.decision !== 'confirm') resyncShotListToScript(next)
+    const { error: upErr } = await sb.from('generations').update({ blueprint: next }).eq('id', gid).eq('user_id', user.id)
+    if (upErr) return json({ error: "We couldn't save that — try again." }, 500)
+    if (res.decision === 'confirm' && res.fact) {
+      // Her yes makes the line hers: a first-party, owner-confirmed fact. A
+      // duplicate (23505) is already on record, which is what this wanted.
+      const now = new Date().toISOString()
+      const whole = res.fact.replace(/\s+/g, ' ').trim()
+      const { error: kErr } = await sb.from('creator_knowledge').insert({
+        owner_id: user.id, voice_id: gen.brand_voice_id ?? null, kind: 'claim',
+        text: clipAtSentence(whole), evidence: whole.slice(0, 4000), basis: 'stated', source: 'check_line',
+        confidence: 0.9, times_seen: 1, source_ref: `${CHECK_LINE_SOURCE}:${gid}:${res.line_index}`,
+        creator_confirmed_at: now, last_observed_at: now,
+      })
+      if (kErr && kErr.code !== '23505') console.warn(JSON.stringify({ event: 'check_line_fact_failed', generation_id: gid }))
+    }
+    console.log(JSON.stringify({ event: 'check_line', generation_id: gid, line_index: res.line_index, decision: res.decision, reason: res.reason }))
+    return json({ ok: true, decision: res.decision, line_index: res.line_index, line: res.line, check_lines: next.check_lines })
+  }
   if (specMode === 'fact_confirm' || specMode === 'spec_confirm' || specMode === 'fact_private') {
     const sb = createClient(supabaseUrl, serviceKey)
     const b2 = (peek ?? {}) as { knowledge_id?: unknown; yes?: unknown; private?: unknown }
@@ -16823,7 +16885,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       bpg.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
       // Test accounts: repair trial (16 Oct); GATE_REPAIR_TRIAL='false' = measure.
       const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
-      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true } : {}) } }
+      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}) } }
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
@@ -17077,7 +17139,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             rbp.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
             const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
             rbp.gate_mode = gateModeLabel(gateMeasure)
-            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true } : {}) } }
+            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}) } }
             console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
           } catch { /* the gate bookkeeping never loses a rescued script */ }
         }

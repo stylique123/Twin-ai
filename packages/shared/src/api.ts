@@ -3440,3 +3440,19 @@ export const ownerConsole = async (): Promise<OwnerConsoleView> => {
   if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error)
   return data as OwnerConsoleView
 }
+
+// ---- CHECK THIS LINE (backlog d; trial only) ------------------------------
+// A gate REVIEW line: she confirms it (saved as her fact), edits it, or removes
+// it. Server-side the mode answers `{ disabled: true }` for every account that
+// is not a test account, or when CHECK_LINE_KILL=1.
+export type CheckLineDecision = 'confirm' | 'edit' | 'remove'
+export async function checkLine(
+  generationId: string, lineIndex: number, decision: CheckLineDecision, text?: string,
+): Promise<{ ok: boolean; disabled?: boolean; line?: string | null; check_lines?: unknown }> {
+  const { data, error } = await supabase.functions.invoke('generate-blueprint', {
+    body: { mode: 'check_line', generation_id: generationId, line_index: lineIndex, decision, ...(decision === 'edit' ? { text: text ?? '' } : {}) },
+  })
+  if (error) throw new Error(await readInvokeError(error))
+  const d = (data ?? {}) as { ok?: unknown; disabled?: unknown; line?: unknown; check_lines?: unknown }
+  return { ok: d.ok === true, ...(d.disabled === true ? { disabled: true } : {}), line: typeof d.line === 'string' ? d.line : null, check_lines: d.check_lines }
+}

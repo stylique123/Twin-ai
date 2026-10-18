@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0292_check_line_source':
+    "Widens creator_knowledge_source_check to allow 'check_line' (CHECK THIS LINE, trial only); NOT yet applied (file only, owner applies before CHECK_LINE_KILL is lifted for the trial). The editor never reads it. No staging-only surface.",
   '0291_release_flags':
     'Service-role-only release registry and kill switch (RLS on, no policies), seeded S0 everywhere, plus the `shadow` traffic tag on ai_usage_ledger; NOT yet applied (file only, owner applies by hand with 0290 before any component reaches S1). Read by the edge only when RELEASE_REGISTRY_SOURCE=table. No staging-only surface.',
   '0290_shadow_runs':
