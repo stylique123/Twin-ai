@@ -32,6 +32,7 @@ import { join, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClient } from '@supabase/supabase-js'
 import { templateOf } from './templateOf.mjs'
+import { questionRecord, questionSummary } from './panelRun.mjs'
 
 const REPO = resolve(fileURLToPath(import.meta.url), '..', '..', '..')
 
@@ -57,6 +58,14 @@ export function ledgerWithText({ gateLedger, knowledge, products, answers, note,
     else if (oById.has(it.id)) text = oById.get(it.id)
     return { ...it, text, text_known: text !== null }
   })
+}
+
+/** The question record for one exported script: the one panelRun stored, else rebuilt (skip-mode rows). */
+export function panelQuestions(scenario, bp) {
+  if (scenario?.questions) return { ...scenario.questions, question_necessity: scenario.questions.question_necessity ?? (bp?.question_necessity ? { asked: bp.question_necessity.asked ?? 0, avoided_invented: bp.question_necessity.avoided_invented ?? 0, avoided_general: bp.question_necessity.avoided_general ?? 0 } : null) }
+  const answers = scenario?.body?.readiness_answers ?? {}
+  const lines = Array.isArray(bp?.script) ? bp.script.map((b) => String(b?.line ?? '')) : []
+  return questionRecord({ mode: scenario?.answer_style ?? 'skip', fields: Object.keys(answers), answers, lines, bp })
 }
 
 /** A gate still queued on the worker (no record written yet). */
@@ -122,12 +131,14 @@ async function main() {
       invention_gate: bp.invention_gate ?? null,
       check_status: bp.check_status ?? null,
       gate_pending: gatePending(bp),
+      questions: panelQuestions(row.scenario, bp),
     }
     writeFileSync(join(out, 'scripts', `${scriptId.replace(/[^A-Za-z0-9_.-]/g, '_')}.json`), JSON.stringify(file, null, 2))
     bundle.push(file)
   }
   writeFileSync(join(out, 'sentences.csv'), csv.join('\n') + '\n')
   console.log(`exported ${bundle.length} panel scripts, ${csv.length - 1} sentences`)
+  console.log(`panel questions: ${JSON.stringify(questionSummary(bundle.map((f) => f.questions)))}`)
   if (process.argv.includes('--to-db')) {
     const content = JSON.stringify({ batch, scripts: bundle, sentences_csv: csv.join('\n') })
     const { data, error: e2 } = await admin.from('test_run_files').insert({ label: `panel-export-${batch}`, kind: 'other', file_name: `panel-export-${batch}.json`, sha256: createHash('sha256').update(content).digest('hex'), content }).select('id').single()
