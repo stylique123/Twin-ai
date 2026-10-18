@@ -42,7 +42,8 @@ describe('(a) word budget: check + repair', () => {
     expect(r.script.at(-1)!.line).toBe('Follow for the next pot.')
     for (const id of r.record.added) {
       const it = ledger.find((x) => x.id === id)!
-      expect(r.script.some((b) => String(b.line).startsWith(it.text.slice(0, 20)))).toBe(true)
+      // Panel-6: an opinion joins the body beat it shares words with, so it may sit inside a line.
+      expect(r.script.some((b) => String(b.line).includes(it.text.slice(0, 20)))).toBe(true)
     }
   })
 

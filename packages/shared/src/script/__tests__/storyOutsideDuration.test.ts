@@ -135,24 +135,32 @@ describe('outside filter: a real minimum, zero allowed', () => {
 })
 
 describe('duration from material', () => {
+  // Panel-6 re-tune (dfm-v2): a story fills two beats, outside and product
+  // facts count at half, and a profile is lowered only when the material
+  // carries under 75% of its words.
   it('a thin creator gets an honest Sprint', () => {
-    const c = chooseDuration('deep', { stories: 1, facts: 1, answers: 0, product_facts: 0 })
+    const c = chooseDuration('deep', { stories: 0, facts: 1, answers: 0, product_facts: 0 })
     expect(c.chosen).toBe('sprint')
     expect(c.ceiling).toBe('sprint')
     expect(c.reason).toMatch(/so sprint/)
   })
 
-  it('Standard only when there is enough for the beats', () => {
-    expect(chooseDuration('standard', { stories: 1, facts: 1, answers: 1, product_facts: 0 }).chosen).toBe('standard')
-    expect(chooseDuration('standard', { stories: 0, facts: 2, answers: 0, product_facts: 0 }).chosen).toBe('sprint')
+  it('one story and one fact hold Standard; one bare fact does not', () => {
+    expect(chooseDuration('standard', { stories: 1, facts: 1, answers: 0, product_facts: 0 }).chosen).toBe('standard')
+    expect(chooseDuration('standard', { stories: 0, facts: 1, answers: 0, product_facts: 0 }).chosen).toBe('sprint')
+  })
+
+  it('outside items the floor kept count toward length, capped', () => {
+    expect(chooseDuration('standard', { stories: 0, facts: 1, answers: 1, product_facts: 0, outside: 2 }).chosen).toBe('standard')
+    expect(materialCeiling({ stories: 0, facts: 0, answers: 0, product_facts: 0, outside: 40 }).units).toBe(2)
   })
 
   it('Deep only for rich material with a story of hers', () => {
     expect(chooseDuration('deep', { stories: 1, facts: 2, answers: 0, product_facts: 2 }).chosen).toBe('deep')
-    const noStory = chooseDuration('deep', { stories: 0, facts: 3, answers: 0, product_facts: 3 })
+    const noStory = chooseDuration('deep', { stories: 0, facts: 3, answers: 1, product_facts: 4 })
     expect(noStory.chosen).toBe('standard')
     expect(noStory.reason).toMatch(/no story/)
-    expect(materialCeiling({ stories: 0, facts: 0, answers: 0, product_facts: 0, note_moment: true }).units).toBe(1)
+    expect(materialCeiling({ stories: 0, facts: 0, answers: 0, product_facts: 0, note_moment: true }).units).toBe(2)
   })
 
   it('material never raises the requested profile', () => {

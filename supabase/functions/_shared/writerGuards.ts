@@ -169,8 +169,10 @@ export function applyHookPick(input: {
   const hasMoves = Array.isArray(input.hook_moves)
   if (!keepPick.length) return { script: input.script.map((b) => ({ ...b })), hook_options: prior.map((x) => x.h), hook_moves: hasMoves ? prior.map((x) => x.m) : null, applied: false }
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-  const seen = new Set(keepPick.map((x) => norm(x.h)))
-  const merged = [...keepPick, ...prior.filter((x) => !seen.has(norm(x.h)))]
+  // ⚠️ PANEL-6 (#14): the same line arrived twice (a story-open candidate and
+  // the writer's own), and both shipped. Picks first, then options, each text once.
+  const seen = new Set<string>()
+  const merged = [...keepPick, ...prior].filter((x) => { const k = norm(x.h); if (!k || seen.has(k)) return false; seen.add(k); return true })
   const script = input.script.map((b) => ({ ...b }))
   const lead = keepPick[0]!.h
   const first = script.findIndex((b) => String(b?.line ?? '').trim())
@@ -181,5 +183,25 @@ export function applyHookPick(input: {
   } else {
     script.unshift({ line: lead, section: 'Hook' })
   }
+  // ⚠️ PANEL-6: line 2 restated the picked hook that now opens line 1. A later
+  // sentence that repeats the hook (same words, or 80%+ of its words) is
+  // dropped; a beat left empty goes with it.
+  const lw = new Set(norm(lead).split(' ').filter((w) => w.length > 2))
+  const repeats = (x: string) => {
+    const n = norm(x)
+    if (!n) return false
+    if (n === norm(lead)) return true
+    const xw = n.split(' ').filter((w) => w.length > 2)
+    if (!xw.length || !lw.size) return false
+    const hit = xw.filter((w) => lw.has(w)).length
+    return hit / Math.max(lw.size, xw.length) >= 0.8
+  }
+  const at = script.findIndex((b) => String(b?.line ?? '').trim())
+  for (let i = at + 1; i < script.length; i++) {
+    const ss = sentencesOf(String(script[i]!.line ?? ''))
+    const kept = ss.filter((x) => !repeats(x))
+    if (kept.length !== ss.length) script[i] = { ...script[i], line: kept.join(' ') }
+  }
+  for (let i = script.length - 1; i > at; i--) if (typeof script[i]!.line === 'string' && !String(script[i]!.line).trim()) script.splice(i, 1)
   return { script, hook_options: merged.map((x) => x.h), hook_moves: hasMoves ? merged.map((x) => x.m) : null, applied: true }
 }

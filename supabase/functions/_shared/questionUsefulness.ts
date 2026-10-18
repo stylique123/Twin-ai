@@ -80,20 +80,39 @@ export function questionNecessity(qs: readonly UsefulQuestion[]) {
   }
 }
 
-const words = (t: string): string[] => t.toLowerCase().match(/[a-z0-9']{4,}/g) ?? []
+// ⚠️ PANEL-6: question_use.used was 0 on every script. Two causes. (1) Every
+// "answered" was the app's skip ("Nothing specific, keep it general."), which
+// was counted as an answer and can never appear in a script — the counter
+// read like a broken matcher. (2) The match was exact-word, so "glazed"
+// never met "glaze" and a curly apostrophe split a word. Skips are now
+// counted apart, and words are compared on a light stem.
+const NON_ANSWER = /^(nothing( specific| really| much)?|none|no|n\/a|na|idk|i don'?t know|not sure|skip|keep it general|nothing specific,? keep it general|no idea|not really)\b/
+export function isSkipAnswer(v: unknown): boolean {
+  const t = String(v ?? '').trim().toLowerCase().replace(/[’‘]/g, "'").replace(/[.!\s]+$/, '')
+  if (!t) return true
+  if (t.split(/\s+/).length > 12) return false
+  return NON_ANSWER.test(t) || /\bkeep it general\b/.test(t)
+}
+const STOP = new Set(['that', 'this', 'with', 'have', 'from', 'they', 'were', 'what', 'when', 'your', 'just', 'about', 'there', 'their', 'then', 'them', 'been', 'into', 'would', 'could', 'because', 'really', 'very'])
+const stem = (w: string): string => w.replace(/'s$/, '').replace(/(?:ing|ed|es|s|ly)$/, '') || w
+const words = (t: string): string[] => (t.toLowerCase().replace(/[’‘]/g, "'").match(/[a-z0-9']{4,}/g) ?? [])
+  .filter((w) => !STOP.has(w)).map(stem).filter((w) => w.length >= 3)
 
-/** question_use: which answer keys reach the final script (≥3 shared content words, or all of a short answer). */
+/** question_use: which answer keys reach the final script (≥3 shared content
+ *  words, or all of a short answer). A skip is `skipped`, never `answered`. */
 export function questionUse(answers: Record<string, unknown>, lines: readonly string[]) {
   const script = new Set(words(lines.join(' ')))
   const used: string[] = []
   let answered = 0
+  let skipped = 0
   for (const [k, v] of Object.entries(answers ?? {})) {
     if (typeof v !== 'string' || !v.trim()) continue
-    answered++
+    if (isSkipAnswer(v)) { skipped++; continue }
     const w = [...new Set(words(v))]
     if (!w.length) continue
+    answered++
     const hit = w.filter((x) => script.has(x)).length
     if (hit >= Math.min(3, w.length)) used.push(k)
   }
-  return { answered, used: used.length, used_keys: used }
+  return { answered, skipped, used: used.length, used_keys: used }
 }

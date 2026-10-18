@@ -823,6 +823,9 @@ const EVENTS = {
   novel_detail_removed: { kind: 'counter_ephemeral', why: 'Per script (trial): sentences with a specific absent from her material removed. Visible in the stored script; the batch reviewer logs novel_details.' },
   empty_product_answer_fills_no_slot: { kind: 'counter_ephemeral', why: 'Per request: her answer about an empty product named no slot, so the question is asked again. Durable as the readiness question shown.' },
   knowledge_off_ask: { kind: 'counter_ephemeral', why: 'Per script (trial): scanned rows sharing no distinctive word with the product or ask, held back. Rows stay in creator_knowledge.' },
+  asked_story_restored: { kind: 'counter_ephemeral', why: 'Per script (trial + STORY_FIRST): the story her note names was put back after the purpose/ask filters held it. Id only; story_used on the blueprint is the durable record.' },
+  spoken_placeholder_blocked: { kind: 'counter_ephemeral', why: 'Per script (trial): bracket spans removed from spoken lines by the final check. The count lands durably in blueprint.placeholder_block.' },
+  writer_attempt_skipped_deadline: { kind: 'counter_ephemeral', why: 'Per request (trial + WRITER_DEADLINE): a writer attempt not started because too little wall-clock was left. The attempt ladder rows (script_attempts) record the outcome durably.' },
   material_floor_restored: { kind: 'counter_ephemeral', why: 'Per script (trial + MATERIAL_FLOOR_ENABLED): her own stated answers restored when the purpose and ask filters left none. Count only; the ids land in writer_supply.' },
   spec_confirm: {
     kind: 'counter_ephemeral',
