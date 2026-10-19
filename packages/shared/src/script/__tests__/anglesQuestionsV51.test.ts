@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { OBJECTIVE_ANGLES, GOAL_FALLBACK_ANGLES, ANGLE_IDS, ANGLE_SPECS, allowedAngles, pickAngles, anglePickRecord } from '../angleFit'
-import { planQuestionsForAngle, questionCandidates, questionBreaksRules, answerFactRow, questionUse, isForbiddenPiece } from '../questionUsefulness'
+import { planQuestionsForAngle, questionCandidates, questionBreaksRules, answerFactRow, questionUse, isForbiddenPiece, painItemsFromMap } from '../questionUsefulness'
 import { SPECS } from '../questionSpecs'
 import { VIDEO_GOALS } from '../../videoIntent'
 
@@ -84,7 +86,7 @@ describe('v5.1 M: question ranking', () => {
       angle: 'myth', angleNeeds: ['stance', 'context', 'objection'], onFile: [], hasProduct: false,
       niche: [{ id: 'n1', text: 'Wax blends always smell stronger.' }],
       audience: [{ id: 'a1', text: 'Do soy candles tunnel?' }],
-      painMap: [{ id: 'm1', text: 'Candles that stop smelling after a week.' }],
+      painMap: [{ id: 'm1', text: 'Candles that stop smelling after a week.', origin: 'audience_pain' }],
       profileMissing: true,
     })
     const sources = new Set(c.map((q) => q.source))
@@ -122,6 +124,40 @@ describe('v5.1 M: never dates, scarcity or a presumed event', () => {
     })
     const c2 = questionCandidates({ angle: 'x', angleNeeds: ['proof', 'objection', 'process', 'stance', 'context'], onFile: [], hasProduct: false })
     for (const q of [...c, ...c2]) expect(questionBreaksRules(q.text), q.text).toBe(false)
+  })
+})
+
+describe('v5.1 M: no Reddit-derived input (Tier 2 is off)', () => {
+  const redditLike = [
+    { kind: 'complaint', text: 'My candle tunnels after one burn.' },
+    { id: 'r1', niche: 'candles', pain_sentence: 'Wicks drown in wax.', status: 'active', origin: 'reddit', expiry: '2099-01-01' },
+  ]
+  const tier1 = { id: 't1', niche: 'Candles', pain_sentence: 'Scent fades after a week.', status: 'active', origin: 'audience_pain', expiry: '2099-01-01' }
+  it('painItemsFromMap keeps only active, unexpired Tier-1 rows for this niche', () => {
+    expect(painItemsFromMap(redditLike, 'candles', '2026-10-19')).toEqual([])
+    expect(painItemsFromMap([], 'candles', '2026-10-19')).toEqual([])
+    expect(painItemsFromMap(null, 'candles', '2026-10-19')).toEqual([])
+    expect(painItemsFromMap([{ ...tier1, expiry: '2026-01-01' }], 'candles', '2026-10-19')).toEqual([])
+    expect(painItemsFromMap([tier1, ...redditLike], 'candles', '2026-10-19').map((p) => p.id)).toEqual(['t1'])
+  })
+  it('a pain item without the Tier-1 origin never reaches the candidates', () => {
+    const c = questionCandidates({
+      angle: 'answer', angleNeeds: ['objection'], onFile: [], hasProduct: false,
+      painMap: [{ id: 'x', text: 'My candle tunnels after one burn.' }, { id: 'y', text: 'Wicks drown.', origin: 'reddit' }],
+    })
+    expect(c.filter((q) => q.source === 'pain_map')).toEqual([])
+    const ok = questionCandidates({ angle: 'answer', angleNeeds: ['objection'], onFile: [], hasProduct: false, painMap: painItemsFromMap([tier1], 'candles', '2026-10-19') })
+    expect(ok.filter((q) => q.source === 'pain_map')).toHaveLength(1)
+    expect(ok.find((q) => q.source === 'pain_map')!.text).not.toMatch(/"/)
+  })
+  it('the edge angle_plan mode never reads niche_reddit', () => {
+    const src = readFileSync(join(__dirname, '../../../../../supabase/functions/generate-blueprint/index.ts'), 'utf8')
+    const start = src.indexOf("if (specMode === 'angle_plan' || specMode === 'angle_answer')")
+    const end = src.indexOf("if (specMode === 'spec_questions' || specMode === 'spec_answer')", start)
+    expect(start).toBeGreaterThan(0)
+    const block = src.slice(start, end)
+    expect(block).not.toMatch(/niche_reddit|scrubPrivate/)
+    expect(block).toMatch(/from\('audience_pain_map'\)/)
   })
 })
 

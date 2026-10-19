@@ -148,7 +148,29 @@ export interface PlanQuestion {
   skippable: true
 }
 
-export interface OutsideItem { id: string; text: string }
+export interface OutsideItem { id: string; text: string; origin?: string }
+
+/**
+ * Tier-1 pain map only (painMap.ts, table audience_pain_map, 0289): hand-written
+ * rows, active, unexpired, this niche. Anything without origin 'audience_pain'
+ * (e.g. automated Reddit items, Tier 2, OFF) yields nothing. Missing or empty
+ * table → [] — that is fine.
+ */
+export function painItemsFromMap(rows: readonly unknown[] | null | undefined, niche: string, today: string): OutsideItem[] {
+  const n = niche.trim().toLowerCase()
+  if (!n) return []
+  const out: OutsideItem[] = []
+  for (const r of rows ?? []) {
+    const x = r as { id?: unknown; niche?: unknown; pain_sentence?: unknown; status?: unknown; origin?: unknown; expiry?: unknown }
+    if (!x || x.origin !== 'audience_pain' || x.status !== 'active') continue
+    if (typeof x.pain_sentence !== 'string' || !x.pain_sentence.trim()) continue
+    if (String(x.niche ?? '').trim().toLowerCase() !== n) continue
+    if (typeof x.expiry === 'string' && x.expiry < today) continue
+    out.push({ id: String(x.id ?? x.pain_sentence).slice(0, 40), text: x.pain_sentence.trim(), origin: 'audience_pain' })
+    if (out.length === 3) break
+  }
+  return out
+}
 
 export interface QuestionPlanInput {
   angle: string
@@ -163,6 +185,7 @@ export interface QuestionPlanInput {
   entityKey?: string
   niche?: readonly OutsideItem[]
   audience?: readonly OutsideItem[]
+  /** Tier-1 pain map rows only (painItemsFromMap); other origins are ignored. */
   painMap?: readonly OutsideItem[]
   /** Keys she skipped before (question_asks outcome 'skipped'). Never asked again. */
   skippedKeys?: readonly string[]
@@ -223,7 +246,8 @@ export function questionCandidates(i: QuestionPlanInput): PlanQuestion[] {
   if (missing.includes('objection') || missing.includes('context')) {
     const piece: Slot = missing.includes('objection') ? 'objection' : 'context'
     for (const a of i.audience ?? []) q(`mn:aud:${a.id}`, 'niche', 'audience', piece, `People ask "${short(a.text)}". Do you get asked this? If so, what do you tell them?`)
-    for (const p of i.painMap ?? []) q(`mn:pain:${p.id}`, 'niche', 'pain_map', piece, `A common frustration is "${short(p.text)}". Do you see this? If so, what do you say about it?`)
+    // Tier-1 rows only; a pain is a topic seed, never quoted, never her experience.
+    for (const p of (i.painMap ?? []).filter((x) => x.origin === 'audience_pain')) q(`mn:pain:${p.id}`, 'niche', 'pain_map', piece, `A common frustration in your space: ${short(p.text).replace(/["“”]/g, '')}. Do you see this? If so, what do you say about it?`)
   }
   if (missing.includes('stance') || missing.includes('context')) {
     const piece: Slot = missing.includes('stance') ? 'stance' : 'context'

@@ -71,7 +71,7 @@ import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
 import { pickAngleCards, angleCardsRecord, ANGLE_SPECS, pickAngles, anglePickRecord, type AngleMaterial } from '../_shared/angleFit.ts'
-import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, type OutsideItem } from '../_shared/questionUsefulness.ts'
+import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, type OutsideItem } from '../_shared/questionUsefulness.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -6739,13 +6739,16 @@ async function handle(req: Request): Promise<Response> {
     const p = prod as { id?: string; name?: unknown; knowledge?: unknown; offer?: unknown } | null
     const offerText = typeof p?.offer === 'string' ? p.offer.trim() : ''
     if (p && offerText) material.push({ id: p.id ?? null, slot: 'close', text: offerText, source: 'product' })
-    const prof = (v?.profile ?? null) as { niche?: unknown; sub_niche?: unknown; audience?: unknown } | null
-    const nicheKey = String(prof?.sub_niche || prof?.niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
-    const { data: aud } = nicheKey ? await sb.from('niche_reddit').select('items').eq('niche_key', nicheKey).maybeSingle() : { data: null }
-    const outside = (scrubPrivate(Array.isArray((aud as { items?: unknown } | null)?.items) ? (aud as { items: unknown[] }).items : []) as Array<{ kind?: unknown; text?: unknown }>)
-      .filter((m) => m && typeof m.text === 'string')
-    const take = (kind: string): OutsideItem[] => outside.filter((m) => m.kind === kind).slice(0, 3)
-      .map((m) => ({ id: String(m.text).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40), text: String(m.text) }))
+    const prof = (v?.profile ?? null) as { niche?: unknown; audience?: unknown } | null
+    // ⚠️ NO TIER-2 INPUT: automated Reddit data (Tier 2) is OFF until
+    // counsel's conditions arrive, and is never read here. Audience questions
+    // come from her own "Viewers ask…" rows; pains only from the Tier-1
+    // hand-written map (audience_pain_map, 0289). A missing table yields nothing.
+    const audienceItems: OutsideItem[] = material.filter((m) => /^Viewers (ask|request)/i.test(m.text)).slice(0, 3)
+      .map((m) => ({ id: String(m.id ?? m.text).slice(0, 40), text: m.text.replace(/^Viewers (asks?|requests?)\s*(?:about|for|:)?\s*/i, ''), origin: 'her_material' }))
+    const painNiche = String(prof?.niche ?? '').trim()
+    const painRes = painNiche ? await sb.from('audience_pain_map').select('id,niche,pain_sentence,status,origin,expiry').eq('status', 'active').limit(50).then((r) => r, () => ({ data: null })) : { data: null }
+    const painItems = painItemsFromMap((painRes as { data?: unknown[] | null }).data ?? [], painNiche, new Date().toISOString().slice(0, 10))
     const cards = pickAngles({ objective: b.objective, goal: b.goal, hasProduct: !!p, hasOffer: p ? !!offerText : undefined, material })
     const picked = typeof b.angle === 'string' && cards.some((c) => c.angle === b.angle) ? b.angle as keyof typeof ANGLE_SPECS : null
     let questions: Array<{ ask_id: string | null; key: string; piece: string; kind: string; source: string; text: string; skippable: true }> = []
@@ -6754,7 +6757,7 @@ async function handle(req: Request): Promise<Response> {
       const plan = planQuestionsForAngle({
         angle: picked, angleNeeds: ANGLE_SPECS[picked].needs, onFile: [...new Set(material.map((m) => m.slot))],
         hasProduct: !!p, entityKey: p ? `product:${p.id}` : 'none',
-        audience: take('question'), painMap: take('complaint'), niche: take('debate'),
+        audience: audienceItems, painMap: painItems,
         skippedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler').map((r) => String(r.slot_id)),
         profileAskedEver: rows.some((r) => r.slot_id === 'mn:profile'),
         profileMissing: !String(prof?.audience ?? '').trim(),
