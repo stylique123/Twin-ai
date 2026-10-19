@@ -475,7 +475,7 @@ export type GateReason =
   | 'gated_no_first_party' | 'scarcity_not_live' | 'event_unbacked' | 'invented_quote' | 'pure_question'
   | 'figurative' | 'truism' | 'cta' | 'opinion_unbacked' | 'no_claim' | 'judge_missing' | 'e_over_budget'
   | 'general_unsourced' | 'inherited' | 'list_count_undelivered'
-  | 'advice' | 'habit_unbacked' | 'scaffold_text'
+  | 'advice' | 'habit_unbacked' | 'scaffold_text' | 'safety_promise'
 
 /** Test-data labels, example scaffolding and template placeholders (panel-current-5:
  *  a fixture's "made-up testimonial (fictional customer)" label was spoken aloud,
@@ -1294,6 +1294,53 @@ export function softenRuleBlocks(cs: readonly ClassifiedSentence[]): ClassifiedS
     : c))
 }
 
+/** ⚖️ REPAIR CALIBRATION (Twin plan v5.1 item C; trial only, behind
+ *  REPAIR_CAL_KILL on the edge). On test accounts a flag class is REPAIRED
+ *  (dropped, replaced or asked) only when its measured false-drop rate is at
+ *  most REPAIR_MAX_FALSE_DROP. Every other flag is a REVIEW line (CHECK THIS
+ *  LINE): it ships as written and the creator confirms, edits or removes it.
+ *  It stays flagged, so recall is unchanged; nothing is deleted on a guess.
+ *
+ *  Measured on panel-current-6 (line labels; counts only). `n` = blocked
+ *  script lines of that reason whose text and label are known; `false_drops`
+ *  = those a strict advisor labels S, E or N (not invented). A reason with no
+ *  measurement is never repaired. Add a panel's counts here to change a class. */
+export const REPAIR_MAX_FALSE_DROP = 0.15
+export const REPAIR_CALIBRATION: Readonly<Partial<Record<GateReason, { n: number; false_drops: number }>>> = {
+  no_item: { n: 13, false_drops: 11 },
+  number_unmatched: { n: 2, false_drops: 2 },
+  gated_no_first_party: { n: 1, false_drops: 1 },
+}
+
+/** May a flag with this reason be repaired on a test account? */
+export function repairAllowed(reason: GateReason): boolean {
+  const m = REPAIR_CALIBRATION[reason]
+  return !!m && m.n > 0 && m.false_drops / m.n <= REPAIR_MAX_FALSE_DROP
+}
+
+/** A promise that the viewer's body or skin stays safe ("your wrists stay
+ *  totally safe"). Panel 6: the one line the advisor labelled invented
+ *  passed as a truism. A safety outcome is a risk claim, never a truism. */
+export const SAFETY_PROMISE_RE = /\b(?:stays?|is|are|keeps? (?:you|it|them|your \w+)|will (?:be|stay|keep \w+)|remains?|feels?)\s+(?:completely |totally |perfectly |100% |always |fully |so )?(?:safe|protected|injury[- ]free|pain[- ]free|unhurt)\b/i
+
+/** Trial (repair calibration): (1) a block whose reason is not repairAllowed
+ *  becomes REVIEW (class G, never I, so it is never repaired and never makes
+ *  the outcome needs_answers; the reason is kept); (2) a script sentence that
+ *  promises safety and no item entails (not S) becomes REVIEW with reason
+ *  'safety_promise', so an unbacked safety claim is always shown to her. */
+export function calibrateRepairs(cs: readonly ClassifiedSentence[], sentences: readonly GateSentence[]): ClassifiedSentence[] {
+  const text = new Map(sentences.map((s) => [s.i, s.text] as const))
+  return cs.map((c) => {
+    if (c.class === 'I' && c.verdict !== 'review' && !repairAllowed(c.reason)) {
+      return { ...c, class: 'G' as const, verdict: 'review' as const }
+    }
+    if (c.surface === 'script' && c.class !== 'S' && c.class !== 'I' && c.verdict !== 'review' && SAFETY_PROMISE_RE.test(text.get(c.i) ?? '')) {
+      return { ...c, class: 'G' as const, verdict: 'review' as const, reason: 'safety_promise' as const, claim_types: [...new Set([...c.claim_types, 'risk' as const])] }
+    }
+    return c
+  })
+}
+
 /** Run classifySentences once per judge and combine. */
 export function classifyTwoJudges(input: Omit<ClassifyInput, 'judge'> & { fast: Map<number, JudgeVerdict> | null; strong: Map<number, JudgeVerdict> | null }): ClassifiedSentence[] {
   const f = classifySentences({ ...input, judge: input.fast })
@@ -1927,6 +1974,11 @@ export interface RunGateInput {
    *  `questions`. A final deterministic check then blocks any bracket span left
    *  in a spoken line. */
   holdAsks?: boolean
+  /** Trial only (the edge sets `repair_calibrated` under trialOn, behind
+   *  REPAIR_CAL_KILL): only flag classes whose measured false-drop rate is
+   *  within REPAIR_MAX_FALSE_DROP are repaired; every other flag is a review
+   *  line, and an E over budget is never dropped (calibrateRepairs). */
+  repairCalibrated?: boolean
   now?: () => number
   timeoutMs?: number
   chunkSize?: number
@@ -2025,7 +2077,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       strongV = j.strong
     }
     const classified = classifyTwoJudges({ sentences, ledger: input.ledger, products, targetProductId: target, fast: fastV, strong: strongV })
-    return { sentences, classified: input.ruleReview ? softenRuleBlocks(classified) : classified }
+    const softened = input.ruleReview ? softenRuleBlocks(classified) : classified
+    return { sentences, classified: input.repairCalibrated ? calibrateRepairs(softened, sentences) : softened }
   }
   const empty: ClassCounts = { S: 0, E: 0, I: 0, N: 0, G: 0 }
   const base = (): InventionGateRecord => ({
@@ -2067,7 +2120,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       questions.push(...a.questions)
     }
     while (rounds < INVENTION_GATE_MAX_ROUNDS) {
-      const over = overBudgetE(cur.classified, spokenWords(bp))
+      // Repair calibration: a light E is never deleted for being over budget.
+      const over = input.repairCalibrated ? [] : overBudgetE(cur.classified, spokenWords(bp))
       if (!cur.classified.some((s) => s.class === 'I') && !over.length) break
       rounds++
       const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: over, spokenBeats: spokenBeats(bp), asksSoFar: questions.length + preAsked, declined })
@@ -2088,7 +2142,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       cur = await classify(bp)
     }
     // THE LAST WORD: whatever is still I (or E over budget) is asked or dropped, never kept.
-    const overLast = overBudgetE(cur.classified, spokenWords(bp))
+    const overLast = input.repairCalibrated ? [] : overBudgetE(cur.classified, spokenWords(bp))
     if (cur.classified.some((s) => s.class === 'I') || overLast.length) {
       const prev = cur
       const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: overLast, spokenBeats: spokenBeats(bp), finalRound: true, asksSoFar: questions.length + preAsked, declined })

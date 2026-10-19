@@ -127,6 +127,9 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     ...(extra.check_lines === true ? { checkLines: true } : {}),
     // Trial only (the edge sets hold_asks under trialOn): no "[Your answer: …]" in spoken text.
     ...(extra.hold_asks === true ? { holdAsks: true } : {}),
+    // Trial only, behind REPAIR_CAL_KILL on the edge: repair only flag classes
+    // measured at <=15% false drops; every other flag ships as a review line.
+    ...(extra.repair_calibrated === true ? { repairCalibrated: true } : {}),
     ...(deps.now ? { now: deps.now } : {}),
   }, {
     judge: judgeCall(deps.model),
