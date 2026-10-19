@@ -94,7 +94,7 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
-import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, type SpineBeats } from '../_shared/spineContract.ts'
+import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { DURATION_PROFILES } from '../_shared/templateData.ts'
@@ -7034,6 +7034,8 @@ async function handle(req: Request): Promise<Response> {
     : componentOn(c, releaseAccount, releaseRegistry)
   // ANGLE-FIT and QUESTION-USEFULNESS (Master Prompt v3, 15 Oct): trial only,
   // each with its own kill switch (request flag or env). Real creators never reach them.
+  // SPINE FILL (Twin plan v5.1 item H): trial only, kill switch SPINE_FILL_KILL=1.
+  const spineFillOn = trialOn && Deno.env.get('SPINE_FILL_KILL') !== '1'
   const angleFitOn = trialOn && (body as { angle_fit?: unknown }).angle_fit !== false && Deno.env.get('ANGLE_FIT_KILL') !== '1'
   // Owner (panel-current-5): each item has its own kill switch, ON for trial, off with env 'false'.
   const storyFirstOn = trialOn && Deno.env.get('STORY_FIRST') !== 'false'
@@ -12536,6 +12538,8 @@ This is the video's position. Every field below must serve it. If the reference'
           plan: spinePlan, ledger: templateLedger,
           targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
           existingQuestions: templatePlan?.questions ?? [],
+          // Twin plan v5.1 item H (trial only, kill: SPINE_FILL_KILL=1).
+          ...(spineFillOn ? { fill: true } : {}),
         })
       } catch { spineBeats = null }
     }
@@ -17012,6 +17016,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (adherence) (bpp.plan as Record<string, unknown>).adherence = adherence
         if (spineBeats) {
           const plan = bpp.plan as Record<string, unknown>
+          // SPINE FILL (trial, item H): an item-backed reality check or creator's
+          // truth the writer left out is spoken verbatim from its item; exactly one CTA.
+          if (spineFillOn && Array.isArray(bpp.script)) {
+            const f = fillSpineBeats(bpp.script as Array<{ line?: unknown }>, spineBeats, templateLedger, spinePlan.spine?.claim ?? '')
+            if (f.record.filled.length || f.record.cta_sentences_removed) bpp.script = f.script
+            plan.spine_fill = f.record
+            console.log(JSON.stringify({ event: 'spine_fill', filled: f.record.filled, cta_before: f.record.cta_before, cta_after: f.record.cta_after, cta_removed: f.record.cta_sentences_removed }))
+          }
           const beatAdh = Array.isArray(bpp.script) ? checkSpineBeatAdherence(bpp.script as Array<{ line?: unknown }>, spineBeats, templateLedger, spinePlan.spine?.claim ?? '') : undefined
           plan.spine_beats = spineBeatsRecord(spineBeats, beatAdh)
           plan.objection_used = spineBeats.objection_used
@@ -17163,7 +17175,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       bpg.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
       // Test accounts: repair trial (16 Oct); GATE_REPAIR_TRIAL='false' = measure.
       const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
-      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}) } }
+      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}) } }
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
@@ -17418,7 +17430,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             rbp.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
             const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
             rbp.gate_mode = gateModeLabel(gateMeasure)
-            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}) } }
+            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}) } }
             console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
           } catch { /* the gate bookkeeping never loses a rescued script */ }
         }
