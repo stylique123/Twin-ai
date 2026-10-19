@@ -20,7 +20,7 @@
 import type { Job } from '../db.js'
 import { PermanentJobError } from '../errors.js'
 import {
-  buildLedger, runInventionGate, reconcileHookPick, resolveTargetProduct, extractSentences, checkStatusFor, gateProgress, GATE_REWRITTEN_KEYS,
+  buildLedger, runInventionGate, repairAuditCaptureOn, reconcileHookPick, resolveTargetProduct, extractSentences, checkStatusFor, gateProgress, GATE_REWRITTEN_KEYS,
   INVENTION_RECHECK_TIMEOUT_MS, INVENTION_JUDGE_CASCADE, JUDGE_THINKING_BUDGET, JUDGE_SYSTEM, JUDGE_SCHEMA, REWRITE_SYSTEM, REWRITE_SCHEMA,
   type GateBlueprint, type GateProgress, type InventionGateRecord,
 } from '../generated/inventionGate.js'
@@ -57,6 +57,8 @@ export interface RecheckDeps {
   /** The stronger model (task class `extract`); absent = the fast judge stands in for both. */
   strongModel?: string
   now?: () => number
+  /** env REPAIR_AUDIT_CAPTURE: 'false' turns the trial's save-before-repair capture off. */
+  repairAuditFlag?: string
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {})
@@ -127,6 +129,11 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     ...(extra.check_lines === true ? { checkLines: true } : {}),
     // Trial only (the edge sets hold_asks under trialOn): no "[Your answer: …]" in spoken text.
     ...(extra.hold_asks === true ? { holdAsks: true } : {}),
+    // ⚖️ SAVE-BEFORE-REPAIR (owner, 19 Oct). Trial only: `hold_asks` is set by
+    // the edge under trialOn (test and panel accounts), never for a real
+    // creator. The audit (pre-repair text) lands in blueprint.invention_gate on
+    // the generation row only; every log below stays counts and ids.
+    ...(repairAuditCaptureOn(extra.hold_asks === true, deps.repairAuditFlag) ? { repairAudit: true } : {}),
     ...(deps.now ? { now: deps.now } : {}),
   }, {
     judge: judgeCall(deps.model),
@@ -259,5 +266,6 @@ export async function handleInventionRecheck(job: Job): Promise<Record<string, u
       if (error) throw new Error(`invention_recheck: write failed: ${error.message}`)
     },
     callModel: recheckCallModel(geminiJson, model),
+    repairAuditFlag: process.env.REPAIR_AUDIT_CAPTURE,
   })
 }

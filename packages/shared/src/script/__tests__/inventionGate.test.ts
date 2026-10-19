@@ -527,3 +527,15 @@ describe('skip always works (a declined slot is never asked again)', () => {
     for (const q of again.questions) expect(asked).not.toContain(q.writes_to)
   })
 })
+
+describe('repairAuditCaptureOn (save-before-repair kill switch, owner 19 Oct)', () => {
+  it('on for trialOn by default; off when the flag is false; never for a real creator', async () => {
+    const { repairAuditCaptureOn } = await import('../inventionGate.js')
+    expect(repairAuditCaptureOn(true, undefined)).toBe(true)
+    expect(repairAuditCaptureOn(true, 'true')).toBe(true)
+    expect(repairAuditCaptureOn(true, 'false')).toBe(false)
+    expect(repairAuditCaptureOn(true, ' False ')).toBe(false)
+    expect(repairAuditCaptureOn(false, undefined)).toBe(false)
+    expect(repairAuditCaptureOn(false, 'true')).toBe(false)
+  })
+})
