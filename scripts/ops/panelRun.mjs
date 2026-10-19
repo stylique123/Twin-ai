@@ -45,7 +45,9 @@ export function panelScenarios(fixture, accountsDoc, limit = Infinity) {
     const productId = r.product ? acct.products?.[r.product] : null
     if (r.product && !productId) throw new Error(`panel: creator ${r.creator} has no seeded product ${r.product}`)
     const body = { goal: r.goal, door: productId ? 'product' : 'idea', reference_note: r.note, target_seconds: PROFILE_SECONDS[r.profile] ?? [30, 45, 60][n % 3],
-      ...(productId ? { selected_product_id: productId } : {}) }
+      ...(productId ? { selected_product_id: productId } : {}),
+      // Coverage requests (plan v5.1 item I) name the idea angle the template choice ranks by.
+      ...(r.angle ? { angle: { kind: r.angle, gist: r.note } } : {}) }
     return { n, group: 'panel', label: `${r.creator} ${r.kind}`, id: r.id ?? null, template: r.template ?? null, profile: r.profile ?? null, lacks: r.lacks ?? [], creator: r.creator, kind: r.kind, product: r.product ?? null, owner_id: acct.owner_id, email: acct.email, body }
   })
 }

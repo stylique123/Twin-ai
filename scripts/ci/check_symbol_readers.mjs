@@ -71,6 +71,12 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'script/templates/templateCoverage.ts': {
+    symbols: ['shortTemplateId', 'fixtureLedger', 'isVerifiedDated', 'chooseForRequest', 'templateCoverage'],
+    why: 'Plan v5.1 item I: the deterministic template coverage harness over the FICTIONAL panel fixture. '
+      + 'Test tooling by design (its vitest is the reader); nothing in production should call it. '
+      + 'Changes if the panel runner starts reporting coverage itself.',
+  },
   'script/questionLadder.ts': {
     symbols: ['ladderTemplate', 'angleTemplate', 'validateLadderQuestion', 'LADDER'],
     why: 'Create flow spec v4 Part 7: the story question engine core (ladder, anchored templates, validation). '

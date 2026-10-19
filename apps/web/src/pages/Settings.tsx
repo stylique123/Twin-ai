@@ -13,6 +13,7 @@ import {
 } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
+import { VoiceCardPanel } from '../components/VoiceCardPanel'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -797,6 +798,8 @@ export default function Settings() {
               One question at a time. Only you can answer these — your videos cannot.
             </p>
             <CreatorQuestionCard voiceId={defaultVoiceId} />
+            {/* THIS IS HOW YOU SOUND (plan v5.1 item L): trial user only; null for every other account. */}
+            <VoiceCardPanel userId={profile?.id} />
           </section>
         </Reveal>
         )}

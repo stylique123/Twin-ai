@@ -94,6 +94,7 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, type SpineBeats } from '../_shared/spineContract.ts'
+import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
 import { DURATION_PROFILES } from '../_shared/templateData.ts'
 import { chooseDuration, fitProfile, countsFromLedger, type DurationChoice } from '../_shared/durationFromMaterial.ts'
@@ -118,7 +119,7 @@ import {
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
-import { buildVoiceCard, voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn } from '../_shared/voiceCard.ts'
+import { voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -2808,6 +2809,30 @@ interface CtaEvidenceInline {
   cta: string
   observed_verbatim_in: number | null
   of_videos: number
+}
+
+// ⚖️ PLAN v5.1 ITEM L: HER OWN MATERIAL FOR THE VOICE CARD. Her own
+// transcripts (subject = own) for THIS voice only, never another creator's
+// (no NULL-voice rows: a row that cannot be attributed is not counted), the
+// answers she typed (source 'asked'), and her profile samples. Scrubbed like
+// every other reader. A failed read returns less material, never someone else's.
+async function loadVoiceSourceInline(
+  sb: ReturnType<typeof createClient>, ownerId: string, voiceId: unknown,
+  askedRows: ReadonlyArray<{ source?: unknown; text?: unknown }> | null | undefined, profile: unknown,
+): Promise<VoiceSource> {
+  let transcripts: Array<{ text: string; seconds: number | null }> = []
+  if (typeof voiceId === 'string' && voiceId) {
+    try {
+      const { data } = await sb.from('transcripts').select('text, duration_sec')
+        .eq('owner_id', ownerId).eq('subject', 'own').eq('brand_voice_id', voiceId)
+        .order('created_at', { ascending: false }).limit(40)
+      transcripts = ((data ?? []) as Array<{ text?: unknown; duration_sec?: unknown }>)
+        .map((r) => ({ text: String(scrubPrivate(String(r?.text ?? ''))), seconds: Number.isFinite(Number(r?.duration_sec)) ? Number(r?.duration_sec) : null }))
+        .filter((t) => t.text.trim())
+    } catch { transcripts = [] }
+  }
+  const answers = (askedRows ?? []).filter((r) => String(r?.source ?? '') === 'asked').map((r) => String(scrubPrivate(String(r?.text ?? ''))))
+  return { transcripts, answers, samples: voiceMaterial(profile) }
 }
 
 function ctaEvidenceForInline(
@@ -6607,6 +6632,36 @@ async function handle(req: Request): Promise<Response> {
   //   edit    → her text replaces the line, then the deterministic writer guards run on it
   //   remove  → the line is dropped
   // The decision is recorded on blueprint.check_line_decisions. Logs: ids, index, reason.
+  // ⚖️ THIS IS HOW YOU SOUND (plan v5.1 item L). TRIAL ONLY: test accounts
+  // (heartbeat or fictional panel, from identity), off when
+  // VOICE_CARD_ENABLED=false. A real creator gets `disabled`, nothing is read.
+  //   voice_card {action: 'get'}            → {card: view | null, reason, material}
+  //   voice_card {action: 'edit', edits}    → her edits saved on brand_voices.profile.voice_card_edits
+  // Edits only remove items or add never-says; an added phrase of hers is kept
+  // only when it is verbatim in her own material. Logs: counts only.
+  if (specMode === 'voice_card') {
+    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    if (!testAccount || String(Deno.env.get('VOICE_CARD_ENABLED') ?? '').trim().toLowerCase() === 'false') return json({ disabled: true })
+    const sb = createClient(supabaseUrl, serviceKey)
+    const b = (peek ?? {}) as { action?: unknown; edits?: unknown }
+    const { data: v } = await sb.from('brand_voices').select('id, profile').eq('owner_id', user.id).eq('status', 'ready')
+      .order('updated_at', { ascending: false }).limit(1).maybeSingle()
+    if (!v) return json({ card: null, reason: 'no_voice' })
+    const prof = (v.profile ?? {}) as Record<string, unknown>
+    if (b.action === 'edit') {
+      const edits = sanitizeVoiceCardEdits(b.edits)
+      const { error: upErr } = await sb.from('brand_voices').update({ profile: { ...prof, voice_card_edits: edits } }).eq('id', v.id).eq('owner_id', user.id)
+      if (upErr) return json({ error: "We couldn't save that — try again." }, 500)
+    }
+    const { data: asked } = await sb.from('creator_knowledge').select('source, text').eq('owner_id', user.id).eq('voice_id', v.id)
+      .eq('source', 'asked').order('created_at', { ascending: false }).limit(40)
+    const source = await loadVoiceSourceInline(sb, user.id, v.id, (asked ?? []) as Array<{ source?: unknown; text?: unknown }>, scrubPrivate(prof))
+    const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off' })
+    const savedEdits = b.action === 'edit' ? sanitizeVoiceCardEdits(b.edits) : sanitizeVoiceCardEdits(prof.voice_card_edits)
+    const card = built.card ? applyVoiceCardEdits(built.card, savedEdits, voiceSourceTexts(source)) : null
+    console.log(JSON.stringify({ event: 'voice_card_view', action: b.action === 'edit' ? 'edit' : 'get', reason: built.reason, edited: card?.edited === true }))
+    return json({ card: card ? voiceCardView(card) : null, reason: built.reason, material: built.material, edits: savedEdits })
+  }
   if (specMode === 'check_line') {
     const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
     if (!testAccount || !checkLineOn(Deno.env.get('CHECK_LINE_KILL'))) return json({ disabled: true })
@@ -8142,12 +8197,23 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // Counted off her own `samples` only (after the privacy scrub above). Behind
   // the trial AND a kill-switch: `VOICE_CARD_ENABLED` unset = fictional
   // creators only, 'true' = real creators too, 'false' = nobody.
-  const voiceCard = (() => {
+  //
+  // ⚖️ PLAN v5.1 ITEM L: the card is built from her own TRANSCRIPTS (subject =
+  // own, this voice only) and the ANSWERS she typed, plus her profile samples.
+  // A thin creator (under ~15 minutes of speech and under 10 answers) gets no
+  // card: the general version. VOICE_CARD_THIN_FLOOR=off lifts that floor
+  // (fictional panel testing). Her edits ("this is how you sound") apply on top.
+  const voiceCardBuild: (CreatorVoiceCard & { source: VoiceSource }) | null = await (async () => {
     try {
       const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
-      return voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED')) ? buildVoiceCard(voiceMaterial(vp)) : null
+      if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'))) return null
+      const source = await loadVoiceSourceInline(admin, ownerId, (voice as { id?: unknown } | null)?.id ?? null, askedRows, vp)
+      const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off' })
+      const edits = (voice?.profile as { voice_card_edits?: unknown } | null)?.voice_card_edits
+      return { ...built, card: built.card ? applyVoiceCardEdits(built.card, sanitizeVoiceCardEdits(edits), voiceSourceTexts(source)) : null, source }
     } catch { return null }
   })()
+  const voiceCard = voiceCardBuild?.card ?? null
   const voiceCardBlock = voiceCard ? `\n${voiceCardBrief(voiceCard)}` : ''
   // ⚠️ AUDIT 2026-10-03 (part 2): the police story sat in her sample hooks AND
   // came back reworded ("the city inspector walks through our doors"). What
@@ -12335,6 +12401,8 @@ This is the video's position. Every field below must serve it. If the reference'
         return chooseTemplates({
           goal: String(videoGoal ?? body.goal ?? ''), angle: pickedAngle ? String(pickedAngle.kind ?? '') : null,
           ledger: templateLedger, targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
+          // Plan v5.1 item I (trial only): primary-angle / goal / verified-evidence ranking. Kill: TEMPLATE_RANK_V2=false.
+          rank: Deno.env.get('TEMPLATE_RANK_V2') === 'false' ? 'v1' : 'v2',
         })
       } catch { return [] }
     })() : []
@@ -16396,7 +16464,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // every line. Deletion and splitting only; never below three spoken
         // beats. Ids and counts only on the blueprint.
         if (newOn('robot_phrases')) {
-          const robot = robotPass(bp.script as Array<{ line?: unknown }>, 3)
+          // Plan v5.1 item L: with her voice card, her verbatim signatures are never
+          // cut as robot phrases and the cadence split follows her own rhythm.
+          const robot = robotPass(bp.script as Array<{ line?: unknown }>, 3, voiceCard ? voiceCardCleanupOptions(voiceCard) : {})
           bp.script = robot.beats as typeof bp.script
           ;(bp as Record<string, unknown>).robot_phrases = robot.record
           console.log(JSON.stringify({ event: 'robot_phrases', ...robot.record }))
@@ -16944,6 +17014,21 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
       } catch { /* the check never fails a build */ }
     }
+    // ⚖️ PACKAGING KEEPS THE PROMISE (plan v5.1 item G, trial only; kill:
+    // PACKAGING_PROMISE=false). Every title and publish caption must inherit the
+    // hook that shipped and promise nothing the script does not pay off: a failing
+    // title is dropped (rebuilt from the hook when none is left), a failing caption
+    // is replaced by the hook sentence. Deterministic; counts only are logged.
+    if (packagingPromiseOn(trialOn, Deno.env.get('PACKAGING_PROMISE')) && blueprint && typeof blueprint === 'object') {
+      try {
+        const bpp = blueprint as Record<string, unknown>
+        const pp = enforcePackagingPromise(bpp)
+        if (pp.blueprint.packaging) bpp.packaging = pp.blueprint.packaging
+        if (pp.blueprint.publish_plan) bpp.publish_plan = pp.blueprint.publish_plan
+        bpp.packaging_promise = pp.record
+        console.log(JSON.stringify({ event: 'packaging_promise', titles_dropped: pp.record.titles.dropped, title_rebuilt: pp.record.titles.rebuilt, captions_replaced: pp.record.captions.replaced }))
+      } catch { /* the packaging check never fails a build */ }
+    }
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
     if (newOn('invention_gate') && blueprint && typeof blueprint === 'object') {
       const gateEntity = ownedEntity as { id?: unknown } | null
@@ -17032,9 +17117,10 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             try {
               const lines = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)
                 .map((b) => (typeof b?.line === 'string' ? b.line : '')).filter(Boolean)
-              return { voice_card_id: voiceCard.id, voice_match: scoreVoiceMatch(voiceCard, lines).score }
+              const vc = voiceCheck(voiceCard, lines)
+              return { voice_card_id: voiceCard.id, voice_match: scoreVoiceMatch(voiceCard, lines).score, voice_check: { score: vc.score, pass: vc.pass, threshold: vc.threshold, notes: vc.notes, edited: voiceCard.edited === true } }
             } catch { return { voice_card_id: voiceCard.id } }
-          })() : {}),
+          })() : voiceCardBuild ? { voice_card_skipped: { reason: voiceCardBuild.reason, speech_minutes: voiceCardBuild.material.speech_minutes, answers: voiceCardBuild.material.answers } } : {}),
           ai_usage: currentUsage(),
           ai_usage_by_stage: currentStageUsage(),
           knowledge_route: knowledgeRoute ? { row: knowledgeRoute.row, gaps: knowledgeRoute.gaps, slots: knowledgeRoute.slots, available: routeAvail } : null,

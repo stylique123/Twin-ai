@@ -24,8 +24,12 @@ const MIN = { perTemplate: 3, perProfile: 8, perGoal: 2, perCreatorType: 3 }
 
 const creators = new Map(fixture.creators.map((c) => [c.key, c]))
 const reqs = fixture.requests
-assert.equal(reqs.length, 40, 'forty requests')
-assert.equal(new Set(reqs.map((r) => r.id)).size, 40, 'request ids are unique')
+assert.ok(reqs.length >= 40, 'at least forty requests')
+assert.equal(new Set(reqs.map((r) => r.id)).size, reqs.length, 'request ids are unique')
+// Plan v5.1 item I: coverage requests are appended at the END; the first 24 (golden set) stay as they were.
+for (const [n, r] of reqs.entries()) assert.equal(r.id, `panel-${String(n + 1).padStart(2, '0')}`, `request ${n} keeps its place`)
+for (const r of reqs.slice(0, 40)) assert.ok(!('angle' in r) && !('outside' in r), `${r.id}: first forty unchanged`)
+const ANGLES = ['teach_list', 'contrarian_claim', 'feeling_story', 'result_first', 'problem_question', 'curiosity']
 
 for (const c of fixture.creators) {
   assert.ok(CREATOR_TYPES.includes(c.creator_type), `${c.key}: creator_type`)
@@ -45,6 +49,14 @@ for (const r of reqs) {
   assert.ok(t, `${tag}: template`)
   assert.ok(t.profiles.includes(r.profile), `${tag}: ${r.template} allows ${r.profile}`)
   assert.ok(Array.isArray(r.lacks) && r.lacks.every((l) => LACKS.includes(l)), `${tag}: lacks`)
+  if (r.angle != null) assert.ok(ANGLES.includes(r.angle), `${tag}: angle`)
+  // Outside items: fictional, verified, sourced at example.com, a day-level date in the text, no "(fictional" scaffold.
+  for (const o of r.outside ?? []) {
+    assert.equal(o.verified, true, `${tag}: outside item verified`)
+    assert.match(String(o.source), /^https:\/\/example\.com\//, `${tag}: outside source`)
+    assert.match(String(o.text), /\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}\b/, `${tag}: outside item dated`)
+    assert.ok(!/\(\s*fictional/i.test(o.text), `${tag}: outside text is not scaffold`)
+  }
   // No numbers anywhere in what the request itself says; numbers live only in supplied items.
   assert.ok(!/\d/.test(r.note), `${tag}: note has no numbers`)
 
@@ -53,7 +65,7 @@ for (const r of reqs) {
   const has = {
     creator_truth: c.stories.length > 0,
     urgency: facts.some((f) => f.field === 'urgency'),
-    dated_item: facts.some((f) => f.field === 'dated' || f.date || f.published_at),
+    dated_item: facts.some((f) => f.field === 'dated' || f.date || f.published_at) || (r.outside ?? []).some((o) => o.verified === true),
     hesitation: facts.some((f) => f.field === 'hesitation'),
   }
   for (const l of r.lacks) assert.equal(has[l], false, `${tag}: claims to lack ${l} but has it`)
