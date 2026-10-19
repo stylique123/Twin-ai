@@ -38,6 +38,31 @@ export interface VoiceCard {
   person: { i: number; we: number; you: number; dominant: Person | null }
   /** Generic-AI phrases verified absent from her material. */
   never_uses: string[]
+  // ── Plan v5.1 item L: the complete card. Every field below is counted off
+  // her own words; every phrase listed is verbatim in her material. ──
+  /** How she usually opens: the first two words of her passages (verbatim, used at least twice) and the shape of her first sentences. */
+  openers: { top: Array<{ text: string; count: number }>; question_share: number; you_share: number; i_share: number }
+  /** Words she uses (verbatim, at least twice) and plain-English words she never uses. */
+  vocabulary: { uses: Array<{ text: string; count: number }>; avoids: string[] }
+  /** Humor and tone, as counts. */
+  tone: { label: ToneLabel; laughter_per_100_words: number; caps_per_100_words: number; asides_per_100_words: number }
+  /** Pacing: how her sentence lengths are spread. `long_bound` is her 90th-percentile sentence. */
+  pacing: { short_share: number; long_share: number; spread: number; long_bound: number; words_per_minute: number | null }
+  /** How much of her material the card was counted from (present when built from transcripts and answers). */
+  material?: MaterialAmount
+  /** Her own edits ("this is how you sound"), applied on top of the counts. */
+  edited?: boolean
+}
+
+export type ToneLabel = 'playful' | 'energetic' | 'curious' | 'clipped' | 'even'
+
+export interface MaterialAmount {
+  transcripts: number
+  answers: number
+  samples: number
+  words: number
+  /** Minutes of her speech: measured transcript seconds, else words at SPOKEN_WPM. Answers are typed, not counted as speech. */
+  speech_minutes: number
 }
 
 /** Stock phrases of the generic AI voice. A candidate, never a verdict:
@@ -159,6 +184,86 @@ function signaturesOf(texts: readonly string[], max = 12): Array<{ text: string;
   return kept.sort((a, b) => b.count - a.count || b.text.split(' ').length - a.text.split(' ').length || (a.text < b.text ? -1 : 1)).slice(0, max)
 }
 
+const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Times a phrase occurs VERBATIM (words separated only by spaces) in her material. */
+export function verbatimCount(material: readonly string[], phrase: string): number {
+  const ws = phrase.toLowerCase().split(/\s+/).filter(Boolean)
+  if (!ws.length) return 0
+  const re = new RegExp(`(?<![a-z0-9'])${ws.map(escRe).join('\\s+')}(?![a-z0-9'])`, 'g')
+  return material.reduce((n, t) => n + (norm(t).toLowerCase().match(re) ?? []).length, 0)
+}
+
+/** Formal / corporate words a plain speaker avoids; one goes on her card only when absent from her material. */
+export const FORMAL_WORDS: readonly string[] = [
+  'utilize', 'furthermore', 'moreover', 'additionally', 'therefore', 'thus', 'hence', 'individuals', 'commence',
+  'purchase', 'numerous', 'regarding', 'obtain', 'assist', 'facilitate', 'optimal', 'comprehensive', 'robust',
+  'innovative', 'cutting-edge', 'curated', 'crucial', 'essential', 'vital', 'indeed',
+]
+
+const LAUGH = /\b(?:ha(?:ha)+|lol|lmao|hehe)\b/gi
+const ASIDE = /\([^)]*\)|\b(?:mind you|by the way|to be fair|i mean|you know)\b/gi
+/** Shouted words: all caps, three letters or more (BONK, CRUNCH, VERY). */
+const CAPS = /\b[A-Z]{3,}\b/g
+
+function openersOf(texts: readonly string[]): VoiceCard['openers'] {
+  const firsts = texts.map((t) => splitSentences(t)[0] ?? '').filter(Boolean)
+  const counts = new Map<string, number>()
+  for (const f of firsts) {
+    const k = words(f).slice(0, 2).join(' ')
+    if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  const top = [...counts.entries()].filter(([k, c]) => c >= 2 && verbatimCount(texts, k) >= 2)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 5).map(([text, count]) => ({ text, count }))
+  const n = firsts.length || 1
+  return {
+    top,
+    question_share: round(firsts.filter((f) => f.endsWith('?')).length / n),
+    you_share: round(firsts.filter((f) => /^(?:you|your|you're|you've|if you)\b/i.test(norm(f))).length / n),
+    i_share: round(firsts.filter((f) => /^(?:i|i'm|i've|my|we|we're|our)\b/i.test(norm(f))).length / n),
+  }
+}
+
+function vocabularyOf(texts: readonly string[], hay: string): VoiceCard['vocabulary'] {
+  const counts = new Map<string, number>()
+  for (const w of words(texts.join(' \n '))) {
+    if (STOP.has(w) || w.length < 4 || /^\d+$/.test(w)) continue
+    counts.set(w, (counts.get(w) ?? 0) + 1)
+  }
+  const uses = [...counts.entries()].filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 12).map(([text, count]) => ({ text, count }))
+  return { uses, avoids: FORMAL_WORDS.filter((w) => !hasPhrase(hay, w)) }
+}
+
+function toneOf(texts: readonly string[], st: Stats): VoiceCard['tone'] {
+  const all = texts.map(norm).join(' ')
+  const n = words(all).length || 1
+  const per100 = (re: RegExp) => round((all.match(re) ?? []).length * 100 / n, 2)
+  const laughter = per100(LAUGH)
+  const caps = per100(CAPS)
+  const asides = per100(ASIDE)
+  const label: ToneLabel = laughter + caps >= 1 ? 'playful'
+    : st.exclamation_rate >= 0.3 ? 'energetic'
+      : st.question_rate >= 0.25 ? 'curious'
+        : st.mean > 0 && st.mean <= 7 ? 'clipped' : 'even'
+  return { label, laughter_per_100_words: laughter, caps_per_100_words: caps, asides_per_100_words: asides }
+}
+
+function pacingOf(texts: readonly string[], wpm: number | null): VoiceCard['pacing'] {
+  const lens = texts.flatMap(splitSentences).map((s) => words(s).length).sort((a, b) => a - b)
+  const n = lens.length
+  if (!n) return { short_share: 0, long_share: 0, spread: 0, long_bound: 0, words_per_minute: wpm }
+  const mean = lens.reduce((a, b) => a + b, 0) / n
+  const sd = Math.sqrt(lens.reduce((a, b) => a + (b - mean) ** 2, 0) / n)
+  return {
+    short_share: round(lens.filter((l) => l <= 6).length / n),
+    long_share: round(lens.filter((l) => l >= 20).length / n),
+    spread: round(sd, 2),
+    long_bound: lens[Math.max(0, Math.ceil(0.9 * n) - 1)]!,
+    words_per_minute: wpm,
+  }
+}
+
 /** Her own passages from a stored profile: `samples` (strings). Anything else
  *  — tone labels, summaries — is description, not her words, and is ignored. */
 export function voiceMaterial(profile: unknown): string[] {
@@ -171,7 +276,7 @@ export function voiceMaterial(profile: unknown): string[] {
 export const MIN_PASSAGES = 3
 
 /** The card, or null when there is too little of her own material. */
-export function buildVoiceCard(material: readonly string[]): VoiceCard | null {
+export function buildVoiceCard(material: readonly string[], opts: { words_per_minute?: number | null } = {}): VoiceCard | null {
   const texts = material.map((t) => norm(t).trim()).filter(Boolean)
   if (texts.length < MIN_PASSAGES) return null
   const st = stats(texts)
@@ -184,12 +289,17 @@ export function buildVoiceCard(material: readonly string[]): VoiceCard | null {
     passages: texts.length,
     sentences: st.sentences,
     sentence_length: { mean: st.mean, median: st.median },
-    signatures: signaturesOf(texts),
+    // A signature is listed ONLY when it is verbatim in her material at least twice.
+    signatures: signaturesOf(texts).filter((g) => verbatimCount(texts, g.text) >= 2),
     formality: { label: formalityOf(st.contractions_per_100_words, st.slang_per_100_words), contractions_per_100_words: st.contractions_per_100_words, slang_per_100_words: st.slang_per_100_words },
     question_rate: st.question_rate,
     exclamation_rate: st.exclamation_rate,
     person: { ...p, dominant: p[top] > 0 ? top : null },
     never_uses: GENERIC_AI_PHRASES.filter((ph) => !hasPhrase(hay, ph)),
+    openers: openersOf(texts),
+    vocabulary: vocabularyOf(texts, hay),
+    tone: toneOf(texts, st),
+    pacing: pacingOf(texts, opts.words_per_minute ?? null),
   }
 }
 
@@ -256,8 +366,224 @@ export function voiceCardBrief(card: VoiceCard): string {
     card.person.dominant ? `- Person: mostly "${card.person.dominant === 'i' ? 'I' : card.person.dominant}" (I ${pct(card.person.i)}, we ${pct(card.person.we)}, you ${pct(card.person.you)}).` : '',
     sig ? `- Her signature words (each used at least twice; use one or two where natural, never stuff them): ${sig}.` : '',
     card.never_uses.length ? `- Words she never uses (do not write them): ${card.never_uses.slice(0, 20).join(', ')}.` : '',
+    // Plan v5.1 item L: the complete card, as constraints.
+    card.openers?.top.length ? `- How she opens: often with ${card.openers.top.map((o) => `"${o.text}"`).join(', ')}; ${pct(card.openers.question_share)} of her openings are questions. Open the way she does.` : '',
+    card.vocabulary?.uses.length ? `- Words she actually uses: ${card.vocabulary.uses.slice(0, 10).map((u) => u.text).join(', ')}.` : '',
+    card.vocabulary?.avoids.length ? `- Formal words she avoids (do not write them): ${card.vocabulary.avoids.slice(0, 15).join(', ')}.` : '',
+    card.tone ? `- Humor and tone: ${card.tone.label} (${card.tone.laughter_per_100_words} laughs, ${card.tone.caps_per_100_words} shouted words, ${card.tone.asides_per_100_words} asides per 100 words). Do not add jokes or energy she does not have.` : '',
+    card.pacing ? `- Pacing: ${pct(card.pacing.short_share)} of her sentences are 6 words or fewer, ${pct(card.pacing.long_share)} are 20 or more; her longest usual sentence is ${card.pacing.long_bound} words. No sentence longer than that.` : '',
   ]
   return lines.filter(Boolean).join('\n')
+}
+
+// ── MATERIAL: HER TRANSCRIPTS AND ANSWERS (plan v5.1 item L) ────────────────
+
+export interface VoiceSource {
+  /** Her own transcripts (subject = own), with measured seconds when known. */
+  transcripts?: ReadonlyArray<{ text?: unknown; seconds?: unknown }>
+  /** Answers she typed to Twin's questions. */
+  answers?: readonly unknown[]
+  /** Short verbatim samples on her profile. */
+  samples?: readonly unknown[]
+}
+
+/** Below BOTH of these she is a thin creator: no card, the general version. */
+export const THIN_SPEECH_MINUTES = 15
+export const THIN_ANSWERS = 10
+/** Words per minute used when a transcript has no measured duration. */
+export const SPOKEN_WPM = 150
+
+const SKIP_ANSWER = /^(nothing( specific| really| much)?|none|no|n\/a|na|idk|i don'?t know|not sure|skip|no idea|not really)\b|\bkeep it general\b/i
+const strs = (xs: readonly unknown[] | undefined) => (xs ?? []).filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean)
+const realAnswer = (a: string) => !SKIP_ANSWER.test(a.replace(/[.!\s]+$/, '')) && words(a).length >= 4
+
+/** Her material, flattened: transcripts, real answers, samples (in that order). */
+export function voiceSourceTexts(src: VoiceSource): string[] {
+  return [
+    ...strs((src.transcripts ?? []).map((t) => t?.text)),
+    ...strs(src.answers).filter(realAnswer),
+    ...strs(src.samples),
+  ]
+}
+
+/** How much of her own material there is. */
+export function voiceMaterialAmount(src: VoiceSource): MaterialAmount {
+  const ts = (src.transcripts ?? []).filter((t) => typeof t?.text === 'string' && t.text.trim())
+  const answers = strs(src.answers).filter(realAnswer)
+  const samples = strs(src.samples)
+  let seconds = 0
+  for (const t of ts) {
+    const sec = Number(t.seconds)
+    seconds += Number.isFinite(sec) && sec > 0 ? sec : (words(String(t.text)).length / SPOKEN_WPM) * 60
+  }
+  return {
+    transcripts: ts.length,
+    answers: answers.length,
+    samples: samples.length,
+    words: words([...ts.map((t) => String(t.text)), ...answers, ...samples].join(' ')).length,
+    speech_minutes: round(seconds / 60, 2),
+  }
+}
+
+/** Thin: under about 15 minutes of her speech AND under 10 real answers. */
+export const isThinMaterial = (a: MaterialAmount): boolean => a.speech_minutes < THIN_SPEECH_MINUTES && a.answers < THIN_ANSWERS
+
+export interface CreatorVoiceCard { card: VoiceCard | null; reason: 'ok' | 'thin' | 'too_little'; material: MaterialAmount }
+
+/**
+ * The card from her transcripts and answers. A thin creator gets NO card (the
+ * general version), unless `thinFloor` is false (kill switch
+ * VOICE_CARD_THIN_FLOOR=off at the edge, for fictional-panel testing only).
+ */
+export function buildCreatorVoiceCard(src: VoiceSource, opts: { thinFloor?: boolean } = {}): CreatorVoiceCard {
+  const material = voiceMaterialAmount(src)
+  if (opts.thinFloor !== false && isThinMaterial(material)) return { card: null, reason: 'thin', material }
+  const ts = (src.transcripts ?? []).filter((t) => typeof t?.text === 'string' && t.text.trim())
+  const measured = ts.filter((t) => Number.isFinite(Number(t.seconds)) && Number(t.seconds) > 0)
+  const wpm = measured.length
+    ? Math.round(words(measured.map((t) => String(t.text)).join(' ')).length / (measured.reduce((a, t) => a + Number(t.seconds), 0) / 60))
+    : null
+  const card = buildVoiceCard(voiceSourceTexts(src), { words_per_minute: wpm })
+  return card ? { card: { ...card, material }, reason: 'ok', material } : { card: null, reason: 'too_little', material }
+}
+
+// ── THE VOICE CHECK (plan v5.1 item L) ─────────────────────────────────────
+
+export const VOICE_CHECK_PASS = 60
+
+export interface VoiceCheck extends VoiceMatch {
+  /** 0-100 with pacing and openers folded in. */
+  score: number
+  pass: boolean
+  threshold: number
+  pacing: number
+  opener: number
+  /** Short, countable notes for the record (no script text). */
+  notes: string[]
+}
+
+/** Score a script against her card: the match parts plus pacing and how it opens. */
+export function voiceCheck(card: VoiceCard, lines: readonly string[]): VoiceCheck {
+  const base = scoreVoiceMatch(card, lines)
+  const texts = lines.map((l) => String(l ?? '')).filter((l) => l.trim())
+  const lens = texts.flatMap(splitSentences).map((s) => words(s).length)
+  const n = lens.length
+  const p = card.pacing
+  const pacing = !p || !n ? (n ? 1 : 0)
+    : (closeness(lens.filter((l) => l <= 6).length / n, p.short_share, 0.5)
+      + (lens.filter((l) => l > Math.max(p.long_bound, 8)).length === 0 ? 1 : Math.max(0, 1 - lens.filter((l) => l > Math.max(p.long_bound, 8)).length / n * 3))) / 2
+  const first = texts.length ? (splitSentences(texts[0]!)[0] ?? '') : ''
+  const firstWords = words(first).slice(0, 2).join(' ')
+  const o = card.openers
+  const opener = !o || !first ? (first ? 1 : 0)
+    : o.top.length && o.top.some((t) => t.text === firstWords) ? 1
+      : closeness(first.endsWith('?') ? 1 : 0, o.question_share, 1)
+  const score = texts.length ? Math.round(0.8 * base.score + 10 * pacing + 10 * opener) : 0
+  const notes: string[] = []
+  if (base.never_used_hits) notes.push(`never_uses:${base.never_used_hits}`)
+  if (p && lens.some((l) => l > Math.max(p.long_bound, 8))) notes.push('longer_than_her_longest')
+  if (base.parts.length < 0.5) notes.push('sentence_length_off')
+  if (base.parts.formality < 0.5) notes.push('formality_off')
+  return { ...base, score, pass: score >= VOICE_CHECK_PASS, threshold: VOICE_CHECK_PASS, pacing: round(pacing), opener: round(opener), notes }
+}
+
+// ── THE CLEAN-UP'S VOICE OPTIONS (rhythm and robot-phrase filter) ─────────────
+
+/**
+ * What the deterministic clean-up (robotPhrases.robotPass) takes from her card:
+ * her verbatim signatures are never cut as robot phrases, and the cadence split
+ * uses her own long-sentence bound (kept between 12 and 30 words).
+ */
+export function voiceCardCleanupOptions(card: VoiceCard): { keep: string[]; maxWords: number } {
+  const bound = card.pacing?.long_bound || Math.round(card.sentence_length.mean * 2) || 22
+  return { keep: card.signatures.map((s) => s.text), maxWords: Math.min(30, Math.max(12, bound)) }
+}
+
+// ── "THIS IS HOW YOU SOUND": WHAT SHE SEES AND EDITS ───────────────────────────
+
+export interface VoiceCardView {
+  id: string
+  title: 'This is how you sound'
+  /** Counted from: e.g. "3 videos (16 min) and 12 answers". */
+  counted_from: string
+  sections: Array<{ key: VoiceCardSection; label: string; summary: string; items: string[]; editable: boolean }>
+}
+export type VoiceCardSection = 'sentences' | 'openers' | 'uses' | 'avoids' | 'tone' | 'pacing' | 'signatures' | 'never_says'
+
+export interface VoiceCardEdits {
+  /** Items she removed (verbatim as shown), per section. */
+  remove?: Partial<Record<'openers' | 'uses' | 'signatures' | 'never_says' | 'avoids', string[]>>
+  /** Phrases she says she never says (added to never_says). */
+  never_says_add?: string[]
+  /** Phrases she says ARE hers: kept only when verbatim in her material. */
+  signatures_add?: string[]
+}
+
+/** The card as she reads it. Plain words, her own phrases, no internal ids beyond the card id. */
+export function voiceCardView(card: VoiceCard): VoiceCardView {
+  const pct = (n: number) => `${Math.round(n * 100)}%`
+  const m = card.material
+  const counted = m
+    ? `${m.transcripts} video${m.transcripts === 1 ? '' : 's'} (${Math.round(m.speech_minutes)} min) and ${m.answers} answer${m.answers === 1 ? '' : 's'}`
+    : `${card.passages} passages of your own words`
+  return {
+    id: card.id,
+    title: 'This is how you sound',
+    counted_from: counted,
+    sections: [
+      { key: 'sentences', label: 'Your sentences', summary: `About ${Math.round(card.sentence_length.mean)} words each; ${card.formality.label}.`, items: [], editable: false },
+      { key: 'openers', label: 'How you usually open', summary: `${pct(card.openers?.question_share ?? 0)} of your openings are questions.`, items: (card.openers?.top ?? []).map((o) => o.text), editable: true },
+      { key: 'uses', label: 'Words you use', summary: 'Each one appears at least twice in your own words.', items: (card.vocabulary?.uses ?? []).map((u) => u.text), editable: true },
+      { key: 'avoids', label: 'Words you avoid', summary: 'Never found in your own words.', items: card.vocabulary?.avoids ?? [], editable: true },
+      { key: 'tone', label: 'Humor and tone', summary: card.tone ? `${card.tone.label}` : 'even', items: [], editable: false },
+      { key: 'pacing', label: 'Pacing', summary: card.pacing ? `${pct(card.pacing.short_share)} short sentences, ${pct(card.pacing.long_share)} long ones${card.pacing.words_per_minute ? `, about ${card.pacing.words_per_minute} words a minute` : ''}.` : '', items: [], editable: false },
+      { key: 'signatures', label: 'Your phrases', summary: 'Said word for word at least twice.', items: card.signatures.map((s) => s.text), editable: true },
+      { key: 'never_says', label: 'What you never say', summary: 'Twin will not write these for you.', items: card.never_uses, editable: true },
+    ],
+  }
+}
+
+const cleanList = (xs: unknown, max = 20) => (Array.isArray(xs) ? xs : [])
+  .filter((x): x is string => typeof x === 'string').map((x) => norm(x).trim().toLowerCase().replace(/\s+/g, ' '))
+  .filter((x) => x.length > 0 && x.length <= 60).slice(0, max)
+
+/** Sanitise edits from the client: strings only, short, capped. */
+export function sanitizeVoiceCardEdits(e: unknown): VoiceCardEdits {
+  const o = (e && typeof e === 'object' ? e : {}) as Record<string, unknown>
+  const r = (o.remove && typeof o.remove === 'object' ? o.remove : {}) as Record<string, unknown>
+  const remove: VoiceCardEdits['remove'] = {}
+  for (const k of ['openers', 'uses', 'signatures', 'never_says', 'avoids'] as const) {
+    const l = cleanList(r[k], 40)
+    if (l.length) remove[k] = l
+  }
+  return { remove, never_says_add: cleanList(o.never_says_add), signatures_add: cleanList(o.signatures_add) }
+}
+
+/**
+ * Her edits on top of the counted card. She can remove anything and add
+ * never-says phrases. An added signature is kept ONLY when it is verbatim in
+ * her material at least twice: the card never claims a phrase she did not say.
+ */
+export function applyVoiceCardEdits(card: VoiceCard, edits: VoiceCardEdits | null | undefined, material: readonly string[] = []): VoiceCard {
+  if (!edits) return card
+  const e = sanitizeVoiceCardEdits(edits)
+  const rm = (k: keyof NonNullable<VoiceCardEdits['remove']>) => new Set(e.remove?.[k] ?? [])
+  const sigAdds = (e.signatures_add ?? [])
+    .filter((t) => !card.signatures.some((s) => s.text === t))
+    .map((t) => ({ text: t, count: verbatimCount(material, t) }))
+    .filter((s) => s.count >= 2)
+  const herWords = material.join(' \n ').toLowerCase()
+  const neverAdds = (e.never_says_add ?? []).filter((t) => !card.never_uses.includes(t) && !hasPhrase(herWords, t))
+  const changed = Object.values(e.remove ?? {}).some((l) => (l?.length ?? 0) > 0) || sigAdds.length > 0 || neverAdds.length > 0
+  if (!changed) return card
+  return {
+    ...card,
+    signatures: [...card.signatures.filter((s) => !rm('signatures').has(s.text)), ...sigAdds],
+    never_uses: [...card.never_uses.filter((p) => !rm('never_says').has(p)), ...neverAdds],
+    openers: card.openers ? { ...card.openers, top: card.openers.top.filter((o) => !rm('openers').has(o.text)) } : card.openers,
+    vocabulary: card.vocabulary ? { uses: card.vocabulary.uses.filter((u) => !rm('uses').has(u.text)), avoids: card.vocabulary.avoids.filter((a) => !rm('avoids').has(a)) } : card.vocabulary,
+    edited: true,
+  }
 }
 
 /** Kill-switch: real creators get the card only when `VOICE_CARD_ENABLED` is

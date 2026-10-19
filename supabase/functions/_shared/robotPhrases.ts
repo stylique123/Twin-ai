@@ -63,7 +63,21 @@ export interface RobotRepair { line: string; hits: string[]; dropped: boolean }
  * Repair one spoken line by deletion only. `line` is '' and `dropped` true when
  * every sentence was filler; the caller decides whether the beat may go.
  */
-export function repairRobotLine(line: string): RobotRepair {
+/**
+ * Voice options (plan v5.1 item L, trial only; from her voice card). `keep`:
+ * her own verbatim signature phrases, never cut as robot phrases even when
+ * they match a stock prefix ("here's the thing" said by a creator who says it).
+ * `maxWords`: her rhythm's long-sentence bound instead of CADENCE_MAX_WORDS.
+ */
+export interface RobotVoiceOptions { keep?: readonly string[]; maxWords?: number }
+
+const keeps = (s: string, keep: readonly string[] | undefined) => {
+  if (!keep?.length) return false
+  const t = s.toLowerCase().replace(/[‘’]/g, "'")
+  return keep.some((k) => k.trim() !== '' && t.includes(k.toLowerCase()))
+}
+
+export function repairRobotLine(line: string, voice: RobotVoiceOptions = {}): RobotRepair {
   const hits: string[] = []
   const kept: string[] = []
   const closerCut = dropStockCloser(line)
@@ -73,6 +87,7 @@ export function repairRobotLine(line: string): RobotRepair {
     let cut = false
     for (const p of ROBOT_PHRASES) {
       if (p.mode !== 'prefix') continue
+      if (p.re.test(s) && keeps(s.match(p.re)?.[0] ?? '', voice.keep)) continue
       if (p.re.test(s)) { hits.push(p.id); s = s.replace(p.re, '').trim(); cut = true }
     }
     const filler = ROBOT_PHRASES.find((p) => p.mode === 'filler' && p.re.test(s))
@@ -112,10 +127,10 @@ function splitOnce(s: string): [string, string] | null {
 
 export const CADENCE_MAX_WORDS = 22
 export const CADENCE_MAX_COMMAS = 3
-export const isOverlong = (s: string): boolean => words(s) > CADENCE_MAX_WORDS || (s.match(/,/g)?.length ?? 0) >= CADENCE_MAX_COMMAS
+export const isOverlong = (s: string, maxWords = CADENCE_MAX_WORDS): boolean => words(s) > maxWords || (s.match(/,/g)?.length ?? 0) >= CADENCE_MAX_COMMAS
 
 /** Split every overlong sentence in a line. No word is added or removed. */
-export function splitForCadence(line: string): { line: string; flagged: number; split: number } {
+export function splitForCadence(line: string, maxWords = CADENCE_MAX_WORDS): { line: string; flagged: number; split: number } {
   let flagged = 0
   let split = 0
   const out: string[] = []
@@ -123,7 +138,7 @@ export function splitForCadence(line: string): { line: string; flagged: number; 
   let guard = 0
   while (queue.length) {
     const s = queue.shift()!
-    if (!isOverlong(s) || guard > 12) { out.push(s); continue }
+    if (!isOverlong(s, maxWords) || guard > 12) { out.push(s); continue }
     flagged++
     const parts = splitOnce(s)
     if (!parts) { out.push(s); continue }
@@ -141,20 +156,20 @@ export interface RobotPassRecord { phrase_hits: Record<string, number>; lines_re
  * while at least `floor` spoken beats remain (the clean-up floor); otherwise it
  * keeps its original words.
  */
-export function robotPass<T extends { line?: unknown }>(beats: readonly T[], floor = 3): { beats: T[]; record: RobotPassRecord } {
+export function robotPass<T extends { line?: unknown }>(beats: readonly T[], floor = 3, voice: RobotVoiceOptions = {}): { beats: T[]; record: RobotPassRecord } {
   const rec: RobotPassRecord = { phrase_hits: {}, lines_repaired: 0, lines_dropped: 0, cadence_flagged: 0, cadence_split: 0 }
   let spoken = beats.filter((b) => typeof b.line === 'string' && b.line.trim()).length
   const out: T[] = []
   for (const b of beats) {
     if (typeof b.line !== 'string' || !b.line.trim()) { out.push(b); continue }
-    const r = repairRobotLine(b.line)
+    const r = repairRobotLine(b.line, voice)
     for (const h of r.hits) rec.phrase_hits[h] = (rec.phrase_hits[h] ?? 0) + 1
     if (r.dropped) {
       if (spoken - 1 >= floor) { spoken--; rec.lines_dropped++; continue }
       out.push(b)
       continue
     }
-    const c = splitForCadence(r.line)
+    const c = splitForCadence(r.line, voice.maxWords ?? CADENCE_MAX_WORDS)
     rec.cadence_flagged += c.flagged
     rec.cadence_split += c.split
     if (c.line !== b.line) { rec.lines_repaired++; out.push({ ...b, line: c.line }) } else out.push(b)
