@@ -151,7 +151,12 @@ describe('creator_knowledge writers', () => {
     expect(checkLine).toHaveLength(1)
     expect(checkLine[0]).toMatch(/creator_confirmed_at: now/)
     expect(checkLine[0]).toMatch(/basis: 'stated'/)
-    const inserts = allInserts.filter((i) => !checkLine.includes(i))
+    // Plan v5.1 M (trial only): her answer to an angle question, built by the
+    // pure answerFactRow (source 'asked', basis 'stated', owner-confirmed).
+    const mn = allInserts.filter((i) => /^\s*\.\.\.row\b/.test(i))
+    expect(mn).toHaveLength(1)
+    expect(code).toMatch(/const row = [\s\S]{0,200}answerFactRow\(\{ ownerId: user\.id[^}]*answer: herAnswer/)
+    const inserts = allInserts.filter((i) => !checkLine.includes(i) && !mn.includes(i))
     // 2026-10-05: an answer is split into what is hers now and the claim
     // sentences held for her yes — still only her own words, two rows each.
     expect(inserts.length).toBe(4)
