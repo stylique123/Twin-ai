@@ -130,7 +130,21 @@ export interface ChooseInput {
   targetProductId?: string | null
   asksSoFar?: number
   templates?: readonly ScriptTemplate[]
+  /**
+   * 'v2' (Twin plan v5.1 item I, trial only, kill switch TEMPLATE_RANK_V2 at
+   * the edge): a template whose FIRST angle is the picked one beats one that
+   * only lists it second; then a goal match; then a template that holds
+   * verified scarce evidence (a dated item, a live urgency) in a required
+   * slot; then fewest questions. 'v1' (default) is the original order, under
+   * which T5–T10 can never win while T1/T4 are eligible.
+   */
+  rank?: 'v1' | 'v2'
 }
+
+const SCARCE = new Set(['dated', 'live_urgency'])
+/** Required slots holding a verified dated / live-urgency item. */
+const scarceFilled = (p: TemplatePlan) => p.slots.filter((s) => s.required && s.item_id
+  && p.template.beats[s.beat]?.slots.find((x) => x.name === s.slot && SCARCE.has(x.evidence))).length
 
 /** Angle + goal pick 1–3 ELIGIBLE templates, best first (angle match, then fewest questions). */
 export function chooseTemplates(i: ChooseInput): TemplatePlan[] {
@@ -143,7 +157,12 @@ export function chooseTemplates(i: ChooseInput): TemplatePlan[] {
     .sort((a, b) => {
       const am = angle && a.template.angles.includes(angle) ? 0 : 1
       const bm = angle && b.template.angles.includes(angle) ? 0 : 1
-      return am - bm || a.questions.length - b.questions.length
+      if (i.rank !== 'v2') return am - bm || a.questions.length - b.questions.length
+      const ap = angle && a.template.angles[0] === angle ? 0 : 1
+      const bp = angle && b.template.angles[0] === angle ? 0 : 1
+      const ag = a.template.goals.includes(goal) ? 0 : 1
+      const bg = b.template.goals.includes(goal) ? 0 : 1
+      return am - bm || ap - bp || ag - bg || scarceFilled(b) - scarceFilled(a) || a.questions.length - b.questions.length
     })
     .slice(0, 3)
 }

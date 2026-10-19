@@ -3458,3 +3458,34 @@ export async function checkLine(
   const d = (data ?? {}) as { ok?: unknown; disabled?: unknown; line?: unknown; check_lines?: unknown }
   return { ok: d.ok === true, ...(d.disabled === true ? { disabled: true } : {}), line: typeof d.line === 'string' ? d.line : null, check_lines: d.check_lines }
 }
+
+// ---- THIS IS HOW YOU SOUND (plan v5.1 item L; trial only) ------------------
+// Her voice card as she reads it, and her edits. Server-side the mode answers
+// `{ disabled: true }` for every account that is not a test account, or when
+// VOICE_CARD_ENABLED=false. A thin creator gets `card: null, reason: 'thin'`.
+export type VoiceCardSectionKey = 'sentences' | 'openers' | 'uses' | 'avoids' | 'tone' | 'pacing' | 'signatures' | 'never_says'
+export interface VoiceCardViewDto {
+  id: string
+  title: string
+  counted_from: string
+  sections: Array<{ key: VoiceCardSectionKey; label: string; summary: string; items: string[]; editable: boolean }>
+}
+export interface VoiceCardEditsDto {
+  remove?: Partial<Record<'openers' | 'uses' | 'signatures' | 'never_says' | 'avoids', string[]>>
+  never_says_add?: string[]
+  signatures_add?: string[]
+}
+export interface VoiceCardResult { disabled?: boolean; card: VoiceCardViewDto | null; reason?: string; edits?: VoiceCardEditsDto }
+export async function voiceCardRequest(action: 'get' | 'edit', edits?: VoiceCardEditsDto): Promise<VoiceCardResult> {
+  const { data, error } = await supabase.functions.invoke('generate-blueprint', {
+    body: { mode: 'voice_card', action, ...(action === 'edit' ? { edits: edits ?? {} } : {}) },
+  })
+  if (error) throw new Error(await readInvokeError(error))
+  const d = (data ?? {}) as { disabled?: unknown; card?: unknown; reason?: unknown; edits?: unknown }
+  if (d.disabled === true) return { disabled: true, card: null }
+  return {
+    card: d.card && typeof d.card === 'object' ? d.card as VoiceCardViewDto : null,
+    reason: typeof d.reason === 'string' ? d.reason : undefined,
+    edits: d.edits && typeof d.edits === 'object' ? d.edits as VoiceCardEditsDto : {},
+  }
+}

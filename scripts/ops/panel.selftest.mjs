@@ -8,10 +8,11 @@ import { ledgerWithText, assertOutsideRepo, csvCell, gatePending } from './expor
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
 
-// The design: 8 creators, 40 requests (coverage is checked in panelFixtures.selftest.mjs).
+// The design: 8 creators, 40 requests plus coverage additions appended at the END (plan v5.1 item I;
+// coverage is checked in panelFixtures.selftest.mjs and templateCoverage.test.ts).
 // The first six creators keep their original four requests (educate, sell/leads, story, thin).
 assert.equal(fixture.creators.length, 8)
-assert.equal(fixture.requests.length, 40)
+assert.ok(fixture.requests.length >= 40)
 for (const c of fixture.creators) {
   const kinds = fixture.requests.slice(0, 24).filter((r) => r.creator === c.key).map((r) => r.kind).sort()
   if (kinds.length) {
@@ -67,7 +68,9 @@ assert.ok(!/password[^\n]*(console|content|insert)/.test(seedSrc))
 // Scenarios resolve each request to its own account and product.
 const accounts = { accounts: fixture.creators.map((c, i) => ({ key: c.key, owner_id: `owner-${i}`, email: panelEmail(c.key), products: Object.fromEntries(c.products.map((p) => [p.key, `pid-${c.key}-${p.key}`])) })) }
 const list = panelScenarios(fixture, accounts)
-assert.equal(list.length, 40)
+assert.equal(list.length, fixture.requests.length)
+assert.deepEqual(list.find((x) => x.id === 'panel-42')?.body.angle, { kind: 'curiosity', gist: fixture.requests.find((r) => r.id === 'panel-42').note }, 'an angle-named request carries its angle')
+assert.equal(list[0].body.angle, undefined, 'the first requests carry no angle')
 assert.equal(list[0].body.target_seconds, 60, 'standard profile is a minute')
 assert.equal(list.find((x) => x.profile === 'deep').body.target_seconds, 90)
 const sell = list.find((s) => s.creator === 'mayas-coffee' && s.kind === 'sell')
