@@ -109,3 +109,131 @@ export function angleCardsRecord(cards: readonly AngleCard[]) {
     opening: c.opening.source, opening_item_id: c.opening.source === 'material' ? c.opening.item_id : null,
   }))
 }
+
+// ── PLAN v5.1 ITEM N: ANGLES ─────────────────────────────────────────────
+// Pick the best three of the eight angle types, by these criteria in order:
+//   1. Goal fit: OBJECTIVE_ANGLES (data, one row per objective the app
+//      offers). An angle not in her objective's row is never offered.
+//   2. Material fit: share of the angle's needs map her material fills.
+//   3. Three different shapes.
+//   4. Fewest gaps (then the objective row's own order).
+// Goal fit is a gate (the row of allowed angles), so material fit ranks among
+// the allowed ones. An angle the product cannot support (no product, nothing
+// showable, no offer) is dropped, never offered. Each card carries its opening
+// line and a source tag; the top card is Twin's pick. No placeholder: with
+// nothing to open on, the opening is null (a question fills it before
+// writing), never a "[SLOT]" marker.
+
+export const ANGLE_LABELS: Record<AngleId, string> = {
+  moment: 'Tell the moment', myth: 'Bust a myth', show: 'Show it working', answer: 'Answer the question',
+  offer: 'Make the offer', stand: 'Take a stand', behind: 'Behind the scenes', beforeafter: 'Before and after',
+}
+
+/** Objective (questionSpecs id) → angles that serve it, best first. Every objective in the app has a row. */
+export const OBJECTIVE_ANGLES: Readonly<Record<string, readonly AngleId[]>> = {
+  'product:launch': ['offer', 'show', 'behind', 'moment'],
+  'product:restock': ['offer', 'show', 'beforeafter', 'moment'],
+  'product:explain': ['show', 'answer', 'myth', 'behind'],
+  'product:wrong': ['myth', 'answer', 'stand', 'moment'],
+  'product:try': ['show', 'beforeafter', 'answer', 'offer'],
+  'product:later': ['answer', 'behind', 'moment', 'beforeafter'],
+  'product:asked': ['answer', 'myth', 'show', 'moment'],
+  'product:dm': ['answer', 'moment', 'show', 'myth'],
+  'product:why_made': ['moment', 'behind', 'stand', 'beforeafter'],
+  'product:story': ['moment', 'behind', 'beforeafter', 'stand'],
+  'business:why_started': ['moment', 'behind', 'stand', 'beforeafter'],
+  'business:wrong': ['myth', 'answer', 'stand', 'moment'],
+  'business:announce': ['offer', 'behind', 'show', 'moment'],
+  'idea:story': ['moment', 'beforeafter', 'stand', 'behind'],
+  'idea:teach': ['myth', 'answer', 'show', 'behind'],
+  'idea:answer': ['answer', 'myth', 'moment', 'stand'],
+  'idea:process': ['behind', 'show', 'beforeafter', 'myth'],
+  'idea:fun': ['moment', 'stand', 'beforeafter', 'behind'],
+  'idea:sell': ['offer', 'show', 'beforeafter', 'answer'],
+  'reference:opening': ['moment', 'myth', 'answer', 'stand', 'behind', 'show'],
+  'reference:pacing': ['moment', 'myth', 'answer', 'stand', 'behind', 'show'],
+  'reference:close': ['moment', 'myth', 'answer', 'stand', 'behind', 'show'],
+}
+
+/** Goal enum fallback when no objective id is sent (every VideoGoal value). */
+export const GOAL_FALLBACK_ANGLES: Readonly<Record<string, readonly AngleId[]>> = {
+  sell: GOAL_ANGLES.sell, leads: GOAL_ANGLES.leads, educate: GOAL_ANGLES.educate,
+  entertain: GOAL_ANGLES.entertain, personal_brand: GOAL_ANGLES.personal_brand,
+  conversations: ['answer', 'myth', 'moment', 'stand'],
+  authority: ['behind', 'myth', 'stand', 'answer', 'show'],
+  followers: ['moment', 'stand', 'myth', 'beforeafter', 'behind'],
+}
+
+export type OpeningSource = 'her_material' | 'product' | 'niche' | 'audience' | 'none'
+
+export interface AngleMaterial extends MaterialItem {
+  /** Where the item came from; her own words are preferred for the opening line. */
+  source?: Exclude<OpeningSource, 'none'>
+}
+
+export interface AnglePickInput {
+  objective?: unknown
+  goal?: unknown
+  hasProduct: boolean
+  /** false = nothing about the product can be shown on camera. Unknown keeps the angle. */
+  canShow?: boolean
+  /** false = there is no offer to make. Unknown keeps the angle. */
+  hasOffer?: boolean
+  material: readonly AngleMaterial[]
+}
+
+export interface AnglePickCard {
+  angle: AngleId
+  label: string
+  shape: string
+  material_fit: number
+  gaps: Slot[]
+  opening: { text: string; source: Exclude<OpeningSource, 'none'>; item_id: string | null } | { text: null; source: 'none' }
+  twins_pick: boolean
+}
+
+/** The objective's allowed angles, minus any the product cannot support. */
+export function allowedAngles(i: Pick<AnglePickInput, 'objective' | 'goal' | 'hasProduct' | 'canShow' | 'hasOffer'>): AngleId[] {
+  const obj = String(i.objective ?? '').trim()
+  const g = String(i.goal ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+  const row = OBJECTIVE_ANGLES[obj] ?? GOAL_FALLBACK_ANGLES[g] ?? GOAL_FALLBACK_ANGLES[normGoal(g) ?? ''] ?? ANGLE_IDS
+  return row.filter((a) => {
+    if (ANGLE_SPECS[a].product && !i.hasProduct) return false
+    if (a === 'show' && i.canShow === false) return false
+    if (a === 'offer' && i.hasOffer === false) return false
+    return true
+  })
+}
+
+const SOURCE_RANK: Record<Exclude<OpeningSource, 'none'>, number> = { her_material: 0, product: 1, audience: 2, niche: 3 }
+
+export function pickAngles(i: AnglePickInput): AnglePickCard[] {
+  const filled = i.material.filter((m) => m.text.trim())
+  const have = new Set(filled.map((m) => m.slot))
+  const scored = allowedAngles(i).map((a, rank) => {
+    const spec = ANGLE_SPECS[a]
+    const gaps = spec.needs.filter((s) => !have.has(s))
+    return { a, spec, rank, gaps, fit: Math.round(((spec.needs.length - gaps.length) / spec.needs.length) * 100) / 100 }
+  }).sort((x, y) => y.fit - x.fit || x.gaps.length - y.gaps.length || x.rank - y.rank)
+  const used = new Set<string>()
+  const out: AnglePickCard[] = []
+  for (const c of scored) {
+    if (out.length === 3) break
+    const shape = c.spec.shapes.find((s) => !used.has(s))
+    if (!shape) continue
+    used.add(shape)
+    let opening: AnglePickCard['opening'] = { text: null, source: 'none' }
+    for (const slot of c.spec.opening) {
+      const m = filled.filter((x) => x.slot === slot)
+        .sort((p, q) => SOURCE_RANK[p.source ?? 'her_material'] - SOURCE_RANK[q.source ?? 'her_material'])[0]
+      if (m) { opening = { text: m.text.trim(), source: m.source ?? 'her_material', item_id: m.id }; break }
+    }
+    out.push({ angle: c.a, label: ANGLE_LABELS[c.a], shape, material_fit: c.fit, gaps: c.gaps, opening, twins_pick: out.length === 0 })
+  }
+  return out
+}
+
+/** Log record for v5.1 cards: ids, shapes, fits and tags. No text. */
+export function anglePickRecord(cards: readonly AnglePickCard[]) {
+  return cards.map((c) => ({ angle: c.angle, shape: c.shape, fit: c.material_fit, gaps: c.gaps.length, opening: c.opening.source, pick: c.twins_pick }))
+}

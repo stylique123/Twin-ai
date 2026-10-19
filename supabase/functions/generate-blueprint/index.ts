@@ -70,8 +70,8 @@ import { applyCheckLineDecision, checkLineOn, CHECK_LINE_SOURCE } from '../_shar
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
-import { pickAngleCards, angleCardsRecord, ANGLE_SPECS } from '../_shared/angleFit.ts'
-import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse } from '../_shared/questionUsefulness.ts'
+import { pickAngleCards, angleCardsRecord, ANGLE_SPECS, pickAngles, anglePickRecord, type AngleMaterial } from '../_shared/angleFit.ts'
+import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, type OutsideItem } from '../_shared/questionUsefulness.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -6679,6 +6679,95 @@ async function handle(req: Request): Promise<Response> {
     await sb.from('creator_knowledge').update(patch).eq('id', kid).eq('owner_id', user.id)
     console.log(JSON.stringify({ event: 'spec_confirm', yes: b2.yes === true }))
     return json({ ok: true })
+  }
+  // ⚖️ PLAN v5.1 M+N: ANGLES, THEN QUESTIONS UNDER THE PICKED ANGLE, BEFORE
+  // WRITING (angleFit.ts pickAngles, questionUsefulness.ts planQuestionsForAngle).
+  // TRIAL ONLY: test accounts (heartbeat or panel, from identity, never the
+  // body); kill switch ANGLES_QUESTIONS_KILL=1 returns `disabled` to everyone.
+  //   angle_plan   {objective, goal?, product_id?, angle?} → {cards, questions}
+  //   angle_answer {key, piece, ask_id?, product_id?, answer?|skip:true}
+  // Answers become her confirmed facts in creator_knowledge (source 'asked',
+  // source_ref 'asked:mn:…'); a skip is recorded in question_asks
+  // (option_id 'mn') and that key is never asked again. Logs: counts and ids.
+  if (specMode === 'angle_plan' || specMode === 'angle_answer') {
+    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
+    const sb = createClient(supabaseUrl, serviceKey)
+    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown }
+    const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
+    if (specMode === 'angle_answer') {
+      const key = String(b.key ?? '').slice(0, 160)
+      const piece = String(b.piece ?? '').slice(0, 40)
+      if (!/^mn:[a-z0-9:_-]+$/i.test(key) || !piece) return json({ error: 'key and piece are required' }, 400)
+      const herAnswer = b.skip === true || typeof b.answer !== 'string' ? '' : b.answer.trim().slice(0, 2000)
+      const gate = herAnswer ? gateAnswer(herAnswer, {}, { known: await knownForGate(sb, user.id) }) : null
+      const row = gate && gate.outcome !== 'filler' && gate.outcome !== 'direction'
+        ? answerFactRow({ ownerId: user.id, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
+      const outcome = !herAnswer || !row ? (gate ? 'filler' : 'skipped') : 'answered'
+      if (typeof b.ask_id === 'string' && /^[0-9a-f-]{36}$/.test(b.ask_id)) {
+        await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
+      } else {
+        await sb.from('question_asks').insert({ owner_id: user.id, entity_key: pid ? `product:${pid}` : 'none', option_id: 'mn', slot_id: key, angle: 'first', wording: '-', outcome })
+          .then(() => {}, () => {})
+      }
+      let saved = false
+      if (row) {
+        const { error } = await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true })
+        saved = !error || error.code === '23505'
+      }
+      console.log(JSON.stringify({ event: 'mn_answer', outcome, piece, saved }))
+      return json({ ok: true, outcome, saved })
+    }
+    const [{ data: kRows }, { data: prod }, { data: hist }, { data: v }] = await Promise.all([
+      (() => {
+        let q = sb.from('creator_knowledge').select('id, kind, text, source, basis, sensitive, product_entity_id, creator_confirmed_at')
+          .eq('owner_id', user.id).is('creator_excluded_at', null).is('superseded_at', null).limit(400)
+        if (pid) q = q.or(`product_entity_id.eq.${pid},product_entity_id.is.null`)
+        return q
+      })(),
+      pid ? sb.from('product_entities').select('id,name,offer').eq('id', pid).eq('owner_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+      sb.from('question_asks').select('slot_id, outcome').eq('owner_id', user.id).eq('option_id', 'mn').limit(500),
+      sb.from('brand_voices').select('profile').eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    const material: AngleMaterial[] = []
+    for (const r of (kRows ?? []) as Array<Record<string, unknown>>) {
+      if (r.sensitive === true) continue
+      const it = itemFromCreatorKnowledge(r)
+      if (!it || it.status === 'unconfirmed') continue
+      material.push({ id: it.id, slot: it.slot_hint, text: it.text, source: r.product_entity_id ? 'product' : 'her_material' })
+    }
+    const p = prod as { id?: string; name?: unknown; knowledge?: unknown; offer?: unknown } | null
+    const offerText = typeof p?.offer === 'string' ? p.offer.trim() : ''
+    if (p && offerText) material.push({ id: p.id ?? null, slot: 'close', text: offerText, source: 'product' })
+    const prof = (v?.profile ?? null) as { niche?: unknown; sub_niche?: unknown; audience?: unknown } | null
+    const nicheKey = String(prof?.sub_niche || prof?.niche || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
+    const { data: aud } = nicheKey ? await sb.from('niche_reddit').select('items').eq('niche_key', nicheKey).maybeSingle() : { data: null }
+    const outside = (scrubPrivate(Array.isArray((aud as { items?: unknown } | null)?.items) ? (aud as { items: unknown[] }).items : []) as Array<{ kind?: unknown; text?: unknown }>)
+      .filter((m) => m && typeof m.text === 'string')
+    const take = (kind: string): OutsideItem[] => outside.filter((m) => m.kind === kind).slice(0, 3)
+      .map((m) => ({ id: String(m.text).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40), text: String(m.text) }))
+    const cards = pickAngles({ objective: b.objective, goal: b.goal, hasProduct: !!p, hasOffer: p ? !!offerText : undefined, material })
+    const picked = typeof b.angle === 'string' && cards.some((c) => c.angle === b.angle) ? b.angle as keyof typeof ANGLE_SPECS : null
+    let questions: Array<{ ask_id: string | null; key: string; piece: string; kind: string; source: string; text: string; skippable: true }> = []
+    if (picked) {
+      const rows = (hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown }>
+      const plan = planQuestionsForAngle({
+        angle: picked, angleNeeds: ANGLE_SPECS[picked].needs, onFile: [...new Set(material.map((m) => m.slot))],
+        hasProduct: !!p, entityKey: p ? `product:${p.id}` : 'none',
+        audience: take('question'), painMap: take('complaint'), niche: take('debate'),
+        skippedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler').map((r) => String(r.slot_id)),
+        profileAskedEver: rows.some((r) => r.slot_id === 'mn:profile'),
+        profileMissing: !String(prof?.audience ?? '').trim(),
+      })
+      for (const q of plan) {
+        const { data: ins } = await sb.from('question_asks').insert({ owner_id: user.id, entity_key: p ? `product:${p.id}` : 'none', option_id: 'mn', slot_id: q.key, angle: 'first', wording: q.text })
+          .select('id').maybeSingle()
+        questions.push({ ask_id: (ins as { id?: string } | null)?.id ?? null, ...q })
+      }
+      console.log(JSON.stringify({ event: 'mn_questions', angle: picked, ...questionPlanRecord(plan) }))
+    } else questions = []
+    console.log(JSON.stringify({ event: 'mn_angles', cards: anglePickRecord(cards) }))
+    return json({ cards, questions })
   }
   if (specMode === 'spec_questions' || specMode === 'spec_answer') {
     const sb = createClient(supabaseUrl, serviceKey)
@@ -16178,7 +16267,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (angleCardsRec) bp.angle_cards = angleCardsRec
         if (questionUsefulnessOn) {
           if (questionNecessityRec) bp.question_necessity = questionNecessityRec
-          const qu = questionUse({ ...(body.readiness_answers ?? {}) }, (bp.script as Array<{ line?: unknown }>).map((b) => String(b?.line ?? '')))
+          // v5.1 M: answers to the angle questions (angle_plan) ride in as `mn_answers` {key: text}.
+          const mnAnswers = (body as { mn_answers?: unknown }).mn_answers
+          const mnA = mnAnswers && typeof mnAnswers === 'object' && !Array.isArray(mnAnswers)
+            ? Object.fromEntries(Object.entries(mnAnswers as Record<string, unknown>).filter(([k, v]) => /^mn:/.test(k) && typeof v === 'string').slice(0, 3)) : {}
+          const qu = questionUse({ ...(body.readiness_answers ?? {}), ...mnA },(bp.script as Array<{ line?: unknown }>).map((b) => String(b?.line ?? '')))
           bp.question_use = qu
           console.log(JSON.stringify({ event: 'feature_fired', feature: 'question_use', answered: qu.answered, used: qu.used }))
         }
