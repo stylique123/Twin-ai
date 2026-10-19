@@ -97,6 +97,8 @@ const SOURCES = [
   ['packages/shared/src/script/personalUseGate.ts', 'supabase/functions/_shared/personalUseGate.ts'],
   // Owner's grain addendum: never smooth her own words.
   ['packages/shared/src/script/grainRule.ts', 'supabase/functions/_shared/grainRule.ts'],
+  // Writer deadline + degraded path (panel-current-7).
+  ['packages/shared/src/script/writerDeadline.ts', 'supabase/functions/_shared/writerDeadline.ts'],
   // Views back from the platforms (social function stats sync).
   ['packages/shared/src/socialStats.ts', 'supabase/functions/_shared/socialStats.ts'],
   ['packages/shared/src/postQuestions.ts', 'supabase/functions/_shared/postQuestions.ts'],
