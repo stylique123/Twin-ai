@@ -25,6 +25,8 @@ export interface SpineBeats {
   objection_used: boolean
   objection_item_id: string | null
   creator_truth_missing: boolean
+  /** Trial (spine fill): where the reality-check item came from, when it has one. */
+  reality_source?: 'belief' | 'outside' | 'her_fact' | null
 }
 
 const HER_OWN = new Set<ItemOrigin>(['her_story', 'her_fact', 'her_answer'])
@@ -63,6 +65,19 @@ export interface SpineBeatsInput {
   ledger: readonly LedgerItem[]
   targetProductId?: string | null
   existingQuestions?: ReadonlyArray<{ text?: unknown; writes_to?: unknown }>
+  /** Trial (Twin plan v5.1 item H, behind SPINE_FILL_KILL on the edge): the
+   *  reality check may take a sourced outside fact or her own fact, and the
+   *  objection move may take a real audience question that voices a doubt. */
+  fill?: boolean
+}
+
+/** A real audience question that voices a doubt or hesitation ("is it worth it",
+ *  "does it really work", "what if…", "too expensive"). Text of a real question only. */
+export const OBJECTION_TEXT_RE = /\b(?:worth (?:it|the)|really (?:work|help|need)|does (?:it|this|that) (?:really |actually )?work|is (?:it|this|that) (?:safe|worth|legit|necessary|enough)|too (?:expensive|much|hard|long|complicated|late|old)|what if|scared|afraid|worried|worry|not sure|can'?t afford|waste of|skeptic\w*|doubt\w*|hesitat\w*|won'?t (?:it|this)|isn'?t (?:it|that) (?:just|too))\b/i
+
+/** A real audience question (outside, never hers) that reads as an objection. */
+export function isAudienceObjection(it: LedgerItem): boolean {
+  return it.origin === 'audience_question' && usableText(it) && OBJECTION_TEXT_RE.test(it.text)
 }
 
 /** Hook → Reality check → Creator's truth → (Objection) → CTA, from planned material only. */
@@ -78,7 +93,7 @@ export function planSpineBeats(input: SpineBeatsInput): SpineBeats {
   const best = (xs: LedgerItem[]) => [...xs].sort((a, b) => rel(b) - rel(a))[0] ?? null
 
   // Objection first, so its item is not reused as the creator's truth.
-  const objection = best(pool.filter(isObjectionItem))
+  const objection = best(pool.filter(isObjectionItem)) ?? (input.fill ? best(pool.filter((it) => isAudienceObjection(it) && rel(it) > 0)) : null)
   const used = new Set<string>(objection ? [objection.id] : [])
 
   // Creator's truth: only her own material (never outside, never a product fact).
@@ -87,7 +102,16 @@ export function planSpineBeats(input: SpineBeatsInput): SpineBeats {
   if (truth) used.add(truth.id)
 
   // Reality check: a belief/pain item when there is one, else the hook frames it (no new material).
-  const belief = best(pool.filter((it) => !used.has(it.id) && it.origin !== 'offer' && BELIEF_FIELD_RE.test(`${it.field ?? ''}`.toLowerCase())))
+  let belief = best(pool.filter((it) => !used.has(it.id) && it.origin !== 'offer' && BELIEF_FIELD_RE.test(`${it.field ?? ''}`.toLowerCase())))
+  let realitySource: SpineBeats['reality_source'] = belief ? 'belief' : null
+  // Trial fill: a sourced outside fact on the spine's topic, else her own fact.
+  // Only items on file, only when they share the spine's words; never a stand-in.
+  if (!belief && input.fill) {
+    const outside = best(pool.filter((it) => !used.has(it.id) && it.origin === 'outside_research' && rel(it) > 0))
+    const herFact = outside ? null : best(pool.filter((it) => !used.has(it.id) && it.origin === 'her_fact' && it.first_party && rel(it) > 0))
+    belief = outside ?? herFact
+    realitySource = outside ? 'outside' : herFact ? 'her_fact' : null
+  }
   const offer = pool.find((it) => it.origin === 'offer') ?? null
 
   const beats: SpineBeat[] = [
@@ -101,7 +125,7 @@ export function planSpineBeats(input: SpineBeatsInput): SpineBeats {
   const existing = [...(input.existingQuestions ?? []), ...plan.questions].map((q) => ({ text: q.text, writes_to: q.writes_to }))
   const merged = mergeQuestions<{ text?: unknown; writes_to?: unknown }>(existing, need)
   const questions = need.filter((q) => merged.includes(q))
-  return { beats, questions, objection_used: !!objection, objection_item_id: objection?.id ?? null, creator_truth_missing: !truth }
+  return { beats, questions, objection_used: !!objection, objection_item_id: objection?.id ?? null, creator_truth_missing: !truth, ...(input.fill ? { reality_source: realitySource } : {}) }
 }
 
 /** How a beat with NO material is briefed: as a question to the viewer, or dropped.
@@ -113,12 +137,21 @@ const NO_MATERIAL_BRIEF: Partial<Record<SpineBeatRole, string>> = {
   cta: 'no offer on file: close by asking the viewer to save, share or answer one question in the comments',
 }
 
+/** Trial (spine fill): an item-backed beat is one spoken line that restates its
+ *  item, keeping the item's key words, so it is present and checkable. */
+const ITEM_BRIEF: Partial<Record<SpineBeatRole, string>> = {
+  reality_check: 'one line that states this item to the viewer, keeping its key words; add nothing it does not say',
+  creator_truth: 'one line in her words that keeps this item\'s key words; add nothing it does not say',
+  objection: 'name this real audience doubt, then answer it only from her material',
+  cta: 'exactly one ask in the script, in the last line',
+}
+
 /** The writer's brief for the spine beats: roles, ids and purposes only. A beat
  *  with no material becomes a question (reality check, CTA) or is left out
  *  (creator's truth); it is never a stand-in. */
 export function renderSpineBeatsBlock(sb: SpineBeats): string {
   const shown = sb.beats.filter((b) => b.item_ids.length || b.role === 'hook' || NO_MATERIAL_BRIEF[b.role])
-  const lines = shown.map((b, i) => `${i + 1}. ${b.role}${b.item_ids.length ? ` [${b.item_ids.join(', ')}]: ${b.purpose}` : b.role === 'hook' ? `: ${b.purpose}` : `: ${NO_MATERIAL_BRIEF[b.role]}`}`)
+  const lines = shown.map((b, i) => `${i + 1}. ${b.role}${b.item_ids.length ? ` [${b.item_ids.join(', ')}]: ${b.purpose}${sb.reality_source !== undefined && ITEM_BRIEF[b.role] ? ` (${ITEM_BRIEF[b.role]})` : ''}` : b.role === 'hook' ? `: ${b.purpose}` : `: ${NO_MATERIAL_BRIEF[b.role]}`}`)
   return [
     'SPINE BEATS (in this order, every script carries them):',
     ...lines,
@@ -250,4 +283,59 @@ export function enforceTitlePromise(titles: readonly unknown[], hook: unknown): 
     return { titles: list, record: { match: false, reasons: c.reasons, action: 'rewritten' } }
   }
   return { titles: list, record: { match: false, reasons: c.reasons, action: 'flagged' } }
+}
+
+// ── SPINE FILL (trial only; Twin plan v5.1 item H) ─────────────────────────
+// After the writer: a reality-check or creator's-truth beat that HAS an item
+// but did not reach the script is filled with that item's text, verbatim (her
+// own words or the sourced outside fact as filed; nothing is written). Then
+// the script keeps exactly one CTA: the last beat that asks. Ids and counts only.
+
+/** A spoken ask (narrower than the adherence CTA_RE: "follow" or "share" inside
+ *  an ordinary sentence is not an ask). */
+export const CTA_ASK_RE = /\b(?:link (?:is )?in (?:my |our |the )?bio|links? below|(?:tell|let) me (?:in the comments|below|know)|in the comments|comment (?:below|\w+ and)|drop (?:a|your|it)\b[^.!?]{0,30}\bbelow|share it below|save this|send this to|subscribe|follow (?:me|for|along)|dm me|book (?:a|your|now)|order (?:now|today|yours|\w+ through)|shop (?:now|the)|grab (?:one|yours|a)|sign up|use (?:my )?code|tap (?:the|to)|click (?:the|below))\b/i
+/** Longest item text the fill speaks verbatim (a line, not a paragraph). */
+export const FILL_MAX_WORDS = 30
+
+export interface SpineFillRecord { filled: SpineBeatRole[]; cta_before: number; cta_after: number; cta_sentences_removed: number }
+type FillBeat = { line?: unknown; section?: unknown; [k: string]: unknown }
+
+const sentencesOf = (t: string) => (t.match(/[^.!?]+[.!?]*["”')]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
+const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length
+
+/** Fill missing item-backed beats verbatim, then keep exactly one CTA beat. */
+export function fillSpineBeats(script: readonly FillBeat[], sb: SpineBeats, ledger: readonly LedgerItem[], spineClaim = ''): { script: FillBeat[]; record: SpineFillRecord } {
+  let out: FillBeat[] = script.map((b) => ({ ...b }))
+  const byId = new Map(ledger.map((it) => [it.id, it]))
+  const filled: SpineBeatRole[] = []
+  const adh = checkSpineBeatAdherence(out, sb, ledger, spineClaim)
+  for (const role of ['reality_check', 'creator_truth'] as const) {
+    const beat = sb.beats.find((b) => b.role === role)
+    const a = adh.find((x) => x.role === role)
+    if (!beat || !a || a.met || !beat.item_ids.length) continue
+    const it = byId.get(beat.item_ids[0]!)
+    const text = it?.text.trim() ?? ''
+    if (!it || !text || isNonAnswerText(text) || words(text) > FILL_MAX_WORDS) continue
+    const line = /[.!?]["”')]*$/.test(text) ? text : `${text}.`
+    const section = role === 'reality_check' ? 'Reality Check' : 'Creator Truth'
+    // Reality check right after the hook; creator's truth just before the close.
+    const at = role === 'reality_check' ? Math.min(1, out.length) : Math.max(0, out.length - 1)
+    out.splice(at, 0, { section, line })
+    filled.push(role)
+  }
+  // EXACTLY ONE CTA: asks in any beat before the last asking beat are removed
+  // (the sentence only); a beat left empty is dropped.
+  const asks = (b: FillBeat) => sentencesOf(String(b.line ?? '')).some((x) => CTA_ASK_RE.test(x))
+  const ctaBefore = out.filter(asks).length
+  let removed = 0
+  let last = -1
+  out.forEach((b, i) => { if (asks(b)) last = i })
+  if (ctaBefore > 1) {
+    out = out.map((b, i) => {
+      if (i === last || !asks(b)) return b
+      const kept = sentencesOf(String(b.line ?? '')).filter((x) => { const hit = CTA_ASK_RE.test(x); if (hit) removed++; return !hit })
+      return { ...b, line: kept.join(' ') }
+    }).filter((b) => String(b.line ?? '').trim())
+  }
+  return { script: out, record: { filled, cta_before: ctaBefore, cta_after: out.filter(asks).length, cta_sentences_removed: removed } }
 }
