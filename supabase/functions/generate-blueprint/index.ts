@@ -83,6 +83,7 @@ import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropSt
 import { robotPass } from '../_shared/robotPhrases.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
+import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
@@ -6339,23 +6340,14 @@ interface WriterLadder { retryPrompt?: string; usedAttempt?: number
    *  and each later attempt gets only what is left before the reserve, so a
    *  slow primary leaves the plain fallback room to finish. WRITER_DEADLINE=off
    *  is the kill switch. */
-  startedAt?: number }
+  startedAt?: number
+  /** Trial (panel-7): the LAST attempt may use most of the 30 s reserve; optional
+   *  passes are then skipped. WRITER_DEGRADE=off is the kill switch. */
+  degrade?: boolean
+  /** Counts for the failure record (codes and counts only). */
+  failed?: number; skipped?: number; lastCode?: string | null }
 
-const EDGE_WALL_MS = 150_000
-/** Kept back for the post-writer passes (guards, gate enqueue, save). */
-const WRITER_RESERVE_MS = 30_000
-const WRITER_TRIAL_PRIMARY_MS = 65_000
-const WRITER_MIN_ATTEMPT_MS = 15_000
-
-/** Per-attempt timeouts under a deadline (pure; exported shape for tests via the
- *  shared mirror is not needed: the arithmetic is three lines). Null = skip. */
-function deadlineTimeout(i: number, base: number, startedAt: number | undefined, now: number): number | null {
-  if (startedAt == null) return base
-  const left = EDGE_WALL_MS - WRITER_RESERVE_MS - (now - startedAt)
-  const cap = i === 0 ? Math.min(base, WRITER_TRIAL_PRIMARY_MS) : base
-  const t = Math.min(cap, left)
-  return t >= WRITER_MIN_ATTEMPT_MS ? t : null
-}
+// Deadline arithmetic lives in _shared/writerDeadline.ts (generated, tested).
 
 async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
   return inStage(stageOfCall(system, schema === blueprintSchema), () => callModelStaged(apiKey, system, prompt, schema, record, ladder))
@@ -6410,8 +6402,9 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
     const a = attempts[i]
     // The retry runs the plain brief when a template block made attempt 0 slow.
     const attemptPrompt = i >= 1 && ladder?.retryPrompt ? ladder.retryPrompt : prompt
-    const timeoutMs = deadlineTimeout(i, a.timeoutMs, ladder?.startedAt, Date.now())
+    const timeoutMs = deadlineTimeout(i, a.timeoutMs, ladder?.startedAt, Date.now(), { last: i === attempts.length - 1, degrade: ladder?.degrade === true })
     if (timeoutMs === null) {
+      if (ladder) ladder.skipped = (ladder.skipped ?? 0) + 1
       console.warn(JSON.stringify({ event: 'writer_attempt_skipped_deadline', attempt: i, elapsed_ms: Date.now() - (ladder?.startedAt ?? Date.now()) }))
       continue
     }
@@ -6444,6 +6437,7 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       console.warn(`generate-blueprint: attempt ${i + 1}/${attempts.length} (${a.model}) returned an incomplete blueprint (missing concept/packaging) — retrying`)
     } catch (e) {
       lastErr = e
+      if (ladder) { ladder.failed = (ladder.failed ?? 0) + 1; ladder.lastCode = classifyModelFailure(e).code }
       await record?.settled(rowId, 'failed', classifyModelFailure(e))
       console.error(`generate-blueprint: model attempt ${i + 1}/${attempts.length} (${a.model}) failed:`, e instanceof Error ? e.message : e)
       // fall through to the next, faster attempt
@@ -6975,6 +6969,14 @@ async function handle(req: Request): Promise<Response> {
   // SOFTWARE (trial 2026-10-08): the ~25s target for app/software/course/community videos, set once the product is known.
   let softwareTargetSec: number | null = null
   const reqStartedAt = Date.now()
+  // Panel-7 degraded path (trial; WRITER_DEGRADE=off kills it): optional passes
+  // are skipped once the request is past OPTIONAL_PASS_CUTOFF_MS.
+  let writerDegradeOn = false
+  const optionalPassTime = (step: string): boolean => {
+    const ok = optionalPassAllowed(reqStartedAt, Date.now(), writerDegradeOn)
+    if (!ok) console.log(JSON.stringify({ event: 'optional_pass_skipped_degraded', step, elapsed_ms: Date.now() - reqStartedAt }))
+    return ok
+  }
 
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
   // BEFORE we ever call the model. Bounded by credits anyway, but this stops
@@ -9177,6 +9179,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // clean 500 with an unhandled one. The run id is what joins a failed run to
   // its `script_attempts` rows, so the failure record is worth far more with it.
   let runIdForFailure: string | null = null
+  // Panel-7: the ladder's counts and whether the writer returned, for the failure code.
+  let writerLadderForFailure: WriterLadder | null = null
+  let writerReturned = false
   // ⚠️ THE SCRIPT THE CREATOR ALREADY PAID FOR, HELD WHERE THE CATCH CAN REACH IT.
   //
   // On 2026-08-16 a run spent at 13:01:18.5, the writer SUCCEEDED at 13:02:05.0,
@@ -12581,9 +12586,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // ⚖️ TEMPLATE RETRY FALLBACK: trial only, and only when a template block
     // was added. The retry gets today's brief, byte for byte without the block.
     const writerDeadline = trialOn && (Deno.env.get('WRITER_DEADLINE') ?? 'on') !== 'off' ? reqStartedAt : undefined
+    writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
+    const deadlineFields = writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
-      ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...(writerDeadline != null ? { startedAt: writerDeadline } : {}) }
-      : writerDeadline != null ? { startedAt: writerDeadline } : undefined
+      ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...deadlineFields }
+      : writerDeadline != null ? deadlineFields : undefined
+    writerLadderForFailure = writerLadder ?? null
     let templateFallback = false
 
     // ⚠️ ONE RUN ID FOR THE WHOLE LADDER, so a recovered retry counts as one
@@ -12653,6 +12661,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         attemptRecorder(admin, ownerId, scriptRunId), writerLadder)
       templateFallback = (writerLadder?.usedAttempt ?? 0) >= 1
     }
+    writerReturned = true
     if (templateFallback && templatePlan) {
       console.log(JSON.stringify({ event: 'script_template_retry_fallback', template: templatePlan.template.id, attempt: writerLadder?.usedAttempt ?? null }))
     }
@@ -14879,7 +14888,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         lateExtend = async (beats: IntegrityBeat[]): Promise<IntegrityBeat[] | null> => {
           const d = shouldExtendScript(beats, integrityOpts.targetSec, integrityOpts.wpm, 0, plannedForLate)
           // Owner plan B2: thin material makes a SHORTER script, not a padded one (trial).
-          if (!d.extend || (trialOn && suppliedKnowledgeIds.length < 3) || lengthenOff) return null
+          if (!d.extend || (trialOn && suppliedKnowledgeIds.length < 3) || lengthenOff || !optionalPassTime('late_extend')) return null
           // T6 (set 4): an unbounded lengthen call ran 79s and pushed the request past 150s.
           const lateBudgetMs = Math.min(25_000, 150_000 - 40_000 - (Date.now() - reqStartedAt))
           if (lateBudgetMs < 8_000) { console.log(JSON.stringify({ event: 'extension_skipped', elapsed_ms: Date.now() - reqStartedAt })); return null }
@@ -14909,7 +14918,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords, plannedSections)
         // Plan v3.10 Part 11 rule 8: a test run may switch the lengthen pass off.
         if (extendDecision.extend && lengthenOff) console.log(JSON.stringify({ event: 'feature_fired', feature: 'lengthen_off' }))
-        if (extendDecision.extend && !(trialOn && suppliedKnowledgeIds.length < 3) && !lengthenOff) {
+        if (extendDecision.extend && !(trialOn && suppliedKnowledgeIds.length < 3) && !lengthenOff && optionalPassTime('extension')) {
           let extensionReason = 'call_failed'
           let wordsAfter = extendDecision.words
           let invented: string[] = []
@@ -15042,7 +15051,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         try {
           const beatsNow = Array.isArray(bpAny.script) ? bpAny.script as Array<{ line?: unknown; section?: unknown }> : []
           const check = hookPayoff(beatsNow)
-          if (!check.paid && check.payoffIndex !== null) {
+          if (!check.paid && check.payoffIndex !== null && optionalPassTime('payoff_repair')) {
             const at = check.payoffIndex
             const original = String(beatsNow[at]?.line ?? '')
             let kept = false
@@ -15735,7 +15744,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           ? ((blueprint as { script: Array<Record<string, unknown>> }).script)
           : []
         const floor = lexicalFloor(advBeats)
-        if (shouldAsk(floor)) {
+        if (shouldAsk(floor) && optionalPassTime('advisory_read')) {
           const numbered = advBeats
             .map((b, i) => `${i}: ${typeof b?.line === 'string' ? b.line : ''}`).join('\n')
           // ⚠️ THE EXEMPT BEATS ARE NAMED IN THE ASK, NOT FILTERED OUT OF IT. The
@@ -16618,7 +16627,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // off at 35s; the script it would have edited is kept as written.
       const reviewBudgetMs = 150_000 - 40_000 - (Date.now() - reqStartedAt)
       if (Array.isArray(bp.script) && reviewBudgetMs < 20_000) console.log(JSON.stringify({ event: 'self_review_skipped', elapsed_ms: Date.now() - reqStartedAt }))
-      if (Array.isArray(bp.script) && reviewBudgetMs >= 20_000 && (Deno.env.get('SELF_REVIEW') ?? 'on') !== 'off') {
+      if (Array.isArray(bp.script) && reviewBudgetMs >= 20_000 && (Deno.env.get('SELF_REVIEW') ?? 'on') !== 'off' && optionalPassTime('self_review')) {
         try {
           const beats = bp.script as Array<Record<string, unknown>>
           const numbered = beats.map((b, i) => `${i}. [${String(b.section ?? '')}] ${String(b.line ?? '')}`).join('\n')
@@ -17600,6 +17609,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       ? `${err.message}${err.stack ? ` :: ${err.stack.split('\n').slice(1, 4).join(' | ')}` : ''}`
       : String(err)
     console.error('generate-blueprint error:', err)
+    // ⚖️ PANEL-7: EVERY FAILURE PERSISTS A REASON CODE (codes and counts only).
+    const failReason = failureReason({ writerReturned, attemptsFailed: writerLadderForFailure?.failed ?? 0, attemptsSkipped: writerLadderForFailure?.skipped ?? 0, lastCode: writerLadderForFailure?.lastCode ?? (writerReturned ? null : classifyModelFailure(err).code) })
+    console.error(JSON.stringify({ event: 'generation_failed_reason', reason: failReason, attempts_failed: writerLadderForFailure?.failed ?? 0, attempts_skipped: writerLadderForFailure?.skipped ?? 0, elapsed_ms: Date.now() - reqStartedAt }))
     await admin
       .from('ops_events')
       .insert({
@@ -17609,7 +17621,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // Bounded for the same reason `script_attempts.failure_detail` is: a
         // provider can return a very long body, and losing the record of a
         // failure because the failure was verbose is the worst trade available.
-        detail: { fn: 'generate-blueprint', run_id: runIdForFailure, error: failDetail.slice(0, 600) },
+        detail: { fn: 'generate-blueprint', run_id: runIdForFailure, reason: failReason, attempts_failed: writerLadderForFailure?.failed ?? 0, attempts_skipped: writerLadderForFailure?.skipped ?? 0, elapsed_ms: Date.now() - reqStartedAt, error: failDetail.slice(0, 600) },
       })
       .then(() => {}, () => {})
     // ⚖️ A DEFINITIVE ANSWER CARRIES A CODE, so the client shows it instead of
@@ -17624,6 +17636,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           ? "Twin couldn't write this one honestly: every line needed a number or detail you haven't given it. Add a detail or two about what you're making this video about and try again. You weren't charged."
           : 'Generation failed. Your credits were not charged.',
       code: 'GENERATION_FAILED',
+      reason: failReason,
     }, providerDown ? 503 : 500)
   }
 }

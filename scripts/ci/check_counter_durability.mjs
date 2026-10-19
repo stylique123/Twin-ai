@@ -108,6 +108,10 @@ const EVENTS = {
     kind: 'counter_ephemeral',
     why: 'Per worker sweep: labels changed by her plan-screen votes. Durable as fact_purpose_votes.learned_at and serves_basis = her.',
   },
+  generation_failed_reason: {
+    kind: 'incident',
+    why: 'Panel-7: a blueprint run failed. Durable as the ops_events generation_failed row, whose detail carries the same reason code and attempt counts.',
+  },
   lesson_not_applied: {
     kind: 'incident',
     why: 'A creator corrected something a lesson she already had (active before the rated script was written) was meant to prevent: the writer had the rule and broke it. Durable as a `lesson_misses` row, shown on that lesson in "What Twin learned from you".',
@@ -817,6 +821,7 @@ const EVENTS = {
   passages_shadow: { kind: 'counter_ephemeral', why: 'Per re-mine (M2 shadow): passage extractor counts (lyrics/not-her/short skips, passages, stories, complete) to check against the hand audit. Counts only, no text.' },
   blueprint_compliance: { kind: 'counter_ephemeral', why: 'Per script: blueprint compliance (5 code checks) and whether the hook was swapped for a paid-off option.' },
   self_review_skipped: { kind: 'counter_ephemeral', why: 'Per script: no time left for the optional editor pass before the 150s edge limit.' },
+  optional_pass_skipped_degraded: { kind: 'counter_ephemeral', why: 'Per script (trial, panel-7): an optional pass skipped on the degraded path; the run itself still saves.' },
   script_below_floor: { kind: 'counter_ephemeral', why: 'Per script: fewer spoken lines than a body, payoff and close; refunded and failed.' },
   extension_skipped: { kind: 'counter_ephemeral', why: 'Per script: no time left for the optional lengthen pass before the 150s edge limit.' },
   model_call_ms: { kind: 'counter_ephemeral', why: 'Per model call: how long it took and which step. Read from logs to find what spends the 150s edge limit.' },
