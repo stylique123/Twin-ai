@@ -2,7 +2,8 @@
 // list that names what the AI is doing (never a naked spinner), with a skeleton
 // of the Plan screen behind it. Runs the real build, then auto-advances to the
 // Plan screen the instant the timeline is ready. See PRODUCT_VISION §13.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AngleQuestionsCard } from '../../components/AngleQuestionsCard'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey, listBrandVoices } from '../../lib/api'
@@ -753,6 +754,10 @@ export default function V2Building() {
   // read, shown before any script is written. Her pick rides the request.
   const [ideaAngles, setIdeaAngles] = useState<Array<{ kind: string; label: string; gist: string }>>([])
   const [pickedAngle, setPickedAngle] = useState<string | null>(null)
+  // Plan v5.1 M+N (trial only; the server returns `disabled` for real creators,
+  // and the card then renders nothing): answers to the angle questions.
+  const mnAnswersRef = useRef<Record<string, string>>({})
+  const onMnAnswers = useCallback((a: Record<string, string>) => { mnAnswersRef.current = a }, [])
   // She said she has no concrete detail for the objective's question.
   const [noDetail, setNoDetail] = useState(false)
   const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
@@ -1848,6 +1853,7 @@ export default function V2Building() {
           // over the first becomes a lesson).
           ...((a) => (a ? { angle: { kind: a.kind, gist: a.gist, offered: ideaAngles.map((x) => x.kind) } } : {}))(ideaAngles.find((x) => x.kind === pickedAngle)),
           ...(Object.keys(readinessAnswers).length ? { readiness_answers: readinessAnswers } : {}),
+          ...(Object.keys(mnAnswersRef.current).length ? { mn_answers: { ...mnAnswersRef.current } } : {}),
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
           idempotency_key: key,
@@ -2604,6 +2610,7 @@ export default function V2Building() {
           </div>
         </div>
       )}
+      <AngleQuestionsCard goal={answersRef.current.video_goal || undefined} onAnswers={onMnAnswers} />
     </>
   )
   const renderAsk = (q: AskItem) => q.purpose ? renderPurpose(q) : renderAskInner(q)

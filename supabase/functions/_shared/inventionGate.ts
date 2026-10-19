@@ -1654,6 +1654,8 @@ export interface ApplyResult {
   questions: GateQuestion[]
   /** holdAsks: removed spoken lines refilled from her unused first-party items. */
   refilled?: number
+  /** What happened to each planned step (sentence index, action, new text). Pure data for the repair audit. */
+  outcomes: Array<{ i: number; action: 'replaced' | 'dropped' | 'asked' | 'refilled'; replacement?: string }>
 }
 
 /** Apply a plan to the blueprint. `rewrites` maps sentence index → new text
@@ -1661,7 +1663,7 @@ export interface ApplyResult {
  *  a new object. The shot list and teleprompter are re-synced by the caller
  *  from the repaired script. */
 export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence[], steps: readonly RepairStep[], rewrites: ReadonlyMap<number, string> = new Map(), opts: { holdAsks?: boolean; refill?: string[] } = {}): ApplyResult {
-  const res: ApplyResult = { bp, replaced: 0, asked: 0, dropped: 0, fallback: 0, questions: [] }
+  const res: ApplyResult = { bp, replaced: 0, asked: 0, dropped: 0, fallback: 0, questions: [], outcomes: [] }
   // Per-entry sentence arrays, edited then re-joined.
   const key = (s: GateSentence) => `${s.surface}:${s.at}`
   const entries = new Map<string, Array<string | null>>()
@@ -1682,16 +1684,16 @@ export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence
     const refill = () => (opts.holdAsks && s.surface === 'script' && opts.refill?.length ? opts.refill.shift()! : null)
     if (st.action === 'replace') {
       const nt = (rewrites.get(st.i) ?? '').trim()
-      if (nt) { e[s.k] = nt; res.replaced++ } else { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.dropped++ }
+      if (nt) { e[s.k] = nt; res.replaced++; res.outcomes.push({ i: st.i, action: 'replaced', replacement: nt }) } else { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.dropped++; res.outcomes.push(r ? { i: st.i, action: 'refilled', replacement: r } : { i: st.i, action: 'dropped' }) }
     } else if (st.action === 'ask' || st.action === 'fallback') {
       // ⚠️ PANEL-6: 9 needs_answers scripts shipped "[Your answer: …]" inside
       // the spoken text. Under holdAsks the sentence is dropped instead; the
       // question still counts (outcome stays needs_answers) and is returned.
-      if (opts.holdAsks) { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1 } else e[s.k] = placeholderFor(st.question!)
+      if (opts.holdAsks) { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.outcomes.push(r ? { i: st.i, action: 'refilled', replacement: r } : { i: st.i, action: 'asked' }) } else { e[s.k] = placeholderFor(st.question!); res.outcomes.push({ i: st.i, action: 'asked', replacement: e[s.k]! }) }
       if (st.action === 'ask') res.asked++
       else res.fallback++
       res.questions.push(st.question!)
-    } else { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.dropped++ }
+    } else { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.dropped++; res.outcomes.push(r ? { i: st.i, action: 'refilled', replacement: r } : { i: st.i, action: 'dropped' }) }
   }
   if (!touched.size) return res
   const joined = (k: string) => (entries.get(k) ?? []).filter((x): x is string => typeof x === 'string' && x.trim() !== '').join(' ')
@@ -1846,6 +1848,53 @@ export interface InventionGateRecord {
   review_lines?: Array<{ i: number; surface: Surface; reason?: GateReason }>
   /** Verdict counts on the first classification (before repair). */
   verdicts?: { review: number; block: number }
+  /** ⚖️ SAVE-BEFORE-REPAIR (owner, 19 Oct; test and panel accounts only, kill
+   *  switch REPAIR_AUDIT_CAPTURE='false'). One entry per line the gate acted on,
+   *  WITH its pre-repair text. Stored in the database row only: never logged. */
+  repair_audit?: RepairAuditEntry[]
+}
+
+export type RepairAuditAction = 'kept' | 'dropped' | 'replaced' | 'asked' | 'refilled'
+export interface RepairAuditEntry {
+  /** Repair round (0 = kept as classified on the first pass). */
+  round: number
+  /** Sentence index in that round's extraction. */
+  i: number
+  surface: Surface
+  /** The line as it stood BEFORE the repair. */
+  text: string
+  action: RepairAuditAction
+  /** The new text, when the line was replaced, refilled or turned into a placeholder. */
+  replacement?: string
+  class: GateClass
+  fast_class?: GateClass; strong_class?: GateClass; verdict?: GateVerdict
+  reason: GateReason
+  item_ids: string[]
+}
+
+/** The repair-audit kill switch: on only for trialOn requests (test and panel
+ *  accounts) unless REPAIR_AUDIT_CAPTURE is exactly 'false' (any case, trimmed).
+ *  Real creators are never captured. */
+export function repairAuditCaptureOn(trialOn: boolean, flag: unknown): boolean {
+  return trialOn === true && String(flag ?? '').trim().toLowerCase() !== 'false'
+}
+
+const auditEntry = (round: number, s: GateSentence, c: ClassifiedSentence | undefined, action: RepairAuditAction, replacement?: string): RepairAuditEntry => ({
+  round, i: s.i, surface: s.surface, text: s.text, action, ...(replacement !== undefined ? { replacement } : {}),
+  class: c?.class ?? 'I', ...(c?.verdict ? { fast_class: c.fast_class, strong_class: c.strong_class, verdict: c.verdict } : {}),
+  reason: c?.reason ?? 'judge_missing', item_ids: [...(c?.item_ids ?? [])],
+})
+
+/** Lines the first pass flagged (class I, or a review/block verdict) that no repair step touched. */
+function keptAuditEntries(first: { sentences: readonly GateSentence[]; classified: readonly ClassifiedSentence[] }, acted: ReadonlySet<string>): RepairAuditEntry[] {
+  const out: RepairAuditEntry[] = []
+  for (const c of first.classified) {
+    if (!(c.class === 'I' || c.verdict === 'review' || c.verdict === 'block')) continue
+    const s = first.sentences[c.i]
+    if (!s || acted.has(`${s.surface}\u0000${s.text}`)) continue
+    out.push(auditEntry(0, s, c, 'kept'))
+  }
+  return out
 }
 
 // ── CHECK STATUS (owner rule 13 Oct: a timeout never ships an unchecked script silently) ──
@@ -1969,6 +2018,8 @@ export interface RunGateInput {
   ruleReview?: boolean
   /** Trial only (CHECK THIS LINE): review lines are recorded with their reason id. */
   checkLines?: boolean
+  /** Trial only (repairAuditCaptureOn): record `repair_audit` with each acted line's pre-repair text. */
+  repairAudit?: boolean
   /** Trial only (edge sets `hold_asks` under trialOn). An ask never leaves a
    *  "[Your answer: …]" placeholder in a spoken line: the sentence is dropped
    *  (its beat too when emptied) and the question ships separately in
@@ -2093,7 +2144,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     if (input.measureOnly) {
       // Measure only: verdicts recorded, nothing repaired, review lines as classified.
       return { blueprint: input.blueprint, questions: [], record: { ...base(), sentences: recordSentences(first.classified), before, after: before, ms: now() - t0, judge_malformed: malformed, perf: { ...perf, ms_total: now() - t0 },
-        verdicts: verdictCounts(first.classified), review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(first.classified) } }
+        verdicts: verdictCounts(first.classified), review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(first.classified),
+        ...(input.repairAudit ? { repair_audit: keptAuditEntries(first, new Set()) } : {}) } }
     }
     let bp = input.blueprint
     let cur: State = first
@@ -2110,8 +2162,18 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     let refilled = 0
     // Each refill may be split into several sentences by the extractor.
     const refillSet = new Set(refillQueue.flatMap((t) => splitSentences(t)))
+    const audit: RepairAuditEntry[] = []
+    const acted = new Set<string>()
     const apply = (steps: RepairStep[], rewrites?: Map<number, string>) => {
       const a = applyRepairs(bp, cur.sentences, steps, rewrites, { holdAsks: input.holdAsks === true, refill: refillQueue })
+      if (input.repairAudit) {
+        for (const o of a.outcomes) {
+          const s = cur.sentences[o.i]
+          if (!s) continue
+          acted.add(`${s.surface}\u0000${s.text}`)
+          audit.push(auditEntry(rounds, s, cur.classified.find((c) => c.i === o.i), o.action, o.replacement))
+        }
+      }
       refilled += a.refilled ?? 0
       bp = a.bp
       repaired.replaced += a.replaced
@@ -2172,6 +2234,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(cur.classified),
       ...(placeholderBlock ? { placeholder_block: placeholderBlock } : {}),
       ...(refillRecord ? { refill: refillRecord } : {}),
+      ...(input.repairAudit ? { repair_audit: [...keptAuditEntries(first, acted), ...audit] } : {}),
     }
     // A declined slot that fell back to the general version is not offered again.
     return { blueprint: bp, record, questions: questions.filter((q) => !declined.has(q.writes_to)) }
