@@ -88,7 +88,7 @@ import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } fro
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
-import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
+import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
@@ -107,6 +107,7 @@ import { resolveNicheLabels } from '../_shared/nicheLabels.ts'
 import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
+import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -6972,6 +6973,12 @@ async function handle(req: Request): Promise<Response> {
   // Panel-7 degraded path (trial; WRITER_DEGRADE=off kills it): optional passes
   // are skipped once the request is past OPTIONAL_PASS_CUTOFF_MS.
   let writerDegradeOn = false
+  // Panel-7 (trial; kills SPOKEN_DEDUP=false, LENGTH_REFILL=false, LENGTH_BUDGET=false).
+  let panel7Budget = 0
+  const panel7GateExtras = (): Record<string, unknown> => ({
+    ...(trialOn && Deno.env.get('SPOKEN_DEDUP') !== 'false' ? { spoken_dedup: true } : {}),
+    ...(trialOn && Deno.env.get('LENGTH_REFILL') !== 'false' && panel7Budget > 0 ? { word_budget: panel7Budget } : {}),
+  })
   const optionalPassTime = (step: string): boolean => {
     const ok = optionalPassAllowed(reqStartedAt, Date.now(), writerDegradeOn)
     if (!ok) console.log(JSON.stringify({ event: 'optional_pass_skipped_degraded', step, elapsed_ms: Date.now() - reqStartedAt }))
@@ -12428,7 +12435,10 @@ ${fenced('claims this creator may NOT make', forbidden)}
     const durationBrief_ = softwareTargetSec != null && body.target_seconds == null
       ? durationBriefInline(body.target_seconds, softwareTargetSec, availableBeats).replace('it is the length they usually make', 'short videos work best for showing software')
       : durationBriefInline(body.target_seconds, softwareTargetSec, availableBeats)
-    const durationBriefLine = durationBrief_ === '' ? '' : `${durationBrief_}\n`
+    // PANEL-7 LENGTH (trial; kill LENGTH_BUDGET=false): the profile's word budget, as a number.
+    const budgetLine = trialOn && Deno.env.get('LENGTH_BUDGET') !== 'false'
+      ? budgetPromptLine(DURATION_PROFILES[profileForSeconds(body.target_seconds, softwareTargetSec != null)].words) : ''
+    const durationBriefLine = (durationBrief_ === '' ? '' : `${durationBrief_}\n`) + (budgetLine ? `${budgetLine}\n` : '')
     // ⚠️ ITEMS 1 AND 4: THE GOAL'S STRUCTURE, STATED TO THE WRITER — and checked
     // after generation by the same module (`goalFidelity.ts`), so the prompt and
     // the repair cannot disagree about what a leads or a sell CTA is.
@@ -14915,7 +14925,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // drops a beat (a drop is a rejection), so `beat_plan` stays aligned.
         const plannedSections = Array.isArray(bpAny.beat_plan)
           ? (bpAny.beat_plan as Array<{ beat?: unknown }>).map((p) => String(p?.beat ?? '')) : []
-        const extendDecision = shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords, plannedSections)
+        // PANEL-7 LENGTH (trial; kill LENGTH_BUDGET=false): the pass measures
+        // against the duration profile's word budget, not the request seconds.
+        const profileBudgetWords = trialOn && Deno.env.get('LENGTH_BUDGET') !== 'false'
+          ? DURATION_PROFILES[profileForSeconds(body.target_seconds, softwareTargetSec != null)].words : 0
+        const extendDecision = profileBudgetWords > 0
+          ? budgetExtendDecision(integrity.beats, profileBudgetWords, integrity.report.reservedWords, plannedSections)
+          : shouldExtendScript(integrity.beats, integrityOpts.targetSec, integrityOpts.wpm, integrity.report.reservedWords, plannedSections)
+        if (profileBudgetWords > 0) console.log(JSON.stringify({ event: 'length_budget_check', words: extendDecision.words, budget: profileBudgetWords, extend: extendDecision.extend }))
         // Plan v3.10 Part 11 rule 8: a test run may switch the lengthen pass off.
         if (extendDecision.extend && lengthenOff) console.log(JSON.stringify({ event: 'feature_fired', feature: 'lengthen_off' }))
         if (extendDecision.extend && !(trialOn && suppliedKnowledgeIds.length < 3) && !lengthenOff && optionalPassTime('extension')) {
@@ -16946,6 +16963,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const wb = enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId)
           bpw.script = wb.script
           bpw.word_budget = wb.record
+          panel7Budget = wb.record.budget
           console.log(JSON.stringify({ event: 'word_budget_enforced', ...wb.record, added: wb.record.added.length }))
         }
       } catch { /* the budget never fails a build */ }
@@ -17088,6 +17106,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
                 bph.hook_options = rp.hook_options
                 bph.hook_pick = rp.hook_pick
                 if (rp.hook_moves) bph.hook_moves = rp.hook_moves
+                // PANEL-7 (#12, #19, #20): shipped counts the picks recorded, never more.
+                bph.hook_pick_shipped = { applied: ap.applied, picked: engine.pick.hooks.length, shipped: rp.hook_pick.hooks.length }
               }
             }
           } catch { /* shipping the pick never fails a build */ }
@@ -17130,6 +17150,25 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           console.warn(JSON.stringify({ event: 'spoken_placeholder_blocked', removed: pb.removed, beats_dropped: pb.beatsDropped }))
         }
       } catch { /* the check never fails a build */ }
+    }
+    // PANEL-7 REPEATS (trial; kill SPOKEN_DEDUP=false): a spoken sentence that
+    // repeats the picked hook or a near line is removed (counts logged only).
+    if (trialOn && Deno.env.get('SPOKEN_DEDUP') !== 'false' && blueprint && typeof blueprint === 'object') {
+      try {
+        const bpd = blueprint as Record<string, unknown>
+        if (Array.isArray(bpd.script)) {
+          const pick = bpd.hook_pick as { hooks?: unknown } | undefined
+          const hook = Array.isArray(pick?.hooks) && typeof pick!.hooks[0] === 'string' ? pick!.hooks[0] as string
+            : (Array.isArray(bpd.hook_options) && typeof bpd.hook_options[0] === 'string' ? bpd.hook_options[0] as string : null)
+          const dd = dedupeSpokenLines(bpd.script as Array<{ line?: unknown }>, hook)
+          if (dd.removed) {
+            bpd.script = dd.script
+            if (Array.isArray(bpd.shot_list)) bpd.shot_list = syncShotListSpokenText(bpd.shot_list as Array<{ spoken_text?: unknown }>, bpd.script as unknown[]).shots
+            bpd.spoken_dedup = { removed: dd.removed }
+            console.log(JSON.stringify({ event: 'spoken_dedup', removed: dd.removed }))
+          }
+        }
+      } catch { /* the de-dup never fails a build */ }
     }
     // ⚖️ PACKAGING KEEPS THE PROMISE (plan v5.1 item G, trial only; kill:
     // PACKAGING_PROMISE=false). Every title and publish caption must inherit the
@@ -17175,7 +17214,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       bpg.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
       // Test accounts: repair trial (16 Oct); GATE_REPAIR_TRIAL='false' = measure.
       const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
-      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}) } }
+      inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
@@ -17430,7 +17469,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             rbp.gate_progress = { step: 'queued', at: new Date().toISOString(), chunks_done: 0, chunks_total: 0 }
             const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
             rbp.gate_mode = gateModeLabel(gateMeasure)
-            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}) } }
+            rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
             console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
           } catch { /* the gate bookkeeping never loses a rescued script */ }
         }
