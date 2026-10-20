@@ -17327,25 +17327,28 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     if (planBOn && planBTarget && blueprint && typeof blueprint === 'object') {
       try {
         const bpb2 = blueprint as Record<string, unknown>
-        const ledgerB = templateLedger.length ? templateLedger : buildInventionLedger({
+        // Her onboarding answers (the 'asked' creator_knowledge rows) are first-party items too.
+        const askedB = (knowledgeRows as Array<{ id?: unknown; kind?: unknown; text?: unknown; source?: unknown }>).filter((k) => String(k?.source ?? '') === 'asked' && !provenanceSupply.some((s) => String(s.id ?? '') === String(k?.id ?? '')))
+        const ledgerB0 = templateLedger.length ? templateLedger : buildInventionLedger({
           knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
           products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
           targetProductId: planBTarget, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
         })
+        const ledgerB = askedB.length ? [...ledgerB0, ...buildInventionLedger({ knowledge: askedB, now: Date.now() }).filter((it) => it.origin !== 'offer' && it.id !== 'note')] : ledgerB0
         const storyItem = storyFirstPick ?? (() => { const s = ledgerB.find((it) => it.origin === 'her_story' && it.first_party && it.text.trim()); return s ? { id: s.id, text: s.text } : null })()
         const profileB = templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null)
         const inB = planBInputFromLedger(ledgerB, storyItem, planBTarget, profileB)
         if (planBEligible(inB)) {
           const asm = assemblePlanB(inB)
           const polishOn = Deno.env.get('PLAN_B_POLISH') !== 'off' && optionalPassTime('plan_b_polish')
-          const raw = polishOn ? await polishPlanBLines(apiKey, planBPolishPrompt(asm.lines)) : null
+          const raw = polishOn ? await polishPlanBLines(apiKey, planBPolishPrompt(asm.lines, { card: voiceCard ? voiceCardBrief(voiceCard) : null })) : null
           const pol = applyPolish(asm.lines, parsePolish(raw, asm.lines.length), asm.sources)
           const out = planBScript(pol.lines, storyItem?.text ?? null)
           bpb2.script = out.script
           if (out.script[0]?.line) bpb2.hook_options = [out.script[0].line]
           if (Array.isArray(bpb2.shot_list)) bpb2.shot_list = syncShotListSpokenText(bpb2.shot_list as Array<{ spoken_text?: unknown }>, bpb2.script as unknown[]).shots
           bpb2.plan_b = planBRecord(out.script, asm.sources, pol.fell_back)
-          console.log(JSON.stringify({ event: 'plan_b_assembled', ...(bpb2.plan_b as Record<string, unknown>), profile: profileB, facts_used: asm.facts_used, story: !!storyItem, dedup_removed: out.removed }))
+          console.log(JSON.stringify({ event: 'plan_b_assembled', ...(bpb2.plan_b as Record<string, unknown>), profile: profileB, sections: asm.sections, asked_items: askedB.length, facts_used: asm.facts_used, story: !!storyItem, dedup_removed: out.removed }))
         } else {
           console.log(JSON.stringify({ event: 'plan_b_skipped', reason: 'no_material' }))
         }
