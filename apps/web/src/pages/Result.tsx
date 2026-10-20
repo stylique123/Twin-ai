@@ -19,6 +19,8 @@ import { ScriptIntentAsk } from '../components/ScriptIntentAsk'
 import { FocusTeleprompter } from '../components/FocusTeleprompter'
 import { NeedsAnswerCard, ScriptWithGaps, gateStatusFor, recordBlocked, hasPlaceholder } from '../components/NeedsAnswerGate'
 import { CheckThisLine } from '../components/CheckThisLine'
+import { UsingList } from '../components/UsingList'
+import { GeneralVersionBanner } from '../components/GeneralVersionBanner'
 import { generateBlueprint } from '../lib/api'
 import { recordScriptIntent } from '../lib/api'
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getPendingSourceAsset, pollSourceAssetReady, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
@@ -787,6 +789,9 @@ export default function Result() {
     : null
   // CHECK THIS LINE (trial only; null for every other account).
   const checkLineCard = <CheckThisLine userId={session?.user?.id} generationId={gen.id} blueprint={raw as Parameters<typeof CheckThisLine>[0]['blueprint']} onDone={refreshGen} />
+  // Plan v5.4 O (trial only; null for every other account): general-version banner and the "Using" list.
+  const generalBanner = <GeneralVersionBanner userId={session?.user?.id} blueprint={raw as { degraded?: unknown }} onBackToQuestions={() => navigate('/v2')} />
+  const usingList = <UsingList userId={session?.user?.id} blueprint={raw as { line_sources?: unknown }} />
   const rr = raw.reference_read ?? ({} as NonNullable<Generation['blueprint']>['reference_read'])
   const br = raw.b_roll_stats ?? { original_b_roll_count: '0', suggested_b_roll_count: '0' }
   const b = {
@@ -1551,8 +1556,10 @@ export default function Result() {
 
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
+              {generalBanner}
               {gateCard}
               {checkLineCard}
+              {usingList}
               {gateShowsGaps ? <ScriptWithGaps script={(raw.script ?? []) as Array<{ line?: string }>} /> : (
               <ScriptEditor
                 onScriptChange={onScriptChange}
@@ -1934,8 +1941,10 @@ export default function Result() {
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <CountPromise blueprint={b} />
+                {generalBanner}
                 {gateCard}
                 {checkLineCard}
+                {usingList}
                 {gateShowsGaps ? <ScriptWithGaps script={(raw.script ?? []) as Array<{ line?: string }>} /> : (
                 <ScriptEditor
                   onScriptChange={onScriptChange}

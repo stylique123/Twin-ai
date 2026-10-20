@@ -3,7 +3,7 @@
 // CHECK THIS LINE (backlog d, trial only). Fictional fixtures only.
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { CheckThisLine, checkLinesOf } from './CheckThisLine'
+import { CheckThisLine, checkLinesOf, reasonText } from './CheckThisLine'
 
 const TRIAL = 'trial-0000'
 const bp = {
@@ -60,5 +60,26 @@ describe('CheckThisLine', () => {
   })
   it('checkLinesOf drops malformed rows', () => {
     expect(checkLinesOf({ check_lines: [{ line_index: 'x' }, null, bp.check_lines[0]] })).toHaveLength(1)
+  })
+  describe('reason in plain words (plan v5.4 O, #1297 codes)', () => {
+    it('shows the reason under the flagged line, with confirm/edit/remove', () => {
+      render(<CheckThisLine userId={TRIAL} generationId="g" blueprint={bp} send={vi.fn()} />)
+      expect(screen.getByTestId('check-line-reason-0').textContent).toBe(reasonText('event_unbacked'))
+      expect(screen.getByText("It's true")).toBeTruthy()
+      expect(screen.getByText('Edit')).toBeTruthy()
+      expect(screen.getByText('Remove')).toBeTruthy()
+    })
+    it('reads every targeted reason code from #1297', () => {
+      for (const r of ['absolute_efficacy', 'invented_team', 'invented_origin', 'invented_habit', 'unbacked_number', 'unbacked_name', 'scarcity_unbacked']) {
+        const t = reasonText(r)
+        expect(t).not.toBe(reasonText('unknown'))
+        expect(t).not.toMatch(/_/)
+      }
+    })
+    it('an unknown code gets a plain generic sentence, never the raw id', () => {
+      const one = { ...bp, check_lines: [{ ...bp.check_lines[0], reason: 'some_new_code' }] }
+      render(<CheckThisLine userId={TRIAL} generationId="g" blueprint={one} send={vi.fn()} />)
+      expect(screen.getByTestId('check-line-reason-0').textContent).toBe("Twin isn't sure this is true for you.")
+    })
   })
 })

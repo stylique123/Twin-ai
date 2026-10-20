@@ -2,7 +2,8 @@
 //
 // Every env name in the "Kill switch" column of docs/release/wiring-ledger.md
 // must still be READ by non-test code: Deno.env.get('X'), env.get('X') or
-// process.env.X under supabase/functions, worker/src or packages/shared/src.
+// process.env.X under supabase/functions, worker/src or packages/shared/src,
+// or import.meta.env.VITE_X under apps/web/src (web-only trial switches).
 // A switch renamed or deleted in code without the ledger moving fails CI.
 //
 //   node scripts/ci/check_kill_switches.mjs [--selftest]
@@ -12,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const LEDGER = 'docs/release/wiring-ledger.md'
-const ROOTS = ['supabase/functions', 'worker/src', 'packages/shared/src']
+const ROOTS = ['supabase/functions', 'worker/src', 'packages/shared/src', 'apps/web/src']
 
 /** Env names listed in the ledger's "Kill switch" column. */
 export function ledgerKillSwitches(md) {
@@ -31,7 +32,7 @@ export function ledgerKillSwitches(md) {
 
 /** True when `src` reads env `name`. */
 export function readsEnv(src, name) {
-  return new RegExp(`env\\.get\\(\\s*['"\`]${name}['"\`]\\s*\\)|process\\.env\\.${name}\\b|process\\.env\\[\\s*['"]${name}['"]\\s*\\]`).test(src)
+  return new RegExp(`env\\.get\\(\\s*['"\`]${name}['"\`]\\s*\\)|process\\.env\\.${name}\\b|process\\.env\\[\\s*['"]${name}['"]\\s*\\]|import\\.meta\\.env\\.${name}\\b`).test(src)
 }
 
 const isTest = (p) => /__tests__|\.test\.|\.spec\.|selftest/.test(p)
@@ -58,6 +59,7 @@ function selftest() {
   ok(readsEnv('x = process.env.BAR ?? 1', 'BAR'), 'process.env')
   ok(!readsEnv('// FOO_KILL=1 kills it', 'FOO_KILL'), 'a comment is not a read')
   ok(!readsEnv('process.env.BARX', 'BAR'), 'word boundary')
+  ok(readsEnv("String(import.meta.env.VITE_FOO_KILL ?? '')", 'VITE_FOO_KILL'), 'import.meta.env (web)')
   ok(JSON.stringify(missingSwitches(names, ["Deno.env.get('BAR')"])) === '["FOO_KILL"]', 'missing')
   console.log('check_kill_switches selftest: ok')
 }
