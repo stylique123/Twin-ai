@@ -51,11 +51,11 @@ describe('repeats by meaning (STORY_DEDUP) on the edge', () => {
     { line: 'Oil the chain every Sunday.' },
   ]
   const run = (env: Record<string, string>) => (gateExtras(env).story_dedup ? dedupByStoryItem(script, ledger).script : script).map((b) => b.line)
-  it('on: the paraphrases go and the verbatim story stays; off: all four lines ship', () => {
+  it('on: the later paraphrase goes, the hook and the verbatim story stay (panel 9); off: all four lines ship', () => {
     const on = run({})
     const off = run({ STORY_DEDUP: 'false' })
     expect(on).not.toEqual(off)
-    expect(on).toEqual([STORY, 'Oil the chain every Sunday.'])
+    expect(on).toEqual([script[0]!.line, STORY, 'Oil the chain every Sunday.'])
     expect(off).toHaveLength(4)
   })
   it('the edge still calls dedupByStoryItem under STORY_DEDUP', () => {

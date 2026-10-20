@@ -19,16 +19,17 @@ function fakeCall(ms: number | null, text = '{"ok":true}') {
 /**
  * The edge writer (index.ts ~6438): with the hedge, `runHedged`; without it, the
  * sequential async ladder (`asyncDeadlineTimeout` per attempt). Attempt 0 hangs,
- * the fallback needs 42 s.
+ * the fallback needs 70 s (it runs to the 125 s end under the hedge; the
+ * sequential ladder caps it at its 55 s base).
  */
 async function writerFor(env: Record<string, string>): Promise<{ text: string | null; calls: number }> {
   vi.useFakeTimers()
   const asyncOn = asyncPolishOn(true, env.ASYNC_POLISH)
   const hedge = writerHedgeOn(asyncOn, env.WRITER_HEDGE)
   const startedAt = Date.now() - SETUP_MS
-  const attempts = [{ base: ASYNC_WRITER_END_MS, run: fakeCall(null) }, { base: 55_000, run: fakeCall(42_000) }] as const
+  const attempts = [{ base: ASYNC_WRITER_END_MS, run: fakeCall(null) }, { base: 55_000, run: fakeCall(70_000) }] as const
   if (hedge) {
-    const p = runHedged([attempts[0], attempts[1]], () => true, { startedAt })
+    const p = runHedged([attempts[0], { ...attempts[1], base: ASYNC_WRITER_END_MS }], () => true, { startedAt })
     await vi.runAllTimersAsync()
     const r = await p
     return { text: r.text, calls: r.calls }
