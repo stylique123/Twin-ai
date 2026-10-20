@@ -85,11 +85,12 @@ import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
 import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerHedgeOn, ASYNC_WRITER_END_MS } from '../_shared/asyncPolish.ts'
+import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
-import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
+import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
@@ -6438,7 +6439,9 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
   if (ladder?.hedge === true && ladder.async === true && ladder.startedAt != null && schema === blueprintSchema && attempts.length >= 2) {
     const rows: Array<string | null> = [null, null]
     const mk = (i: 0 | 1) => ({
-      base: i === 0 ? ASYNC_WRITER_END_MS : attempts[1].timeoutMs,
+      // Panel-current-9: the fallback's own 55 s cap cut it at 54 s on 6 of 6
+      // failures; under the hedge both attempts run to the 125 s writer end.
+      base: ASYNC_WRITER_END_MS,
       run: (t: number, signal: AbortSignal) => callOnce(apiKey, system, i >= 1 && ladder.retryPrompt ? ladder.retryPrompt : prompt, attempts[i].model, attempts[i].thinkBudget, t, schema, signal),
     })
     const valid = (text: string) => { try { return blueprintComplete(JSON.parse(text)) } catch { return false } }
@@ -12752,8 +12755,29 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       raw = pick.t
       templateFallback = pick.k === 0 && (writerLadder?.usedAttempt ?? 0) >= 1
     } else {
-      raw = await callModel(apiKey, writerSystem, userPrompt, blueprintSchema,
-        attemptRecorder(admin, ownerId, scriptRunId), writerLadder)
+      try {
+        raw = await callModel(apiKey, writerSystem, userPrompt, blueprintSchema,
+          attemptRecorder(admin, ownerId, scriptRunId), writerLadder)
+      } catch (writerErr) {
+        // ⚖️ A SLOW WRITER NEVER 500s (panel-current-9; trial + async polish;
+        // kill WRITER_TIMEOUT_FALLBACK=off). No writer result by the 125 s end:
+        // ship a degraded but valid blueprint, Plan B from her items when she
+        // has material, else the general version. Marked and counted.
+        if (!writerTimeoutFallbackOn(asyncPolish, Deno.env.get('WRITER_TIMEOUT_FALLBACK'))) throw writerErr
+        let planBLines: Array<{ section: string; line: string; source_ids?: string[] }> = []
+        try {
+          const tgt = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const storyItem = storyFirstPick ?? (() => { const st = templateLedger.find((it) => it.origin === 'her_story' && it.first_party && it.text.trim()); return st ? { id: st.id, text: st.text } : null })()
+          const inB = planBInputFromLedger(templateLedger, storyItem, tgt, templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null))
+          if (templateLedger.length && planBEligible(inB)) planBLines = planBScript(assemblePlanB(inB).lines, storyItem?.text ?? null).script
+        } catch { /* no Plan B: the general version */ }
+        const deg = degradedBlueprint({ planB: planBLines, subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? ''), offer: typeof readyOffer === 'string' ? readyOffer : null })
+        raw = JSON.stringify(deg.blueprint)
+        console.warn(JSON.stringify({ event: 'writer_degraded', source: deg.record.source, lines: deg.record.lines, elapsed_ms: Date.now() - reqStartedAt, code: classifyModelFailure(writerErr).code }))
+        void admin.from('ops_events').insert({ kind: 'writer_degraded', severity: 'warn', user_id: user.id,
+          detail: { fn: 'generate-blueprint', run_id: scriptRunId, source: deg.record.source, lines: deg.record.lines, hedge_calls: writerLadder?.hedgeCalls ?? 0, elapsed_ms: Date.now() - reqStartedAt } })
+          .then(() => {}, () => {})
+      }
       templateFallback = (writerLadder?.usedAttempt ?? 0) >= 1
     }
     writerReturned = true
@@ -17252,7 +17276,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           // Her named story ships word for word: never deleted as a repeat (#22).
           const protect = storyFirstPick ? [storyFirstPick.text] : []
           const dd = dedupeSpokenLines(bpd.script as Array<{ line?: unknown }>, protect)
-          if (dd.removed) {
+          // Panel-current-9: 3 of 3 SCRIPT_EMPTIED rescues were this de-dup taking
+          // a 3-beat script to 2. A de-dup never takes a script under the floor.
+          const ddHeld = dd.removed > 0 && holdSpokenFloor(bpd.script as Array<{ line?: unknown }>, dd.script).held
+          if (ddHeld) { bpd.spoken_dedup = { ...dd.record, held_for_floor: true }; console.log(JSON.stringify({ event: 'spoken_dedup_held', would_remove: dd.removed })) }
+          if (dd.removed && !ddHeld) {
             bpd.script = dd.script
             if (Array.isArray(bpd.shot_list)) bpd.shot_list = syncShotListSpokenText(bpd.shot_list as Array<{ spoken_text?: unknown }>, bpd.script as unknown[]).shots
             bpd.spoken_dedup = dd.record
@@ -17269,7 +17297,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (Array.isArray(bpd.script)) {
           const protect = storyFirstPick ? [storyFirstPick.text] : []
           const sd = dedupByStoryItem(bpd.script as Array<{ line?: unknown }>, templateLedger, protect)
-          if (sd.record.dropped) {
+          const sdHeld = sd.record.dropped > 0 && holdSpokenFloor(bpd.script as Array<{ line?: unknown }>, sd.script).held
+          if (sdHeld) console.log(JSON.stringify({ event: 'story_dedup_held', would_remove: sd.record.dropped }))
+          if (sd.record.dropped && !sdHeld) {
             bpd.script = sd.script
             if (Array.isArray(bpd.shot_list)) bpd.shot_list = syncShotListSpokenText(bpd.shot_list as Array<{ spoken_text?: unknown }>, bpd.script as unknown[]).shots
             bpd.story_dedup = sd.record
@@ -17396,6 +17426,24 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         .filter((b) => typeof b?.line === 'string' && b.line.trim().split(/\s+/).length >= 3)
       // Owner plan B2 floor (set 4 #17, a hook plus one line): a script needs a body, a payoff and a close (trial).
       const floor = trialOn ? 3 : 2
+      // Checks never empty a script (panel-current-9): refill from her items first.
+      if (trialOn && spoken.length < floor && Array.isArray((blueprint as { script?: unknown }).script)) {
+        try {
+          const tgt = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const ledgerF = templateLedger.length ? templateLedger : buildInventionLedger({
+            knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+            products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+            targetProductId: tgt, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+          })
+          const rf = refillToFloor((blueprint as { script: Array<{ section?: unknown; line?: unknown }> }).script, ledgerF, tgt, floor)
+          if (rf.added) {
+            ;(blueprint as Record<string, unknown>).script = rf.script
+            ;(blueprint as Record<string, unknown>).floor_refill = { added: rf.added }
+            console.log(JSON.stringify({ event: 'floor_refill', added: rf.added }))
+            spoken.splice(0, spoken.length, ...(rf.script as Array<{ line?: unknown }>).filter((b) => typeof b?.line === 'string' && b.line.trim().split(/\s+/).length >= 3))
+          }
+        } catch { /* the refill never fails a build */ }
+      }
       if (spoken.length < floor) {
         console.log(JSON.stringify({ event: 'script_below_floor', spoken: spoken.length, floor }))
         throw new Error(`${SCRIPT_EMPTIED}: ${spoken.length} spoken lines left after the checks`)

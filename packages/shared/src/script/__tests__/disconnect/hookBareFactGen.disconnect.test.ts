@@ -1,4 +1,4 @@
-// DISCONNECT TEST, ledger row 30: bare-fact hooks leave GENERATION (plan v5.4 §20).
+// DISCONNECT TEST, ledger row 31: bare-fact hooks leave GENERATION (plan v5.4 §20).
 // Kill switch HOOK_BARE_FACT_GEN ('false' = off). Two edge calls: the writer
 // prompt block (`renderHookCandidateRule`) and the engine (`noBareFactGen`).
 // Fictional fixture only (a made-up bike-repair newsletter "Spoke Notes").

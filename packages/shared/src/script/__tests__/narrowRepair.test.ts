@@ -168,7 +168,7 @@ describe('4. hooks: bare-fact shapes leave the picks; the first-person claim che
 })
 
 describe('5. repeats by meaning (item-id overlap)', () => {
-  it('a hook paraphrasing the story, the story verbatim, then a restatement → the verbatim one stays', () => {
+  it('a hook paraphrasing the story, the story verbatim, then a restatement → the hook and the verbatim one stay (panel 9: the hook is never dropped)', () => {
     const script = [
       { line: 'Halfway up the bridge my unoiled chain snapped on my first commute.' },
       { line: STORY },
@@ -176,8 +176,8 @@ describe('5. repeats by meaning (item-id overlap)', () => {
       { line: 'Oil the chain every Sunday.' },
     ]
     const r = dedupByStoryItem(script, ledger)
-    expect(r.record.dropped).toBe(2)
-    expect(r.script.map((b) => b.line)).toEqual([STORY, 'Oil the chain every Sunday.'])
+    expect(r.record.dropped).toBe(1)
+    expect(r.script.map((b) => b.line)).toEqual([script[0]!.line, STORY, 'Oil the chain every Sunday.'])
   })
   it('no verbatim telling: the paraphrases stay (word de-dup decides)', () => {
     const script = [{ line: 'Halfway up the bridge my unoiled chain snapped on my first commute.' }, { line: 'Oil the chain every Sunday.' }]
@@ -190,13 +190,13 @@ describe('5. repeats by meaning (item-id overlap)', () => {
     expect(storyRelation('Oil the chain every Sunday.', STORY)).toBeNull()
   })
   it('the gate runs it under storyDedup', async () => {
-    const bp: GateBlueprint = { script: [{ line: 'Halfway up the bridge my unoiled chain snapped on my first commute.' }, { line: STORY }, { line: 'Oil the chain every Sunday.' }] } as GateBlueprint
+    const bp: GateBlueprint = { script: [{ line: 'Oil the chain every Sunday.' }, { line: STORY }, { line: 'Halfway up the bridge my unoiled chain snapped on my first commute.' }, { line: 'Tell me how often you do yours.' }] } as GateBlueprint
     const judgeS = async (prompt: string) => {
       const block = prompt.split('SENTENCES:')[1] ?? ''
       const rows = [...block.matchAll(/^(\d+)\. \([a-z_]+[^)]*\) .*$/gm)]
       return JSON.stringify({ sentences: rows.map((m) => ({ i: Number(m[1]), class: 'S', item_ids: ['h1'], claim_types: [] })) })
     }
     const r = await runInventionGate({ blueprint: bp, ledger, products, targetProductId: SPOKE, holdAsks: true, storyDedup: true }, { judge: judgeS, rewrite: async () => '{"rewrites":[]}' })
-    expect((r.blueprint.script as Array<{ line: string }>).map((b) => b.line)).toEqual([STORY, 'Oil the chain every Sunday.'])
+    expect((r.blueprint.script as Array<{ line: string }>).map((b) => b.line)).toEqual(['Oil the chain every Sunday.', STORY, 'Tell me how often you do yours.'])
   })
 })

@@ -101,6 +101,7 @@ const SOURCES = [
   ['packages/shared/src/script/writerDeadline.ts', 'supabase/functions/_shared/writerDeadline.ts'],
   // Async polish (owner decision 2, reliability first): edge deadline + worker polish step.
   ['packages/shared/src/script/asyncPolish.ts', 'supabase/functions/_shared/asyncPolish.ts'],
+  ['packages/shared/src/script/writerTimeout.ts', 'supabase/functions/_shared/writerTimeout.ts'],
   ['packages/shared/src/script/asyncPolish.ts', 'worker/src/generated/asyncPolish.ts'],
   // Views back from the platforms (social function stats sync).
   ['packages/shared/src/socialStats.ts', 'supabase/functions/_shared/socialStats.ts'],
