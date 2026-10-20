@@ -609,6 +609,43 @@ export function shouldExtendScript(
   }
 }
 
+// ⚖️ PANEL-7 LENGTH (trial; kill LENGTH_BUDGET=false on the edge). Standard
+// was chosen 8 times and the writer returned 53% of its 140-word budget; the
+// extension pass measured against the request seconds, not the profile budget,
+// so it rarely fired. Under the trial the profile budget is the target.
+export const BUDGET_EXTEND_BELOW_SHARE = 0.85
+
+/** The extension decision held to the duration profile's word budget: when the
+ *  script is under 85% of `budgetWords` and has a beat to lengthen (or a
+ *  missing section), extend toward the budget. Pure. */
+export function budgetExtendDecision(
+  beats: readonly IntegrityBeat[] | null | undefined,
+  budgetWords: number,
+  reservedWords: number = 0,
+  plannedSections: ReadonlyArray<string | null | undefined> = [],
+): ExtensionDecision {
+  const list = Array.isArray(beats) ? beats.filter((b) => b && typeof b === 'object') : []
+  const words = list.reduce((n, b) => n + wordsOf(str(b.line)), 0)
+  const plan = (plannedSections ?? []).map((x) => str(x).trim()).filter((x) => x !== '')
+  if (!Number.isFinite(budgetWords) || budgetWords <= 0) return { extend: false, words, target: 0, wordsWanted: 0, indices: [], missing: [], plan }
+  const indices = extendableIndices(list)
+  const have = new Set(list.map((b) => str(b.section).trim().toLowerCase()))
+  const missing = [...new Set(plan.filter((x) => !/^(hook|cta|call to action|outro|sign.?off)$/i.test(x) && !have.has(x.toLowerCase())))]
+  const reserved = Number.isFinite(reservedWords) && reservedWords > 0 ? reservedWords : 0
+  const extend = words > 0 && words + reserved < budgetWords * BUDGET_EXTEND_BELOW_SHARE && (indices.length > 0 || missing.length > 0)
+  return { extend, words, target: budgetWords, wordsWanted: extend ? budgetWords - words - reserved : 0, indices: extend ? indices : [], missing: extend ? missing : [], plan }
+}
+
+/** The writer's length line under the trial: the profile's budget, stated as a
+ *  number to hit when her material allows (never padding). */
+export function budgetPromptLine(budgetWords: number): string {
+  if (!Number.isFinite(budgetWords) || budgetWords <= 0) return ''
+  const min = Math.round(budgetWords * BUDGET_EXTEND_BELOW_SHARE)
+  return `- WORD BUDGET: the chosen length is about ${budgetWords} spoken words. When the supplied material has more to say, write at least ${min} words:`
+    + ' give each fact its how, why and what it looked like, and use her unused items before ending early.'
+    + ' Never repeat the hook or an earlier line to reach the number, and never invent a fact.'
+}
+
 /** The instruction for the writer. Facts are exactly what the prompt already supplied. */
 export function buildExtensionPrompt(
   beats: readonly IntegrityBeat[],

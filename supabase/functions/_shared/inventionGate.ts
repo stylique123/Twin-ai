@@ -1683,13 +1683,18 @@ export function applyRepairs(bp: GateBlueprint, sentences: readonly GateSentence
     // so the script keeps its length when her material allows.
     const refill = () => (opts.holdAsks && s.surface === 'script' && opts.refill?.length ? opts.refill.shift()! : null)
     if (st.action === 'replace') {
-      const nt = (rewrites.get(st.i) ?? '').trim()
+      const raw = (rewrites.get(st.i) ?? '').trim()
+      // PANEL-7 (#9, #19; trial): a rewrite identical to the line is no
+      // rewrite. It was audited "replaced", re-flagged, then "dropped".
+      const nt = opts.holdAsks && sameText(raw, s.text) ? '' : raw
       if (nt) { e[s.k] = nt; res.replaced++; res.outcomes.push({ i: st.i, action: 'replaced', replacement: nt }) } else { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.dropped++; res.outcomes.push(r ? { i: st.i, action: 'refilled', replacement: r } : { i: st.i, action: 'dropped' }) }
     } else if (st.action === 'ask' || st.action === 'fallback') {
       // ⚠️ PANEL-6: 9 needs_answers scripts shipped "[Your answer: …]" inside
       // the spoken text. Under holdAsks the sentence is dropped instead; the
       // question still counts (outcome stays needs_answers) and is returned.
-      if (opts.holdAsks) { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.outcomes.push(r ? { i: st.i, action: 'refilled', replacement: r } : { i: st.i, action: 'asked' }) } else { e[s.k] = placeholderFor(st.question!); res.outcomes.push({ i: st.i, action: 'asked', replacement: e[s.k]! }) }
+      // PANEL-7 (#1): the step counts as asked, so the audit says asked too;
+      // a refill line is its replacement (repaired.asked and the audit agree).
+      if (opts.holdAsks) { const r = refill(); e[s.k] = r; if (r) res.refilled = (res.refilled ?? 0) + 1; res.outcomes.push(r ? { i: st.i, action: 'asked', replacement: r } : { i: st.i, action: 'asked' }) } else { e[s.k] = placeholderFor(st.question!); res.outcomes.push({ i: st.i, action: 'asked', replacement: e[s.k]! }) }
       if (st.action === 'ask') res.asked++
       else res.fallback++
       res.questions.push(st.question!)
@@ -1805,6 +1810,148 @@ export function refillCandidates(ledger: readonly LedgerItem[], targetProductId:
   return out
 }
 
+// ── SPOKEN DE-DUP + REFILL UNITS (panel-7, trial) ──────────────────────────
+// The picked hook was repeated by line 2 in 4 scripts; line 3 restated line 2
+// and line 4 restated line 3. A spoken sentence is tested against the kept
+// sentences of its own beat and of the spoken beat before it (line 1, the
+// hook, included). The later copy goes; when the later copy is her named story
+// (protected, ships word for word) the earlier one goes instead; when both are
+// protected both stay. Threshold (tested on panel 7: catches exactly #8, #11,
+// #12, #18, #22): an exact repeat, or >= 60% of the smaller sentence's stemmed
+// content words, with at least 4 terms on the smaller side.
+
+/** Same words, ignoring case, spacing and punctuation. */
+export function sameText(a: string, b: string): boolean {
+  const n = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  return n(a) !== '' && n(a) === n(b)
+}
+
+export const NEAR_DUP_MIN = 0.6
+export const NEAR_DUP_MIN_TERMS = 4
+
+/** The word-overlap test (pure). */
+export function nearDuplicate(a: string, b: string): boolean {
+  if (sameText(a, b)) return true
+  const A = contentWords(a)
+  const B = contentWords(b)
+  const m = Math.min(A.size, B.size)
+  if (m < NEAR_DUP_MIN_TERMS) return false
+  let hit = 0
+  for (const w of A) if (B.has(w)) hit++
+  return hit / m >= NEAR_DUP_MIN
+}
+
+export interface DedupRecord { dropped: number; hook_yielded: number; beats_dropped: number }
+
+export function dedupAdjacentLines<B extends { line?: unknown }>(script: readonly B[], protect: readonly string[] = []): { script: B[]; record: DedupRecord } {
+  // A sentence is protected when it IS one of the protected sentences (80% both
+  // ways). A short hook built from a story's words is not the story.
+  const protectedText = protect.flatMap((p) => splitSentences(p)).map((p) => contentWords(p)).filter((s) => s.size > 0)
+  const isProtected = (t: string) => {
+    const c = contentWords(t)
+    if (!c.size) return false
+    return protectedText.some((p) => { let h = 0; for (const w of c) if (p.has(w)) h++; return h / p.size >= 0.8 && h / c.size >= 0.8 })
+  }
+  const beats = script.map((b) => (typeof b?.line === 'string' ? splitSentences(b.line) : []).map((t) => ({ t, keep: true })))
+  const record: DedupRecord = { dropped: 0, hook_yielded: 0, beats_dropped: 0 }
+  const firstSpoken = beats.findIndex((ss) => ss.length > 0)
+  let prev = -1
+  for (let bi = 0; bi < beats.length; bi++) {
+    const ss = beats[bi]!
+    if (!ss.length) continue
+    for (let k = 0; k < ss.length; k++) {
+      const cur = ss[k]!
+      const pool = [...(prev >= 0 ? beats[prev]!.map((x, j) => ({ x, b: prev, j })) : []), ...ss.slice(0, k).map((x, j) => ({ x, b: bi, j }))]
+      for (const o of pool) {
+        if (!o.x.keep || !cur.keep || !nearDuplicate(o.x.t, cur.t)) continue
+        const pCur = isProtected(cur.t)
+        const pOld = isProtected(o.x.t)
+        if (!pCur) { cur.keep = false; record.dropped++ } else if (!pOld) {
+          o.x.keep = false
+          record.dropped++
+          if (o.b === firstSpoken && o.j === 0) record.hook_yielded++
+        }
+      }
+    }
+    if (ss.some((x) => x.keep)) prev = bi
+  }
+  const out: B[] = []
+  script.forEach((b, bi) => {
+    const ss = beats[bi]!
+    if (!ss.length || ss.every((x) => x.keep)) { out.push(b); return }
+    const line = ss.filter((x) => x.keep).map((x) => x.t).join(' ')
+    if (line.trim()) out.push({ ...b, line })
+    else record.beats_dropped++
+  })
+  return { script: out, record }
+}
+
+/** The de-dup the edge and the gate call: counts only. */
+export function dedupeSpokenLines<B extends { line?: unknown }>(script: readonly B[], protect: readonly string[] = []): { script: B[]; removed: number; record: DedupRecord } {
+  const d = dedupAdjacentLines(script, protect)
+  return { script: d.script, removed: d.record.dropped, record: d.record }
+}
+
+const UNIT_MIN_WORDS = 5
+const UNIT_MAX_WORDS = 45
+
+/** An item's text as spoken units: each line on its own, a long line split
+ *  into sentences; a unit is 5-45 words with no bracket. Verbatim. Pure. */
+export function spokenUnits(text: string): string[] {
+  const out: string[] = []
+  for (const raw of String(text ?? '').split(/\n+/)) {
+    const line = raw.replace(/^\s*[-*•]\s*/, '').trim().replace(/\s+/g, ' ')
+    if (!line) continue
+    const parts = wordCount(line) <= UNIT_MAX_WORDS ? [line] : splitSentences(line)
+    for (const p of parts) {
+      const t = p.trim()
+      const n = wordCount(t)
+      if (n >= UNIT_MIN_WORDS && n <= UNIT_MAX_WORDS && !/[[\]]/.test(t) && !isNonAnswerText(t)) out.push(t)
+    }
+  }
+  return out
+}
+
+/** refillCandidates over spoken units: the same filters per line of an item,
+ *  "already said" judged against `script` (pass the CURRENT, post-drop text). */
+export function refillUnits(ledger: readonly LedgerItem[], targetProductId: string | null, script: string): string[] {
+  const said = contentSet(script)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const it of ledger) {
+    if (!REFILL_ORIGINS.has(it.origin) || !it.first_party) continue
+    if (it.field === 'note' || it.field?.startsWith('template.')) continue
+    if (it.product_id && it.product_id !== targetProductId) continue
+    if (isScaffoldText(it.text)) continue
+    for (const u of spokenUnits(it.text)) {
+      const own = [...contentSet(u)]
+      if (!own.length || own.filter((w) => said.has(w)).length / own.length >= 0.5) continue
+      const t = (u.charAt(0).toUpperCase() + u.slice(1)).replace(/([^.!?])$/, '$1.')
+      const k = t.toLowerCase()
+      if (seen.has(k)) continue
+      seen.add(k)
+      out.push(t)
+    }
+  }
+  return out
+}
+
+/** Her next unused items, verbatim, inserted before the close until the script
+ *  reaches its budget (never past 110% of it, never one already said). Pure. */
+export function topUpToBudget<B extends Record<string, unknown>>(script: readonly B[], queue: string[], budgetWords: number): { script: B[]; added: number } {
+  const out = [...script]
+  const wc = () => out.reduce((n, b) => n + wordCount(String(b?.line ?? '')), 0)
+  let added = 0
+  while (queue.length && wc() < budgetWords) {
+    const t = queue.shift()!
+    if (out.some((b) => nearDuplicate(String(b?.line ?? ''), t))) continue
+    if (wc() + wordCount(t) > Math.round(budgetWords * 1.1)) continue
+    out.splice(out.length > 1 ? out.length - 1 : out.length, 0, { section: 'refill', line: t } as unknown as B)
+    added++
+  }
+  return { script: out, added }
+}
+
 // ── THE RECORD ─────────────────────────────────────────────────────────────
 
 /** 'timeout' = the gate ran out of time and fell back to measure-only for this request.
@@ -1824,7 +1971,7 @@ export interface InventionGateRecord {
   /** Trial (holdAsks): bracket placeholders the final check removed from spoken lines. */
   placeholder_block?: PlaceholderBlock
   /** Trial (holdAsks): removed spoken lines refilled from her unused items. */
-  refill?: { refilled: number }
+  refill?: { refilled: number; topped_up?: number; deduped?: number }
   version: string
   model: string | null
   sentences: GateRecordSentence[]
@@ -2031,6 +2178,16 @@ export interface RunGateInput {
    *  within REPAIR_MAX_FALSE_DROP are repaired; every other flag is a review
    *  line, and an E over budget is never dropped (calibrateRepairs). */
   repairCalibrated?: boolean
+  /** Trial (panel-7; kill SPOKEN_DEDUP=false on the edge): drop a spoken
+   *  sentence that repeats the hook or a near line (dedupeSpokenLines). */
+  spokenDedup?: boolean
+  /** Trial (panel-7; kill LENGTH_REFILL=false on the edge): the duration
+   *  profile's word budget. When a line was dropped, asked, de-duplicated or
+   *  sent to review and the script is under it, her next unused first-party
+   *  items are added before the close. */
+  wordBudget?: number
+  /** Trial: text that ships word for word (her named story); never de-duplicated away. */
+  protect?: string[]
   now?: () => number
   timeoutMs?: number
   chunkSize?: number
@@ -2158,14 +2315,27 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     // slot asked before the writer ran, quality sprint stage 2). It counts
     // toward the 3-question cap and the script is never 'final' while it stands.
     const preAsked = first.sentences.filter((s) => s.surface === 'script' && isPlaceholder(s.text)).length
-    const refillQueue = input.holdAsks ? refillCandidates(input.ledger, input.targetProductId ?? null, spokenText(bp)) : []
+    // PANEL-7 (trial: wordBudget or spokenDedup set): refill from her items'
+    // spoken units, "already said" judged against the post-drop script.
+    const p7 = input.holdAsks === true && ((typeof input.wordBudget === 'number' && input.wordBudget > 0) || input.spokenDedup === true)
+    const target7 = input.targetProductId ?? null
+    const refillQueue = p7 ? refillUnits(input.ledger, target7, spokenText(bp))
+      : input.holdAsks ? refillCandidates(input.ledger, input.targetProductId ?? null, spokenText(bp)) : []
+    const usedRefills = new Set<string>()
     let refilled = 0
     // Each refill may be split into several sentences by the extractor.
-    const refillSet = new Set(refillQueue.flatMap((t) => splitSentences(t)))
+    const refillSet = new Set((p7 ? refillUnits(input.ledger, target7, '') : refillQueue).flatMap((t) => splitSentences(t)))
     const audit: RepairAuditEntry[] = []
     const acted = new Set<string>()
     const apply = (steps: RepairStep[], rewrites?: Map<number, string>) => {
+      if (p7) {
+        // "Already said" is judged WITHOUT the lines this round removes or rewrites.
+        const leaving = new Set(steps.map((st) => st.i))
+        const staying = cur.sentences.filter((x) => x.surface === 'script' && !leaving.has(x.i)).map((x) => x.text).join(' ')
+        refillQueue.splice(0, refillQueue.length, ...refillUnits(input.ledger, target7, staying).filter((t) => !usedRefills.has(t)))
+      }
       const a = applyRepairs(bp, cur.sentences, steps, rewrites, { holdAsks: input.holdAsks === true, refill: refillQueue })
+      if (p7) for (const o of a.outcomes) if (o.replacement && (o.action === 'refilled' || o.action === 'asked')) usedRefills.add(o.replacement)
       if (input.repairAudit) {
         for (const o of a.outcomes) {
           const s = cur.sentences[o.i]
@@ -2219,7 +2389,20 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       bp = pb.bp
       if (pb.removed) placeholderBlock = { removed: pb.removed, beats_dropped: pb.beatsDropped }
     }
-    const refillRecord = input.holdAsks ? { refilled } : null
+    let deduped = 0
+    if (input.spokenDedup) {
+      const d = dedupeSpokenLines(Array.isArray(bp.script) ? bp.script as Array<{ line?: unknown }> : [], input.protect ?? [])
+      if (d.removed) { bp = { ...bp, script: d.script }; deduped = d.removed }
+    }
+    let toppedUp = 0
+    const lost = repaired.dropped + repaired.asked + deduped + cur.classified.filter((c) => c.verdict === 'review' && c.surface === 'script').length
+    if (input.holdAsks && typeof input.wordBudget === 'number' && input.wordBudget > 0 && lost > 0) {
+      const cur7 = Array.isArray(bp.script) ? bp.script as Array<Record<string, unknown>> : []
+      const units = refillUnits(input.ledger, target7, cur7.map((b) => String(b?.line ?? '')).join(' ')).filter((t) => !usedRefills.has(t))
+      const t = topUpToBudget(cur7, units, input.wordBudget)
+      if (t.added) { bp = { ...bp, script: t.script }; toppedUp = t.added; refilled += t.added }
+    }
+    const refillRecord = input.holdAsks ? { refilled, ...(toppedUp ? { topped_up: toppedUp } : {}), ...(deduped ? { deduped } : {}) } : null
     const ebudget = eBudget(spokenWords(bp))
     const record: InventionGateRecord = {
       ...base(),

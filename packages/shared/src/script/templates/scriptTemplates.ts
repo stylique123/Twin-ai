@@ -14,7 +14,7 @@
 // inventionGate.ts (#1245); this module reads the promised count with it and
 // does not keep a second regex.
 
-import { listCounts, isNonAnswerText, isScaffoldText, declinedSlots, MAX_ASKS, type LedgerItem, type GateQuestion, type AskKind } from '../inventionGate.js'
+import { listCounts, isNonAnswerText, isScaffoldText, spokenUnits, declinedSlots, MAX_ASKS, type LedgerItem, type GateQuestion, type AskKind } from '../inventionGate.js'
 import { HOOK_MOVES } from '../scriptFamily.js'
 import {
   SCRIPT_TEMPLATES, DURATION_PROFILES, QUESTION_TEMPLATES,
@@ -439,9 +439,15 @@ function alreadySaid(text: string, lines: readonly string[]): boolean {
 }
 
 /** Ledger items that may lengthen a script: first-party, on this product, not already said. */
-export function lengthenCandidates(script: readonly ScriptBeat[], ledger: readonly LedgerItem[], targetProductId: string | null = null): LedgerItem[] {
+export function lengthenCandidates(script: readonly ScriptBeat[], ledger: readonly LedgerItem[], targetProductId: string | null = null, opts: LengthenOpts = {}): LedgerItem[] {
   const lines = script.map(lineOf)
-  return ledger.filter((it) => {
+  // PANEL-7 (trial, `units`): every item spanning lines was rejected whole, so
+  // Standard scripts recorded short_no_material while her items sat unused.
+  // Each line of an item is now its own candidate, verbatim, same filters.
+  const pool = opts.units
+    ? ledger.flatMap((it) => (/\n/.test(it.text) || words(it.text) > 45 ? spokenUnits(it.text).map((u, n) => ({ ...it, id: `${it.id}#${n}`, text: u })) : [it]))
+    : ledger
+  return pool.filter((it) => {
     if (!LENGTHEN_ORIGINS.has(it.origin) || !it.first_party) return false
     if (it.field === 'note' || it.field?.startsWith('template.')) return false
     if (it.product_id && it.product_id !== targetProductId) return false
@@ -462,10 +468,12 @@ const asSentence = (t: string) => {
 }
 
 /** Add unused ledger items (their own text) as build beats before the close until the band floor is met. */
-export function lengthenFromLedger(script: readonly ScriptBeat[], profile: DurationProfile, ledger: readonly LedgerItem[], targetProductId: string | null = null): { script: ScriptBeat[]; added: string[] } {
+export interface LengthenOpts { units?: boolean }
+
+export function lengthenFromLedger(script: readonly ScriptBeat[], profile: DurationProfile, ledger: readonly LedgerItem[], targetProductId: string | null = null, opts: LengthenOpts = {}): { script: ScriptBeat[]; added: string[] } {
   let out = script.map((b) => ({ ...b }))
   const added: string[] = []
-  for (const it of lengthenCandidates(out, ledger, targetProductId)) {
+  for (const it of lengthenCandidates(out, ledger, targetProductId, opts)) {
     const band = checkWordBand(out, profile)
     if (!band.under) break
     if (band.words + words(it.text) > band.max) continue
@@ -500,7 +508,7 @@ export interface WordBudgetRecord {
 }
 
 /** The check + repair for every script: trim when over, lengthen from the ledger when under. */
-export function enforceWordBudget(script: readonly ScriptBeat[], profile: DurationProfile, ledger: readonly LedgerItem[], targetProductId: string | null = null): { script: ScriptBeat[]; record: WordBudgetRecord } {
+export function enforceWordBudget(script: readonly ScriptBeat[], profile: DurationProfile, ledger: readonly LedgerItem[], targetProductId: string | null = null, opts: LengthenOpts = {}): { script: ScriptBeat[]; record: WordBudgetRecord } {
   const before = checkWordBand(script, profile)
   let out = script.map((b) => ({ ...b }))
   let action: WordBudgetRecord['action'] = 'none'
@@ -509,7 +517,7 @@ export function enforceWordBudget(script: readonly ScriptBeat[], profile: Durati
     out = trimToBudget(out, profile)
     action = 'trimmed'
   } else if (before.under) {
-    const l = lengthenFromLedger(out, profile, ledger, targetProductId)
+    const l = lengthenFromLedger(out, profile, ledger, targetProductId, opts)
     out = l.script
     added = l.added
     action = added.length ? 'lengthened' : 'short_no_material'
