@@ -64,10 +64,11 @@ F = fixed (a before/after rate exists). `-` means not met yet.
 | 32 | O "Using" list on the result page (plan v5.4 O) | screen `apps/web/src/pages/Result.tsx` `<UsingList>` reads `blueprint.line_sources`; "Never use" calls the existing `fact_confirm` route (`yes: false`) | `VITE_TRIAL_USER_ID` (web trial) | `VITE_USING_LIST_KILL` | `apps/web/src/components/UsingList.test.tsx` | `spec_confirm` log (existing route) | none | C - - |
 | 33 | O general-version banner (plan v5.4 O) | screen `apps/web/src/pages/Result.tsx` `<GeneralVersionBanner>` reads `blueprint.degraded` (row 28) | `VITE_TRIAL_USER_ID` (web trial) | `VITE_GENERAL_BANNER_KILL` | `apps/web/src/components/GeneralVersionBanner.test.tsx` | none (screen only) | none | C - - |
 | 34 | O skip caution under the angle questions (plan v5.4 O) | screen `apps/web/src/components/AngleQuestionsCard.tsx` (row 15's card) | test/panel account (row 15's server gate) | `VITE_SKIP_CAUTION_KILL` | `apps/web/src/components/AngleQuestionsCard.test.tsx` | `mn_answer` (existing route; nothing sent until she picks) | none | C - - |
+| 35 | Relevance-aware refill and story-hook dedupe (panel 10) | `index.ts:7062` `relevantRefillCtx()`, passed to `enforceWordBudget()` (`index.ts:17083`), `refillToFloor()` (`index.ts:17455`) and, via `panel7GateExtras()` (`refill_context`, `story_hook_dedup`), to `recheck.ts:252-254`, where `runInventionGate()` calls `relevantRefillUnits()` and `dedupeStoryHook()` | `trialOn` | `RELEVANT_REFILL`, `STORY_HOOK_DEDUP` | `packages/shared/src/script/__tests__/disconnect/relevantRefill.disconnect.test.ts`, `worker/src/__tests__/relevant-refill-disconnect.test.ts` | `invention_gate.refill`, `invention_gate.story_hook`; `word_budget_enforced` | panel-10 offline replay: of 31 refills, 2 kept and 29 dropped; story-hook dedupe fires on 2 of the 24 final scripts | C U - |
 
-**Totals.** 34 rows (29-31 added by plan v5.4 §20; 32-34, web-only, by plan v5.4 O). 33 have a disconnect test. 1 has one on the worker side only (row 23).
-**None is missing one.** None is FIXED: no row has a live before/after rate. Only row 13 has a measured
-effect (offline replay), so it is the only row marked USED.
+**Totals.** 35 rows (29-31 added by plan v5.4 §20; 32-34, web-only, by plan v5.4 O; 35 by panel 10). 34 have a disconnect test. 1 has one on the worker side only (row 23).
+**None is missing one.** None is FIXED: no row has a live before/after rate. Only rows 13 and 35 have a measured
+effect (offline replay), so they are the only rows marked USED.
 
 **How the 20 disconnect tests added for rows 2-10, 13, 16-22, 24, 25 and 27 work.** `index.ts` cannot be
 unit-run, so each test (1) runs the shared function the edge calls on a fixed fictional input with the
