@@ -140,6 +140,11 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     // Her named story ships word for word: the de-dup never deletes it (#22).
     ...(extra.hold_asks === true && storyText.length ? { protect: storyText } : {}),
     ...(extra.hold_asks === true && typeof extra.word_budget === 'number' && extra.word_budget > 0 ? { wordBudget: extra.word_budget } : {}),
+    // Plan v5.3 §19, trial only (the edge sets these under trialOn; kills
+    // NARROW_REPAIR / STORY_DEDUP = 'false'): repair only invented elements
+    // both judges call I; drop paraphrases of a story told verbatim.
+    ...(extra.hold_asks === true && extra.narrow_repair === true ? { narrowRepair: true } : {}),
+    ...(extra.hold_asks === true && extra.story_dedup === true ? { storyDedup: true } : {}),
     // ⚖️ SAVE-BEFORE-REPAIR (owner, 19 Oct). Trial only: `hold_asks` is set by
     // the edge under trialOn (test and panel accounts), never for a real
     // creator. The audit (pre-repair text) lands in blueprint.invention_gate on
