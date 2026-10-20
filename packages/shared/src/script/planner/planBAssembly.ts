@@ -308,9 +308,9 @@ export function planBRecord(script: readonly { source_ids?: readonly string[]; p
 }
 
 /** The polish prompt: one line per item, wording only. The model's answer is a JSON array of strings. */
-export function planBPolishPrompt(lines: readonly PlanBLine[], voice: { card?: string | null; styleNote?: string | null } = {}): string {
+export function planBPolishPrompt(lines: readonly PlanBLine[], voice: { card?: string | null; styleNote?: string | null; rhythm?: string | null } = {}): string {
   const items = lines.map((l, i) => ({ i, line: l.section === 'hook' || l.section === 'story' ? null : l.line }))
-  const card = String(voice.card ?? '').trim(), note = String(voice.styleNote ?? '').trim()
+  const card = String(voice.card ?? '').trim(), note = String(voice.styleNote ?? '').trim(), rhythm = String(voice.rhythm ?? '').trim()
   return [
     'Polish each line below for natural spoken delivery in HER voice. You only polish wording. Rules:',
     '- Keep every content word, number and name. Add no new noun, number, name or claim.',
@@ -318,6 +318,8 @@ export function planBPolishPrompt(lines: readonly PlanBLine[], voice: { card?: s
     '- Keep the length within 30% of the original. One sentence stays one sentence.',
     ...(card ? [`Her voice card:\n${card.slice(0, 1200)}`] : []),
     ...(note ? [`Her style note: ${note.slice(0, 300)}`] : []),
+    // Panel-10: style note, verbatim samples and explicit rhythm rules (voicePolishBrief).
+    ...(rhythm ? [rhythm.slice(0, 1500), '- Rhythm rules may reshape sentences, but every content word, number and name still stays.'] : []),
     '- A null line stays null. Return ONLY a JSON array of strings or nulls, same length and order.',
     JSON.stringify(items.map((x) => x.line)),
   ].join('\n')

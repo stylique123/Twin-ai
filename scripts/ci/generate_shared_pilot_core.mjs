@@ -112,6 +112,8 @@ const SOURCES = [
   ['packages/shared/src/script/voiceGate.ts', 'supabase/functions/_shared/voiceGate.ts'],
   // The voice card: built from her own samples, scored deterministically (owner: the generic AI voice is a bug).
   ['packages/shared/src/script/voice/voiceCard.ts', 'supabase/functions/_shared/voiceCard.ts'],
+  // Panel-10: the voice card at the worker's async polish step.
+  ['packages/shared/src/script/voice/voiceCard.ts', 'worker/src/generated/voiceCard.ts'],
   // ⚠️ FIX 5 (Wave 2). The retention-map <-> final-script resync. Generated
   // rather than retyped for the same reason as shotListSync.ts just above —
   // a hand copy is exactly how the coaching panel's drift from the shipped

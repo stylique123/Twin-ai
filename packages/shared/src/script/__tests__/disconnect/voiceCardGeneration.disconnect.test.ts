@@ -41,7 +41,7 @@ describe('VOICE_CARD (generation) disconnect', () => {
   })
   it('the edge still gates, builds and briefs the card', () => {
     expect(EDGE).toContain("if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'))) return null")
-    expect(EDGE).toContain("buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off' })")
+    expect(EDGE).toContain("buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' })")
     expect(EDGE).toContain('const voiceCardBlock = voiceCard ? `\\n${voiceCardBrief(voiceCard)}` : \'\'')
   })
 })

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildBlindTest, fixtureBlindTests, parseMarks, scoreBlindTest, writeBlindTest, assertOutsideRepo, KEY_FILE, SHEET_FILE } from './voiceBlindTest.mjs'
+import { buildPanelBlindTest, fixtureRealLines, writePanelBlindTest, PANEL_KEY_FILE, buildBlindTest, fixtureBlindTests, parseMarks, scoreBlindTest, writeBlindTest, assertOutsideRepo, KEY_FILE, SHEET_FILE } from './voiceBlindTest.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
 const tests = fixtureBlindTests(fixture, { n: 3, seed: 5 })
@@ -50,5 +50,27 @@ try {
   assert.ok(w.key.endsWith(KEY_FILE) && w.sheet.endsWith(SHEET_FILE))
   assert.equal(JSON.parse(readFileSync(w.key, 'utf8')).items.length, 6)
 } finally { rmSync(dir, { recursive: true, force: true }) }
+
+// Panel mode: N panel lines per creator + N of her fixture samples, one sheet.
+{
+  const fx = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
+  const panel = [
+    { creator: 'coach-ana', script: [{ line: 'Grab a chair and start slow today.' }, { line: 'Ten sit-to-stands, nice and steady.' }, { line: 'Rest, then go again with me.' }] },
+    { creator: 'flowdesk', lines: ['Your inbox needs one rule today.', 'Saved replies take two minutes to set.', 'Try it on Monday morning first.'] },
+    { creator: 'quiet-loom', lines: ['Too short.'] },
+  ]
+  const t = buildPanelBlindTest({ panel, real: fixtureRealLines(fx), n: 3, seed: 5 })
+  assert.equal(t.key.items.length, 12)
+  assert.deepEqual(t.key.creators, ['coach-ana', 'flowdesk'])
+  assert.equal(t.key.skipped[0].creator, 'quiet-loom')
+  for (const c of ['coach-ana', 'flowdesk']) for (const s of ['generated', 'real']) assert.equal(t.key.items.filter((i) => i.creator === c && i.source === s).length, 3)
+  assert.ok(!/generated|real/.test(t.sheet.split('\n').slice(1).join('\n').replace(/[^,]*$/gm, '')), 'the sheet never names the source')
+  assert.deepEqual(buildPanelBlindTest({ panel, real: fixtureRealLines(fx), n: 3, seed: 5 }), t, 'deterministic')
+  const marks = [['item', 'creator', 'text', 'm'], ...t.key.items.map((i) => [i.item, i.creator, 'x', i.source === 'real' ? 'y' : 'n'])].map((r) => r.join(',')).join('\n')
+  assert.equal(scoreBlindTest(t.key, parseMarks(marks)).accuracy, 1)
+  const d2 = mkdtempSync(join(tmpdir(), 'voice-blind-panel-'))
+  try { assert.ok(writePanelBlindTest(join(d2, 'p'), t).key.endsWith(PANEL_KEY_FILE)) } finally { rmSync(d2, { recursive: true, force: true }) }
+  assert.throws(() => writePanelBlindTest(new URL('./', import.meta.url).pathname, t), /outside the repository/)
+}
 
 console.log('voice blind test selftest: ok')
