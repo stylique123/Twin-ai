@@ -88,7 +88,7 @@ import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } fro
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
-import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
+import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
@@ -6998,6 +6998,9 @@ async function handle(req: Request): Promise<Response> {
   const panel7GateExtras = (): Record<string, unknown> => ({
     ...(trialOn && Deno.env.get('SPOKEN_DEDUP') !== 'false' ? { spoken_dedup: true } : {}),
     ...(trialOn && Deno.env.get('LENGTH_REFILL') !== 'false' && panel7Budget > 0 ? { word_budget: panel7Budget } : {}),
+    // Plan v5.3 §19 (trial; kills NARROW_REPAIR=false, STORY_DEDUP=false).
+    ...(trialOn && Deno.env.get('NARROW_REPAIR') !== 'false' ? { narrow_repair: true } : {}),
+    ...(trialOn && Deno.env.get('STORY_DEDUP') !== 'false' ? { story_dedup: true } : {}),
   })
   const optionalPassTime = (step: string): boolean => {
     const ok = optionalPassAllowed(reqStartedAt, Date.now(), writerDegradeOn)
@@ -17090,6 +17093,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const engineTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
           const engine = runHookEngine(raw, templateLedger, {
             trial: trialOn,
+            // Plan v5.3 §19 (trial; kills HOOK_BARE_FACT=false, HOOK_CLAIM_CHECK=false).
+            noBareFact: trialOn && Deno.env.get('HOOK_BARE_FACT') !== 'false',
+            claimCheck: trialOn && Deno.env.get('HOOK_CLAIM_CHECK') !== 'false',
             request: [String(videoGoal ?? body.goal ?? ''), typeof reference_note === 'string' ? reference_note : ''].filter(Boolean).join(' '),
             products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
             targetProductId: engineTarget,
@@ -17187,6 +17193,23 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             if (Array.isArray(bpd.shot_list)) bpd.shot_list = syncShotListSpokenText(bpd.shot_list as Array<{ spoken_text?: unknown }>, bpd.script as unknown[]).shots
             bpd.spoken_dedup = dd.record
             console.log(JSON.stringify({ event: 'spoken_dedup', removed: dd.removed }))
+          }
+        }
+      } catch { /* the de-dup never fails a build */ }
+    }
+    // PLAN v5.3 §19 REPEATS BY MEANING (trial; kill STORY_DEDUP=false): a
+    // paraphrase of a story item the script also tells verbatim is removed.
+    if (trialOn && Deno.env.get('STORY_DEDUP') !== 'false' && blueprint && typeof blueprint === 'object') {
+      try {
+        const bpd = blueprint as Record<string, unknown>
+        if (Array.isArray(bpd.script)) {
+          const protect = storyFirstPick ? [storyFirstPick.text] : []
+          const sd = dedupByStoryItem(bpd.script as Array<{ line?: unknown }>, templateLedger, protect)
+          if (sd.record.dropped) {
+            bpd.script = sd.script
+            if (Array.isArray(bpd.shot_list)) bpd.shot_list = syncShotListSpokenText(bpd.shot_list as Array<{ spoken_text?: unknown }>, bpd.script as unknown[]).shots
+            bpd.story_dedup = sd.record
+            console.log(JSON.stringify({ event: 'story_dedup', removed: sd.record.dropped }))
           }
         }
       } catch { /* the de-dup never fails a build */ }
