@@ -17193,6 +17193,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             claimCheck: trialOn && Deno.env.get('HOOK_CLAIM_CHECK') !== 'false',
             // Plan v5.4 §20 (trial; kill HOOK_BARE_FACT_GEN=false): bare-fact hooks are never candidates.
             noBareFactGen: trialOn && Deno.env.get('HOOK_BARE_FACT_GEN') !== 'false',
+            // Targeted flags v2 (trial; kill HOOK_CLAIM_GATE=false): candidates the targeted-flag patterns catch are dropped before the pick.
+            claimGate: trialOn && Deno.env.get('HOOK_CLAIM_GATE') !== 'false',
             request: [String(videoGoal ?? body.goal ?? ''), typeof reference_note === 'string' ? reference_note : ''].filter(Boolean).join(' '),
             products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
             targetProductId: engineTarget,
