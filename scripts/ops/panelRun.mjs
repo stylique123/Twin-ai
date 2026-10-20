@@ -59,6 +59,12 @@ export const ANSWER_KEY_FOR_FIELD = {
   niche: 'niche', angle: 'niche', profile: 'profile', audience: 'profile',
 }
 
+/** Plan B panel (owner decision 5): PANEL_PLAN_B=on sends `plan_b: true`, so the
+ * edge assembles the Product-mode body by code (still off when PLAN_B_ASSEMBLY=off). */
+export function panelPlanB(env = process.env) {
+  return env.PANEL_PLAN_B === 'on' || env.PANEL_PLAN_B === 'true'
+}
+
 export function panelAnswerMode(env = process.env) {
   return env.PANEL_ANSWER_MODE === 'fixture' ? 'fixture' : 'skip'
 }
@@ -180,7 +186,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     await new Promise((r) => setTimeout(r, paceMs))
     // The model lengthen pass is OFF on panel measure runs unless BATCH_LENGTHEN=on
     // (cost). The deterministic word-budget repair runs either way.
-    let body = { ...sc.body, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), idempotency_key: `${batch}-${sc.n}` }
+    let body = { ...sc.body, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...(panelPlanB() ? { plan_b: true } : {}), idempotency_key: `${batch}-${sc.n}` }
     const post = async () => {
       const t0 = Date.now()
       const res = await fetch(`${url}/functions/v1/generate-blueprint`, {

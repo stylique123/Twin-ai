@@ -2,7 +2,7 @@
 //   node scripts/ops/panelAnswers.selftest.mjs
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { fixtureAnswers, skipAnswers, panelAnswerMode, panelQuestionUse, questionRecord, questionSummary, ANSWER_KEY_FOR_FIELD, PANEL_SKIP_ANSWER } from './panelRun.mjs'
+import { fixtureAnswers, skipAnswers, panelAnswerMode, panelPlanB, panelQuestionUse, questionRecord, questionSummary, ANSWER_KEY_FOR_FIELD, PANEL_SKIP_ANSWER } from './panelRun.mjs'
 import { panelQuestions } from './exportPanel.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
@@ -18,6 +18,8 @@ for (const c of fixture.creators) {
 
 // Default stays skip.
 assert.equal(panelAnswerMode({}), 'skip')
+assert.equal(panelPlanB({}), false)
+assert.equal(panelPlanB({ PANEL_PLAN_B: 'on' }), true)
 assert.equal(panelAnswerMode({ PANEL_ANSWER_MODE: 'nonsense' }), 'skip')
 assert.equal(panelAnswerMode({ PANEL_ANSWER_MODE: 'fixture' }), 'fixture')
 
