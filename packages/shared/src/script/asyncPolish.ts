@@ -18,10 +18,14 @@
 
 /** Writer attempt 0 is capped here on the async path. */
 export const ASYNC_WRITER_PRIMARY_MS = 60_000
-/** Every writer attempt must end by this much of the request (~75-80 s of writer after setup). */
-export const ASYNC_WRITER_END_MS = 84_000
-/** The first draft is returned by about this much of the request. */
-export const ASYNC_REQUEST_TARGET_MS = 90_000
+/** Every writer attempt must end by this much of the request. Panel-current-9:
+ *  84 s killed both hedged calls on 6 of 24 (GENERATION_FAILED at 85-88 s) while
+ *  the edge allows ~150 s; polish is async, so the writer may run to 125 s
+ *  (writerTimeout.ts WRITER_TOTAL_END_MS) and a request with no writer result by
+ *  then returns a degraded blueprint, never a 500. */
+export const ASYNC_WRITER_END_MS = 125_000
+/** The first draft is returned by about this much of the request (worst case). */
+export const ASYNC_REQUEST_TARGET_MS = 135_000
 export const ASYNC_MIN_ATTEMPT_MS = 15_000
 /** The worker's whole polish step (editor + compare) is cut off here; the draft stands. */
 export const ASYNC_POLISH_BUDGET_MS = 45_000
@@ -69,7 +73,8 @@ export function polishEditorPrompt(beats: PolishBeat[], material: string, opts: 
   const numbered = beats.map((b, i) => `${i}. [${String(b.section ?? '')}] ${String(b.line ?? '')}`).join('\n')
   return [
     'Find the (at most two) weakest lines, in this order of priority:',
-    '-2. the hook promises or asks something (a detail, a reason, "what happens when", "who it is for") that no line by the third delivers in plain words: rewrite line 1 or 2 so it delivers it from her material;',
+    '-2. the hook promises or asks something (a detail, a reason, "what happens when", "who it is for") that no line by the third delivers in plain words: rewrite the line right after the hook so it delivers it from her material;',
+    'NEVER rewrite the hook (index 0, the first line): it is her recorded hook pick.',
     `-1. a middle line about a different product or topic than this video (${String(opts.subject ?? 'the subject').slice(0, 80)}): rewrite it from her material about THIS subject;`,
     '0. no line between the hook and the close gives HER know-how (the mistake people make, the step that matters, what she learned): rewrite the weakest middle line into one, from her material;',
     '1. a line that reads like a profile, bio, product page or keyword list instead of a person talking;',
@@ -107,7 +112,8 @@ export function applyPolishRewrites(beats: PolishBeat[], raw: string, material: 
     const at = Number(r?.index)
     const line = typeof r?.line === 'string' ? r.line.trim() : ''
     if (!Number.isInteger(at) || at < 0 || at >= next.length || line.split(/\s+/).length < 4) { rejected.push('bad_index'); continue }
-    if (at === first || at === last) { rejected.push('hook_or_close'); continue }
+    // The hook (line 1) is her recorded pick: never touched, even when an empty beat precedes it.
+    if (at === 0 || at === first || at === last) { rejected.push('hook_or_close'); continue }
     if (newNumbersIn(line, String(next[at].line ?? ''), material).length) { rejected.push('new_number'); continue }
     next[at] = { ...next[at], line }
     kept += 1

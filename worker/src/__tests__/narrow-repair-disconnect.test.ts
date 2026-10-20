@@ -70,10 +70,12 @@ describe('narrow_repair through the worker gate', () => {
 })
 
 describe('story_dedup through the worker gate', () => {
+  // The hook is never de-duplicated (panel 9) and the floor is kept: the paraphrase sits after the story.
   const lines = [
-    'Halfway up the bridge my unoiled chain snapped on my first commute.',
-    STORY,
     'Oil the chain every Sunday.',
+    STORY,
+    'Halfway up the bridge my unoiled chain snapped on my first commute.',
+    'Tell me how often you do yours.',
   ]
   it('on: the paraphrase of her verbatim story is removed; off: it ships', async () => {
     const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
@@ -81,7 +83,7 @@ describe('story_dedup through the worker gate', () => {
     await runInventionRecheck(job({ story_dedup: true }), on.d)
     const off = deps(lines, judgeAllS)
     await runInventionRecheck(job({}), off.d)
-    expect(scriptOf(on.saved.at(-1)!)).toEqual([STORY, 'Oil the chain every Sunday.'])
+    expect(scriptOf(on.saved.at(-1)!)).toEqual(['Oil the chain every Sunday.', STORY, 'Tell me how often you do yours.'])
     expect(scriptOf(off.saved.at(-1)!)).toEqual(lines)
   })
 })

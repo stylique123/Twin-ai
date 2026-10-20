@@ -1521,13 +1521,18 @@ export function dedupByStoryItem<B extends { line?: unknown }>(script: readonly 
   const stories = [...ledger.filter((it) => it.origin === 'her_story' && it.first_party).map((it) => it.text), ...protect].filter((x) => x.trim())
   const beats = script.map((b) => (typeof b?.line === 'string' ? splitSentences(b.line) : []).map((t) => ({ t, keep: true })))
   const record: StoryDedupRecord = { dropped: 0, beats_dropped: 0 }
+  // ⚖️ THE HOOK IS NEVER A PARAPHRASE TO DROP (panel-current-9): line 1 is the
+  // recorded hook pick, and a story_open pick paraphrases her story by design.
+  // On 5 of 5 scripts where this ran, the whole first beat was dropped and line 1
+  // stopped being a recorded pick. Every sentence of the first spoken beat stays.
+  const hookBeat = beats.findIndex((ss) => ss.length > 0)
   for (const story of stories) {
     const rel = beats.map((ss) => ss.map((x) => storyRelation(x.t, story)))
     const verbatimWords = new Set<string>()
     beats.forEach((ss, bi) => ss.forEach((x, k) => { if (x.keep && rel[bi]![k] === 'verbatim') for (const w of contentWords(x.t)) verbatimWords.add(w) }))
     if (!verbatimWords.size) continue
     beats.forEach((ss, bi) => ss.forEach((x, k) => {
-      if (!x.keep || rel[bi]![k] !== 'paraphrase') return
+      if (!x.keep || bi === hookBeat || rel[bi]![k] !== 'paraphrase') return
       if (overlap(contentWords(x.t), verbatimWords) < STORY_PARAPHRASE_MIN) return
       x.keep = false
       record.dropped++
@@ -1542,6 +1547,44 @@ export function dedupByStoryItem<B extends { line?: unknown }>(script: readonly 
     else record.beats_dropped++
   })
   return { script: out, record }
+}
+
+// ── CHECKS NEVER EMPTY A SCRIPT (panel-current-9) ───────────────────────────
+// Panel 9: 3 of 24 requests threw SCRIPT_EMPTIED_BY_CHECKS ("2 spoken lines
+// left") and shipped the writer's raw blueprint through the rescue path (no
+// hook pick, spine or template; 2 left unchecked). In all 3 the writer gave 3
+// beats and the #1291 spoken de-dup removed one. A de-dup that would take the
+// script under the spoken floor is undone (the repeat stays, as a CHECK THIS
+// LINE review line), and a script still under the floor is refilled from her
+// items before anything throws.
+
+/** The trial spoken-line floor (a body, a payoff and a close). */
+export const SPOKEN_LINE_FLOOR = 3
+
+/** Spoken lines of at least three words. */
+export function spokenLineCount(script: readonly { line?: unknown }[]): number {
+  return script.filter((b) => typeof b?.line === 'string' && b.line.trim().split(/\s+/).length >= 3).length
+}
+
+/** `after` when it keeps the floor (or `before` was already under it), else `before`. */
+export function holdSpokenFloor<B extends { line?: unknown }>(before: readonly B[], after: readonly B[], floor = SPOKEN_LINE_FLOOR): { script: B[]; held: boolean } {
+  const b = spokenLineCount(before)
+  if (spokenLineCount(after) >= floor || spokenLineCount(after) >= b) return { script: [...after], held: false }
+  return { script: [...before], held: true }
+}
+
+/** Her unused first-party units inserted before the close until the floor is met. Pure. */
+export function refillToFloor<B extends { section?: unknown; line?: unknown }>(script: readonly B[], ledger: readonly LedgerItem[], targetProductId: string | null, floor = SPOKEN_LINE_FLOOR): { script: Array<B | { section: string; line: string; refill: true }>; added: number } {
+  const out: Array<B | { section: string; line: string; refill: true }> = [...script]
+  let added = 0
+  while (spokenLineCount(out as Array<{ line?: unknown }>) < floor) {
+    const said = out.map((b) => (typeof b?.line === 'string' ? b.line : '')).join(' ')
+    const next = refillUnits(ledger, targetProductId, said)[0]
+    if (!next) break
+    out.splice(Math.max(1, out.length - 1), 0, { section: 'body', line: next, refill: true })
+    added++
+  }
+  return { script: out, added }
 }
 
 /** Run classifySentences once per judge and combine. */
@@ -2219,6 +2262,8 @@ export interface RepairAuditEntry {
   fast_class?: GateClass; strong_class?: GateClass; verdict?: GateVerdict
   reason: GateReason
   item_ids: string[]
+  /** The narrow-repair pattern type found in the pre-repair text (inventedElement), or null. Panel 9 stored none. */
+  pattern: InventedElement | null
 }
 
 /** The repair-audit kill switch: on only for trialOn requests (test and panel
@@ -2231,8 +2276,17 @@ export function repairAuditCaptureOn(trialOn: boolean, flag: unknown): boolean {
 const auditEntry = (round: number, s: GateSentence, c: ClassifiedSentence | undefined, action: RepairAuditAction, replacement?: string): RepairAuditEntry => ({
   round, i: s.i, surface: s.surface, text: s.text, action, ...(replacement !== undefined ? { replacement } : {}),
   class: c?.class ?? 'I', ...(c?.verdict ? { fast_class: c.fast_class, strong_class: c.strong_class, verdict: c.verdict } : {}),
-  reason: c?.reason ?? 'judge_missing', item_ids: [...(c?.item_ids ?? [])],
+  reason: c?.reason ?? 'judge_missing', item_ids: [...(c?.item_ids ?? [])], pattern: null,
 })
+
+/** Each audit row's narrow-repair pattern type, read off its pre-repair text. Pure. */
+export function withAuditPatterns(rows: readonly RepairAuditEntry[], ledger: readonly LedgerItem[], products: readonly ProductName[] = []): RepairAuditEntry[] {
+  return rows.map((r) => {
+    let pattern: InventedElement | null = null
+    try { pattern = r.surface === 'script' || r.surface === 'hook_option' ? inventedElement(r.text, ledger, products)?.element ?? null : null } catch { pattern = null }
+    return { ...r, pattern }
+  })
+}
 
 /** Lines the first pass flagged (class I, or a review/block verdict) that no repair step touched. */
 function keptAuditEntries(first: { sentences: readonly GateSentence[]; classified: readonly ClassifiedSentence[] }, acted: ReadonlySet<string>): RepairAuditEntry[] {
@@ -2512,7 +2566,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       // Measure only: verdicts recorded, nothing repaired, review lines as classified.
       return { blueprint: input.blueprint, questions: [], record: { ...base(), sentences: recordSentences(first.classified), before, after: before, ms: now() - t0, judge_malformed: malformed, perf: { ...perf, ms_total: now() - t0 },
         verdicts: verdictCounts(first.classified), review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(first.classified),
-        ...(input.repairAudit ? { repair_audit: keptAuditEntries(first, new Set()) } : {}) } }
+        ...(input.repairAudit ? { repair_audit: withAuditPatterns(keptAuditEntries(first, new Set()), input.ledger, products) } : {}) } }
     }
     let bp = input.blueprint
     let cur: State = first
@@ -2617,12 +2671,14 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     }
     let deduped = 0
     if (input.spokenDedup) {
-      const d = dedupeSpokenLines(Array.isArray(bp.script) ? bp.script as Array<{ line?: unknown }> : [], input.protect ?? [])
-      if (d.removed) { bp = { ...bp, script: d.script }; deduped = d.removed }
+      const before = Array.isArray(bp.script) ? bp.script as Array<{ line?: unknown }> : []
+      const d = dedupeSpokenLines(before, input.protect ?? [])
+      if (d.removed && !holdSpokenFloor(before, d.script).held) { bp = { ...bp, script: d.script }; deduped = d.removed }
     }
     if (input.storyDedup) {
-      const d = dedupByStoryItem(Array.isArray(bp.script) ? bp.script as Array<{ line?: unknown }> : [], input.ledger, input.protect ?? [])
-      if (d.record.dropped) { bp = { ...bp, script: d.script }; deduped += d.record.dropped }
+      const before = Array.isArray(bp.script) ? bp.script as Array<{ line?: unknown }> : []
+      const d = dedupByStoryItem(before, input.ledger, input.protect ?? [])
+      if (d.record.dropped && !holdSpokenFloor(before, d.script).held) { bp = { ...bp, script: d.script }; deduped += d.record.dropped }
     }
     let toppedUp = 0
     const lost = repaired.dropped + repaired.asked + deduped + cur.classified.filter((c) => c.verdict === 'review' && c.surface === 'script').length
@@ -2647,7 +2703,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(cur.classified),
       ...(placeholderBlock ? { placeholder_block: placeholderBlock } : {}),
       ...(refillRecord ? { refill: refillRecord } : {}),
-      ...(input.repairAudit ? { repair_audit: [...keptAuditEntries(first, acted), ...audit] } : {}),
+      ...(input.repairAudit ? { repair_audit: withAuditPatterns([...keptAuditEntries(first, acted), ...audit], input.ledger, products) } : {}),
     }
     // A declined slot that fell back to the general version is not offered again.
     return { blueprint: bp, record, questions: questions.filter((q) => !declined.has(q.writes_to)) }

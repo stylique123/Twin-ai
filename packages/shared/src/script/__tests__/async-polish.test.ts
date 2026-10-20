@@ -42,12 +42,12 @@ describe('async writer deadline (fake timings)', () => {
     expect(r.ok).toBe(true)
     expect(r.writerEnd).toBe(47_000)
   })
-  it('a slow primary is cut at 60 s and the fallback still ends by 84 s', () => {
+  it('a slow primary is cut at 60 s and the fallback still ends by 125 s', () => {
     const r = ladder([100_000, 15_000], 4_000, asyncT)
     expect(r.ok).toBe(true)
     expect(r.writerEnd).toBeLessThanOrEqual(ASYNC_WRITER_END_MS)
   })
-  it('a dead writer gives up by 84 s; the old arithmetic ran to ~121 s', () => {
+  it('a dead writer gives up by 125 s; the old arithmetic ran to ~121 s', () => {
     const r = ladder([200_000, 200_000], 4_000, asyncT)
     expect(r.ok).toBe(false)
     expect(r.writerEnd).toBeLessThanOrEqual(ASYNC_WRITER_END_MS)
@@ -56,7 +56,7 @@ describe('async writer deadline (fake timings)', () => {
   })
   it('attempt caps and the request target', () => {
     expect(asyncDeadlineTimeout(0, PRIMARY_BASE, T0, T0)).toBe(ASYNC_WRITER_PRIMARY_MS)
-    expect(asyncDeadlineTimeout(1, FALLBACK_BASE, T0, T0 + 72_000)).toBeNull()
+    expect(asyncDeadlineTimeout(1, FALLBACK_BASE, T0, T0 + 112_000)).toBeNull()
     expect(ASYNC_WRITER_END_MS + 6_000).toBeLessThanOrEqual(ASYNC_REQUEST_TARGET_MS)
   })
 })
@@ -137,13 +137,13 @@ describe('parallel writer hedge (fake clock)', () => {
     const out = await p
     expect(out).toMatchObject({ text: 'full', winner: 1, partial: 'partial', calls: 2 })
   })
-  it('both hang: gives up by 84 s of the request', async () => {
+  it('both hang: gives up by 125 s of the request', async () => {
     vi.useFakeTimers()
     const out = await oneRequest(null, 999_000)
     expect(out.text).toBeNull()
     expect(out.endMs).toBeLessThanOrEqual(ASYNC_WRITER_END_MS)
   })
-  it('24 requests at the panel-7 distributions: failure rate, hedge share, every writer done by 84 s', async () => {
+  it('24 requests at the panel-7 distributions: failure rate, hedge share, every writer done by 125 s', async () => {
     vi.useFakeTimers()
     const sample = await simulate(7, 24)
     const big = await simulate(11, 2_400)

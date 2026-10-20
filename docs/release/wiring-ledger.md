@@ -57,8 +57,9 @@ F = fixed (a before/after rate exists). `-` means not met yet.
 | 25 | #1292 Plan B assembly | `index.ts:17301` `assemblePlanB()`; polish `index.ts:17302` | `trialOn` and (`PLAN_B_ASSEMBLY=true` or body `plan_b`) | `PLAN_B_ASSEMBLY`, `PLAN_B_POLISH` | `packages/shared/src/script/__tests__/disconnect/planB.disconnect.test.ts` | `plan_b_assembled`, `plan_b_skipped` | none | C - - |
 | 26 | #1286 repair audit capture | `recheck.ts:213` `repairAuditCaptureOn()` (env read `recheck.ts:349`) | `hold_asks` (trial) | `REPAIR_AUDIT_CAPTURE` | `worker/src/__tests__/repair-audit-capture.test.ts` | the gate record's `repair_audit` entries; `scripts/ops/repairAuditSheet.mjs` | none | C - - |
 | 27 | Reddit off switch (#1283) | `worker/src/nicheBrain/sweep.ts:163`, which calls `runNicheReddit` and then `nicheReddit.ts:32` `nicheRedditEnabled()` | off by default | `NICHE_REDDIT_ENABLED` (on only when `true`) | `worker/src/__tests__/niche-reddit-disconnect.test.ts` | `niche_reddit` (absent while off) | n/a (off switch) | C - - |
+| 28 | Writer timeout fallback (panel-current-9) | `index.ts:12765` `writerTimeoutFallbackOn()` around the writer call; `degradedBlueprint()` | `trialOn` and async polish | `WRITER_TIMEOUT_FALLBACK` | `packages/shared/src/script/__tests__/disconnect/writerTimeoutFallback.disconnect.test.ts` | `writer_degraded` (log and ops_events); `degraded` on the blueprint | simulated 0.02 degraded per 24 (panel 8+9 durations) | C - - |
 
-**Totals.** 27 rows. 26 have a disconnect test. 1 has one on the worker side only (row 23).
+**Totals.** 28 rows. 27 have a disconnect test. 1 has one on the worker side only (row 23).
 **None is missing one.** None is FIXED: no row has a live before/after rate. Only row 13 has a measured
 effect (offline replay), so it is the only row marked USED.
 
