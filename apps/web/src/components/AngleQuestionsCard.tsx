@@ -5,6 +5,11 @@ import { loadAnglePlan, sendAngleAnswer, type AngleCardView, type AngleQuestionV
 // questions under it, each with Skip. Answers and skips go to the server
 // (angle_answer); answered text is handed up as `mn_answers` for the build.
 // Renders nothing when the server says the trial is off for this account.
+/** Skip caution on; `VITE_SKIP_CAUTION_KILL=1` turns it off (skip then records at once, as before). */
+export function skipCautionOn(): boolean {
+  return String(import.meta.env.VITE_SKIP_CAUTION_KILL ?? '').trim() !== '1'
+}
+
 export function AngleQuestionsCard(props: {
   goal?: string
   objective?: string
@@ -18,6 +23,9 @@ export function AngleQuestionsCard(props: {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Record<string, 'answered' | 'skipped'>>({})
   const [answers, setAnswers] = useState<Record<string, string>>({})
+  // Skip caution (plan v5.4 O): the key she is about to skip, and keys reopened for one line.
+  const [cautionFor, setCautionFor] = useState<string | null>(null)
+  const [oneLine, setOneLine] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     let live = true
@@ -39,6 +47,12 @@ export function AngleQuestionsCard(props: {
     void sendAngleAnswer(q, text, productId)
     setDone((d) => ({ ...d, [q.key]: text ? 'answered' : 'skipped' }))
     if (text) setAnswers((a) => ({ ...a, [q.key]: text }))
+    setCautionFor(null)
+  }
+  // Every question under an angle is one the angle needs, so a skip asks first.
+  const skip = (q: AngleQuestionView) => (skipCautionOn() ? setCautionFor(q.key) : finish(q, null))
+  const anotherAngle = () => {
+    setCautionFor(null); setPicked(null); setQuestions([]); setDrafts({}); setOneLine({})
   }
   return (
     <div className="mt-4" data-testid="mn-angles">
@@ -57,15 +71,24 @@ export function AngleQuestionsCard(props: {
           {questions.map((q) => (
             <div key={q.key}>
               <span className="block text-sm text-cream">{q.text}</span>
-              {done[q.key] ? (
+              {cautionFor === q.key ? (
+                <div className="mt-1 rounded-lg border border-amber/40 p-2" data-testid="skip-caution">
+                  <span className="block text-[12px] text-cream">This angle needs this. Without it, Twin can:</span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => finish(q, null)} className="rounded-lg border border-white/12 px-2 text-[12px] text-cream">Write a general version</button>
+                    <button type="button" onClick={() => { setCautionFor(null); setOneLine((o) => ({ ...o, [q.key]: true })) }} className="rounded-lg border border-white/12 px-2 text-[12px] text-cream">Add one more line</button>
+                    <button type="button" onClick={anotherAngle} className="rounded-lg border border-white/12 px-2 text-[12px] text-cream">Try another angle</button>
+                  </div>
+                </div>
+              ) : done[q.key] ? (
                 <span className="text-[12px] text-stone">{done[q.key] === 'answered' ? 'Saved' : 'Skipped'}</span>
               ) : (
                 <div className="mt-1 flex gap-2">
-                  <input aria-label={q.text} className="flex-1 rounded-lg border border-white/12 bg-transparent px-2 py-1 text-[13px] text-cream"
+                  <input aria-label={q.text} placeholder={oneLine[q.key] ? 'Just one line is enough' : undefined} className="flex-1 rounded-lg border border-white/12 bg-transparent px-2 py-1 text-[13px] text-cream"
                     value={drafts[q.key] ?? ''} onChange={(e) => setDrafts((d) => ({ ...d, [q.key]: e.target.value }))} />
                   <button type="button" disabled={!(drafts[q.key] ?? '').trim()} onClick={() => finish(q, (drafts[q.key] ?? '').trim())}
                     className="rounded-lg border border-white/12 px-2 text-[12px] text-cream">Save</button>
-                  <button type="button" onClick={() => finish(q, null)} className="px-2 text-[12px] text-stone">Skip</button>
+                  <button type="button" onClick={() => skip(q)} className="px-2 text-[12px] text-stone">Skip</button>
                 </div>
               )}
             </div>

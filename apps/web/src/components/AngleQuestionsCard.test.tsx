@@ -36,6 +36,7 @@ describe('AngleQuestionsCard', () => {
     fireEvent.click(screen.getByText(/Tell the moment/))
     await screen.findByText(question.text)
     fireEvent.click(screen.getByText('Skip'))
+    fireEvent.click(screen.getByText('Write a general version'))
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('generate-blueprint', expect.objectContaining({ body: expect.objectContaining({ mode: 'angle_answer', key: 'mn:story', skip: true }) })))
     expect(screen.getByText('Skipped')).toBeTruthy()
     expect(onAnswers).toHaveBeenLastCalledWith({})
@@ -49,5 +50,45 @@ describe('AngleQuestionsCard', () => {
     fireEvent.click(screen.getByText('Save'))
     await waitFor(() => expect(onAnswers).toHaveBeenLastCalledWith({ 'mn:story': 'My tin cracked in the oven.' }))
     expect(invoke).toHaveBeenCalledWith('generate-blueprint', expect.objectContaining({ body: expect.objectContaining({ mode: 'angle_answer', answer: 'My tin cracked in the oven.' }) }))
+  })
+  describe('skip caution (plan v5.4 O)', () => {
+    const toQuestion = async () => {
+      invoke.mockImplementation(serve)
+      render(<AngleQuestionsCard onAnswers={() => {}} />)
+      fireEvent.click(await screen.findByText(/Tell the moment/))
+      await screen.findByText(question.text)
+      fireEvent.click(screen.getByText('Skip'))
+    }
+    const answerCalls = () => invoke.mock.calls.filter((c) => (c[1] as { body: { mode: string } }).body.mode === 'angle_answer')
+    it('a skip offers three choices and sends nothing yet', async () => {
+      await toQuestion()
+      expect(screen.getByTestId('skip-caution')).toBeTruthy()
+      expect(screen.getByText('Write a general version')).toBeTruthy()
+      expect(screen.getByText('Add one more line')).toBeTruthy()
+      expect(screen.getByText('Try another angle')).toBeTruthy()
+      expect(answerCalls()).toHaveLength(0)
+    })
+    it('"Add one more line" reopens the question for a single line', async () => {
+      await toQuestion()
+      fireEvent.click(screen.getByText('Add one more line'))
+      const input = screen.getByLabelText(question.text) as HTMLInputElement
+      expect(input.placeholder).toBe('Just one line is enough')
+      expect(answerCalls()).toHaveLength(0)
+    })
+    it('"Try another angle" goes back to the three cards', async () => {
+      await toQuestion()
+      fireEvent.click(screen.getByText('Try another angle'))
+      expect(screen.queryByTestId('mn-questions')).toBeNull()
+      expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(3)
+      expect(answerCalls()).toHaveLength(0)
+    })
+    it('kill switch: skip records at once, no caution', async () => {
+      vi.stubEnv('VITE_SKIP_CAUTION_KILL', '1')
+      try {
+        await toQuestion()
+        expect(screen.queryByTestId('skip-caution')).toBeNull()
+        await waitFor(() => expect(answerCalls()).toHaveLength(1))
+      } finally { vi.unstubAllEnvs() }
+    })
   })
 })

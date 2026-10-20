@@ -22,6 +22,44 @@ export function checkLinesOf(bp: { check_lines?: unknown } | null | undefined): 
   })
 }
 
+/**
+ * Why Twin flagged the line, in plain words. Covers the gate reasons
+ * (inventionGate GateReason) and the targeted reasons from #1297
+ * (checkLines TargetedReason). Unknown codes get a safe generic sentence.
+ */
+const REASON_TEXT: Record<string, string> = {
+  // targeted flags (#1297)
+  absolute_efficacy: 'It promises a result works every time. Is that true for you?',
+  invented_team: 'It mentions a team or staff you never told Twin about.',
+  invented_origin: 'It tells how you started, and Twin has no story like that from you.',
+  invented_habit: 'It says you do something regularly, and Twin never heard that from you.',
+  unbacked_number: 'It has a number nothing you gave Twin states.',
+  unbacked_name: 'It names someone or something you never mentioned.',
+  scarcity_unbacked: 'It says stock or time is running out, and Twin has nothing saying so.',
+  // gate reasons
+  stronger_than_item: 'It says more than what you told Twin.',
+  hyperbole: 'It may overstate things.',
+  no_item: 'Nothing you gave Twin backs this up.',
+  number_unmatched: "The number doesn't match what you gave Twin.",
+  cross_product: 'It may be about a different product.',
+  gated_no_first_party: 'It makes a claim only you can confirm.',
+  scarcity_not_live: 'It says stock or time is running out, and Twin has nothing saying so.',
+  event_unbacked: 'It describes something that happened, and Twin never heard about it from you.',
+  invented_quote: 'It quotes someone, and Twin has no such quote from you.',
+  opinion_unbacked: "It gives an opinion Twin hasn't heard from you.",
+  general_unsourced: 'Twin wrote this without anything you gave it.',
+  habit_unbacked: 'It says you do something regularly, and Twin never heard that from you.',
+  safety_promise: 'It makes a safety promise. Only keep it if you can stand behind it.',
+  first_person_claim: 'It says something about you that Twin could not check.',
+  invented_frequency: 'It says how often something happens, and Twin never heard that from you.',
+  invented_specific: 'It adds a detail you never gave Twin.',
+  advice: 'It gives advice. Make sure it is advice you would give.',
+  judge_missing: "Twin couldn't finish checking this line.",
+}
+export function reasonText(reason: string | null | undefined): string {
+  return REASON_TEXT[String(reason ?? '')] ?? "Twin isn't sure this is true for you."
+}
+
 export function checkLineVisible(userId: string | null | undefined): boolean {
   return trialUser(userId) && String(import.meta.env.VITE_CHECK_LINE_KILL ?? '').trim() !== '1'
 }
@@ -66,6 +104,7 @@ export function CheckThisLine({ userId, generationId, blueprint, onDone, send = 
             <p className="text-sm">
               {line.slice(0, c.span.start)}<mark>{line.slice(c.span.start, c.span.end)}</mark>{line.slice(c.span.end)}
             </p>
+            <p className="text-xs" data-testid={`check-line-reason-${c.line_index}`}>{reasonText(c.reason)}</p>
             {editing === c.line_index ? (
               <div className="space-y-2">
                 <textarea aria-label="Your line" className="w-full rounded border p-2 text-sm" value={draft} onChange={(e) => setDraft(e.target.value)} />
