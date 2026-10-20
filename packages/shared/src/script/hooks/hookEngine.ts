@@ -78,8 +78,8 @@ export function candidateQuota(eligible: readonly HookShape[], n = 9): string[] 
 }
 
 /** The writer-prompt block that asks for candidates in the same response. '' when nothing is eligible. */
-export function renderHookCandidateRule(ledger: readonly LedgerItem[]): string {
-  const eligible = eligibleShapes(ledger)
+export function renderHookCandidateRule(ledger: readonly LedgerItem[], opts: { noBareFact?: boolean } = {}): string {
+  const eligible = eligibleShapes(ledger).filter((s) => !(opts.noBareFact && BARE_FACT_SHAPES.has(s.id)))
   const quota = candidateQuota(eligible)
   if (quota.length === 0) return ''
   const per = new Map<string, number>()
@@ -89,7 +89,21 @@ export function renderHookCandidateRule(ledger: readonly LedgerItem[]): string {
     `HOOK CANDIDATES: also return hook_candidates, ${quota.length} entries of { shape, text }, spread across these shapes (count in brackets):`,
     ...lines,
     '  Each text is one spoken line built only from the material above. Use no number that is not in her material, no "everyone", "nobody" or "most" without a real count, and no first-person event she did not tell you about.',
+    ...(opts.noBareFact ? [BARE_FACT_PROMPT_RULE] : []),
   ].join('\n')
+}
+
+/** Plan v5.4 §20 (trial; kill HOOK_BARE_FACT_GEN=false): the writer is told not to write a bare fact as a hook. */
+export const BARE_FACT_PROMPT_RULE = '  Never write a bare fact as a hook: no price-and-size line, no spec list, no line that only states how the product is made. A hook speaks to the viewer, asks, warns or opens her story.'
+
+const PRONOUN_RE = /\b(?:i|i'm|i've|me|my|we|our|us|you|your|you're|yours)\b/i
+/** Opens on a price, a quantity, or a made/process participle ("Hand-thrown, …", "Roasted on …"). */
+const SPEC_START_RE = /^(?:[$£€]\s?\d|\d|(?:a|an)\s+(?:\d|free\b)|(?:hand[- ]\w+|made|roasted|brewed|fired|thrown|trimmed|glazed|built|designed|crafted|sewn|baked|shipped|packed|poured|available)\b)/i
+/** A bare spec line: opens on a price, size or process, with no person and no question in it, and short. */
+export function isBareSpecLine(text: string): boolean {
+  const t = String(text ?? '').trim().replace(/’/g, "'")
+  if (!t || /\?/.test(t) || PRONOUN_RE.test(t) || !SPEC_START_RE.test(t)) return false
+  return wordCount(t) <= 12
 }
 
 function round3(n: number): number { return Math.round(n * 1000) / 1000 }
@@ -375,6 +389,10 @@ export interface HookEngineOptions {
   /** Trial (plan v5.3 §19; kill HOOK_BARE_FACT=false): no bare-fact hook
    *  (price_or_proof shape, fact_open source) is ever picked. */
   noBareFact?: boolean
+  /** Trial (plan v5.4 §20; kill HOOK_BARE_FACT_GEN=false): bare-fact hooks are
+   *  never GENERATED: no fact_open candidate, and a writer candidate with a
+   *  bare-fact shape or a bare spec line is dropped before scoring. */
+  noBareFactGen?: boolean
   /** Trial (plan v5.3 §19; kill HOOK_CLAIM_CHECK=false): a hook with an
    *  unbacked first-person claim fails (hookClaimOk). */
   claimCheck?: boolean
@@ -389,12 +407,14 @@ function runTrial(
   ledger: readonly LedgerItem[],
   opts: HookEngineOptions,
 ): { records: HookCandidateRecord[]; texts: string[] } {
+  const bareGen = (c: HookCandidateInput & { source: HookCandidateSource }) =>
+    !!opts.noBareFactGen && (isBareFactHook(c) || isBareSpecLine(typeof c?.text === 'string' ? c.text : ''))
   const opens = openCandidates(ledger, { request: opts.request, targetProductId: opts.targetProductId })
   const writerTexts = new Set(writer.map((c) => (typeof c?.text === 'string' ? c.text.trim().toLowerCase() : '')))
   const all: (HookCandidateInput & { source: HookCandidateSource })[] = [
     ...opens.filter((c) => !writerTexts.has(String(c.text).toLowerCase())),
     ...writer.slice(0, HOOK_CANDIDATE_MAX).map((c) => ({ ...c, source: 'writer' as const })),
-  ]
+  ].filter((c) => !bareGen(c))
   const records: HookCandidateRecord[] = []
   const texts: string[] = []
   all.forEach((c, index) => {
