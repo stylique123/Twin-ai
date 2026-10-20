@@ -4,6 +4,7 @@ import {
   assemblePlanB, applyPolish, withinBounds, sourcedLine, allSourced, planBScript, planBRecord, parsePolish,
   planBInputFromLedger, planBEligible, phraseFact, PLAN_B_DEFAULT_CTA, type PlanBInput,
 } from '../planner/planBAssembly'
+import { polishCheck, factRole, isBareSpec, hookableFact, planBPolishPrompt, CONNECTOR_MAX_WORDS } from '../planner/planBAssembly'
 import { buildLedger } from '../inventionGate'
 import { DURATION_PROFILES } from '../templates/templateData'
 
@@ -58,7 +59,7 @@ describe('verbatim story kept', () => {
     const r = assemblePlanB(input())
     const bad = r.lines.map(() => 'Totally different words here now.')
     const p = applyPolish(r.lines, bad, r.sources)
-    expect(p.lines.filter((l) => l.section !== 'fact' && l.section !== 'cta').every((l, i) => l === r.lines[i])).toBe(true)
+    expect(p.lines.filter((l) => l.section === 'hook' || l.section === 'story').every((l, i) => l === r.lines[i])).toBe(true)
     const s = planBScript(p.lines, STORY).script.map((b) => b.line).join(' ')
     expect(s.includes(STORY.split('. ').slice(1, 3).join('. '))).toBe(true)
   })
@@ -78,11 +79,12 @@ describe('bounds fallback', () => {
   })
   it('a failing line falls back to its unpolished text; a passing one is marked polished', () => {
     const r = assemblePlanB(input())
-    const cand = r.lines.map((l) => (l.section === 'fact' && l.source_ids[0] === 'p3' ? 'By hand, the wax is poured in small batches of twelve jars.'
-      : l.section === 'fact' ? `${l.line.replace(/\.$/, '')} with free shipping worldwide.` : null))
+    const body = (l: { section: string }) => l.section === 'fact' || l.section === 'method' || l.section === 'reality'
+    const cand = r.lines.map((l) => (l.source_ids[0] === 'p3' ? 'By hand, the wax is poured in small batches of twelve jars.'
+      : body(l) ? `${l.line.replace(/\.$/, '')} with free shipping worldwide.` : null))
     const p = applyPolish(r.lines, cand, r.sources)
     expect(p.polished).toBe(1)
-    expect(p.fell_back).toBe(r.lines.filter((l) => l.section === 'fact').length - 1)
+    expect(p.fell_back).toBe(r.lines.filter(body).length - 1)
     for (const l of p.lines) expect(/shipping/.test(l.line)).toBe(false)
     expect(allSourced(p.lines, r.sources)).toBe(true)
   })
@@ -135,5 +137,112 @@ describe('ledger input', () => {
     expect(planBEligible(inp)).toBe(true)
     expect(planBEligible({ story: null, facts: [] })).toBe(false)
     expect(phraseFact('$24', 'price')).toBe('It costs $24.')
+  })
+})
+
+// ── PLAN v5.4 §20: per-template sections, polish check, onboarding answers ──
+
+describe('template sections', () => {
+  it('hook from her story, then story, method, one reality check, one CTA from her offer', () => {
+    const r = assemblePlanB(input({ facts: [...FACTS, { id: 'p4', text: 'A Halden Market shopper wrote that the jar lasted six weeks', kind: 'product_fact', field: 'testimonial' }, { id: 'p5', text: 'Over 300 five star reviews on the shop page', kind: 'product_fact', field: 'review' }] }))
+    const order = r.lines.map((l) => l.section)
+    expect(order[0]).toBe('hook')
+    expect(order[1]).toBe('story')
+    expect(order).toContain('method')
+    expect(r.sections.reality).toBe(1)
+    expect(r.sections.cta).toBe(1)
+    expect(order.indexOf('method')).toBeLessThan(order.indexOf('reality'))
+    expect(r.lines.at(-1)!.source_ids[0]).toBe('offer')
+    expect(allSourced(r.lines, r.sources)).toBe(true)
+  })
+  it('no reality check without a sourced item', () => {
+    expect(assemblePlanB(input()).sections.reality).toBe(0)
+  })
+  it('no story: the hook is a specific real fact, never a bare spec', () => {
+    const r = assemblePlanB(input({ story: null }))
+    expect(r.lines[0]!.section).toBe('hook')
+    expect(r.lines[0]!.source_ids[0]).not.toBe('p2')
+    expect(isBareSpec({ text: '$24', field: 'price' })).toBe(true)
+    expect(isBareSpec({ text: '8 oz jar', field: null })).toBe(true)
+    expect(isBareSpec({ text: 'I test every scent in my own kitchen before it ships', field: null })).toBe(false)
+  })
+  it('only bare specs and no story: Plan B is not eligible', () => {
+    expect(planBEligible({ story: null, facts: [{ id: 'p2', text: '$24', kind: 'product_fact', field: 'price' }, { id: 'p6', text: '12 jars', kind: 'product_fact', field: 'count' }] })).toBe(false)
+  })
+  it('roles: process and her own-method answer are method; testimonial is reality', () => {
+    expect(factRole({ id: 'a', text: 'x', kind: 'product_fact', field: 'process' })).toBe('method')
+    expect(factRole({ id: 'a', text: 'x', kind: 'her_fact', field: 'framework' })).toBe('method')
+    expect(factRole({ id: 'a', text: 'x', kind: 'product_fact', field: 'testimonial' })).toBe('reality')
+    expect(factRole({ id: 'a', text: 'x', kind: 'her_fact', field: 'testimonial' })).toBe('fact')
+    expect(hookableFact({ id: 'a', text: 'I make candles for tired night-shift nurses', kind: 'her_fact', field: 'niche' })).toBe(false)
+  })
+})
+
+describe('onboarding answers are first-party items', () => {
+  it('the asked rows and request answers reach the pool; an answered story slot is her story', () => {
+    const ledger = buildLedger({
+      knowledge: [{ id: 'k-own', kind: 'framework', text: 'I cure every batch for two weeks before I pour it into jars' }],
+      answers: { story: 'My first candle cracked in the cold. I learned to warm the jar first.', niche: 'Slow home rituals', product_slot: 'The Ember jar is my bestseller among regulars' },
+      products: [{ id: 'prod-a', knowledge: [] }], targetProductId: 'prod-a', offer: 'Get the Ember jar from my shop', now: 0,
+    })
+    const inp = planBInputFromLedger(ledger, null, 'prod-a', 'standard')
+    expect(inp.story?.id).toBe('answer:story')
+    const ids = inp.facts.map((f) => f.id)
+    expect(ids).toContain('k-own')
+    expect(ids).toContain('answer:product_slot')
+    expect(ids).toContain('answer:niche')
+    const r = assemblePlanB(inp)
+    expect(r.lines[0]!.source_ids[0]).toBe('answer:story')
+    expect(r.lines.some((l) => l.section === 'method' && l.source_ids[0] === 'k-own')).toBe(true)
+    expect(r.lines.some((l) => l.source_ids[0] === 'answer:niche')).toBe(false)
+  })
+  it('a skipped answer is not an item', () => {
+    const ledger = buildLedger({ answers: { story: 'Nothing specific, keep it general.' }, now: 0 })
+    expect(planBInputFromLedger(ledger, null, null, 'standard').story).toBeNull()
+  })
+})
+
+describe('polish check', () => {
+  const orig = 'Each candle burns for about 40 hours at Halden Market.'
+  it('accepts a reword and a short connector', () => {
+    expect(polishCheck(orig, 'At Halden Market, each candle burns for about 40 hours.').ok).toBe(true)
+    const c = polishCheck(orig, 'Here is the part I love, each candle burns for about 40 hours at Halden Market.')
+    expect(c.ok).toBe(true)
+    expect(c.connector).toBe(true)
+  })
+  it('rejects a dropped number', () => {
+    expect(polishCheck(orig, 'Each candle burns for many hours at Halden Market.').reason).toBe('lost_number')
+  })
+  it('rejects a new number', () => {
+    expect(polishCheck(orig, 'Each candle burns for about 40 hours at Halden Market, 3 wicks.').reason).toBe('new_number')
+    expect(polishCheck(orig, 'So, 2 things: each candle burns for about 40 hours at Halden Market.').ok).toBe(false)
+  })
+  it('rejects a dropped name', () => {
+    expect(polishCheck(orig, 'Each candle burns for about 40 hours at the market.').reason).toBe('lost_name')
+  })
+  it('rejects a new proper noun', () => {
+    expect(polishCheck(orig, 'Each candle burns for about 40 hours at Halden Market in Portland.').reason).toBe('new_name')
+  })
+  it('rejects a new claim, even inside a connector', () => {
+    expect(polishCheck(orig, 'Honestly the best candle ever, each candle burns for about 40 hours at Halden Market.').ok).toBe(false)
+    expect(polishCheck(orig, 'Each candle burns for about 40 hours at Halden Market. It is totally non-toxic.').ok).toBe(false)
+    expect(polishCheck('The wax is poured by hand.', 'The wax is poured by hand with free shipping.').ok).toBe(false)
+  })
+  it(`rejects a connector over ${CONNECTOR_MAX_WORDS} words`, () => {
+    expect(polishCheck(orig, 'So here is the thing that I really want you to know about this right now, each candle burns for about 40 hours at Halden Market.').ok).toBe(false)
+  })
+  it('on rejection applyPolish keeps the unpolished line', () => {
+    const r = assemblePlanB(input())
+    const cand = r.lines.map((l) => (l.section === 'hook' || l.section === 'story' || l.section === 'cta' ? null : `${l.line.replace(/\.$/, '')} at Kestrel Mall.`))
+    const p = applyPolish(r.lines, cand, r.sources)
+    expect(p.polished).toBe(0)
+    expect(p.lines.map((l) => l.line)).toEqual(r.lines.map((l) => l.line))
+  })
+  it('the polish prompt carries her voice card and style note', () => {
+    const r = assemblePlanB(input())
+    const pr = planBPolishPrompt(r.lines, { card: 'Short sentences. Warm, dry.', styleNote: 'No exclamation marks.' })
+    expect(pr).toContain('Short sentences. Warm, dry.')
+    expect(pr).toContain('No exclamation marks.')
+    expect(pr).toContain(`at most ${CONNECTOR_MAX_WORDS} words`)
   })
 })

@@ -2,7 +2,7 @@
 //   node scripts/ops/panel.selftest.mjs
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { panelScenarios, skipAnswers, PANEL_SKIP_ANSWER } from './panelRun.mjs'
+import { panelScenarios, skipAnswers, PANEL_SKIP_ANSWER, panelArm, armBody } from './panelRun.mjs'
 import { productKnowledge, resolveExpiry, panelEmail, panelDomain, reusePlan, PANEL_CREDITS, PANEL_DOMAIN, LEGACY_PANEL_DOMAIN, PANEL_TAG } from './seedFictionalPanel.mjs'
 import { ledgerWithText, assertOutsideRepo, csvCell, gatePending } from './exportPanel.mjs'
 
@@ -116,3 +116,18 @@ const raw = JSON.stringify(fixture)
 assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(raw), 'no uuids')
 assert.ok(!/supabase\.co|eyJ[A-Za-z0-9]/.test(raw), 'no hosts or keys')
 console.log('panel selftest: ok')
+
+// THE SECOND ARM (plan v5.4 §20): per-request arm from the private panel row.
+{
+  const noEnv = {}
+  assert.deepEqual(armBody({ accounts: [] }, 3, noEnv), {})
+  const listed = { accounts: [], arms: { plan_b: [1, 4] } }
+  assert.deepEqual(armBody(listed, 1, noEnv), { plan_b: true, panel_arm: 'plan_b' })
+  assert.deepEqual(armBody(listed, 2, noEnv), { panel_arm: 'writer' })
+  const alt = { accounts: [], ab_split: 'alternate' }
+  assert.equal(panelArm(alt, 0, noEnv), 'writer')
+  assert.equal(panelArm(alt, 1, noEnv), 'plan_b')
+  assert.equal(panelArm({ ...alt, arms: { plan_b: [0] } }, 0, noEnv), 'plan_b')
+  assert.equal(panelArm({ accounts: [] }, 0, { PANEL_PLAN_B: 'on' }), 'plan_b')
+}
+console.log('panel arms selftest ok')
