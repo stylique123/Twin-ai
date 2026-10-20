@@ -10,7 +10,7 @@
 // the gate (`buildCheckLines`); the edge applies a decision
 // (`applyCheckLineDecision`) and does the writes. Records and logs hold the
 // line index, the reason id and offsets, never text.
-import { extractSentences, parseNumbers, type GateBlueprint, type GateReason, type LedgerItem, type Surface } from './inventionGate.js'
+import { extractSentences, parseNumbers, contentWords, type GateBlueprint, type GateReason, type LedgerItem, type Surface } from './inventionGate.js'
 
 export const CHECK_LINES_VERSION = 'check-lines-v1'
 export type CheckLineDecision = 'confirm' | 'edit' | 'remove'
@@ -22,7 +22,7 @@ export interface CheckLine {
   /** Index into blueprint.script. */
   line_index: number
   /** The gate reason id (targeted flags: the deterministic risk id). */
-  reason: GateReason | TargetedReason | 'unknown'
+  reason: GateReason | TargetedReasonV2 | 'unknown'
   /** The offending sentence's offsets inside the line text. */
   span: { start: number; end: number }
   /** Set once she decides. */
@@ -32,7 +32,7 @@ export interface CheckLine {
 export interface CheckLineRecord {
   line_index: number
   decision: CheckLineDecision
-  reason: GateReason | TargetedReason | 'unknown'
+  reason: GateReason | TargetedReasonV2 | 'unknown'
   at: string
   /** edit only: guard rule ids that trimmed her text (ids, never text). */
   guard_rules?: string[]
@@ -277,3 +277,212 @@ export function buildTargetedCheckLines(bp: GateBlueprint, items: readonly Targe
 export function targetedFlagsOn(flag: unknown): boolean {
   return String(flag ?? '').trim().toLowerCase() !== 'false'
 }
+
+// ── TARGETED FLAGS v2 (plan v5.4 §20 follow-up; trial only, kill TARGETED_FLAGS_V2=false) ──
+//
+// Panel 10: v1 UNDER-flagged. 1 flag in 24 scripts, and it was false ("one
+// week" read as a number her "a week" did not hold); all 3 invented lines were
+// missed (a fact of one product said about another, an invented inner
+// thought, "you never double reply again"). v2 keeps every v1 rule and adds:
+//   absolute_efficacy        + "never … again", "every single <noun>", "always" (claim), "completely" (outcome)
+//   invented_inner_state     "my first instinct was", "I thought/realized/learned/felt/knew" with no item saying so
+//   wrong_product            a line naming product A that uses a fact only product B holds (BLOCKED, not asked)
+//   unbacked_timeframe       a timeframe or frequency no item holds ("week two", "every week", "in five seconds"),
+//                            with tolerant normalisation ("one week" = "a week" ≈ "seven days")
+//   unsourced_generalisation "a lot of advice says", "most people", "everyone" with no item saying it
+// A line verbatim hers (>= VERBATIM_MIN, onboarding answers included) is
+// still never flagged. The same patterns gate HOOK candidates before the pick
+// (hookClaimRisk; kill HOOK_CLAIM_GATE=false). Pure; no model call.
+
+export type TargetedReasonV2 = TargetedReason | 'invented_inner_state' | 'wrong_product' | 'unbacked_timeframe' | 'unsourced_generalisation'
+export const TARGETED_FLAGS_V2_VERSION = 'targeted-flags-v2'
+/** A ledger item; `product_id` ties a product fact to its product (product_entities.id). */
+export type TargetedItemV2 = TargetedItem & { product_id?: string | null; origin?: string }
+export type TargetedProduct = { id: string; name: string }
+
+const lc = (t: string) => t.toLowerCase().replace(/[’‘]/g, "'")
+const herItems = (items: readonly TargetedItemV2[]) => items.filter((it) => it.first_party)
+const anyItemHas = (items: readonly TargetedItemV2[], re: RegExp) => items.some((it) => re.test(lc(it.text)))
+
+// Absolute efficacy, v2 additions. Each is cleared when an item of hers says the same absolute.
+const ABSOLUTE_V2: Array<[RegExp, RegExp]> = [
+  [/\bnever\b[^.!?]{0,50}?\bagain\b/i, /\bnever\b[^.!?]{0,50}?\bagain\b/],
+  [/\bevery single (?!time\b)[a-z]+/i, /\bevery (?:single )?/],
+  [/\b(?:works?|fix(?:es)?|solves?|stops?|ends?|keeps?|helps?|removes?|prevents?)\b[^.!?]{0,40}?\bcompletely\b|\bcompletely (?:fix|solve|stop|end|remove|prevent|eliminate|cure|transform)/i, /\bcompletely\b/],
+  [/\b(?:it|this|that|they|these|you(?:'ll)?|which) always (?:work|works|fix|fixes|stop|stops|help|helps|solve|solves|get|gets)\b/i, /\balways\b/],
+]
+const INNER_RE = /\bmy (?:first )?(?:instinct|thought|reaction|gut|worry|fear) was\b|\bi (?:thought|realized|realised|learned|learnt|felt|knew|assumed|panicked|wondered)\b|\bi was (?:sure|convinced|terrified|shocked|thrilled)\b/i
+function innerKey(m: string): RegExp {
+  const w = lc(m).replace(/\s+/g, ' ')
+  const own = w.match(/^my (?:first )?([a-z]+) was$/)
+  return new RegExp(`\\b${own ? own[1] : w}\\b`)
+}
+/** The thought itself is hers ("I learned that X" where X is her item): only the framing is new. */
+function innerIsHers(rest: string, mine: readonly TargetedItemV2[]): boolean {
+  const r = contentWords(rest)
+  if (r.size < 3) return false
+  return mine.some((it) => { const w = contentWords(it.text); let hit = 0; for (const x of r) if (w.has(x)) hit++; return hit / r.size >= 0.6 })
+}
+/** Unsourced generalisations on a script line: an appeal to what "advice" or "everyone" says. */
+const GENERAL_RE = /\ba lot of (?:advice|experts|coaches|guides) (?:says?|tells?|claims?|insists?|blames?)\b|\beveryone (?:says|tells you|knows|agrees)\b|\b(?:experts|studies|research) (?:say|says|show|shows|agree|prove|proves)\b/i
+/** A hook stands alone, so it is also read for "a lot of advice/routines …" and "most people …". */
+const HOOK_GENERAL_RE = /\b(?:so many|dozens of|hundreds of|thousands of)\b|\ba lot of (?:advice|people|experts|coaches|creators|guides)\b|\bmost (?:people|beginners|creators|founders|teams|experts)\b|\beveryone\b/i
+
+// ── tolerant timeframes ──
+const UNIT_DAYS: Record<string, number> = { second: 1 / 86400, sec: 1 / 86400, minute: 1 / 1440, min: 1 / 1440, hour: 1 / 24, hr: 1 / 24, day: 1, night: 1, week: 7, fortnight: 14, month: 30, year: 365 }
+const UNIT_ALT = 'seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|nights?|weeks?|fortnights?|months?|years?'
+const unitDays = (u: string): number | null => UNIT_DAYS[u.toLowerCase().replace(/s$/, '')] ?? null
+const TIME_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, ninety: 90, a: 1, an: 1, single: 1 }
+const NUM_ALT = `\\d+(?:\\.\\d+)?|${Object.keys(TIME_WORDS).join('|')}|half an?|half a|couple of|few`
+const qty = (q: string): number => {
+  const w = q.toLowerCase()
+  return /^\d/.test(w) ? Number(w) : w.startsWith('half') ? 0.5 : w === 'couple of' ? 2 : w === 'few' ? 3 : TIME_WORDS[w] ?? 1
+}
+// "a week", "one week", "seven days", "14-day"; "week two" (an ordinal: which week, not how long); "overnight".
+const TIME_RE = () => new RegExp(`\\b(${NUM_ALT})[\\s-]+(?:more\\s+|full\\s+|whole\\s+)?(${UNIT_ALT})\\b|\\b(day|week|month|year)\\s+(${NUM_ALT})\\b|\\bovernight\\b`, 'gi')
+export interface Timeframe { days: number; ordinal: boolean }
+/** Every timeframe a text states, in days: "a week" = "one week" = 7 ≈ "seven days";
+ *  "week two" is ordinal 14 (only an ordinal backs it); "overnight" = 1. */
+export function timeframesOf(text: string): Timeframe[] {
+  const out: Timeframe[] = []
+  for (const m of String(text ?? '').matchAll(TIME_RE())) {
+    if (/^overnight$/i.test(m[0])) { out.push({ days: 1, ordinal: false }); continue }
+    if (m[3]) { const d = unitDays(m[3]); if (d != null && !/^(?:a|an|single)$/i.test(m[4]!)) out.push({ days: qty(m[4]!) * d, ordinal: true }); continue }
+    const d = unitDays(m[2]!)
+    if (d != null) out.push({ days: qty(m[1]!) * d, ordinal: false })
+  }
+  return out
+}
+/** Within 15% is the same timeframe ("seven days" ≈ "a week"). */
+const sameTime = (a: Timeframe, b: Timeframe) => a.ordinal === b.ordinal && Math.abs(a.days - b.days) <= 0.15 * Math.max(a.days, b.days)
+const FREQ_V2_RE = new RegExp(`\\bevery (?:single |other )?(${UNIT_ALT}|weekday|weekend|morning|evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b`, 'i')
+function freqBacked(key: string, items: readonly TargetedItemV2[]): boolean {
+  const adj = ({ day: 'daily', week: 'weekly', month: 'monthly', night: 'nightly', year: 'yearly', hour: 'hourly' } as Record<string, string>)[key]
+  return items.some((it) => {
+    const t = lc(it.text)
+    // "on Mondays" backs "every Monday"; "two weeks" does not back "every week".
+    const plural = /day$/.test(key) && key !== 'day' ? `|\\b(?:on )?${key}s\\b` : ''
+    return new RegExp(`\\bevery (?:single |other )?${key}s?\\b${plural}`).test(t) || (!!adj && new RegExp(`\\b${adj}\\b`).test(t))
+  })
+}
+/** Timeframe phrases out, so v1 does not re-read "one week" as a bare number. */
+const stripTimeframes = (t: string) => t.replace(TIME_RE(), 'a while')
+
+/** The product a line names (by its product name), or null. Longest name wins. */
+export function namedProduct(text: string, products: readonly TargetedProduct[]): TargetedProduct | null {
+  const t = lc(text)
+  let best: TargetedProduct | null = null
+  for (const p of products) {
+    const n = lc(String(p?.name ?? '').trim())
+    if (n.length < 3 || !new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(t)) continue
+    if (!best || n.length > best.name.length) best = p
+  }
+  return best
+}
+function factShare(line: Set<string>, fact: string): { share: number; size: number } {
+  const f = contentWords(fact)
+  if (!f.size) return { share: 0, size: 0 }
+  let hit = 0
+  for (const w of f) if (line.has(w)) hit++
+  return { share: hit / f.size, size: f.size }
+}
+/** A product fact is "used" by a line holding this share of its content words. */
+export const WRONG_PRODUCT_SHARE = 0.6
+/** WRONG-PRODUCT ATTRIBUTION: the line names product A and uses a fact only
+ *  product B holds (no item outside B says the same). Returns B's id, or null.
+ *  Needs product ids on the ledger's product facts (LedgerItem.product_id). */
+export function wrongProductOf(text: string, items: readonly TargetedItemV2[], products: readonly TargetedProduct[]): string | null {
+  const a = namedProduct(text, products)
+  if (!a) return null
+  const line = contentWords(text)
+  for (const it of items) {
+    const pid = it.product_id
+    if (!pid || pid === a.id || (it.origin && it.origin !== 'product_fact')) continue
+    const { share, size } = factShare(line, it.text)
+    if (size < 3 || share < WRONG_PRODUCT_SHARE) continue
+    const backed = items.some((o) => o !== it && o.product_id !== pid && factShare(contentWords(o.text), it.text).share >= WRONG_PRODUCT_SHARE)
+    if (!backed) return pid
+  }
+  return null
+}
+
+/** v2: the deterministic risk of one sentence, or null. `products` maps ids to names. */
+export function targetedRiskV2(text: string, items: readonly TargetedItemV2[], products: readonly TargetedProduct[] = [], opts: { hook?: boolean } = {}): TargetedReasonV2 | null {
+  const t = String(text ?? '').trim()
+  if (!t) return null
+  // A product fact said under another product's name is never hers, even word for word.
+  if (products.length && wrongProductOf(t, items, products)) return 'wrong_product'
+  if (isVerbatimHers(t, items)) return null
+  const mine = herItems(items)
+  for (const [re, clear] of ABSOLUTE_V2) if (re.test(t) && !anyItemHas(mine, clear)) return 'absolute_efficacy'
+  const inner = t.match(INNER_RE)
+  if (inner && !anyItemHas(mine, innerKey(inner[0])) && !innerIsHers(t.replace(inner[0], ' '), mine)) return 'invented_inner_state'
+  const gen = t.match(GENERAL_RE) ?? (opts.hook ? t.match(HOOK_GENERAL_RE) : null)
+  if (gen && !anyItemHas(items, new RegExp(`\\b${lc(gen[0]).split(' ').slice(0, 3).join(' ')}\\b`))) return 'unsourced_generalisation'
+  const f = t.match(FREQ_V2_RE)
+  if (f && !freqBacked(f[1]!.toLowerCase().replace(/s$/, ''), items)) return 'unbacked_timeframe'
+  const times = timeframesOf(t)
+  if (times.length) {
+    const have = items.flatMap((it) => timeframesOf(it.text))
+    if (times.some((d) => !have.some((h) => sameTime(d, h)))) return 'unbacked_timeframe'
+  }
+  // Product names on file are known names (not first-party text, so never "verbatim hers").
+  const names = products.map((p) => ({ text: String(p?.name ?? ''), first_party: false, live: false }))
+  return targetedRisk(stripTimeframes(t), [...items, ...names])
+}
+
+/** HOOK CLAIM GATE (kill HOOK_CLAIM_GATE=false): the same patterns on a hook
+ *  candidate; a matching candidate is dropped before the pick. */
+export function hookClaimRisk(text: string, items: readonly TargetedItemV2[], products: readonly TargetedProduct[] = []): TargetedReasonV2 | null {
+  return targetedRiskV2(text, items, products, { hook: true })
+}
+
+export interface WrongProductBlock { line_index: number; product_id: string }
+/** BLOCK (kill WRONG_PRODUCT_BLOCK=false): each script sentence naming product A
+ *  with a fact only product B holds is DROPPED (an emptied beat is removed).
+ *  Returns a new blueprint and what was dropped (indices and ids, never text). */
+export function blockWrongProductLines(bp: GateBlueprint, items: readonly TargetedItemV2[], products: readonly TargetedProduct[]): { blueprint: GateBlueprint; blocked: WrongProductBlock[] } {
+  const script = scriptOf(bp as Record<string, unknown>)
+  if (!script.length || !products.length) return { blueprint: bp, blocked: [] }
+  const blocked: WrongProductBlock[] = []
+  const drop = new Map<number, string[]>()
+  for (const s of extractSentences(bp)) {
+    if (s.surface !== 'script') continue
+    const pid = wrongProductOf(s.text, items, products)
+    if (!pid) continue
+    blocked.push({ line_index: s.at, product_id: pid })
+    drop.set(s.at, [...(drop.get(s.at) ?? []), s.text])
+  }
+  if (!blocked.length) return { blueprint: bp, blocked }
+  const next: Beat[] = []
+  script.forEach((b, k) => {
+    const texts = drop.get(k)
+    if (!texts) { next.push(b); return }
+    let line = String(b.line ?? '')
+    for (const x of texts) line = line.replace(x, '')
+    line = line.replace(/\s{2,}/g, ' ').trim()
+    if (line) next.push({ ...b, line })
+  })
+  return { blueprint: { ...bp, script: next }, blocked }
+}
+
+/** v2 targeted check lines: every script sentence with a v2 risk. */
+export function buildTargetedCheckLinesV2(bp: GateBlueprint, items: readonly TargetedItemV2[], products: readonly TargetedProduct[] = []): CheckLine[] {
+  const script = scriptOf(bp as Record<string, unknown>)
+  const out: CheckLine[] = []
+  for (const s of extractSentences(bp)) {
+    if (s.surface !== 'script') continue
+    const reason = targetedRiskV2(s.text, items, products)
+    if (!reason) continue
+    const line = String(script[s.at]?.line ?? '')
+    const start = line.indexOf(s.text)
+    if (start < 0) continue
+    out.push({ line_index: s.at, reason, span: { start, end: start + s.text.length } })
+  }
+  return out
+}
+
+/** Kill switches (worker env TARGETED_FLAGS_V2, WRONG_PRODUCT_BLOCK; edge HOOK_CLAIM_GATE): on unless exactly 'false'. */
+export function targetedFlagsV2On(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() !== 'false' }
+export function wrongProductBlockOn(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() !== 'false' }
+export function hookClaimGateOn(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() !== 'false' }

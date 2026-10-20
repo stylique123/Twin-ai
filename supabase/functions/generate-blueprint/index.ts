@@ -124,7 +124,7 @@ import {
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
-import { voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
+import { voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -6722,7 +6722,7 @@ async function handle(req: Request): Promise<Response> {
     const { data: asked } = await sb.from('creator_knowledge').select('source, text').eq('owner_id', user.id).eq('voice_id', v.id)
       .eq('source', 'asked').order('created_at', { ascending: false }).limit(40)
     const source = await loadVoiceSourceInline(sb, user.id, v.id, (asked ?? []) as Array<{ source?: unknown; text?: unknown }>, scrubPrivate(prof))
-    const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off' })
+    const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' })
     const savedEdits = b.action === 'edit' ? sanitizeVoiceCardEdits(b.edits) : sanitizeVoiceCardEdits(prof.voice_card_edits)
     const card = built.card ? applyVoiceCardEdits(built.card, savedEdits, voiceSourceTexts(source)) : null
     console.log(JSON.stringify({ event: 'voice_card_view', action: b.action === 'edit' ? 'edit' : 'get', reason: built.reason, edited: card?.edited === true }))
@@ -8404,13 +8404,22 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
       if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'))) return null
       const source = await loadVoiceSourceInline(admin, ownerId, (voice as { id?: unknown } | null)?.id ?? null, askedRows, vp)
-      const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off' })
+      const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' })
       const edits = (voice?.profile as { voice_card_edits?: unknown } | null)?.voice_card_edits
       return { ...built, card: built.card ? applyVoiceCardEdits(built.card, sanitizeVoiceCardEdits(edits), voiceSourceTexts(source)) : null, source }
     } catch { return null }
   })()
   const voiceCard = voiceCardBuild?.card ?? null
   const voiceCardBlock = voiceCard ? `\n${voiceCardBrief(voiceCard)}` : ''
+  // ⚖️ THE VOICE AT THE POLISH STEP (panel-10; trial only, kill VOICE_POLISH=off):
+  // her style note (brand_voices.profile.style_note) and verbatim samples ride
+  // to the Plan B polish and the worker's async polish with the card.
+  const voicePolish = voiceCard && voicePolishOn(trialOn, Deno.env.get('VOICE_POLISH')) ? (() => {
+    const pr = (vp ?? {}) as { style_note?: unknown; samples?: unknown }
+    const styleNote = typeof pr.style_note === 'string' ? pr.style_note.slice(0, 300) : null
+    const samples = (Array.isArray(pr.samples) ? pr.samples : []).filter((x): x is string => typeof x === 'string').slice(0, 12)
+    return { card: voiceCard, styleNote, samples }
+  })() : null
   // ⚠️ AUDIT 2026-10-03 (part 2): the police story sat in her sample hooks AND
   // came back reworded ("the city inspector walks through our doors"). What
   // the scrub cut is also excluded text for the final guard, so its wording is
@@ -17193,6 +17202,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             claimCheck: trialOn && Deno.env.get('HOOK_CLAIM_CHECK') !== 'false',
             // Plan v5.4 §20 (trial; kill HOOK_BARE_FACT_GEN=false): bare-fact hooks are never candidates.
             noBareFactGen: trialOn && Deno.env.get('HOOK_BARE_FACT_GEN') !== 'false',
+            // Targeted flags v2 (trial; kill HOOK_CLAIM_GATE=false): candidates the targeted-flag patterns catch are dropped before the pick.
+            claimGate: trialOn && Deno.env.get('HOOK_CLAIM_GATE') !== 'false',
             request: [String(videoGoal ?? body.goal ?? ''), typeof reference_note === 'string' ? reference_note : ''].filter(Boolean).join(' '),
             products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
             targetProductId: engineTarget,
@@ -17350,8 +17361,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (planBEligible(inB)) {
           const asm = assemblePlanB(inB)
           const polishOn = Deno.env.get('PLAN_B_POLISH') !== 'off' && optionalPassTime('plan_b_polish')
-          const raw = polishOn ? await polishPlanBLines(apiKey, planBPolishPrompt(asm.lines, { card: voiceCard ? voiceCardBrief(voiceCard) : null })) : null
-          const pol = applyPolish(asm.lines, parsePolish(raw, asm.lines.length), asm.sources)
+          const raw = polishOn ? await polishPlanBLines(apiKey, planBPolishPrompt(asm.lines, { card: voiceCard ? voiceCardBrief(voiceCard) : null, styleNote: voicePolish?.styleNote ?? null, rhythm: voicePolish ? voicePolishBrief(voicePolish) : null })) : null
+          let pol = applyPolish(asm.lines, parsePolish(raw, asm.lines.length), asm.sources)
+          // ⚖️ VOICE CHECK (panel-10): keep the polish only when her voice score
+          // improves; polishCheck already held every line's claims/numbers/names.
+          if (voicePolish && pol.polished > 0) {
+            const vv = voicePolishVerdict(voicePolish.card, asm.lines.map((l) => l.line), pol.lines.map((l) => l.line), true)
+            bpb2.plan_b_voice = { before: vv.before, after: vv.after, reason: vv.reason }
+            if (!vv.keep) pol = { lines: [...asm.lines], polished: 0, fell_back: pol.fell_back + pol.polished }
+          }
           const out = planBScript(pol.lines, storyItem?.text ?? null)
           bpb2.script = out.script
           if (out.script[0]?.line) bpb2.hook_options = [out.script[0].line]
@@ -17410,7 +17428,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
-        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80) }
+        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}) }
         // The hedge's extra cost, visible on the row (counts only).
         if (writerLadderForFailure?.hedgeCalls != null) bpg.writer_hedge = { calls: writerLadderForFailure.hedgeCalls, hedged: writerLadderForFailure.hedged === true, aborted: writerLadderForFailure.hedgeAborted ?? 0 }
         bpg.polish_pending = { steps: polishDeferred.length ? [...polishDeferred] : ['self_review'], at: new Date().toISOString() }

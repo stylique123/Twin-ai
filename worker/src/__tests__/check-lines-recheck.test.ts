@@ -94,7 +94,34 @@ describe('plan v5.4 §20: targeted check lines and onboarding answers in the led
     await runInventionRecheck(job({ check_lines: true, hold_asks: true }), d)
     const cl = saved[0]!.check_lines as Array<{ line_index: number; reason: string }>
     expect(cl.map((l) => [l.line_index, l.reason])).toEqual([[3, 'absolute_efficacy']])
-    expect(saved[0]!.check_lines_version).toBe('targeted-flags-v1')
+    expect(saved[0]!.check_lines_version).toBe('targeted-flags-v2')
+    // TARGETED_FLAGS_V2=false: targeted flags v1.
+    const v1 = targetedDeps([...lines, RISKY])
+    await runInventionRecheck(job({ check_lines: true, hold_asks: true }), { ...v1.d, targetedFlagsV2Flag: 'false' })
+    expect(v1.saved[0]!.check_lines_version).toBe('targeted-flags-v1')
+  })
+  it('v2: an invented inner thought is a check line; a wrong-product fact is BLOCKED (kill WRONG_PRODUCT_BLOCK=false)', async () => {
+    const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+    const WRONG = 'Paper Kite has a double-layer sail that holds steady in gusts.'
+    const INNER = 'My first instinct was to blame the string.'
+    const withStorm = (script: string[]) => {
+      const t = targetedDeps(script)
+      t.d.loadProducts = async () => [
+        { id: KITE, name: 'Paper Kite', knowledge: [], offer: 'Paper Kite, link in bio' },
+        { id: 'prod-storm', name: 'Storm Kite', knowledge: [{ field: 'includes', value: 'A double-layer sail that holds steady in gusts' }], offer: '' },
+      ]
+      return t
+    }
+    const on = withStorm([...lines, WRONG, INNER])
+    await runInventionRecheck(job({ check_lines: true, hold_asks: true }), on.d)
+    const bp = on.saved[0]!
+    expect(bp.wrong_product_blocked).toEqual([{ line_index: 3, product_id: 'prod-storm' }])
+    expect((bp.script as Array<{ line: string }>).map((b) => b.line)).toEqual([...lines, INNER])
+    expect((bp.check_lines as Array<{ line_index: number; reason: string }>).map((l) => [l.line_index, l.reason])).toEqual([[3, 'invented_inner_state']])
+    const off = withStorm([...lines, WRONG, INNER])
+    await runInventionRecheck(job({ check_lines: true, hold_asks: true }), { ...off.d, wrongProductBlockFlag: 'false' })
+    expect(off.saved[0]!.wrong_product_blocked).toBeUndefined()
+    expect((off.saved[0]!.check_lines as Array<{ reason: string }>).map((l) => l.reason)).toEqual(['wrong_product', 'invented_inner_state'])
   })
   it('her onboarding answer said back is never flagged, and it reaches the gate ledger (trial only)', async () => {
     const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
