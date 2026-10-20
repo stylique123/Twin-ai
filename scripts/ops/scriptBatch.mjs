@@ -19,6 +19,7 @@ import { storyCraft } from './.storyCraft.bundle.mjs'
 import { blueprintCompliance } from './.blueprintCompliance.bundle.mjs'
 import { runPanel } from './panelRun.mjs'
 import { templateOf } from './templateOf.mjs'
+import { awaitChecked, backgroundPending, blueprintLoader } from './awaitChecked.mjs'
 
 const URL_ = process.env.SUPABASE_URL
 const ANON = process.env.SUPABASE_ANON_KEY
@@ -725,7 +726,14 @@ async function main() {
         sc.answerStyle = style
         r = await call(token, body)
       }
-      const bp = r.json?.blueprint ?? null
+      // Async polish (trial): read the script only after the worker has polished and checked it.
+      let bp = r.json?.blueprint ?? null
+      if (r.json?.id && backgroundPending(bp)) {
+        const w = await awaitChecked(blueprintLoader(admin), r.json.id, { initial: bp, timeoutMs: 1000 * Number(process.env.POLISH_WAIT_S ?? 240) })
+        bp = w.blueprint
+        if (r.json) r.json.blueprint = bp
+        console.log(JSON.stringify({ event: 'await_checked', waited_ms: w.waited_ms, polls: w.polls, timed_out: w.timed_out }))
+      }
       const a = bp ? audit(bp, { ...sc, body }, ctx) : { findings: [{ k: `no_script_${r.status}`, d: String(r.json?.code ?? r.json?.error ?? r.text).slice(0, 200) }], text: null, hooks: null }
       if (a.text) {
         const ask = `${sc.group}|${body.selected_product_id ?? ''}|${String(body.reference_note ?? '').slice(0, 80)}|${body.reference_url ?? ''}`

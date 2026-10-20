@@ -26,6 +26,10 @@ import {
 } from '../generated/inventionGate.js'
 import { resyncShotListToScript } from '../generated/shotListSync.js'
 import { buildCheckLines, checkLinesLog, CHECK_LINES_VERSION } from '../generated/checkLines.js'
+import {
+  ASYNC_POLISH_BUDGET_MS, POLISH_EDITOR_SYSTEM, POLISH_COMPARE_SYSTEM, POLISH_REWRITE_SCHEMA, POLISH_COMPARE_SCHEMA,
+  polishEditorPrompt, applyPolishRewrites, polishComparePrompt, editedWins, type PolishBeat,
+} from '../generated/asyncPolish.js'
 
 /** The fast judge and the rewrite (task class of model_routing_v1.json). */
 export const INVENTION_RECHECK_TASK = INVENTION_JUDGE_CASCADE.fast
@@ -59,6 +63,46 @@ export interface RecheckDeps {
   now?: () => number
   /** env REPAIR_AUDIT_CAPTURE: 'false' turns the trial's save-before-repair capture off. */
   repairAuditFlag?: string
+  /** Async polish: coin for the blind compare's order (tests pin it). */
+  random?: () => number
+}
+
+/** The record the polish step leaves on the blueprint (counts only). */
+export interface PolishRecord { kept: number; rejected: string[]; verdict: 'edited' | 'original' | 'none' | 'error'; ms: number; steps: string[] }
+
+/**
+ * ⚖️ ASYNC POLISH (owner decision 2; trial only — the edge sets `ledger.polish`
+ * and `blueprint.polish_pending` only under trialOn with ASYNC_POLISH on). The
+ * self-review the request path no longer runs: at most two middle lines
+ * rewritten from her material (never the hook or close, never a new number),
+ * kept only when a blind side-by-side read prefers the edit. Runs BEFORE the
+ * gate so the honesty check judges the polished lines; the gate's refill
+ * (word_budget) replaces the request-path lengthen passes. A polish that fails
+ * or runs out of time keeps the draft: it never blocks the check.
+ */
+export async function runPolish(bp: Record<string, unknown>, material: string, opts: { goal?: string; subject?: string }, deps: Pick<RecheckDeps, 'callModel' | 'model' | 'now' | 'random'>): Promise<PolishRecord> {
+  const clock = deps.now ?? (() => Date.now())
+  const t0 = clock()
+  const steps = Array.isArray(rec(bp.polish_pending).steps) ? (rec(bp.polish_pending).steps as unknown[]).map(String) : []
+  const beats = Array.isArray(bp.script) ? bp.script as PolishBeat[] : []
+  if (!beats.length) return { kept: 0, rejected: [], verdict: 'none', ms: 0, steps }
+  try {
+    const raw = await deps.callModel(POLISH_EDITOR_SYSTEM, polishEditorPrompt(beats, material, opts), POLISH_REWRITE_SCHEMA, ASYNC_POLISH_BUDGET_MS, { model: deps.model })
+    const applied = applyPolishRewrites(beats, raw, material)
+    let verdict: PolishRecord['verdict'] = 'none'
+    const left = ASYNC_POLISH_BUDGET_MS - (clock() - t0)
+    if (applied.kept && left >= 5_000) {
+      const flip = (deps.random ?? Math.random)() < 0.5
+      try {
+        const cmp = await deps.callModel(POLISH_COMPARE_SYSTEM, polishComparePrompt(beats, applied.next, flip), POLISH_COMPARE_SCHEMA, left, { model: deps.model })
+        verdict = editedWins(cmp, flip) ? 'edited' : 'original'
+      } catch { verdict = 'original' }
+    } else if (applied.kept) verdict = 'original'
+    if (verdict === 'edited') bp.script = applied.next
+    return { kept: verdict === 'edited' ? applied.kept : 0, rejected: applied.rejected, verdict, ms: clock() - t0, steps }
+  } catch {
+    return { kept: 0, rejected: [], verdict: 'error', ms: clock() - t0, steps }
+  }
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {})
@@ -106,6 +150,23 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     lastStep = p.step; lastAt = t
     const snapshot = { ...bp, gate_progress: p }
     chain = chain.then(() => deps.saveProgress!(generationId, snapshot)).catch(() => {})
+  }
+  // ASYNC POLISH first (trial): the draft the request returned is improved,
+  // then checked. Written back at once (still 'unchecked') so a gate retry
+  // never polishes twice.
+  const polishOpts = rec(extra.polish)
+  if (bp.polish_pending && Object.keys(polishOpts).length) {
+    writeProgress(gateProgress('polishing', 0, 0, clock()), true)
+    const material = ledger.map((it) => String((it as { text?: unknown }).text ?? '')).filter(Boolean).join('\n')
+    const polish = await runPolish(bp, material, { goal: String(polishOpts.goal ?? ''), subject: String(polishOpts.subject ?? '') }, { ...deps, now: clock })
+    delete bp.polish_pending
+    bp.polish = polish
+    if (Array.isArray(bp.script) && polish.verdict === 'edited') resyncShotListToScript(bp)
+    console.log(JSON.stringify({ event: 'async_polish', generation_id: generationId, kept: polish.kept, rejected: polish.rejected.length, verdict: polish.verdict, ms: polish.ms, attempt: job.attempts }))
+    await chain
+    if (deps.saveProgress) await deps.saveProgress(generationId, { ...bp }).catch(() => {})
+  } else if (bp.polish_pending) {
+    delete bp.polish_pending
   }
   writeProgress(gateProgress('judging', 0, 0, clock()), true)
 

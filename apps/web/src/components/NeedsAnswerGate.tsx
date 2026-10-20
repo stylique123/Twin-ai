@@ -51,9 +51,9 @@ export function gateStatusFor(userId: string | null | undefined, bp: GateBluepri
 }
 
 /** The durable worker step's progress (`blueprint.gate_progress`), written as the job runs. */
-export type GateStep = 'queued' | 'judging' | 'repairing' | 'done' | 'failed'
+export type GateStep = 'queued' | 'polishing' | 'judging' | 'repairing' | 'done' | 'failed'
 export interface GateProgressView { step: GateStep; chunks_done: number; chunks_total: number }
-const STEPS: GateStep[] = ['queued', 'judging', 'repairing', 'done', 'failed']
+const STEPS: GateStep[] = ['queued', 'polishing', 'judging', 'repairing', 'done', 'failed']
 
 export function gateProgressOf(bp: GateBlueprintLike | null | undefined): GateProgressView | null {
   const p = bp?.gate_progress as { step?: unknown; chunks_done?: unknown; chunks_total?: unknown } | null | undefined
@@ -67,6 +67,8 @@ export function gateStepText(p: GateProgressView | null): string {
   if (!p) return 'Twin is still checking this script'
   switch (p.step) {
     case 'queued': return 'Twin is about to check every fact in this script'
+    // Async polish (trial): the first draft is shown; Twin is finishing it, then checks it.
+    case 'polishing': return 'Checking… Twin is finishing this draft'
     case 'judging':
       return p.chunks_total > 0
         ? `Checking every fact against what you gave Twin (${Math.min(p.chunks_done, p.chunks_total)} of ${p.chunks_total} parts)`

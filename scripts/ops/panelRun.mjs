@@ -29,6 +29,7 @@
 import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 import { templateOf } from './templateOf.mjs'
+import { awaitChecked, backgroundPending, blueprintLoader } from './awaitChecked.mjs'
 
 export const PANEL_SKIP_ANSWER = 'Nothing specific, keep it general.'
 // A request's duration profile (templateData.ts DURATION_PROFILES) sets its target length.
@@ -208,7 +209,14 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
       await new Promise((res) => setTimeout(res, 6000))
       try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
     }
-    const bp = r.json?.blueprint ?? null
+    // Async polish (trial): read the script only after the worker has polished and checked it.
+    let bp = r.json?.blueprint ?? null
+    if (r.json?.id && backgroundPending(bp)) {
+      const w = await awaitChecked(blueprintLoader(admin), r.json.id, { initial: bp, timeoutMs: 1000 * Number(process.env.POLISH_WAIT_S ?? 240) })
+      bp = w.blueprint
+      if (r.json) r.json.blueprint = bp
+      console.log(JSON.stringify({ event: 'await_checked', waited_ms: w.waited_ms, polls: w.polls, timed_out: w.timed_out }))
+    }
     const lines = Array.isArray(bp?.script) ? bp.script.map((b) => String(b?.line ?? '')).filter(Boolean) : []
     const qrec = questionRecord({ mode, fields, answers: body.readiness_answers, lines, bp })
     records.push(qrec)
