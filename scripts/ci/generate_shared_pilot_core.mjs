@@ -252,6 +252,8 @@ const SOURCES = [
   ['packages/shared/src/script/planner/spineContract.ts', 'supabase/functions/_shared/spineContract.ts'],
   // Packaging keeps the promise (plan v5.1 item G, trial only): titles/captions inherit the shipped hook.
   ['packages/shared/src/script/planner/packagingPromise.ts', 'supabase/functions/_shared/packagingPromise.ts'],
+  // Plan B (owner decision 5, trial only): the code-assembled, line-sourced script body.
+  ['packages/shared/src/script/planner/planBAssembly.ts', 'supabase/functions/_shared/planBAssembly.ts'],
   // Hook shape library as data (hook-and-spine plan, hook engine step 1). Not wired yet.
   ['packages/shared/src/script/hooks/hookShapes.ts', 'supabase/functions/_shared/hookShapes.ts'],
   ['packages/shared/src/script/hooks/hookEngine.ts', 'supabase/functions/_shared/hookEngine.ts'],
