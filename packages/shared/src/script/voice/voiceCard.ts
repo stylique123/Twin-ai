@@ -428,6 +428,24 @@ export function voiceMaterialAmount(src: VoiceSource): MaterialAmount {
 /** Thin: under about 15 minutes of her speech AND under 10 real answers. */
 export const isThinMaterial = (a: MaterialAmount): boolean => a.speech_minutes < THIN_SPEECH_MINUTES && a.answers < THIN_ANSWERS
 
+// ⚖️ RICH SAMPLES LOWER THE FLOOR (panel-current-10: 23 of 24 fictional
+// generations were skipped as 'thin': five profile samples, no transcripts, no
+// answers). When her verbatim samples alone are rich enough to count a rhythm
+// off (at least RICH_SAMPLES_MIN passages, RICH_SAMPLES_WORDS words and
+// RICH_SAMPLES_SENTENCES sentences), the thin floor is lowered for her. The
+// card is still counted ONLY from her own words. Kill switch at the edge:
+// VOICE_CARD_RICH_SAMPLES=off (trial only; the card itself stays behind
+// voiceCardOn).
+export const RICH_SAMPLES_MIN = 5
+export const RICH_SAMPLES_WORDS = 45
+export const RICH_SAMPLES_SENTENCES = 5
+
+export function richSamples(samples: readonly unknown[] | undefined): boolean {
+  const s = strs(samples)
+  if (s.length < RICH_SAMPLES_MIN) return false
+  return words(s.join(' ')).length >= RICH_SAMPLES_WORDS && s.flatMap(splitSentences).length >= RICH_SAMPLES_SENTENCES
+}
+
 export interface CreatorVoiceCard { card: VoiceCard | null; reason: 'ok' | 'thin' | 'too_little'; material: MaterialAmount }
 
 /**
@@ -435,9 +453,10 @@ export interface CreatorVoiceCard { card: VoiceCard | null; reason: 'ok' | 'thin
  * general version), unless `thinFloor` is false (kill switch
  * VOICE_CARD_THIN_FLOOR=off at the edge, for fictional-panel testing only).
  */
-export function buildCreatorVoiceCard(src: VoiceSource, opts: { thinFloor?: boolean } = {}): CreatorVoiceCard {
+export function buildCreatorVoiceCard(src: VoiceSource, opts: { thinFloor?: boolean; richSamples?: boolean } = {}): CreatorVoiceCard {
   const material = voiceMaterialAmount(src)
-  if (opts.thinFloor !== false && isThinMaterial(material)) return { card: null, reason: 'thin', material }
+  const rich = opts.richSamples === true && richSamples(src.samples)
+  if (opts.thinFloor !== false && !rich && isThinMaterial(material)) return { card: null, reason: 'thin', material }
   const ts = (src.transcripts ?? []).filter((t) => typeof t?.text === 'string' && t.text.trim())
   const measured = ts.filter((t) => Number.isFinite(Number(t.seconds)) && Number(t.seconds) > 0)
   const wpm = measured.length
@@ -606,4 +625,106 @@ export function voiceCardRepairPrompt(
   return `${voiceCardBrief(card)}\nRewrite ONLY these lines so they sound like her card. Keep every fact, number, name and claim. `
     + 'Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
     + misses.map((m) => `index ${m.index}\nNOT HER WORDS: ${m.phrases.join(', ')}\nLINE: ${String(beats[m.index]?.line ?? '')}`).join('\n\n')
+}
+
+// ── THE VOICE AT THE POLISH STEP (panel-10 advisor: "voice is not visible") ──
+//
+// The polish (async worker self-review and Plan B polish) gets her style note,
+// 2-3 short verbatim samples, and explicit rhythm rules counted off the card.
+// After the polish the voice check scores before and after; the polish is kept
+// ONLY when the score improves AND the claim/number/name checks pass.
+// Kill switch: VOICE_POLISH=off (trial only).
+
+export function voicePolishOn(trialOn: boolean, flag: string | undefined | null): boolean {
+  return trialOn && String(flag ?? 'on').trim().toLowerCase() !== 'off'
+}
+
+export type Rhythm = 'clipped' | 'mid' | 'winding'
+
+/** Clipped (short sentences, many fragments) vs winding (long, comma-heavy) vs mid. */
+export function rhythmOf(card: VoiceCard): Rhythm {
+  const m = card.sentence_length.mean
+  const p = card.pacing
+  if (m <= 8 || (p && p.short_share >= 0.5)) return 'clipped'
+  if (m >= 18 || (p && p.long_share >= 0.3)) return 'winding'
+  return 'mid'
+}
+
+/** 2-3 short verbatim samples of hers (5-40 words), in her order. */
+export function voicePolishSamples(samples: readonly unknown[] | undefined, n = 3): string[] {
+  const s = strs(samples).filter((x) => { const w = words(x).length; return w >= 5 && w <= 40 })
+  return s.slice(0, Math.max(2, Math.min(3, n)))
+}
+
+/** Signatures that are verbatim in her material (the card's own rule, re-checked). */
+export function verbatimSignatures(card: VoiceCard, material: readonly string[]): string[] {
+  if (!material.length) return []
+  return card.signatures.filter((s) => verbatimCount(material, s.text) >= 2).map((s) => s.text)
+}
+
+/** Explicit rhythm rules from the card: length target, exclamation habit, signatures, clipped vs winding. */
+export function voiceRhythmRules(card: VoiceCard, material: readonly string[] = []): string[] {
+  const mean = Math.round(card.sentence_length.mean)
+  const lo = Math.max(2, Math.round(mean * 0.7)), hi = Math.max(lo + 1, Math.round(mean * 1.3))
+  const ex = card.exclamation_rate
+  const rhythm = rhythmOf(card)
+  const sigs = verbatimSignatures(card, material)
+  return [
+    `- SENTENCE LENGTH: aim for ${lo}-${hi} words per sentence (hers average ${mean}).`,
+    ex <= 0 ? '- EXCLAMATIONS: she never uses "!". Write none.'
+      : ex >= 0.25 ? `- EXCLAMATIONS: ${Math.round(ex * 100)}% of her sentences end in "!". Use them as she does: about one sentence in ${Math.max(1, Math.round(1 / ex))}.`
+        : `- EXCLAMATIONS: rare (${Math.round(ex * 100)}% of her sentences). At most one.`,
+    sigs.length ? `- SIGNATURE PHRASES (verbatim in her own words; use one or two where natural, word for word): ${sigs.slice(0, 5).map((t) => `"${t}"`).join(', ')}.`
+      : '- SIGNATURE PHRASES: none on record. Do not invent catchphrases for her.',
+    rhythm === 'clipped' ? '- RHYTHM: CLIPPED. Short sentences. Fragments are fine. Cut every filler word.'
+      : rhythm === 'winding' ? '- RHYTHM: LONG AND WINDING. Join thoughts with commas and dashes into longer sentences; let asides run on.'
+        : '- RHYTHM: medium sentences, plain and even.',
+  ]
+}
+
+/** The block the polish prompts carry: style note, samples, rules. */
+export function voicePolishBrief(v: { card: VoiceCard; styleNote?: string | null; samples?: readonly unknown[]; material?: readonly string[] }): string {
+  const note = String(v.styleNote ?? '').trim().slice(0, 300)
+  const samples = voicePolishSamples(v.samples)
+  return [
+    'HER VOICE (make the rewrite sound like these, not like a generic presenter):',
+    note ? `Her style note: ${note}` : '',
+    samples.length ? `Her own words (verbatim samples; copy the rhythm, not the facts):\n${samples.map((x) => `> ${x}`).join('\n')}` : '',
+    ...voiceRhythmRules(v.card, v.material ?? strs(v.samples)),
+  ].filter(Boolean).join('\n')
+}
+
+const NUMS = /\d+(?:[.,]\d+)?/g
+const CLAIM_WORDS = /\b(?:best|guarantee[sd]?|proven|clinically|cures?|heals?|certified|award\w*|#1|number one|scientific|fastest|cheapest)\b|%/gi
+const namesIn = (t: string): string[] => {
+  const out: string[] = []
+  for (const sent of splitSentences(t)) {
+    const ws = sent.split(/\s+/).slice(1)
+    for (const w of ws) { const x = w.replace(/[^A-Za-z'-]/g, ''); if (/^[A-Z][a-z]/.test(x) && x !== 'I' && !/^I'/.test(x)) out.push(x.toLowerCase()) }
+  }
+  return out
+}
+
+/** Claim/number/name checks: the polished lines add no number, name or claim word absent from the original lines and her material. */
+export function polishFactChecks(before: readonly string[], after: readonly string[], material = ''): { ok: boolean; reasons: string[] } {
+  const known = `${before.join('\n')}\n${material}`
+  const lowKnown = known.toLowerCase()
+  const reasons: string[] = []
+  const kn = new Set(known.match(NUMS) ?? [])
+  const bn = new Set(before.join('\n').match(NUMS) ?? [])
+  const an = new Set(after.join('\n').match(NUMS) ?? [])
+  if ([...an].some((n) => !kn.has(n))) reasons.push('new_number')
+  if ([...bn].some((n) => !an.has(n))) reasons.push('lost_number')
+  if (namesIn(after.join('\n')).some((n) => !lowKnown.includes(n))) reasons.push('new_name')
+  if ((after.join('\n').match(CLAIM_WORDS) ?? []).some((c) => !lowKnown.includes(c.toLowerCase()))) reasons.push('new_claim')
+  return { ok: reasons.length === 0, reasons }
+}
+
+export interface VoicePolishVerdict { keep: boolean; before: number; after: number; reason: 'improved' | 'not_better' | 'checks_failed' }
+
+/** Keep the polish only if the voice score improves and the fact checks pass. */
+export function voicePolishVerdict(card: VoiceCard, before: readonly string[], after: readonly string[], checksOk: boolean): VoicePolishVerdict {
+  const b = voiceCheck(card, before).score, a = voiceCheck(card, after).score
+  if (!checksOk) return { keep: false, before: b, after: a, reason: 'checks_failed' }
+  return a > b ? { keep: true, before: b, after: a, reason: 'improved' } : { keep: false, before: b, after: a, reason: 'not_better' }
 }

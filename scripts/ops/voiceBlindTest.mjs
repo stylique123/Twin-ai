@@ -9,6 +9,18 @@
 //   node scripts/ops/voiceBlindTest.mjs --score --key=/private/dir/voice-blind-key.json --marks=/private/dir/marks.csv
 //   node scripts/ops/voiceBlindTest.mjs --selftest-fixture --out=/private/dir   (the six fictional voice samples)
 //
+// PANEL MODE ("sounds like her" sheet for the next panel package): N panel
+// lines per creator mixed with N of HER real sample lines, every creator on one
+// sheet (the creator column says whose voice to judge), key written beside it.
+//
+//   node scripts/ops/voiceBlindTest.mjs --panel=panel.json --n=3 --seed=11 --out=/private/dir
+//   node scripts/ops/voiceBlindTest.mjs --panel=panel.json --real=real.json --n=3 --out=/private/dir
+//
+// panel.json: [{ "creator": "<key>", "script": [{ "line": "..." }] } | { "creator", "lines": [...] }, ...]
+// real.json (optional): { "<key>": ["her line", ...] }. Without it her lines are
+// the fictional fixture's voice.samples (scripts/ops/fixtures/fictional-panel.json).
+// Writes voice-blind-panel-sheet.csv and voice-blind-panel-key.json; --score works on both.
+//
 // ⚖️ OUTSIDE THE REPO. The repository is public, and a real sheet holds a real
 // creator's lines, so --out must resolve outside it (refused otherwise). The
 // sheet carries item numbers and text only: no source, no creator, no id.
@@ -131,6 +143,63 @@ export function fixtureBlindTests(fixture, { n = 3, seed = 1 } = {}) {
     .map((c, i) => ({ label: c.key, ...buildBlindTest({ generated: STAND_IN, real: c.voice.samples, n, seed: seed + i, label: c.key }) }))
 }
 
+export const PANEL_SHEET_FILE = 'voice-blind-panel-sheet.csv'
+export const PANEL_KEY_FILE = 'voice-blind-panel-key.json'
+
+/** Spoken lines of one panel row (script beats or a lines array). */
+export function panelLines(row) {
+  const src = Array.isArray(row?.script) ? row.script.map((b) => (typeof b === 'string' ? b : b?.line)) : Array.isArray(row?.lines) ? row.lines : []
+  return src.map((l) => String(l ?? '').trim()).filter((l) => l.split(/\s+/).length >= 3)
+}
+
+/** Seeded pick of n distinct items (order of the pick, not the source). */
+function pick(xs, n, r) {
+  const a = [...new Set(xs)]
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] }
+  return a.slice(0, n)
+}
+
+/**
+ * The panel's blind sheet: per creator, N panel lines and N of her real lines,
+ * all creators shuffled together. A creator with fewer than N of either is
+ * skipped (counted in key.skipped). Deterministic for a seed.
+ */
+export function buildPanelBlindTest({ panel, real, n = 3, seed = 1 }) {
+  const r = rng(seed)
+  const byCreator = new Map()
+  for (const row of panel ?? []) {
+    const c = String(row?.creator ?? row?.creator_key ?? '').trim()
+    if (!c) continue
+    byCreator.set(c, [...(byCreator.get(c) ?? []), ...panelLines(row)])
+  }
+  const items = []
+  const skipped = []
+  for (const c of [...byCreator.keys()].sort()) {
+    const gen = pick(byCreator.get(c), n, r)
+    const her = pick((real?.[c] ?? []).map(asText).filter(Boolean), n, r)
+    if (gen.length < n || her.length < n) { skipped.push({ creator: c, panel: gen.length, real: her.length }); continue }
+    items.push(...gen.map((text, i) => ({ creator: c, text, source: 'generated', ref: i })), ...her.map((text, i) => ({ creator: c, text, source: 'real', ref: i })))
+  }
+  for (let i = items.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [items[i], items[j]] = [items[j], items[i]] }
+  const sheet = [['item', 'creator', 'text', 'sounds_like_her (y/n)'], ...items.map((it, i) => [i + 1, it.creator, it.text, ''])]
+    .map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
+  const key = { version: 'voice-blind-panel-v1', n, seed, creators: [...new Set(items.map((i) => i.creator))].sort(), skipped, items: items.map((it, i) => ({ item: i + 1, creator: it.creator, source: it.source, ref: it.ref })) }
+  return { sheet, key }
+}
+
+/** Her real lines from the fictional fixture: { key: voice.samples }. */
+export function fixtureRealLines(fixture) {
+  return Object.fromEntries((fixture?.creators ?? []).map((c) => [c.key, Array.isArray(c.voice?.samples) ? c.voice.samples : []]))
+}
+
+export function writePanelBlindTest(outDir, { sheet, key }) {
+  const abs = assertOutsideRepo(outDir)
+  mkdirSync(abs, { recursive: true })
+  writeFileSync(join(abs, PANEL_SHEET_FILE), sheet)
+  writeFileSync(join(abs, PANEL_KEY_FILE), `${JSON.stringify(key, null, 1)}\n`)
+  return { sheet: join(abs, PANEL_SHEET_FILE), key: join(abs, PANEL_KEY_FILE) }
+}
+
 function arg(name) {
   const a = process.argv.find((x) => x.startsWith(`--${name}=`))
   return a ? a.slice(name.length + 3) : null
@@ -144,6 +213,14 @@ async function main() {
   }
   const out = arg('out')
   if (!out) throw new Error('usage: voiceBlindTest.mjs --generated=gen.json --real=real.json --n=6 --out=/private/dir [--seed=1]')
+  if (arg('panel')) {
+    const real = arg('real') ? JSON.parse(readFileSync(arg('real'), 'utf8'))
+      : fixtureRealLines(JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8')))
+    const t = buildPanelBlindTest({ panel: JSON.parse(readFileSync(arg('panel'), 'utf8')), real, n: Number(arg('n') ?? 3) || 3, seed: Number(arg('seed') ?? 1) })
+    writePanelBlindTest(out, t)
+    console.log(JSON.stringify({ event: 'voice_blind_panel', items: t.key.items.length, creators: t.key.creators.length, skipped: t.key.skipped.length }))
+    return
+  }
   if (process.argv.includes('--selftest-fixture')) {
     const fixture = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
     for (const t of fixtureBlindTests(fixture)) writeBlindTest(join(out, t.label), t)
