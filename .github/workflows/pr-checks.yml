@@ -100,7 +100,7 @@ jobs:
       # Needs @supabase/supabase-js (imported by the panel scripts), so it runs
       # here after `npm ci`, not in `no-legacy-editor`.
       - name: Fictional panel self-test
-        run: node scripts/ops/panel.selftest.mjs && node scripts/ops/panelFixtures.selftest.mjs && node scripts/ops/panelAnswers.selftest.mjs && node scripts/ops/voiceBlindTest.selftest.mjs
+        run: node scripts/ops/panel.selftest.mjs && node scripts/ops/panelFixtures.selftest.mjs && node scripts/ops/panelAnswers.selftest.mjs && node scripts/ops/voiceBlindTest.selftest.mjs && node scripts/ops/awaitChecked.selftest.mjs
       - name: Fictional panel removal self-test
         run: node scripts/ops/removeFictionalPanel.selftest.mjs
       - name: No dead-zone read inside an immediately-run callback

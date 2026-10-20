@@ -961,7 +961,7 @@ export const INVENTION_JUDGE_CASCADE = { fast: 'read', strong: 'extract' } as co
 export const INVENTION_JUDGES = INVENTION_JUDGE_CASCADE
 
 /** Steps the durable worker run reports on `blueprint.gate_progress`. */
-export type GateStep = 'queued' | 'judging' | 'repairing' | 'done' | 'failed'
+export type GateStep = 'queued' | 'polishing' | 'judging' | 'repairing' | 'done' | 'failed'
 export interface GateProgress { step: GateStep; at: string; chunks_done: number; chunks_total: number }
 export function gateProgress(step: GateStep, chunksDone = 0, chunksTotal = 0, at: number = Date.now()): GateProgress {
   return { step, at: new Date(at).toISOString(), chunks_done: chunksDone, chunks_total: chunksTotal }

@@ -110,6 +110,21 @@ describe('needs one answer screen', () => {
     expect(gateProgressOf({ gate_progress: { step: 'nonsense' } })).toBeNull()
     expect(gateStepText(null)).toBe('Twin is still checking this script')
   })
+
+  it('async polish: the draft shows as "checking…" while the worker polishes, and refreshes', async () => {
+    vi.useFakeTimers()
+    try {
+      const onRefresh = vi.fn(async () => {})
+      const bp = { check_status: 'unchecked', polish_pending: { steps: ['self_review'] }, gate_progress: { step: 'polishing', chunks_done: 0, chunks_total: 0 } }
+      render(<NeedsAnswerCard userId={TRIAL} blueprint={bp} onSubmit={async () => {}} onRefresh={onRefresh} pollMs={1_000} />)
+      expect(screen.getByTestId('gate-step').textContent).toMatch(/Checking… Twin is finishing this draft/)
+      expect(screen.getByTestId('gate-unchecked').getAttribute('data-step')).toBe('polishing')
+      expect(recordBlocked(gateStatusFor(TRIAL, bp))).toBe(true)
+      vi.advanceTimersByTime(3_000)
+      expect(onRefresh).toHaveBeenCalledTimes(3)
+      cleanup()
+    } finally { vi.useRealTimers() }
+  })
 })
 
 describe('skip always works (owner, 13 Oct)', () => {

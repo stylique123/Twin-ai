@@ -84,6 +84,7 @@ import { robotPass } from '../_shared/robotPhrases.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
+import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep } from '../_shared/asyncPolish.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
@@ -6345,6 +6346,9 @@ interface WriterLadder { retryPrompt?: string; usedAttempt?: number
   /** Trial (panel-7): the LAST attempt may use most of the 30 s reserve; optional
    *  passes are then skipped. WRITER_DEGRADE=off is the kill switch. */
   degrade?: boolean
+  /** Trial (owner decision 2): the async-polish deadline — attempt 0 capped at
+   *  60 s, every attempt done by 84 s of the request. ASYNC_POLISH=off kills it. */
+  async?: boolean
   /** Counts for the failure record (codes and counts only). */
   failed?: number; skipped?: number; lastCode?: string | null }
 
@@ -6403,7 +6407,9 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
     const a = attempts[i]
     // The retry runs the plain brief when a template block made attempt 0 slow.
     const attemptPrompt = i >= 1 && ladder?.retryPrompt ? ladder.retryPrompt : prompt
-    const timeoutMs = deadlineTimeout(i, a.timeoutMs, ladder?.startedAt, Date.now(), { last: i === attempts.length - 1, degrade: ladder?.degrade === true })
+    const timeoutMs = ladder?.async === true && ladder.startedAt != null
+      ? asyncDeadlineTimeout(i, a.timeoutMs, ladder.startedAt, Date.now())
+      : deadlineTimeout(i, a.timeoutMs, ladder?.startedAt, Date.now(), { last: i === attempts.length - 1, degrade: ladder?.degrade === true })
     if (timeoutMs === null) {
       if (ladder) ladder.skipped = (ladder.skipped ?? 0) + 1
       console.warn(JSON.stringify({ event: 'writer_attempt_skipped_deadline', attempt: i, elapsed_ms: Date.now() - (ladder?.startedAt ?? Date.now()) }))
@@ -6979,7 +6985,17 @@ async function handle(req: Request): Promise<Response> {
     ...(trialOn && Deno.env.get('SPOKEN_DEDUP') !== 'false' ? { spoken_dedup: true } : {}),
     ...(trialOn && Deno.env.get('LENGTH_REFILL') !== 'false' && panel7Budget > 0 ? { word_budget: panel7Budget } : {}),
   })
+  // ⚖️ ASYNC POLISH (owner decision 2, trial; ASYNC_POLISH=off kills it): the
+  // quality-only passes never run on the request path; the worker's
+  // invention_recheck job runs the polish before the gate and sets check_status.
+  let asyncPolish = false
+  const polishDeferred: string[] = []
   const optionalPassTime = (step: string): boolean => {
+    if (asyncPolish && isDeferredStep(step)) {
+      if (!polishDeferred.includes(step)) polishDeferred.push(step)
+      console.log(JSON.stringify({ event: 'optional_pass_deferred', step, elapsed_ms: Date.now() - reqStartedAt }))
+      return false
+    }
     const ok = optionalPassAllowed(reqStartedAt, Date.now(), writerDegradeOn)
     if (!ok) console.log(JSON.stringify({ event: 'optional_pass_skipped_degraded', step, elapsed_ms: Date.now() - reqStartedAt }))
     return ok
@@ -12597,10 +12613,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // was added. The retry gets today's brief, byte for byte without the block.
     const writerDeadline = trialOn && (Deno.env.get('WRITER_DEADLINE') ?? 'on') !== 'off' ? reqStartedAt : undefined
     writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
-    const deadlineFields = writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
+    asyncPolish = asyncPolishOn(trialOn, Deno.env.get('ASYNC_POLISH'))
+    const deadlineFields = asyncPolish
+      ? { startedAt: reqStartedAt, async: true }
+      : writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
       ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...deadlineFields }
-      : writerDeadline != null ? deadlineFields : undefined
+      : (writerDeadline != null || asyncPolish) ? deadlineFields : undefined
     writerLadderForFailure = writerLadder ?? null
     let templateFallback = false
 
@@ -17216,6 +17235,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // Test accounts: repair trial (16 Oct); GATE_REPAIR_TRIAL='false' = measure.
       const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
+      // Async polish: the draft ships now; the worker polishes, then checks.
+      if (asyncPolish) {
+        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80) }
+        bpg.polish_pending = { steps: polishDeferred.length ? [...polishDeferred] : ['self_review'], at: new Date().toISOString() }
+        console.log(JSON.stringify({ event: 'async_polish_queued', deferred: polishDeferred.length, elapsed_ms: Date.now() - reqStartedAt }))
+      }
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
