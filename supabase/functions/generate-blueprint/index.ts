@@ -12641,7 +12641,8 @@ This is the video's position. Every field below must serve it. If the reference'
     // ── PLANNER SPINE — END ──
     // ── HOOK ENGINE (A5, trial only) — candidates ride the existing writer call ──
     let hookCandidateBlock = ''
-    if (newOn('hook_engine')) { try { hookCandidateBlock = renderHookCandidateRule(templateLedger) } catch { hookCandidateBlock = '' } }
+    // Plan v5.4 §20 (trial; kill HOOK_BARE_FACT_GEN=false): the writer is not asked for bare-fact hooks.
+    if (newOn('hook_engine')) { try { hookCandidateBlock = renderHookCandidateRule(templateLedger, { noBareFact: trialOn && Deno.env.get('HOOK_BARE_FACT_GEN') !== 'false' }) } catch { hookCandidateBlock = '' } }
     // Trial: the hook moves without their example lines (panel-current-5: the
     // examples' numbers and first-person events were copied as claims).
     const familyHookRulePlain = renderFamilyHookRule(family, trialOn ? { examples: false } : {})
@@ -17181,6 +17182,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             // Plan v5.3 §19 (trial; kills HOOK_BARE_FACT=false, HOOK_CLAIM_CHECK=false).
             noBareFact: trialOn && Deno.env.get('HOOK_BARE_FACT') !== 'false',
             claimCheck: trialOn && Deno.env.get('HOOK_CLAIM_CHECK') !== 'false',
+            // Plan v5.4 §20 (trial; kill HOOK_BARE_FACT_GEN=false): bare-fact hooks are never candidates.
+            noBareFactGen: trialOn && Deno.env.get('HOOK_BARE_FACT_GEN') !== 'false',
             request: [String(videoGoal ?? body.goal ?? ''), typeof reference_note === 'string' ? reference_note : ''].filter(Boolean).join(' '),
             products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
             targetProductId: engineTarget,

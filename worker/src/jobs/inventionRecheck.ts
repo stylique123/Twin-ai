@@ -25,7 +25,7 @@ import {
   type GateBlueprint, type GateProgress, type InventionGateRecord,
 } from '../generated/inventionGate.js'
 import { resyncShotListToScript } from '../generated/shotListSync.js'
-import { buildCheckLines, checkLinesLog, CHECK_LINES_VERSION } from '../generated/checkLines.js'
+import { buildCheckLines, buildTargetedCheckLines, targetedFlagsOn, checkLinesLog, CHECK_LINES_VERSION, TARGETED_FLAGS_VERSION } from '../generated/checkLines.js'
 import {
   ASYNC_POLISH_BUDGET_MS, POLISH_EDITOR_SYSTEM, POLISH_COMPARE_SYSTEM, POLISH_REWRITE_SCHEMA, POLISH_COMPARE_SCHEMA,
   polishEditorPrompt, applyPolishRewrites, polishComparePrompt, editedWins, type PolishBeat,
@@ -63,6 +63,13 @@ export interface RecheckDeps {
   now?: () => number
   /** env REPAIR_AUDIT_CAPTURE: 'false' turns the trial's save-before-repair capture off. */
   repairAuditFlag?: string
+  /** Plan v5.4 §20 (trial): her onboarding answers and pillars as first-party
+   *  knowledge rows (creator_knowledge source asked/user + brand_voices.pre_script_brief). */
+  loadOnboarding?(ownerId: string): Promise<Array<{ id?: unknown; kind?: unknown; text?: unknown }>>
+  /** env ONBOARDING_LEDGER: 'false' keeps onboarding answers out of the trial ledger. */
+  onboardingLedgerFlag?: string
+  /** env TARGETED_FLAGS: 'false' restores the gate-review check lines. */
+  targetedFlagsFlag?: string
   /** Async polish: coin for the blind compare's order (tests pin it). */
   random?: () => number
 }
@@ -107,6 +114,31 @@ export async function runPolish(bp: Record<string, unknown>, material: string, o
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {})
 
+/** creator_knowledge sources that are her own typed answers (onboarding, asked, confirmed check lines). */
+export const ONBOARDING_SOURCES = ['asked', 'user', 'check_line'] as const
+export const ONBOARDING_MAX = 200
+/** pre_script_brief fields she typed during onboarding (text, or a list of text). */
+export const BRIEF_ANSWER_FIELDS = ['audience', 'offer', 'background', 'contentPillars', 'confirmedAudiencePain', 'confirmedDreamOutcome', 'productFacts', 'workKindOther'] as const
+
+/** Her onboarding answers and pillars as knowledge rows for the ledger (first-party). Pure. */
+export function onboardingRows(knowledge: ReadonlyArray<{ id?: unknown; kind?: unknown; text?: unknown }>, brief: unknown): Array<{ id: string; kind: string; text: string }> {
+  const out: Array<{ id: string; kind: string; text: string }> = []
+  for (const k of knowledge) {
+    const text = typeof k?.text === 'string' ? k.text.trim() : ''
+    if (text && typeof k.id === 'string') out.push({ id: k.id, kind: typeof k.kind === 'string' ? k.kind : 'fact', text })
+  }
+  const b = rec(brief)
+  for (const f of BRIEF_ANSWER_FIELDS) {
+    const v = b[f]
+    const list = Array.isArray(v) ? v : [v]
+    list.forEach((x, n) => {
+      const text = typeof x === 'string' ? x.trim() : ''
+      if (text) out.push({ id: `brief:${f}${Array.isArray(v) ? `:${n}` : ''}`, kind: f === 'contentPillars' ? 'topic' : 'fact', text })
+    })
+  }
+  return out
+}
+
 export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<Record<string, unknown>> {
   const payload = rec(job.payload)
   const generationId = typeof payload.generation_id === 'string' ? payload.generation_id : ''
@@ -120,7 +152,15 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   }
 
   const extra = rec(payload.ledger)
-  const knowledge = await deps.loadKnowledge(generationId)
+  const used = await deps.loadKnowledge(generationId)
+  // ⚖️ PLAN v5.4 §20 (owner): her ONBOARDING ANSWERS (niche, profile, story,
+  // product slot, pillars, background) are first-party items. A line that says
+  // them is hers. Trial only (hold_asks is set under trialOn); kill ONBOARDING_LEDGER=false.
+  const onboarding = extra.hold_asks === true && deps.loadOnboarding && deps.onboardingLedgerFlag !== 'false'
+    ? await deps.loadOnboarding(gen.user_id)
+    : []
+  const usedIds = new Set(used.map((k) => String(k.id ?? '')))
+  const knowledge = [...used, ...onboarding.filter((k) => !usedIds.has(String(k.id ?? '')))]
   const productRows = await deps.loadProducts(gen.user_id)
   // A stale target id (product re-created after the edge enqueued) is resolved, never read as "another product".
   const target = resolveTargetProduct(typeof extra.target_product_id === 'string' ? extra.target_product_id : null, productRows,
@@ -272,9 +312,13 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   // under trialOn unless CHECK_LINE_KILL=1). Script review lines with their
   // reason id and the sentence's offsets. Logs carry offsets only, never text.
   if (extra.check_lines === true) {
-    const lines = buildCheckLines(bp as GateBlueprint, gate.record.review_lines)
+    // Plan v5.4 §20 (kill TARGETED_FLAGS=false): flag ONLY a deterministic
+    // risk (absolute efficacy, invented team/origin/habit, unbacked number or
+    // name, scarcity with no live fact), never a line verbatim hers.
+    const targeted = targetedFlagsOn(deps.targetedFlagsFlag)
+    const lines = targeted ? buildTargetedCheckLines(bp as GateBlueprint, ledger) : buildCheckLines(bp as GateBlueprint, gate.record.review_lines)
     bp.check_lines = lines
-    bp.check_lines_version = CHECK_LINES_VERSION
+    bp.check_lines_version = targeted ? TARGETED_FLAGS_VERSION : CHECK_LINES_VERSION
     if (lines.length) console.log(JSON.stringify({ event: 'check_lines', generation_id: generationId, lines: checkLinesLog(lines) }))
   }
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
@@ -347,5 +391,14 @@ export async function handleInventionRecheck(job: Job): Promise<Record<string, u
     },
     callModel: recheckCallModel(geminiJson, model),
     repairAuditFlag: process.env.REPAIR_AUDIT_CAPTURE,
+    async loadOnboarding(ownerId) {
+      const { data: k, error } = await db.from('creator_knowledge').select('id,kind,text,source').eq('owner_id', ownerId).in('source', [...ONBOARDING_SOURCES]).limit(ONBOARDING_MAX)
+      if (error) throw new Error(`invention_recheck: onboarding read failed: ${error.message}`)
+      const { data: v, error: e2 } = await db.from('brand_voices').select('id,pre_script_brief').eq('owner_id', ownerId).eq('is_default', true).limit(1).maybeSingle()
+      if (e2) throw new Error(`invention_recheck: brief read failed: ${e2.message}`)
+      return onboardingRows(k ?? [], (v as { pre_script_brief?: unknown } | null)?.pre_script_brief)
+    },
+    onboardingLedgerFlag: process.env.ONBOARDING_LEDGER,
+    targetedFlagsFlag: process.env.TARGETED_FLAGS,
   })
 }
