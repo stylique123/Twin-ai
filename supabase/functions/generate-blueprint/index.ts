@@ -108,6 +108,7 @@ import { dropNovelSentences, findNovelDetails } from '../_shared/novelDetail.ts'
 import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
+import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -6144,6 +6145,25 @@ Rules:
 - Where a fact is missing, say less. Do not fill a gap with a plausible guess.
 - Name who it is for, what it must get them to do, and what makes it believable from THIS creator specifically.
 - No em dashes, no en dashes, no emojis, no hype.`
+
+// PLAN B POLISH (owner decision 5, trial only): one low-temperature call that
+// may only reword lines; every answer is held to the bounds in planBAssembly.ts
+// and an out-of-bounds line ships unpolished. Any failure means no polish.
+async function polishPlanBLines(apiKey: string, prompt: string): Promise<string | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), COMPOSER_TIMEOUT_MS)
+  try {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 1200 } }),
+    })
+    if (!res.ok) return null
+    const b = await res.json()
+    const t = b?.candidates?.[0]?.content?.parts?.[0]?.text
+    return typeof t === 'string' ? t : null
+  } catch { return null } finally { clearTimeout(timer) }
+}
 
 async function composePosition(apiKey: string, facts: string): Promise<string | null> {
   const ctrl = new AbortController()
@@ -17193,6 +17213,44 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           }
         }
       } catch { /* the de-dup never fails a build */ }
+    }
+    // PLAN B ASSEMBLY (owner decision 5, consolidated plan §15; trial only).
+    // Product mode with her story or facts on file: the body is assembled by
+    // code from her items (hook from her story, story verbatim, facts, one CTA),
+    // every line carrying its source id; the model may only polish wording
+    // within bounds. Off by default: PLAN_B_ASSEMBLY=true turns it on for the
+    // trial, or a panel/test request sends `plan_b: true`; PLAN_B_ASSEMBLY=off
+    // is the kill switch for both. The honesty gate is queued after this.
+    const planBEnv = Deno.env.get('PLAN_B_ASSEMBLY') ?? ''
+    const planBOn = trialOn && planBEnv !== 'off' && planBEnv !== 'false'
+      && (planBEnv === 'true' || (isHeartbeat && (body as { plan_b?: unknown }).plan_b === true))
+    const planBTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+    if (planBOn && planBTarget && blueprint && typeof blueprint === 'object') {
+      try {
+        const bpb2 = blueprint as Record<string, unknown>
+        const ledgerB = templateLedger.length ? templateLedger : buildInventionLedger({
+          knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: planBTarget, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+        })
+        const storyItem = storyFirstPick ?? (() => { const s = ledgerB.find((it) => it.origin === 'her_story' && it.first_party && it.text.trim()); return s ? { id: s.id, text: s.text } : null })()
+        const profileB = templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null)
+        const inB = planBInputFromLedger(ledgerB, storyItem, planBTarget, profileB)
+        if (planBEligible(inB)) {
+          const asm = assemblePlanB(inB)
+          const polishOn = Deno.env.get('PLAN_B_POLISH') !== 'off' && optionalPassTime('plan_b_polish')
+          const raw = polishOn ? await polishPlanBLines(apiKey, planBPolishPrompt(asm.lines)) : null
+          const pol = applyPolish(asm.lines, parsePolish(raw, asm.lines.length), asm.sources)
+          const out = planBScript(pol.lines, storyItem?.text ?? null)
+          bpb2.script = out.script
+          if (out.script[0]?.line) bpb2.hook_options = [out.script[0].line]
+          if (Array.isArray(bpb2.shot_list)) bpb2.shot_list = syncShotListSpokenText(bpb2.shot_list as Array<{ spoken_text?: unknown }>, bpb2.script as unknown[]).shots
+          bpb2.plan_b = planBRecord(out.script, asm.sources, pol.fell_back)
+          console.log(JSON.stringify({ event: 'plan_b_assembled', ...(bpb2.plan_b as Record<string, unknown>), profile: profileB, facts_used: asm.facts_used, story: !!storyItem, dedup_removed: out.removed }))
+        } else {
+          console.log(JSON.stringify({ event: 'plan_b_skipped', reason: 'no_material' }))
+        }
+      } catch { /* Plan B never fails a build: the writer's script stays */ }
     }
     // ⚖️ PACKAGING KEEPS THE PROMISE (plan v5.1 item G, trial only; kill:
     // PACKAGING_PROMISE=false). Every title and publish caption must inherit the
