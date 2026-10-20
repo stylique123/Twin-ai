@@ -65,6 +65,31 @@ export function panelPlanB(env = process.env) {
   return env.PANEL_PLAN_B === 'on' || env.PANEL_PLAN_B === 'true'
 }
 
+/** THE SECOND ARM (plan v5.4 §20): the per-request arm from the PRIVATE panel row.
+ * The row may carry `arms: {"plan_b": [n, ...]}` (request indexes, fixture order)
+ * or `ab_split: "alternate"` (odd n → plan_b, even n → writer). When `arms` is
+ * present it wins. No field and PANEL_PLAN_B unset → every request is 'writer'.
+ * PANEL_PLAN_B=on still forces every request to plan_b. Returns 'writer'|'plan_b'. */
+export function panelArm(accountsDoc, n, env = process.env) {
+  if (panelPlanB(env)) return 'plan_b'
+  const list = accountsDoc?.arms?.plan_b
+  if (Array.isArray(list)) return list.map(Number).includes(Number(n)) ? 'plan_b' : 'writer'
+  if (accountsDoc?.ab_split === 'alternate') return Number(n) % 2 === 1 ? 'plan_b' : 'writer'
+  return 'writer'
+}
+
+/** Is any arm assignment configured (row field or env)? */
+export function panelArmsOn(accountsDoc, env = process.env) {
+  return panelPlanB(env) || Array.isArray(accountsDoc?.arms?.plan_b) || accountsDoc?.ab_split === 'alternate'
+}
+
+/** The body fields for an arm: plan_b:true only on the plan_b arm; panel_arm recorded when arms are on. */
+export function armBody(accountsDoc, n, env = process.env) {
+  if (!panelArmsOn(accountsDoc, env)) return {}
+  const arm = panelArm(accountsDoc, n, env)
+  return arm === 'plan_b' ? { plan_b: true, panel_arm: 'plan_b' } : { panel_arm: 'writer' }
+}
+
 export function panelAnswerMode(env = process.env) {
   return env.PANEL_ANSWER_MODE === 'fixture' ? 'fixture' : 'skip'
 }
@@ -167,6 +192,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   const records = []
   const { data: doneRows } = await admin.from('script_batch_results').select('n').eq('batch', batch).eq('status', 200)
   const done = new Set((doneRows ?? []).map((x) => x.n))
+  if (panelArmsOn(accounts)) console.log(`panel ${batch}: arms plan_b=${list.filter((x) => panelArm(accounts, x.n) === 'plan_b').length} writer=${list.filter((x) => panelArm(accounts, x.n) === 'writer').length}`)
   console.log(`panel ${batch}: ${list.length} scenarios, ${done.size} already done, budget $${budget}`)
   const clients = new Map()
   const spent = async () => {
@@ -186,7 +212,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     await new Promise((r) => setTimeout(r, paceMs))
     // The model lengthen pass is OFF on panel measure runs unless BATCH_LENGTHEN=on
     // (cost). The deterministic word-budget repair runs either way.
-    let body = { ...sc.body, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...(panelPlanB() ? { plan_b: true } : {}), idempotency_key: `${batch}-${sc.n}` }
+    let body = { ...sc.body, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.n), idempotency_key: `${batch}-${sc.n}` }
     const post = async () => {
       const t0 = Date.now()
       const res = await fetch(`${url}/functions/v1/generate-blueprint`, {
@@ -224,7 +250,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     await admin.from('script_batch_results').insert({
       batch, n: sc.n,
-      scenario: { group: 'panel', label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), word_budget: bp?.word_budget ?? null, body },
+      scenario: { group: 'panel', label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.n).panel_arm ?? null), word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [
