@@ -114,6 +114,8 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   const measureOnly = extra.measure_only === true
   bp.gate_mode = measureOnly ? 'measure' : 'repair'
   const budget = INVENTION_RECHECK_TIMEOUT_MS
+  const storyId = String(rec(bp.story_used).id ?? '')
+  const storyText = storyId ? ledger.filter((it) => it.id === storyId).map((it) => it.text) : []
   const judgeCall = (model: string) => (p: string) => deps.callModel(JUDGE_SYSTEM, p, JUDGE_SCHEMA, budget, { model, thinkingBudget: JUDGE_THINKING_BUDGET })
   const gate = await runInventionGate({
     blueprint: bp as GateBlueprint,
@@ -135,6 +137,8 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     // Panel-7, trial only (the edge sets these under trialOn; kills SPOKEN_DEDUP /
     // LENGTH_REFILL = 'false'): de-dup spoken lines, refill to the word budget.
     ...(extra.hold_asks === true && extra.spoken_dedup === true ? { spokenDedup: true } : {}),
+    // Her named story ships word for word: the de-dup never deletes it (#22).
+    ...(extra.hold_asks === true && storyText.length ? { protect: storyText } : {}),
     ...(extra.hold_asks === true && typeof extra.word_budget === 'number' && extra.word_budget > 0 ? { wordBudget: extra.word_budget } : {}),
     // ⚖️ SAVE-BEFORE-REPAIR (owner, 19 Oct). Trial only: `hold_asks` is set by
     // the edge under trialOn (test and panel accounts), never for a real

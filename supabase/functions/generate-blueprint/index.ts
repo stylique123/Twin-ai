@@ -16960,7 +16960,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             targetProductId: targetId, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
           })
           const profile = templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null)
-          const wb = enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId)
+          // PANEL-7 (trial; kill LENGTH_REFILL=false): an item spanning lines is
+          // offered line by line instead of refused whole (short_no_material on 4 of 8 Standard).
+          const wb = enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId, { units: Deno.env.get('LENGTH_REFILL') !== 'false' })
           bpw.script = wb.script
           bpw.word_budget = wb.record
           panel7Budget = wb.record.budget
@@ -17157,14 +17159,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       try {
         const bpd = blueprint as Record<string, unknown>
         if (Array.isArray(bpd.script)) {
-          const pick = bpd.hook_pick as { hooks?: unknown } | undefined
-          const hook = Array.isArray(pick?.hooks) && typeof pick!.hooks[0] === 'string' ? pick!.hooks[0] as string
-            : (Array.isArray(bpd.hook_options) && typeof bpd.hook_options[0] === 'string' ? bpd.hook_options[0] as string : null)
-          const dd = dedupeSpokenLines(bpd.script as Array<{ line?: unknown }>, hook)
+          // Her named story ships word for word: never deleted as a repeat (#22).
+          const protect = storyFirstPick ? [storyFirstPick.text] : []
+          const dd = dedupeSpokenLines(bpd.script as Array<{ line?: unknown }>, protect)
           if (dd.removed) {
             bpd.script = dd.script
             if (Array.isArray(bpd.shot_list)) bpd.shot_list = syncShotListSpokenText(bpd.shot_list as Array<{ spoken_text?: unknown }>, bpd.script as unknown[]).shots
-            bpd.spoken_dedup = { removed: dd.removed }
+            bpd.spoken_dedup = dd.record
             console.log(JSON.stringify({ event: 'spoken_dedup', removed: dd.removed }))
           }
         }
