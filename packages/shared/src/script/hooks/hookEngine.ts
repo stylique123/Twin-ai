@@ -17,6 +17,7 @@
 
 import type { LedgerItem, ProductName } from '../inventionGate.js'
 import { contentWords, wordCount, ruleRead, splitSentences, inventedElement, FIRST_PERSON_ELEMENTS } from '../inventionGate.js'
+import { hookClaimRisk } from '../checkLines.js'
 import { hookShape, eligibleShapes, checkHookAgainstShape, hookNumbers, type HookShape } from './hookShapes.js'
 
 export const HOOK_CANDIDATE_MIN = 8
@@ -396,6 +397,11 @@ export interface HookEngineOptions {
   /** Trial (plan v5.3 §19; kill HOOK_CLAIM_CHECK=false): a hook with an
    *  unbacked first-person claim fails (hookClaimOk). */
   claimCheck?: boolean
+  /** Trial (targeted flags v2; kill HOOK_CLAIM_GATE=false): a candidate the
+   *  targeted-flag patterns catch (absolute efficacy, invented inner state,
+   *  wrong-product fact, unbacked timeframe/number, unsourced generalisation)
+   *  is dropped before scoring, so it is never picked. */
+  claimGate?: boolean
   /** The request (topic / note) used to match stories and facts. */
   request?: string
   products?: readonly ProductName[]
@@ -415,6 +421,7 @@ function runTrial(
     ...opens.filter((c) => !writerTexts.has(String(c.text).toLowerCase())),
     ...writer.slice(0, HOOK_CANDIDATE_MAX).map((c) => ({ ...c, source: 'writer' as const })),
   ].filter((c) => !bareGen(c))
+    .filter((c) => !opts.claimGate || !hookClaimRisk(typeof c?.text === 'string' ? c.text : '', ledger, opts.products ?? []))
   const records: HookCandidateRecord[] = []
   const texts: string[] = []
   all.forEach((c, index) => {

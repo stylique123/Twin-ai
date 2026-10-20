@@ -25,7 +25,7 @@ import {
   type GateBlueprint, type GateProgress, type InventionGateRecord,
 } from '../generated/inventionGate.js'
 import { resyncShotListToScript } from '../generated/shotListSync.js'
-import { buildCheckLines, buildTargetedCheckLines, targetedFlagsOn, checkLinesLog, CHECK_LINES_VERSION, TARGETED_FLAGS_VERSION } from '../generated/checkLines.js'
+import { buildCheckLines, buildTargetedCheckLines, targetedFlagsOn, checkLinesLog, CHECK_LINES_VERSION, TARGETED_FLAGS_VERSION, buildTargetedCheckLinesV2, targetedFlagsV2On, TARGETED_FLAGS_V2_VERSION, blockWrongProductLines, wrongProductBlockOn } from '../generated/checkLines.js'
 import {
   ASYNC_POLISH_BUDGET_MS, POLISH_EDITOR_SYSTEM, POLISH_COMPARE_SYSTEM, POLISH_REWRITE_SCHEMA, POLISH_COMPARE_SCHEMA,
   polishEditorPrompt, applyPolishRewrites, polishComparePrompt, editedWins, type PolishBeat,
@@ -70,6 +70,10 @@ export interface RecheckDeps {
   onboardingLedgerFlag?: string
   /** env TARGETED_FLAGS: 'false' restores the gate-review check lines. */
   targetedFlagsFlag?: string
+  /** env TARGETED_FLAGS_V2: 'false' keeps targeted flags v1. */
+  targetedFlagsV2Flag?: string
+  /** env WRONG_PRODUCT_BLOCK: 'false' stops dropping wrong-product sentences. */
+  wrongProductBlockFlag?: string
   /** Async polish: coin for the blind compare's order (tests pin it). */
   random?: () => number
 }
@@ -316,9 +320,23 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     // risk (absolute efficacy, invented team/origin/habit, unbacked number or
     // name, scarcity with no live fact), never a line verbatim hers.
     const targeted = targetedFlagsOn(deps.targetedFlagsFlag)
-    const lines = targeted ? buildTargetedCheckLines(bp as GateBlueprint, ledger) : buildCheckLines(bp as GateBlueprint, gate.record.review_lines)
+    // Targeted flags v2 (kill TARGETED_FLAGS_V2=false): + inner state, timeframes,
+    // generalisations, wider absolutes. A sentence naming one product with a fact
+    // only ANOTHER product holds is BLOCKED (dropped) first (kill WRONG_PRODUCT_BLOCK=false);
+    // product facts carry their product_entities id on the ledger.
+    const v2 = targeted && targetedFlagsV2On(deps.targetedFlagsV2Flag)
+    if (v2 && wrongProductBlockOn(deps.wrongProductBlockFlag)) {
+      const blk = blockWrongProductLines(bp as GateBlueprint, ledger, products)
+      if (blk.blocked.length) {
+        bp.script = (blk.blueprint as Record<string, unknown>).script
+        bp.wrong_product_blocked = blk.blocked
+        console.log(JSON.stringify({ event: 'wrong_product_blocked', generation_id: generationId, blocked: blk.blocked }))
+      }
+    }
+    const lines = v2 ? buildTargetedCheckLinesV2(bp as GateBlueprint, ledger, products)
+      : targeted ? buildTargetedCheckLines(bp as GateBlueprint, ledger) : buildCheckLines(bp as GateBlueprint, gate.record.review_lines)
     bp.check_lines = lines
-    bp.check_lines_version = targeted ? TARGETED_FLAGS_VERSION : CHECK_LINES_VERSION
+    bp.check_lines_version = v2 ? TARGETED_FLAGS_V2_VERSION : targeted ? TARGETED_FLAGS_VERSION : CHECK_LINES_VERSION
     if (lines.length) console.log(JSON.stringify({ event: 'check_lines', generation_id: generationId, lines: checkLinesLog(lines) }))
   }
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
@@ -400,5 +418,7 @@ export async function handleInventionRecheck(job: Job): Promise<Record<string, u
     },
     onboardingLedgerFlag: process.env.ONBOARDING_LEDGER,
     targetedFlagsFlag: process.env.TARGETED_FLAGS,
+    targetedFlagsV2Flag: process.env.TARGETED_FLAGS_V2,
+    wrongProductBlockFlag: process.env.WRONG_PRODUCT_BLOCK,
   })
 }
