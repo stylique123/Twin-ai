@@ -20,7 +20,7 @@
 // Every example in tests is made up; none is creator or third-party text.
 
 import type { LedgerItem, ProductName } from './inventionGate.ts'
-import { contentWords, wordCount, ruleRead, splitSentences } from './inventionGate.ts'
+import { contentWords, wordCount, ruleRead, splitSentences, inventedElement, FIRST_PERSON_ELEMENTS } from './inventionGate.ts'
 import { hookShape, eligibleShapes, checkHookAgainstShape, hookNumbers, type HookShape } from './hookShapes.ts'
 
 export const HOOK_CANDIDATE_MIN = 8
@@ -358,9 +358,30 @@ export function hookInventionOk(
   return { ok: true, reason: null }
 }
 
+/** Plan v5.3 §19: the same first-person claim check the gate runs on lines
+ *  (experience, habit, positioning, origin, stance with no item of hers). */
+export function hookClaimOk(text: string, ledger: readonly LedgerItem[], products: readonly ProductName[] = []): { ok: boolean; reason: string | null } {
+  const el = inventedElement(text, ledger, products)
+  return el && FIRST_PERSON_ELEMENTS.has(el.element) ? { ok: false, reason: `first_person_claim:${el.element}` } : { ok: true, reason: null }
+}
+
+/** Bare-fact hook shapes (panel 6 and 7: a price or spec line as the hook). */
+export const BARE_FACT_SHAPES: ReadonlySet<string> = new Set(['price_or_proof'])
+
+/** Is this candidate a bare-fact hook (a price_or_proof shape, or a fact_open line)? */
+export function isBareFactHook(c: { shape?: unknown; source?: HookCandidateSource }): boolean {
+  return c.source === 'fact_open' || BARE_FACT_SHAPES.has(String(c.shape ?? ''))
+}
+
 export interface HookEngineOptions {
   /** trialOn: the appeal scorer, open candidates and the invention check. Off = v1 exactly. */
   trial?: boolean
+  /** Trial (plan v5.3 §19; kill HOOK_BARE_FACT=false): no bare-fact hook
+   *  (price_or_proof shape, fact_open source) is ever picked. */
+  noBareFact?: boolean
+  /** Trial (plan v5.3 §19; kill HOOK_CLAIM_CHECK=false): a hook with an
+   *  unbacked first-person claim fails (hookClaimOk). */
+  claimCheck?: boolean
   /** The request (topic / note) used to match stories and facts. */
   request?: string
   products?: readonly ProductName[]
@@ -389,7 +410,12 @@ function runTrial(
     if (text) {
       const inv = hookInventionOk(text, ledger, opts.products ?? [], opts.targetProductId ?? null)
       if (!inv.ok) { ok = false; reasons.push(`invention:${inv.reason}`) }
+      if (opts.claimCheck) {
+        const cl = hookClaimOk(text, ledger, opts.products ?? [])
+        if (!cl.ok) { ok = false; reasons.push(`invention:${cl.reason}`) }
+      }
     }
+    if (opts.noBareFact && isBareFactHook({ shape: rec.shape, source: c.source })) { ok = false; reasons.push('bare_fact') }
     const appeal = text ? appealScore(text, ledger) : 0
     // Opens are offered FIRST: a passing open outranks any writer line.
     // Story-open is preferred over fact-open (owner 19 Oct): both outrank a

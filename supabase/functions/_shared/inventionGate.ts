@@ -477,6 +477,7 @@ export type GateReason =
   | 'figurative' | 'truism' | 'cta' | 'opinion_unbacked' | 'no_claim' | 'judge_missing' | 'e_over_budget'
   | 'general_unsourced' | 'inherited' | 'list_count_undelivered'
   | 'advice' | 'habit_unbacked' | 'scaffold_text' | 'safety_promise'
+  | 'first_person_claim' | 'invented_frequency' | 'invented_specific'
 
 /** Test-data labels, example scaffolding and template placeholders (panel-current-5:
  *  a fixture's "made-up testimonial (fictional customer)" label was spoken aloud,
@@ -1342,6 +1343,208 @@ export function calibrateRepairs(cs: readonly ClassifiedSentence[], sentences: r
   })
 }
 
+// ── NARROW REPAIR (plan v5.3 §19; trial, kill NARROW_REPAIR=false on the edge) ──
+// Panel-7 repair audit: of 125 removed lines a strict advisor labelled 6
+// invented (false drops 30%, 68% counting E), and the final scripts held 4
+// invented first-person claims the gate passed. Under the narrow rule a line
+// is REPAIRED (replaced by her matching item text, or dropped and refilled)
+// only when BOTH judges call it I AND a deterministic pattern finds a specific
+// invented element no first-party item backs:
+//   - an unsupported first-person experience, habit, positioning, origin or
+//     stance claim ("in my experience", "I talk about", "that is why X exists");
+//   - an invented frequency ("always", "every single week") with no item;
+//   - an invented named specific (a tool or material no item names).
+// Any other flag ships as a CHECK THIS LINE review line; an E is kept and
+// flagged; an N or an S is never dropped. The pattern alone (the judges
+// disagree, or call it a truism) makes the line a review line, so the
+// first-person shapes the gate under-flagged are always shown to her.
+
+export type InventedElement = 'experience' | 'habit' | 'positioning' | 'origin' | 'stance' | 'frequency' | 'named_specific'
+
+const EXPERIENCE_RE = /\b(?:in|from) my (?:own )?experience\b|\bin (?:all )?my years\b|\bi(?:'ve| have) (?:always )?(?:found|learned|learnt|noticed|seen) that\b/i
+/** A first-person feeling about her own event ("…broke my heart"): backed only by an item of hers that names a feeling. */
+const FEELING_CLAIM_RE = /\b(?:broke|breaks|broken) my heart\b|\bmy heart (?:sank|broke)\b|\bi (?:cried|was (?:devastated|heartbroken|crushed|gutted))\b/i
+const FEELING_ITEM_RE = /\b(?:heart|cried|cry|tears|devastat\w*|crushed|gutted|upset|panick\w*|terrified|heartbroken)\b/i
+const POSITIONING_RE = /\b(?:i|we)\s+(?:mostly |only |just |really )?(?:talk|write|post|teach|make videos) about\b|\b(?:my|this|our) (?:channel|page|account|newsletter|podcast|show|brand|content)\s+is\s+(?:about|for|not for)\b|\bwho (?:my|this|our) [\w-]+ is for\b|\bi'?m (?:the|a) (?:person|creator|one) who\b/i
+const POSITIONING_ITEM_RE = new RegExp(`${POSITIONING_RE.source}|\\bfor (?:people|anyone|those|folks) who\\b`, 'i')
+const ORIGIN_CLAIM_RE = /\b(?:that'?s|that is|this is) why (?:[\w'-]+ ){1,4}(?:exists?|was born)\b|\b(?:that'?s|that is|this is) why (?:i|we) (?:started|created|built|made|launched|founded)\b|\bthe (?:whole )?reason (?:i|we) (?:started|created|built|made|launched|founded)\b|\b[\w'-]+ exists (?:because|so that)\b/i
+const ORIGIN_ITEM_RE = /\b(?:i|we)\b[^.!?]*\b(?:made|created|started|built|founded|launched)\b/i
+const HABIT_CLAIM_RE = /\bi\s+(?:always |usually |only |never |still |just )?(?:read|check|test|write|post|send|cover|review|teach|share|recommend|use|buy|brew|drink|keep|store|film|weigh|measure|track)\b/i
+const STANCE_RE = /\b(?:i|we)\s+(?:really |honestly |strongly |firmly )?(?:think|believe|refuse to|will never|never recommend|don'?t (?:believe in|recommend|trust)|am against|'m against|am not a fan|'m not a fan|hate|swear by|prefer)\b|\bin my (?:honest )?opinion\b|\bmy (?:take|stance|hot take) (?:is|:)/i
+const FREQUENCY_RE = /\b(?:always|all the time|every single (?:day|week|time|morning|night|month)|every (?:day|week|morning|night|month)|constantly|without fail|each and every)\b/i
+/** A tool or material head noun; with a modifier no item has, it is a named specific. */
+const SPECIFIC_HEAD_RE = /\b([a-z][a-z-]{3,})\s+(?:grinders?|drills?|sanders?|saws?|torch(?:es)?|plates?|shelf|shelves|stones?|thermometers?|scales?|poppers?|kettles?|burrs?|blenders?|mixers?|dehydrators?|bats?|barbells?|kettlebells?|dumbbells?|racks?|benches|trays?|molds?|moulds?)\b/gi
+const MATERIAL_RE = /\b(?:cordierite|stoneware|porcelain|terracotta|earthenware|silicone|titanium|bamboo|niacinamide|retinol|ceramides?|squalane|jojoba|hyaluronic|salicylic|glycolic|peptides?|collagen|bakuchiol|centella|lanolin|beeswax|arabica|robusta|aeropress|chemex)\b/gi
+const GENERIC_MODIFIER = new Set(('this that these those your their some many more most other same whole every each first last next new old good best real right wrong big small large tiny little simple basic cheap fancy heavy light clean dirty full empty home kitchen extra spare second').split(' '))
+const CLAUSE_END_RE = /[;.!?]|,\s*(?:while|but|because|and|so|which|whereas)\b|\s(?:because|while|but|so that|since|whereas)\b/i
+const MARKER_WORDS = contentWords('experience years found learned learnt noticed seen heart broke breaks talk write post teach videos about channel page account newsletter podcast show brand content person creator reason exists exist born started created built made launched founded read check test send cover review share recommend use buy brew drink keep store film weigh measure track always usually only never still just think believe refuse trust against fan hate swear prefer opinion take stance every single time day week morning night month constantly without fail here thing')
+
+/** The clause a marker opens: from the marker to the next clause break. A
+ *  lead-in marker ("In my experience,") takes the clause after its comma. */
+function clauseAt(text: string, index: number): string {
+  const rest = text.slice(index)
+  const lead = rest.match(/^(?:in|from) my (?:own )?experience\s*,\s*|^in (?:all )?my years\s*,\s*/i)
+  const from = lead ? lead[0].length : 1
+  const m = rest.slice(from).match(CLAUSE_END_RE)
+  return rest.slice(0, m && m.index !== undefined ? from + m.index : rest.length)
+}
+
+/** A tool or material noun no item names ("a bench grinder", "titanium"). */
+export function namedSpecific(text: string, ledger: readonly LedgerItem[]): { element: InventedElement; clause: string } | null {
+  const known = new Set(ledger.flatMap((it) => [...contentWords(it.text)]))
+  for (const m of String(text ?? '').matchAll(MATERIAL_RE)) {
+    const w = [...contentWords(m[0])][0]
+    if (w && !known.has(w)) return { element: 'named_specific', clause: m[0] }
+  }
+  for (const m of String(text ?? '').matchAll(SPECIFIC_HEAD_RE)) {
+    const mod = m[1]!.toLowerCase()
+    if (GENERIC_MODIFIER.has(mod) || /(?:ly|ing|ed)$/.test(mod)) continue
+    const w = [...contentWords(mod)][0]
+    if (w && !known.has(w)) return { element: 'named_specific', clause: m[0] }
+  }
+  return null
+}
+
+/** A specific invented element in one line (pure, deterministic): the first
+ *  marker no first-party item backs, or null. Experience, positioning, origin
+ *  and stance claims are backed only by her own words (positioning and origin
+ *  only by her own positioning or origin words); a habit or a frequency by any
+ *  first-party item; a named specific by any item at all. A clause is backed
+ *  when one item states at least half of its claim words. */
+export function inventedElement(text: string, ledger: readonly LedgerItem[], products: readonly ProductName[] = []): { element: InventedElement; clause: string } | null {
+  const t = String(text ?? '')
+  if (!t.trim() || isPlaceholder(t) || /^\s*["“]/.test(t)) return null
+  const firstParty = ledger.filter((it) => it.first_party)
+  const hers = firstParty.filter((it) => it.origin === 'her_story' || it.origin === 'her_fact' || it.origin === 'her_answer')
+  const nameWords = new Set(products.flatMap((p) => [...productWordsOf(p.name)]))
+  const check = (re: RegExp, element: InventedElement, backers: readonly LedgerItem[], itemMarker?: RegExp): { element: InventedElement; clause: string } | null => {
+    const m = re.exec(t)
+    if (!m) return null
+    // A frequency qualifies the whole sentence's claim ("sells out every single week").
+    const clause = element === 'frequency' ? t : clauseAt(t, m.index)
+    const pool = itemMarker ? backers.filter((it) => itemMarker.test(it.text)) : backers
+    if (element === 'origin') return pool.length ? null : { element, clause }
+    const ws = new Set([...contentWords(clause)].filter((w) => !MARKER_WORDS.has(w) && !nameWords.has(w)))
+    if (!ws.size) return itemMarker && !pool.length ? { element, clause } : null
+    const best = Math.max(0, ...pool.map((it) => overlap(ws, contentWords(it.text))))
+    return best >= 0.5 ? null : { element, clause }
+  }
+  // A frequency in an instruction ("check it every single time") is advice, not a claim.
+  const lead = t.trim().replace(/^[\w' -]{1,20}:\s*/, '')
+  const declarative = !IMPERATIVE_LEAD_RE.test(lead) && !/^(?:make|get|have|let|tell)\s+(?:it|them|your)\b/i.test(lead)
+  return check(ORIGIN_CLAIM_RE, 'origin', hers, ORIGIN_ITEM_RE)
+    ?? check(EXPERIENCE_RE, 'experience', hers)
+    ?? check(FEELING_CLAIM_RE, 'experience', hers, FEELING_ITEM_RE)
+    ?? check(POSITIONING_RE, 'positioning', hers, POSITIONING_ITEM_RE)
+    ?? check(STANCE_RE, 'stance', hers)
+    ?? check(HABIT_CLAIM_RE, 'habit', firstParty)
+    ?? (declarative ? check(FREQUENCY_RE, 'frequency', firstParty) : null)
+    ?? namedSpecific(t, ledger)
+}
+
+/** First-person claim elements (the hook check uses these). */
+export const FIRST_PERSON_ELEMENTS: ReadonlySet<InventedElement> = new Set<InventedElement>(['experience', 'habit', 'positioning', 'origin', 'stance'])
+
+/** The gate reason a found element carries. */
+export function elementReason(e: InventedElement): GateReason {
+  return e === 'frequency' ? 'invented_frequency' : e === 'named_specific' ? 'invented_specific' : 'first_person_claim'
+}
+
+/** Trial (narrowRepair): the narrow verdicts. Only a line with an invented
+ *  element that BOTH judges call I is blocked (repaired); an element alone is
+ *  a review line; every other I or E is a review line (CHECK THIS LINE) that
+ *  ships; S and N pass. Scaffolding stays blocked. Pure. */
+export function narrowRepairs(cs: readonly ClassifiedSentence[], sentences: readonly GateSentence[], ledger: readonly LedgerItem[], products: readonly ProductName[] = []): ClassifiedSentence[] {
+  const text = new Map(sentences.map((s) => [s.i, s.text] as const))
+  return cs.map((c) => {
+    if (c.reason === 'scaffold_text') return c
+    const t = text.get(c.i) ?? ''
+    const el = isPlaceholder(t) ? null : inventedElement(t, ledger, products)
+    const f = c.fast_class ?? c.class
+    const st = c.strong_class ?? c.class
+    const bothI = f === 'I' && st === 'I' && (c.judged || c.reason === 'inherited')
+    if (el) {
+      const reason = elementReason(el.element)
+      const kind: ClaimType = el.element === 'stance' ? 'opinion' : el.element === 'named_specific' || el.element === 'frequency' ? 'product' : 'habit'
+      const claim_types = [...new Set([...c.claim_types, kind])]
+      if (bothI) return { ...c, class: 'I' as const, verdict: 'block' as const, reason, claim_types }
+      return { ...c, class: 'G' as const, verdict: 'review' as const, reason, claim_types }
+    }
+    if (c.class === 'I' || c.verdict === 'block') return { ...c, class: 'G' as const, verdict: 'review' as const }
+    if (c.class === 'E') return { ...c, verdict: 'review' as const }
+    return c
+  })
+}
+
+/** Narrow replace: her matching item text, verbatim (a spoken unit of the
+ *  first near item that is not already said), or '' (drop, then refill). */
+export function narrowReplacement(c: Pick<ClassifiedSentence, 'near' | 'item_ids'>, ledger: readonly LedgerItem[], said: readonly string[]): string {
+  const byId = new Map(ledger.map((it) => [it.id, it] as const))
+  for (const id of [...c.near, ...c.item_ids]) {
+    const it = byId.get(id)
+    if (!it || !it.first_party || isScaffoldText(it.text)) continue
+    for (const u of spokenUnits(it.text)) {
+      if (said.some((x) => nearDuplicate(x, u))) continue
+      return (u.charAt(0).toUpperCase() + u.slice(1)).replace(/([^.!?])$/, '$1.')
+    }
+  }
+  return ''
+}
+
+// ── REPEATS BY MEANING (plan v5.3 §19; trial, kill STORY_DEDUP=false) ───────
+// #1291 de-dups by word overlap. The same story retold in other words (a hook
+// paraphrasing her story, the story verbatim, then a restatement) is caught by
+// ITEM: two spoken sentences sourced from the same story item, one verbatim
+// and one a paraphrase of it, keep the verbatim one.
+
+export const STORY_PARAPHRASE_MIN = 0.5
+const normText = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/** How a sentence relates to a story item: 'verbatim' (its words, in order),
+ *  'paraphrase' (at least half of its content words, and at least 3, come
+ *  from the item), or null. */
+export function storyRelation(sentence: string, story: string): 'verbatim' | 'paraphrase' | null {
+  const n = normText(sentence)
+  if (!n) return null
+  if (` ${normText(story)} `.includes(` ${n} `)) return 'verbatim'
+  const sw = contentWords(sentence)
+  const iw = contentWords(story)
+  let hit = 0
+  for (const w of sw) if (iw.has(w)) hit++
+  return hit >= 3 && hit / Math.max(1, sw.size) >= STORY_PARAPHRASE_MIN ? 'paraphrase' : null
+}
+
+export interface StoryDedupRecord { dropped: number; beats_dropped: number }
+
+/** Drop the paraphrases of a story item the script also tells verbatim, when
+ *  the verbatim sentences carry at least half of the paraphrase's words. Pure. */
+export function dedupByStoryItem<B extends { line?: unknown }>(script: readonly B[], ledger: readonly LedgerItem[], protect: readonly string[] = []): { script: B[]; record: StoryDedupRecord } {
+  const stories = [...ledger.filter((it) => it.origin === 'her_story' && it.first_party).map((it) => it.text), ...protect].filter((x) => x.trim())
+  const beats = script.map((b) => (typeof b?.line === 'string' ? splitSentences(b.line) : []).map((t) => ({ t, keep: true })))
+  const record: StoryDedupRecord = { dropped: 0, beats_dropped: 0 }
+  for (const story of stories) {
+    const rel = beats.map((ss) => ss.map((x) => storyRelation(x.t, story)))
+    const verbatimWords = new Set<string>()
+    beats.forEach((ss, bi) => ss.forEach((x, k) => { if (x.keep && rel[bi]![k] === 'verbatim') for (const w of contentWords(x.t)) verbatimWords.add(w) }))
+    if (!verbatimWords.size) continue
+    beats.forEach((ss, bi) => ss.forEach((x, k) => {
+      if (!x.keep || rel[bi]![k] !== 'paraphrase') return
+      if (overlap(contentWords(x.t), verbatimWords) < STORY_PARAPHRASE_MIN) return
+      x.keep = false
+      record.dropped++
+    }))
+  }
+  const out: B[] = []
+  script.forEach((b, bi) => {
+    const ss = beats[bi]!
+    if (!ss.length || ss.every((x) => x.keep)) { out.push(b); return }
+    const line = ss.filter((x) => x.keep).map((x) => x.t).join(' ')
+    if (line.trim()) out.push({ ...b, line })
+    else record.beats_dropped++
+  })
+  return { script: out, record }
+}
+
 /** Run classifySentences once per judge and combine. */
 export function classifyTwoJudges(input: Omit<ClassifyInput, 'judge'> & { fast: Map<number, JudgeVerdict> | null; strong: Map<number, JudgeVerdict> | null }): ClassifiedSentence[] {
   const f = classifySentences({ ...input, judge: input.fast })
@@ -2188,6 +2391,13 @@ export interface RunGateInput {
   wordBudget?: number
   /** Trial: text that ships word for word (her named story); never de-duplicated away. */
   protect?: string[]
+  /** Trial (plan v5.3 §19; kill NARROW_REPAIR=false on the edge): repair only
+   *  lines with an invented element both judges call I (narrowRepairs); a
+   *  replace uses her matching item text verbatim, no rewrite call. */
+  narrowRepair?: boolean
+  /** Trial (plan v5.3 §19; kill STORY_DEDUP=false on the edge): drop a
+   *  paraphrase of a story item the script also tells verbatim. */
+  storyDedup?: boolean
   now?: () => number
   timeoutMs?: number
   chunkSize?: number
@@ -2286,6 +2496,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       strongV = j.strong
     }
     const classified = classifyTwoJudges({ sentences, ledger: input.ledger, products, targetProductId: target, fast: fastV, strong: strongV })
+    if (input.narrowRepair) return { sentences, classified: narrowRepairs(classified, sentences, input.ledger, products) }
     const softened = input.ruleReview ? softenRuleBlocks(classified) : classified
     return { sentences, classified: input.repairCalibrated ? calibrateRepairs(softened, sentences) : softened }
   }
@@ -2354,11 +2565,27 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     }
     while (rounds < INVENTION_GATE_MAX_ROUNDS) {
       // Repair calibration: a light E is never deleted for being over budget.
-      const over = input.repairCalibrated ? [] : overBudgetE(cur.classified, spokenWords(bp))
+      const over = input.repairCalibrated || input.narrowRepair ? [] : overBudgetE(cur.classified, spokenWords(bp))
       if (!cur.classified.some((s) => s.class === 'I') && !over.length) break
       rounds++
       const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: over, spokenBeats: spokenBeats(bp), asksSoFar: questions.length + preAsked, declined })
       const replaceSteps = steps.filter((s) => s.action === 'replace')
+      if (input.narrowRepair && replaceSteps.length) {
+        // Narrow replace: her item text verbatim (supported by construction), no rewrite call.
+        const prev = cur
+        const leaving = new Set(steps.map((st) => st.i))
+        const said = cur.sentences.filter((x) => x.surface === 'script' && !leaving.has(x.i)).map((x) => x.text)
+        const rw = new Map<number, string>()
+        for (const st of replaceSteps) {
+          const c = cur.classified.find((x) => x.i === st.i)
+          const r = c ? narrowReplacement({ near: st.item_ids, item_ids: c.item_ids }, input.ledger, said) : ''
+          if (r) { rw.set(st.i, r); said.push(r) }
+        }
+        apply(steps, rw)
+        const sentences = extractSentences(bp)
+        cur = { sentences, classified: carryClasses(prev, sentences, new Set([...refillSet, ...[...rw.values()].flatMap((t) => splitSentences(t))])) }
+        continue
+      }
       if (!replaceSteps.length) {
         // Nothing new written: no re-judge needed.
         const prev = cur
@@ -2375,7 +2602,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       cur = await classify(bp)
     }
     // THE LAST WORD: whatever is still I (or E over budget) is asked or dropped, never kept.
-    const overLast = input.repairCalibrated ? [] : overBudgetE(cur.classified, spokenWords(bp))
+    const overLast = input.repairCalibrated || input.narrowRepair ? [] : overBudgetE(cur.classified, spokenWords(bp))
     if (cur.classified.some((s) => s.class === 'I') || overLast.length) {
       const prev = cur
       const steps = planRepairs({ classified: cur.classified, sentences: cur.sentences, overBudget: overLast, spokenBeats: spokenBeats(bp), finalRound: true, asksSoFar: questions.length + preAsked, declined })
@@ -2393,6 +2620,10 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     if (input.spokenDedup) {
       const d = dedupeSpokenLines(Array.isArray(bp.script) ? bp.script as Array<{ line?: unknown }> : [], input.protect ?? [])
       if (d.removed) { bp = { ...bp, script: d.script }; deduped = d.removed }
+    }
+    if (input.storyDedup) {
+      const d = dedupByStoryItem(Array.isArray(bp.script) ? bp.script as Array<{ line?: unknown }> : [], input.ledger, input.protect ?? [])
+      if (d.record.dropped) { bp = { ...bp, script: d.script }; deduped += d.record.dropped }
     }
     let toppedUp = 0
     const lost = repaired.dropped + repaired.asked + deduped + cur.classified.filter((c) => c.verdict === 'review' && c.surface === 'script').length

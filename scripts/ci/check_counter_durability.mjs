@@ -871,6 +871,7 @@ const EVENTS = {
   story_used: { kind: 'counter', stored: 'generations.blueprint', why: 'Trial only (owner, panel-current-5): her named story checked verbatim with its key facts. Stored as blueprint.story_used (item id, verbatim, counts).' },
   duration_choice: { kind: 'counter', stored: 'generations.blueprint', why: 'Trial only (owner, panel-current-5): duration profile chosen from material on file. Stored as blueprint.duration_choice with the reason.' },
   length_budget_check: { kind: 'counter_ephemeral', why: 'Trial only (panel-current-7): the extension pass decision against the duration-profile word budget (words, budget, extend). Counts only; the outcome lands in script_length_extended.' },
+  story_dedup: { kind: 'counter_ephemeral', why: 'Trial only (plan v5.3 section 19): paraphrases of a story item the script also tells verbatim, removed. The count lands durably in blueprint.story_dedup.' },
   plan_b_assembled: { kind: 'counter', stored: 'generations.blueprint', why: 'Trial only (owner decision 5, Plan B): the code-assembled, line-sourced body. Counts only; stored as blueprint.plan_b {lines, sourced, polished, fell_back}.' },
   plan_b_skipped: { kind: 'counter_ephemeral', why: 'Trial only (owner decision 5, Plan B): Plan B was on but no story or fact was on file, so the writer path stayed. Reason only.' },
   spoken_dedup: { kind: 'counter_ephemeral', why: 'Trial only (panel-current-7): spoken sentences removed as repeats of the hook or a near line. The count lands durably in blueprint.spoken_dedup.' },
