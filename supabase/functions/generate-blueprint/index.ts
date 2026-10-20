@@ -17318,6 +17318,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     const planBEnv = Deno.env.get('PLAN_B_ASSEMBLY') ?? ''
     const planBOn = trialOn && planBEnv !== 'off' && planBEnv !== 'false'
       && (planBEnv === 'true' || (isHeartbeat && (body as { plan_b?: unknown }).plan_b === true))
+    // THE SECOND ARM (plan v5.4 §20): a panel request names its arm; it is
+    // recorded on the blueprint so the panel can split results by arm. The env
+    // need not be set for `plan_b: true` to work (an unset env is not 'off').
+    const panelArmReq = (body as { panel_arm?: unknown }).panel_arm
+    if (isHeartbeat && (panelArmReq === 'writer' || panelArmReq === 'plan_b') && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).panel_arm = panelArmReq
     const planBTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
     if (planBOn && planBTarget && blueprint && typeof blueprint === 'object') {
       try {
