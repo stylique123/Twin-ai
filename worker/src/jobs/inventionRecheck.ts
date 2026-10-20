@@ -28,8 +28,9 @@ import { resyncShotListToScript } from '../generated/shotListSync.js'
 import { buildCheckLines, buildTargetedCheckLines, targetedFlagsOn, checkLinesLog, CHECK_LINES_VERSION, TARGETED_FLAGS_VERSION } from '../generated/checkLines.js'
 import {
   ASYNC_POLISH_BUDGET_MS, POLISH_EDITOR_SYSTEM, POLISH_COMPARE_SYSTEM, POLISH_REWRITE_SCHEMA, POLISH_COMPARE_SCHEMA,
-  polishEditorPrompt, applyPolishRewrites, polishComparePrompt, editedWins, type PolishBeat,
+  polishEditorPrompt, applyPolishRewrites, polishComparePrompt, editedWins, POLISH_VOICE_MAX_REWRITES, type PolishBeat,
 } from '../generated/asyncPolish.js'
+import { voicePolishBrief, voicePolishVerdict, polishFactChecks, type VoiceCard } from '../generated/voiceCard.js'
 
 /** The fast judge and the rewrite (task class of model_routing_v1.json). */
 export const INVENTION_RECHECK_TASK = INVENTION_JUDGE_CASCADE.fast
@@ -75,7 +76,26 @@ export interface RecheckDeps {
 }
 
 /** The record the polish step leaves on the blueprint (counts only). */
-export interface PolishRecord { kept: number; rejected: string[]; verdict: 'edited' | 'original' | 'none' | 'error'; ms: number; steps: string[] }
+export interface PolishRecord {
+  kept: number; rejected: string[]; verdict: 'edited' | 'original' | 'none' | 'error'; ms: number; steps: string[]
+  /** Panel-10: the voice check before/after the polish (present when her card rode on the job). */
+  voice?: { before: number; after: number; reason: 'improved' | 'not_better' | 'checks_failed'; fact_checks: string[] }
+}
+
+/** Her voice at the polish step: the edge puts the card, her style note and samples on `ledger.polish.voice`. */
+export interface PolishVoice { card: VoiceCard; style_note?: string | null; samples?: string[] }
+
+/** The job's voice payload, or null when it is missing or malformed. */
+export function polishVoiceOf(v: unknown): PolishVoice | null {
+  const o = rec(v)
+  const card = rec(o.card)
+  if (typeof card.id !== 'string' || !rec(card.sentence_length).mean || !Array.isArray(card.signatures)) return null
+  return {
+    card: card as unknown as VoiceCard,
+    style_note: typeof o.style_note === 'string' ? o.style_note : null,
+    samples: Array.isArray(o.samples) ? (o.samples as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 12) : [],
+  }
+}
 
 /**
  * ⚖️ ASYNC POLISH (owner decision 2; trial only — the edge sets `ledger.polish`
@@ -87,16 +107,28 @@ export interface PolishRecord { kept: number; rejected: string[]; verdict: 'edit
  * (word_budget) replaces the request-path lengthen passes. A polish that fails
  * or runs out of time keeps the draft: it never blocks the check.
  */
-export async function runPolish(bp: Record<string, unknown>, material: string, opts: { goal?: string; subject?: string }, deps: Pick<RecheckDeps, 'callModel' | 'model' | 'now' | 'random'>): Promise<PolishRecord> {
+export async function runPolish(bp: Record<string, unknown>, material: string, opts: { goal?: string; subject?: string; voice?: PolishVoice | null }, deps: Pick<RecheckDeps, 'callModel' | 'model' | 'now' | 'random'>): Promise<PolishRecord> {
   const clock = deps.now ?? (() => Date.now())
   const t0 = clock()
   const steps = Array.isArray(rec(bp.polish_pending).steps) ? (rec(bp.polish_pending).steps as unknown[]).map(String) : []
   const beats = Array.isArray(bp.script) ? bp.script as PolishBeat[] : []
   if (!beats.length) return { kept: 0, rejected: [], verdict: 'none', ms: 0, steps }
   try {
-    const raw = await deps.callModel(POLISH_EDITOR_SYSTEM, polishEditorPrompt(beats, material, opts), POLISH_REWRITE_SCHEMA, ASYNC_POLISH_BUDGET_MS, { model: deps.model })
-    const applied = applyPolishRewrites(beats, raw, material)
+    const v = opts.voice ?? null
+    const voiceBrief = v ? voicePolishBrief({ card: v.card, styleNote: v.style_note, samples: v.samples }) : ''
+    const raw = await deps.callModel(POLISH_EDITOR_SYSTEM, polishEditorPrompt(beats, material, { goal: opts.goal, subject: opts.subject, voice: voiceBrief }), POLISH_REWRITE_SCHEMA, ASYNC_POLISH_BUDGET_MS, { model: deps.model })
+    const applied = applyPolishRewrites(beats, raw, material, v ? POLISH_VOICE_MAX_REWRITES : 2)
     let verdict: PolishRecord['verdict'] = 'none'
+    // ⚖️ VOICE CHECK (panel-10): with her card on the job, the polish is kept
+    // only when the voice score improves AND the claim/number/name checks pass.
+    let voiceRec: PolishRecord['voice']
+    if (v && applied.kept) {
+      const lines = (b: PolishBeat[]) => b.map((x) => (typeof x.line === 'string' ? x.line : '')).filter((l) => l.trim())
+      const fc = polishFactChecks(lines(beats), lines(applied.next), material)
+      const vv = voicePolishVerdict(v.card, lines(beats), lines(applied.next), fc.ok)
+      voiceRec = { before: vv.before, after: vv.after, reason: vv.reason, fact_checks: fc.reasons }
+      if (!vv.keep) return { kept: 0, rejected: applied.rejected, verdict: 'original', ms: clock() - t0, steps, voice: voiceRec }
+    }
     const left = ASYNC_POLISH_BUDGET_MS - (clock() - t0)
     if (applied.kept && left >= 5_000) {
       const flip = (deps.random ?? Math.random)() < 0.5
@@ -106,7 +138,7 @@ export async function runPolish(bp: Record<string, unknown>, material: string, o
       } catch { verdict = 'original' }
     } else if (applied.kept) verdict = 'original'
     if (verdict === 'edited') bp.script = applied.next
-    return { kept: verdict === 'edited' ? applied.kept : 0, rejected: applied.rejected, verdict, ms: clock() - t0, steps }
+    return { kept: verdict === 'edited' ? applied.kept : 0, rejected: applied.rejected, verdict, ms: clock() - t0, steps, ...(voiceRec ? { voice: voiceRec } : {}) }
   } catch {
     return { kept: 0, rejected: [], verdict: 'error', ms: clock() - t0, steps }
   }
@@ -198,11 +230,11 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   if (bp.polish_pending && Object.keys(polishOpts).length) {
     writeProgress(gateProgress('polishing', 0, 0, clock()), true)
     const material = ledger.map((it) => String((it as { text?: unknown }).text ?? '')).filter(Boolean).join('\n')
-    const polish = await runPolish(bp, material, { goal: String(polishOpts.goal ?? ''), subject: String(polishOpts.subject ?? '') }, { ...deps, now: clock })
+    const polish = await runPolish(bp, material, { goal: String(polishOpts.goal ?? ''), subject: String(polishOpts.subject ?? ''), voice: polishVoiceOf(polishOpts.voice) }, { ...deps, now: clock })
     delete bp.polish_pending
     bp.polish = polish
     if (Array.isArray(bp.script) && polish.verdict === 'edited') resyncShotListToScript(bp)
-    console.log(JSON.stringify({ event: 'async_polish', generation_id: generationId, kept: polish.kept, rejected: polish.rejected.length, verdict: polish.verdict, ms: polish.ms, attempt: job.attempts }))
+    console.log(JSON.stringify({ event: 'async_polish', generation_id: generationId, kept: polish.kept, rejected: polish.rejected.length, verdict: polish.verdict, voice_before: polish.voice?.before ?? null, voice_after: polish.voice?.after ?? null, voice_reason: polish.voice?.reason ?? null, ms: polish.ms, attempt: job.attempts }))
     await chain
     if (deps.saveProgress) await deps.saveProgress(generationId, { ...bp }).catch(() => {})
   } else if (bp.polish_pending) {

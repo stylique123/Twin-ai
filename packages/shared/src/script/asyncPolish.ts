@@ -69,7 +69,8 @@ export const POLISH_COMPARE_SCHEMA = {
 const strip = (s: string) => s.split('<<<UNTRUSTED_DATA').join('').split('END_UNTRUSTED_DATA>>>').join('')
 
 /** The editor prompt (same rules as the edge's trial self-review, incl. the payoff rule). */
-export function polishEditorPrompt(beats: PolishBeat[], material: string, opts: { goal?: string; subject?: string } = {}): string {
+export function polishEditorPrompt(beats: PolishBeat[], material: string, opts: { goal?: string; subject?: string; voice?: string } = {}): string {
+  const voice = String(opts.voice ?? '').trim()
   const numbered = beats.map((b, i) => `${i}. [${String(b.section ?? '')}] ${String(b.line ?? '')}`).join('\n')
   return [
     'Find the (at most two) weakest lines, in this order of priority:',
@@ -80,12 +81,16 @@ export function polishEditorPrompt(beats: PolishBeat[], material: string, opts: 
     '1. a line that reads like a profile, bio, product page or keyword list instead of a person talking;',
     '2. a line any creator in her niche could say word for word (nothing of hers in it);',
     '3. a line that breaks the thread: the close does not answer or act on what the hook opened.',
-    'Rewrite each in first person, short and spoken, using only her material below. Keep exact numbers exactly. If every line is already good, return no rewrites.',
+    voice
+      ? `4. a line that does not sound like her (wrong sentence length, exclamations she would not use, too clipped or too smooth for her rhythm): rewrite it to her voice below. With her voice on record you may fix up to ${POLISH_VOICE_MAX_REWRITES} lines.`
+      : '',
+    'Rewrite each in first person, spoken, using only her material below. Keep exact numbers exactly. If every line is already good, return no rewrites.',
+    voice ? `\n${voice.slice(0, 2000)}` : '',
     `\nTHE VIDEO'S GOAL: ${String(opts.goal ?? 'not set')}.`,
     `\nTHE SCRIPT (index. [section] line):\n${numbered}`,
     `\nHER MATERIAL (the only source of facts):\n<<<UNTRUSTED_DATA her material\n${strip(material.slice(0, 6000))}\nEND_UNTRUSTED_DATA>>>`,
     '\nReturn {"rewrites":[{"index":"<line index>","line":"<new line>"}]}.',
-  ].join('\n')
+  ].filter((l) => l !== '').join('\n')
 }
 
 const NUM = /\d+(?:[.,]\d+)?/g
@@ -98,7 +103,10 @@ export function newNumbersIn(line: string, original: string, material: string): 
 export interface PolishApply { next: PolishBeat[]; kept: number; rejected: string[] }
 
 /** Applies at most two editor rewrites: never the hook or the close, never a new number. */
-export function applyPolishRewrites(beats: PolishBeat[], raw: string, material: string): PolishApply {
+/** With her voice card at the polish step the editor may fix this many lines (else two). */
+export const POLISH_VOICE_MAX_REWRITES = 4
+
+export function applyPolishRewrites(beats: PolishBeat[], raw: string, material: string, maxRewrites = 2): PolishApply {
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch { return { next: beats, kept: 0, rejected: ['bad_json'] } }
   const list = Array.isArray((parsed as { rewrites?: unknown })?.rewrites) ? (parsed as { rewrites: unknown[] }).rewrites : []
@@ -108,7 +116,7 @@ export function applyPolishRewrites(beats: PolishBeat[], raw: string, material: 
   const next = beats.map((b) => ({ ...b }))
   const rejected: string[] = []
   let kept = 0
-  for (const r of list.slice(0, 2) as Array<{ index?: unknown; line?: unknown }>) {
+  for (const r of list.slice(0, maxRewrites) as Array<{ index?: unknown; line?: unknown }>) {
     const at = Number(r?.index)
     const line = typeof r?.line === 'string' ? r.line.trim() : ''
     if (!Number.isInteger(at) || at < 0 || at >= next.length || line.split(/\s+/).length < 4) { rejected.push('bad_index'); continue }

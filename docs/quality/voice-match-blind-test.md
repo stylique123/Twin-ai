@@ -69,3 +69,19 @@ A real-creator run needs her consent to use her samples as a voice sheet, and
 the sheets are shown only to raters bound by the same privacy rules as the
 product. No real creator's material is ever added to this document or to a
 fixture.
+
+## Panel package: the "sounds like her" sheet
+
+For the next panel package, dump the panel's scripts as `[{ "creator": "<fixture key>", "script": [{ "line": "..." }] }]`
+(one row per generation) to a private directory, then:
+
+```
+node scripts/ops/voiceBlindTest.mjs --panel=/private/dir/panel.json --n=3 --seed=11 --out=/private/dir/blind
+```
+
+Per creator it mixes N panel lines with N of her real sample lines (by default the fictional fixture's
+`voice.samples`; pass `--real=/private/dir/real.json`, `{ "<key>": ["..."] }`, for other material), shuffles
+every creator onto one sheet (`voice-blind-panel-sheet.csv`: item, creator, text, y/n) and writes the key
+(`voice-blind-panel-key.json`) beside it. `--out` must be outside the repository. A creator with fewer than
+N lines of either kind is skipped and listed in the key. Score the marked sheet with
+`node scripts/ops/voiceBlindTest.mjs --score --key=/private/dir/blind/voice-blind-panel-key.json --marks=<marked.csv>`.
