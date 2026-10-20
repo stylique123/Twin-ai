@@ -84,7 +84,7 @@ import { robotPass } from '../_shared/robotPhrases.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
-import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep } from '../_shared/asyncPolish.ts'
+import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerHedgeOn, ASYNC_WRITER_END_MS } from '../_shared/asyncPolish.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
@@ -6033,10 +6033,16 @@ async function callOnce(
   // something unparseable on every attempt. Caught before it shipped; the fix is
   // one argument rather than a second, untested provider path.
   schema: unknown = blueprintSchema,
+  // Async-polish hedge: the losing writer attempt is aborted from outside.
+  outerSignal?: AbortSignal,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  if (outerSignal) {
+    if (outerSignal.aborted) ctrl.abort()
+    else outerSignal.addEventListener('abort', () => ctrl.abort(), { once: true })
+  }
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -6349,6 +6355,11 @@ interface WriterLadder { retryPrompt?: string; usedAttempt?: number
   /** Trial (owner decision 2): the async-polish deadline — attempt 0 capped at
    *  60 s, every attempt done by 84 s of the request. ASYNC_POLISH=off kills it. */
   async?: boolean
+  /** Trial (async polish): attempt 0 runs to the 84 s end and the fallback starts
+   *  in parallel at WRITER_HEDGE_AT_MS; WRITER_HEDGE=off kills it. */
+  hedge?: boolean
+  /** Hedge counts (calls started, hedged, loser aborted) — counts only. */
+  hedgeCalls?: number; hedged?: boolean; hedgeAborted?: number
   /** Counts for the failure record (codes and counts only). */
   failed?: number; skipped?: number; lastCode?: string | null }
 
@@ -6399,6 +6410,37 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
     { model, thinkBudget, timeoutMs: 75_000 },
     { model: fallbackModel, thinkBudget: 0, timeoutMs: 55_000 },
   ]
+
+  // ⚖️ THE PARALLEL HEDGE (trial, async polish; WRITER_HEDGE=off kills it).
+  // Attempt 0 runs to the 84 s end; past WRITER_HEDGE_AT_MS the fallback runs
+  // beside it and the first complete blueprint wins; the loser is aborted.
+  // Both rows land in script_attempts; the counts go on the ladder and a log.
+  if (ladder?.hedge === true && ladder.async === true && ladder.startedAt != null && schema === blueprintSchema && attempts.length >= 2) {
+    const rows: Array<string | null> = [null, null]
+    const mk = (i: 0 | 1) => ({
+      base: i === 0 ? ASYNC_WRITER_END_MS : attempts[1].timeoutMs,
+      run: (t: number, signal: AbortSignal) => callOnce(apiKey, system, i >= 1 && ladder.retryPrompt ? ladder.retryPrompt : prompt, attempts[i].model, attempts[i].thinkBudget, t, schema, signal),
+    })
+    const valid = (text: string) => { try { return blueprintComplete(JSON.parse(text)) } catch { return false } }
+    const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt }, {
+      onStart: async (i) => { rows[i] = await record?.started(i, attempts[i].model) ?? null },
+      onSettle: async (i, outcome, err) => {
+        if (outcome === 'succeeded') await record?.settled(rows[i], 'succeeded')
+        else if (outcome === 'incomplete') await record?.settled(rows[i], 'incomplete', { code: 'incomplete_blueprint', detail: 'missing concept/packaging' })
+        else if (outcome === 'aborted') await record?.settled(rows[i], 'failed', { code: 'hedge_lost', detail: 'aborted: the other attempt returned first' })
+        else {
+          ladder.failed = (ladder.failed ?? 0) + 1
+          ladder.lastCode = classifyModelFailure(err).code
+          await record?.settled(rows[i], 'failed', classifyModelFailure(err))
+        }
+      },
+    })
+    ladder.hedgeCalls = h.calls; ladder.hedged = h.hedged; ladder.hedgeAborted = h.aborted
+    console.log(JSON.stringify({ event: 'writer_hedge', calls: h.calls, hedged: h.hedged, aborted: h.aborted, winner: h.winner, elapsed_ms: Date.now() - ladder.startedAt }))
+    if (h.text != null) { ladder.usedAttempt = h.winner ?? 0; return h.text }
+    if (h.partial != null) { ladder.usedAttempt = h.partialAt ?? 0; return h.partial }
+    throw h.lastErr instanceof Error ? h.lastErr : new Error('Model call failed')
+  }
 
   let lastErr: unknown
   let lastParseable: string | null = null // valid JSON, but missing concept/packaging
@@ -12615,7 +12657,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
     asyncPolish = asyncPolishOn(trialOn, Deno.env.get('ASYNC_POLISH'))
     const deadlineFields = asyncPolish
-      ? { startedAt: reqStartedAt, async: true }
+      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')) }
       : writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
       ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...deadlineFields }
@@ -17238,6 +17280,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
         ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80) }
+        // The hedge's extra cost, visible on the row (counts only).
+        if (writerLadderForFailure?.hedgeCalls != null) bpg.writer_hedge = { calls: writerLadderForFailure.hedgeCalls, hedged: writerLadderForFailure.hedged === true, aborted: writerLadderForFailure.hedgeAborted ?? 0 }
         bpg.polish_pending = { steps: polishDeferred.length ? [...polishDeferred] : ['self_review'], at: new Date().toISOString() }
         console.log(JSON.stringify({ event: 'async_polish_queued', deferred: polishDeferred.length, elapsed_ms: Date.now() - reqStartedAt }))
       }
@@ -17686,7 +17730,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // Bounded for the same reason `script_attempts.failure_detail` is: a
         // provider can return a very long body, and losing the record of a
         // failure because the failure was verbose is the worst trade available.
-        detail: { fn: 'generate-blueprint', run_id: runIdForFailure, reason: failReason, attempts_failed: writerLadderForFailure?.failed ?? 0, attempts_skipped: writerLadderForFailure?.skipped ?? 0, elapsed_ms: Date.now() - reqStartedAt, error: failDetail.slice(0, 600) },
+        detail: { fn: 'generate-blueprint', run_id: runIdForFailure, reason: failReason, attempts_failed: writerLadderForFailure?.failed ?? 0, attempts_skipped: writerLadderForFailure?.skipped ?? 0, hedge_calls: writerLadderForFailure?.hedgeCalls ?? 0, hedged: writerLadderForFailure?.hedged === true, elapsed_ms: Date.now() - reqStartedAt, error: failDetail.slice(0, 600) },
       })
       .then(() => {}, () => {})
     // ⚖️ A DEFINITIVE ANSWER CARRIES A CODE, so the client shows it instead of

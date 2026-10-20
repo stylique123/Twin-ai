@@ -822,6 +822,7 @@ const EVENTS = {
   blueprint_compliance: { kind: 'counter_ephemeral', why: 'Per script: blueprint compliance (5 code checks) and whether the hook was swapped for a paid-off option.' },
   self_review_skipped: { kind: 'counter_ephemeral', why: 'Per script: no time left for the optional editor pass before the 150s edge limit.' },
   optional_pass_deferred: { kind: 'counter_ephemeral', why: 'Per script (trial, ASYNC_POLISH on): a quality-only pass left off the request path; the deferred steps are kept on blueprint.polish_pending until the worker runs.' },
+  writer_hedge: { kind: 'counter', stored: 'generations.blueprint', why: 'Per trial script (async polish): the parallel writer hedge. Each call is a script_attempts row (the aborted loser settles failed/hedge_lost); the counts are also on blueprint.writer_hedge.' },
   async_polish_queued: { kind: 'counter', stored: 'generations.blueprint', why: 'Per trial script: the draft shipped before polish; blueprint.polish_pending (then blueprint.polish) is the durable record.' },
   async_polish: { kind: 'counter', stored: 'generations.blueprint', why: 'Per trial script: the worker polish result (kept, verdict, ms) written to blueprint.polish before the gate.' },
   optional_pass_skipped_degraded: { kind: 'counter_ephemeral', why: 'Per script (trial, panel-7): an optional pass skipped on the degraded path; the run itself still saves.' },

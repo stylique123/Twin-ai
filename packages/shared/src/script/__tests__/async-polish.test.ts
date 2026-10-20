@@ -1,8 +1,8 @@
 // Async polish (owner decision 2): fake timings only, fictional lines.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, applyPolishRewrites, editedWins, newNumbersIn,
-  ASYNC_WRITER_PRIMARY_MS, ASYNC_WRITER_END_MS, ASYNC_REQUEST_TARGET_MS,
+  ASYNC_WRITER_PRIMARY_MS, ASYNC_WRITER_END_MS, ASYNC_REQUEST_TARGET_MS, runHedged, writerHedgeOn, WRITER_HEDGE_AT_MS,
 } from '../asyncPolish'
 import { deadlineTimeout } from '../writerDeadline'
 
@@ -59,19 +59,101 @@ describe('async writer deadline (fake timings)', () => {
     expect(asyncDeadlineTimeout(1, FALLBACK_BASE, T0, T0 + 72_000)).toBeNull()
     expect(ASYNC_WRITER_END_MS + 6_000).toBeLessThanOrEqual(ASYNC_REQUEST_TARGET_MS)
   })
-  it('24 fake requests at panel-7 timings: at most 1 fails, every draft by 90 s', () => {
-    // Primary ms drawn from the observed spread; 7 of 24 primaries hang.
-    const prim = [38, 41, 43, 44, 47, 52, 55, 58, 61, 62, 36, 40, 45, 49, 51, 57, 999, 999, 999, 999, 999, 999, 999, 42].map((s) => s * 1000)
-    const fall = [18, 14, 12, 16, 15, 13, 19, 40].map((s) => s * 1000)
-    let fails = 0
-    let k = 0
-    for (const p of prim) {
-      const r = ladder([p, p > 70_000 ? fall[k++]! : 0], 4_000, asyncT)
-      if (!r.ok) fails++
-      expect(r.writerEnd + 6_000).toBeLessThanOrEqual(ASYNC_REQUEST_TARGET_MS)
-    }
-    expect(fails).toBeLessThanOrEqual(1)
+})
+
+// ---------------------------------------------------------------------------
+// The parallel hedge, driven on a fake clock with the panel-7 distributions:
+// attempt 0 ok p50 43 s / p90 62 s, 26 of 76 attempts hang (timeout share);
+// fallback p50 42 s / p90 51 s. Lognormal fits; ~4 s of setup before the writer.
+const SETUP_MS = 4_000
+function rng(seed: number) {
+  let a = seed >>> 0
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+}
+const normal = (r: () => number) => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r())
+const lognormal = (r: () => number, p50: number, p90: number) => p50 * Math.exp(normal(r) * Math.log(p90 / p50) / 1.2816)
+const HANG = 26 / 76
+
+/** A fake model call: resolves after `ms`, or rejects at its timeout / when aborted. */
+function fakeCall(ms: number | null, text = '{"ok":true}') {
+  return (timeoutMs: number, signal: AbortSignal) => new Promise<string>((res, rej) => {
+    const done = ms !== null && ms <= timeoutMs
+    const t = setTimeout(() => (done ? res(text) : rej(new Error('timeout'))), done ? ms! : timeoutMs)
+    signal.addEventListener('abort', () => { clearTimeout(t); rej(new Error('aborted')) }, { once: true })
   })
+}
+
+async function oneRequest(primaryMs: number | null, fallbackMs: number, hedgeAtMs = WRITER_HEDGE_AT_MS) {
+  const startedAt = Date.now() - SETUP_MS
+  const p = runHedged([{ base: ASYNC_WRITER_END_MS, run: fakeCall(primaryMs) }, { base: 55_000, run: fakeCall(fallbackMs) }], () => true, { startedAt, hedgeAtMs })
+  await vi.runAllTimersAsync()
+  const r = await p
+  return { ...r, endMs: Date.now() - startedAt }
+}
+
+async function simulate(seed: number, n: number, hedgeAtMs = WRITER_HEDGE_AT_MS) {
+  const r = rng(seed)
+  let fails = 0, hedged = 0, calls = 0, maxEnd = 0
+  for (let k = 0; k < n; k++) {
+    const prim = r() < HANG ? null : lognormal(r, 43_000, 62_000)
+    const fall = lognormal(r, 42_000, 51_000)
+    const out = await oneRequest(prim, fall, hedgeAtMs)
+    if (out.text === null) fails++
+    if (out.hedged) hedged++
+    calls += out.calls
+    maxEnd = Math.max(maxEnd, out.endMs)
+  }
+  return { fails, hedged, calls, maxEnd }
+}
+
+describe('parallel writer hedge (fake clock)', () => {
+  afterEach(() => { vi.useRealTimers() })
+  it('kill switch', () => {
+    expect(writerHedgeOn(true, undefined)).toBe(true)
+    expect(writerHedgeOn(true, 'off')).toBe(false)
+    expect(writerHedgeOn(false, 'on')).toBe(false)
+  })
+  it('a fast primary never starts the fallback', async () => {
+    vi.useFakeTimers()
+    const out = await oneRequest(20_000, 40_000)
+    expect(out).toMatchObject({ winner: 0, hedged: false, calls: 1, aborted: 0 })
+  })
+  it('a hung primary: the fallback, started at 30 s, wins and the primary is aborted', async () => {
+    vi.useFakeTimers()
+    const out = await oneRequest(null, 42_000)
+    expect(out).toMatchObject({ winner: 1, hedged: true, calls: 2, aborted: 1 })
+    expect(out.endMs).toBe(WRITER_HEDGE_AT_MS + 42_000)
+  })
+  it('a slow primary that still beats the fallback wins; the fallback is aborted', async () => {
+    vi.useFakeTimers()
+    const out = await oneRequest(50_000, 42_000)
+    expect(out).toMatchObject({ winner: 0, hedged: true, calls: 2, aborted: 1 })
+  })
+  it('an invalid primary result hands over to the fallback', async () => {
+    vi.useFakeTimers()
+    const startedAt = Date.now() - SETUP_MS
+    const p = runHedged([{ base: ASYNC_WRITER_END_MS, run: fakeCall(10_000, 'partial') }, { base: 55_000, run: fakeCall(30_000, 'full') }], (t) => t === 'full', { startedAt })
+    await vi.runAllTimersAsync()
+    const out = await p
+    expect(out).toMatchObject({ text: 'full', winner: 1, partial: 'partial', calls: 2 })
+  })
+  it('both hang: gives up by 84 s of the request', async () => {
+    vi.useFakeTimers()
+    const out = await oneRequest(null, 999_000)
+    expect(out.text).toBeNull()
+    expect(out.endMs).toBeLessThanOrEqual(ASYNC_WRITER_END_MS)
+  })
+  it('24 requests at the panel-7 distributions: failure rate, hedge share, every writer done by 84 s', async () => {
+    vi.useFakeTimers()
+    const sample = await simulate(7, 24)
+    const big = await simulate(11, 2_400)
+    const per24 = (big.fails / 2_400) * 24
+    console.log(JSON.stringify({ event: 'hedge_sim', sample24_fails: sample.fails, sample24_hedged: sample.hedged, per24_expected_fails: Number(per24.toFixed(2)), hedge_share: Number((big.hedged / 2_400).toFixed(2)), calls_per_request: Number((big.calls / 2_400).toFixed(2)) }))
+    expect(sample.maxEnd).toBeLessThanOrEqual(ASYNC_WRITER_END_MS)
+    expect(big.maxEnd).toBeLessThanOrEqual(ASYNC_WRITER_END_MS)
+    expect(sample.fails).toBeLessThanOrEqual(1)
+    expect(per24).toBeLessThanOrEqual(1)
+  }, 60_000)
 })
 
 describe('polish rewrites', () => {
