@@ -2463,6 +2463,16 @@ function fuzzyShared(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
   return n
 }
 
+/** A cut may carry at most this many content words that the rest of the script
+ *  (hook, kept telling, other lines) does not say: more means new detail (a cause, a duration,
+ *  a payoff the close depends on), so it is not a retelling and stays. */
+export const RETELL_MAX_NOVEL = 0
+/** Content words of `cut` that `kept` does not carry (a shared stem counts as carried). Pure. */
+export function novelTerms(cut: string, kept: string): string[] {
+  const K = contentWords(kept)
+  return [...contentWords(cut)].filter((w) => fuzzyShared(new Set([w]), K) === 0)
+}
+
 /** One telling per story (see the block comment). `sources` maps a sentence to the item ids it was traced to. Pure. */
 export function dedupeStoryRetellings<B extends { line?: unknown }>(
   script: readonly B[],
@@ -2494,6 +2504,8 @@ export function dedupeStoryRetellings<B extends { line?: unknown }>(
     const rec: StoryRetellRecord = { story_id: st.id, kept: best.kind, dropped: 0, trimmed: 0 }
     const hookTells = tells.some((x) => x.kind === 'hook')
     const hookWords = hi >= 0 ? contentWords(beats[hi]!.map((x) => x.t).join(' ')) : new Set<string>()
+    // Everything else the script still says (bar line `bi`, or just its sentence `own`).
+    const keptText = (bi: number, own?: string) => beats.flatMap((ss, k) => ss.filter((s) => s.keep && !(k === bi && (own === undefined || s.t === own))).map((s) => s.t)).join(' ')
     const nextBeat = beats.findIndex((ss, bi) => bi > hi && ss.length > 0)
     for (const x of tells) {
       if (x.kind === 'hook' || x.bi === best.bi) continue
@@ -2502,15 +2514,19 @@ export function dedupeStoryRetellings<B extends { line?: unknown }>(
       // The line right after a teaser hook that tells what the hook did NOT is
       // the rest of the same telling, not a retelling.
       if (hookTells && x.bi === nextBeat && fuzzyShared(contentWords(beats[x.bi]!.map((s) => s.t).join(' ')), hookWords) < 2) continue
-      for (const s of beats[x.bi]!) if (s.keep && (tellingOf(s.t, st.text, sourced(s.t, st.id)) || beats[x.bi]!.length === 1)) { s.keep = false; rec.dropped++ }
+      // Only what adds nothing new goes: a sentence with new detail beyond the
+      // hook and the kept telling is a payoff, not a retelling.
+      for (const s of beats[x.bi]!) if (s.keep && (tellingOf(s.t, st.text, sourced(s.t, st.id)) || beats[x.bi]!.length === 1) && novelTerms(s.t, keptText(x.bi, s.t)).length <= RETELL_MAX_NOVEL) { s.keep = false; rec.dropped++ }
       // A line whose only sentence was a joined telling goes whole.
-      if (beats[x.bi]!.every((s) => s.keep) && tellingOf(lines[x.bi] ?? '', st.text)) for (const s of beats[x.bi]!) { s.keep = false; rec.dropped++ }
+      if (beats[x.bi]!.every((s) => s.keep) && tellingOf(lines[x.bi] ?? '', st.text) && novelTerms(lines[x.bi] ?? '', keptText(x.bi)).length <= RETELL_MAX_NOVEL) for (const s of beats[x.bi]!) { s.keep = false; rec.dropped++ }
     }
     // The hook stays; the verbatim telling loses the beats the hook already told.
     if (hookTells && best.kind === 'verbatim') {
       const cur = beats[best.bi]!.filter((s) => s.keep).map((s) => s.t).join(' ')
       const trimmed = trimStoryAgainstHook(cur, st.text, beats[hi]![0]!.t)
-      if (trimmed && !sameText(trimmed, cur)) { beats[best.bi] = splitSentences(trimmed).map((t) => ({ t, keep: true })); rec.trimmed++ }
+      // The trim may cut only what the hook already said: new detail stays.
+      const cutWords = [...contentWords(cur)].filter((w) => !contentWords(trimmed).has(w)).join(' ')
+      if (trimmed && !sameText(trimmed, cur) && novelTerms(cutWords, `${keptText(best.bi)} ${trimmed}`).length <= RETELL_MAX_NOVEL) { beats[best.bi] = splitSentences(trimmed).map((t) => ({ t, keep: true })); rec.trimmed++ }
     }
     if (rec.dropped || rec.trimmed) records.push(rec)
   }
