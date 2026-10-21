@@ -25,6 +25,7 @@ import {
   type GateBlueprint, type GateProgress, type InventionGateRecord,
 } from '../generated/inventionGate.js'
 import { resyncShotListToScript } from '../generated/shotListSync.js'
+import { filterLedgerByNeverUse, sanitizeNeverUse } from '../generated/usingBlock.js'
 import { buildCheckLines, buildTargetedCheckLines, targetedFlagsOn, checkLinesLog, CHECK_LINES_VERSION, TARGETED_FLAGS_VERSION, buildTargetedCheckLinesV2, targetedFlagsV2On, TARGETED_FLAGS_V2_VERSION, blockWrongProductLines, wrongProductBlockOn } from '../generated/checkLines.js'
 import {
   ASYNC_POLISH_BUDGET_MS, POLISH_EDITOR_SYSTEM, POLISH_COMPARE_SYSTEM, POLISH_REWRITE_SCHEMA, POLISH_COMPARE_SCHEMA,
@@ -288,6 +289,12 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     ...(extra.hold_asks === true && extra.refill_context && typeof extra.refill_context === 'object'
       ? { refillContext: { topic: String(rec(extra.refill_context).topic ?? ''), angle: String(rec(extra.refill_context).angle ?? '') } } : {}),
     ...(extra.hold_asks === true && extra.story_hook_dedup === true ? { storyHookDedup: true } : {}),
+    // Panel-10 advisor, trial only (kill STORY_RETELL_DEDUP='false'): one telling per story.
+    ...(extra.hold_asks === true && extra.story_retell_dedup === true ? { storyRetellDedup: true } : {}),
+    // Using list "Never use", trial only (the edge sends `never_use` under trialOn;
+    // kill USING_ITEM_KILL=1): no refill comes from an item she blocked.
+    ...(extra.hold_asks === true && Array.isArray(extra.never_use) && extra.never_use.length
+      ? { refillLedger: filterLedgerByNeverUse(ledger, sanitizeNeverUse(extra.never_use)) } : {}),
     // ⚖️ SAVE-BEFORE-REPAIR (owner, 19 Oct). Trial only: `hold_asks` is set by
     // the edge under trialOn (test and panel accounts), never for a real
     // creator. The audit (pre-repair text) lands in blueprint.invention_gate on

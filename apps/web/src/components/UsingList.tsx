@@ -6,19 +6,21 @@ import { supabase } from '../lib/supabase'
  * WHAT TWIN USED (plan v5.4 item O). One row per item the script rests on —
  * her facts and stories, her words, her answers, the product, the brand,
  * outside items — read from `blueprint.line_sources` (each traced sentence's
- * `from[]`). Each row carries a source tag.
- *
- * "Never use" exists only for her stored facts: the existing `fact_confirm`
- * route with `yes: false` sets `creator_excluded_at`, so Twin stops using it.
- * There is no route to remove an item from ONE script, so there is no
- * "Remove" button.
+ * `from[]`). Each row carries a source tag and two buttons, both served by the
+ * `using_item` mode of generate-blueprint (usingBlock.ts):
+ *   Remove     → the lines from that item leave THIS script, refilled by the
+ *                panel-10 relevance rules; the page shows the new script.
+ *   Never use  → the item joins her block list (any kind; a stored fact is also
+ *                switched off), so Twin never uses it again. Not offered for
+ *                "Your idea for this video" (that is the request itself).
  *
  * ⚖️ BEHIND THE TRIAL: only `VITE_TRIAL_USER_ID` sees it; `VITE_USING_LIST_KILL=1`
- * hides it for everyone.
+ * hides it for everyone; the edge refuses under `USING_ITEM_KILL=1`.
  */
 
 export type UsingTag = 'Your fact' | 'Your words' | 'Your answer' | 'Product' | 'Brand' | 'Outside'
-export interface UsingItem { key: string; tag: UsingTag; label: string; factId: string | null; lines: number }
+export interface UsingItemRef { kind: string; label: string; id?: string }
+export interface UsingItem { key: string; tag: UsingTag; label: string; factId: string | null; lines: number; ref: UsingItemRef; blockable: boolean }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -47,7 +49,12 @@ export function usingItemsOf(bp: { line_sources?: unknown } | null | undefined):
       const key = `${h.kind}:${id ?? h.label}`
       const prev = out.get(key)
       if (prev) prev.lines++
-      else out.set(key, { key, tag, label: h.label.replace(/^Your answer:\s*/i, ''), factId: h.kind === 'fact' ? id : null, lines: 1 })
+      else out.set(key, {
+        key, tag, label: h.label.replace(/^Your answer:\s*/i, ''), factId: h.kind === 'fact' ? id : null, lines: 1,
+        ref: { kind: h.kind, label: h.label, ...(id ? { id } : {}) },
+        // Her idea for this video is the request itself: it can leave a script, not be blocked.
+        blockable: !(h.kind === 'her_words' && !/^Your answer/i.test(h.label)),
+      })
     }
   }
   return [...out.values()]
@@ -57,31 +64,37 @@ export function usingListVisible(userId: string | null | undefined): boolean {
   return trialUser(userId) && String(import.meta.env.VITE_USING_LIST_KILL ?? '').trim() !== '1'
 }
 
-type NeverUse = (knowledgeId: string) => Promise<{ ok: boolean }>
-export const neverUseFact: NeverUse = async (knowledgeId) => {
+export type UsingAction = 'remove' | 'never_use'
+export interface UsingResult { ok: boolean; script?: unknown; line_sources?: unknown }
+export type SendUsing = (generationId: string, item: UsingItemRef, action: UsingAction) => Promise<UsingResult>
+export const sendUsingItem: SendUsing = async (generationId, item, action) => {
   try {
-    const { data, error } = await supabase.functions.invoke('generate-blueprint', { body: { mode: 'fact_confirm', knowledge_id: knowledgeId, yes: false } })
-    return { ok: !error && (data as { ok?: unknown } | null)?.ok === true }
+    const { data, error } = await supabase.functions.invoke('generate-blueprint', { body: { mode: 'using_item', generation_id: generationId, item, action } })
+    const d = (data ?? null) as { ok?: unknown; script?: unknown; line_sources?: unknown } | null
+    return { ok: !error && d?.ok === true, script: d?.script, line_sources: d?.line_sources }
   } catch { return { ok: false } }
 }
 
-export function UsingList({ userId, blueprint, send = neverUseFact }: {
+export function UsingList({ userId, generationId, blueprint, send = sendUsingItem, onRemoved }: {
   userId: string | null | undefined
+  generationId: string | null | undefined
   blueprint: { line_sources?: unknown } | null | undefined
-  send?: NeverUse
+  send?: SendUsing
+  /** The new script and its trace after a Remove, for the page to show. */
+  onRemoved?: (next: { script: unknown[]; line_sources: unknown }) => void
 }) {
   const [never, setNever] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  if (!usingListVisible(userId)) return null
+  if (!usingListVisible(userId) || !generationId) return null
   const items = usingItemsOf(blueprint)
   if (!items.length) return null
-  const neverUse = async (it: UsingItem) => {
-    if (!it.factId) return
-    setBusy(it.key); setErr(null)
-    const r = await send(it.factId)
-    if (r.ok) setNever((n) => ({ ...n, [it.key]: true }))
-    else setErr("We couldn't save that — try again.")
+  const act = async (it: UsingItem, action: UsingAction) => {
+    setBusy(`${it.key}:${action}`); setErr(null)
+    const r = await send(generationId, it.ref, action)
+    if (!r.ok) setErr("We couldn't save that — try again.")
+    else if (action === 'never_use') setNever((n) => ({ ...n, [it.key]: true }))
+    else if (Array.isArray(r.script)) onRemoved?.({ script: r.script, line_sources: r.line_sources ?? [] })
     setBusy(null)
   }
   return (
@@ -93,9 +106,10 @@ export function UsingList({ userId, blueprint, send = neverUseFact }: {
           <li key={it.key} className="flex items-start gap-2">
             <span className="shrink-0 rounded-full border border-white/12 px-2 py-0.5 text-[11px] text-stone" data-testid="using-tag">{it.tag}</span>
             <span className="flex-1 text-cream">{it.label}</span>
-            {it.factId && (never[it.key]
+            <button type="button" disabled={busy !== null} onClick={() => void act(it, 'remove')} className="text-[11px] text-stone underline">Remove</button>
+            {it.blockable && (never[it.key]
               ? <span className="text-stone">Twin won't use this again</span>
-              : <button type="button" disabled={busy === it.key} onClick={() => void neverUse(it)} className="text-[11px] text-stone underline">Never use</button>)}
+              : <button type="button" disabled={busy !== null} onClick={() => void act(it, 'never_use')} className="text-[11px] text-stone underline">Never use</button>)}
           </li>
         ))}
       </ul>

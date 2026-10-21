@@ -25,7 +25,7 @@ function gateExtras(env: Record<string, string>, trialOn = true): Record<string,
   const start = EDGE.indexOf('const panel7GateExtras = ')
   const end = EDGE.indexOf('\n  })', start)
   const src = EDGE.slice(start + 'const panel7GateExtras = '.length, end + '\n  })'.length)
-  return (evalEdge(src, { trialOn, panel7Budget: 0, relevantRefillCtx: () => null }, env) as () => Record<string, unknown>)()
+  return (evalEdge(src, { trialOn, panel7Budget: 0, relevantRefillCtx: () => null, neverUseForGate: () => [] }, env) as () => Record<string, unknown>)()
 }
 /** The two hook options the edge passes (index.ts ~17158), evaluated. */
 function hookOpts(env: Record<string, string>, trialOn = true) {

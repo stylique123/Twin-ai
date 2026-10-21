@@ -2404,6 +2404,131 @@ export function dedupeStoryHook<B extends { line?: unknown }>(script: readonly B
   return { script: out, record: null }
 }
 
+// ── PARAPHRASED RETELLINGS (panel-10 advisor, trial; kill STORY_RETELL_DEDUP=false) ──
+// Panel 10 (P10-02, 07, 09, 10, 15, 18): a story retold in NEW words still read
+// as a repeat; the story-hook dedupe above only sees verbatim repeats. Every
+// line that tells the same story (traced to the story's item id, or sharing
+// its content words: >= 3 terms and >= 40% of the line's, or >= 4 terms and
+// >= 33%) counts as ONE
+// telling. The best telling stays (verbatim > hook teaser > paraphrase), the
+// rest go. Line 1 (the picked hook) is never dropped: a verbatim telling after
+// it is trimmed of the beats the hook already told instead. Verbatim pieces
+// split over lines are one telling; the line right after a teaser hook that
+// tells what the hook did not (shares < 2 terms with it) continues it.
+
+export const RETELL_MIN_TERMS = 3
+export const RETELL_MIN_SHARE = 0.4
+/** A longer retelling (4+ shared terms) may carry more new words: a third is enough. */
+export const RETELL_LONG_SHARE = 0.33
+
+export type TellingKind = 'verbatim' | 'hook' | 'paraphrase'
+export interface StoryRetellRecord { story_id: string; kept: TellingKind; dropped: number; trimmed: number }
+
+/** Whether `sentence` tells `story` (pure): 'verbatim' (her words in order, or the whole story inside it), 'paraphrase', or null. */
+export function tellingOf(sentence: string, story: string, sourcedFromStory = false): 'verbatim' | 'paraphrase' | null {
+  const n = normT(sentence)
+  const s = normT(story)
+  if (!n || !s) return null
+  if (` ${s} `.includes(` ${n} `) || ` ${n} `.includes(` ${s} `)) return 'verbatim'
+  const W = contentWords(sentence)
+  const S = contentWords(story)
+  let hit = 0
+  for (const w of W) if (S.has(w)) hit++
+  const share = hit / Math.max(1, W.size)
+  if ((hit >= RETELL_MIN_TERMS && share >= RETELL_MIN_SHARE) || (hit >= RETELL_MIN_TERMS + 1 && share >= RETELL_LONG_SHARE)) return 'paraphrase'
+  return sourcedFromStory && hit >= 2 ? 'paraphrase' : null
+}
+
+const RANK: Record<TellingKind, number> = { verbatim: 3, hook: 2, paraphrase: 1 }
+
+/** The story's beats the hook does not already tell, as a clean sentence; '' when none. Pure. */
+export function trimStoryAgainstHook(line: string, story: string, hook: string): string {
+  const H = contentWords(hook)
+  const beats = storyBeats(story)
+  // A question hook asks; it does not tell, so the story is not trimmed for it.
+  if (beats.length < 2 || /\?\s*$/.test(hook)) return ''
+  const told = beats.map((b) => { const B = contentWords(b.text); let h = 0; for (const w of B) if (H.has(w)) h++; return B.size > 0 && h >= 2 && h / B.size >= 0.4 })
+  if (!told.some(Boolean) || told.every(Boolean)) return ''
+  const pos = normalizeSpace(line).toLowerCase().indexOf(normalizeSpace(story).toLowerCase())
+  const kept = beats.filter((_, k) => !told[k]).map((b) => b.text.trim().replace(/[,;\s]+$/, '').replace(/[.!?]+$/, ''))
+  let rest = kept.join(', ').replace(/^(?:which|that) is why\b/i, 'That is why').replace(/^(?:and|but)\s+/i, '')
+  // A clause that cannot stand alone ("when I asked, she…") is not trimmed to.
+  if (wordCount(rest) < 4 || /^(?:when|while|because|which|who|where|after|before|until|if)\b/i.test(rest)) return ''
+  rest = (rest.charAt(0).toUpperCase() + rest.slice(1)).replace(/([^.!?])$/, '$1.')
+  if (pos < 0) return rest
+  const L = normalizeSpace(line)
+  return `${L.slice(0, pos)}${rest}${L.slice(pos + normalizeSpace(story).length)}`.replace(/\s+/g, ' ').trim()
+}
+const normalizeSpace = (s: string) => s.replace(/\s+/g, ' ').trim()
+/** Shared terms, a stem inside the other counting (summary ~ summarize, quoted ~ misquoted). */
+function fuzzyShared(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  let n = 0
+  for (const w of a) if ([...b].some((v) => v === w || (Math.min(v.length, w.length) >= 4 && (v.includes(w) || w.includes(v) || v.slice(0, 6) === w.slice(0, 6))))) n++
+  return n
+}
+
+/** One telling per story (see the block comment). `sources` maps a sentence to the item ids it was traced to. Pure. */
+export function dedupeStoryRetellings<B extends { line?: unknown }>(
+  script: readonly B[],
+  stories: ReadonlyArray<{ id: string; text: string }>,
+  opts: { sources?: ReadonlyArray<{ sentence: string; ids: readonly string[] }> } = {},
+): { script: B[]; records: StoryRetellRecord[] } {
+  const beats = script.map((b) => (typeof b?.line === 'string' ? splitSentences(b.line) : []).map((t) => ({ t, keep: true })))
+  const lines: Array<string | null> = script.map((b) => (typeof b?.line === 'string' ? b.line : null))
+  const hi = beats.findIndex((ss) => ss.length > 0)
+  const sourced = (t: string, id: string) => (opts.sources ?? []).some((s) => s.ids.includes(id) && sameText(s.sentence, t))
+  const records: StoryRetellRecord[] = []
+  for (const st of stories) {
+    if (!st.text.trim()) continue
+    // A beat is a telling when any of its sentences (or the whole line) tells the story.
+    const tells: Array<{ bi: number; kind: TellingKind; score: number }> = []
+    beats.forEach((ss, bi) => {
+      if (!ss.length) return
+      const live = ss.filter((x) => x.keep).map((x) => x.t).join(' ')
+      if (!live) return
+      const whole = tellingOf(live, st.text)
+      const per = ss.map((x) => (x.keep ? tellingOf(x.t, st.text, sourced(x.t, st.id)) : null))
+      const rel = whole === 'verbatim' || per.includes('verbatim') ? 'verbatim' : whole ?? per.find((r) => r) ?? null
+      if (!rel) return
+      // Line 1 is the hook: it is never dropped, whatever it tells.
+      tells.push({ bi, kind: bi === hi ? 'hook' : rel, score: overlap(contentWords(live), contentWords(st.text)) })
+    })
+    if (tells.length < 2) continue
+    const best = [...tells].sort((a, b) => RANK[b.kind] - RANK[a.kind] || b.score - a.score || a.bi - b.bi)[0]!
+    const rec: StoryRetellRecord = { story_id: st.id, kept: best.kind, dropped: 0, trimmed: 0 }
+    const hookTells = tells.some((x) => x.kind === 'hook')
+    const hookWords = hi >= 0 ? contentWords(beats[hi]!.map((x) => x.t).join(' ')) : new Set<string>()
+    const nextBeat = beats.findIndex((ss, bi) => bi > hi && ss.length > 0)
+    for (const x of tells) {
+      if (x.kind === 'hook' || x.bi === best.bi) continue
+      // Verbatim pieces are one telling split over lines (her words, in order): all stay.
+      if (best.kind === 'verbatim' && x.kind === 'verbatim') continue
+      // The line right after a teaser hook that tells what the hook did NOT is
+      // the rest of the same telling, not a retelling.
+      if (hookTells && x.bi === nextBeat && fuzzyShared(contentWords(beats[x.bi]!.map((s) => s.t).join(' ')), hookWords) < 2) continue
+      for (const s of beats[x.bi]!) if (s.keep && (tellingOf(s.t, st.text, sourced(s.t, st.id)) || beats[x.bi]!.length === 1)) { s.keep = false; rec.dropped++ }
+      // A line whose only sentence was a joined telling goes whole.
+      if (beats[x.bi]!.every((s) => s.keep) && tellingOf(lines[x.bi] ?? '', st.text)) for (const s of beats[x.bi]!) { s.keep = false; rec.dropped++ }
+    }
+    // The hook stays; the verbatim telling loses the beats the hook already told.
+    if (hookTells && best.kind === 'verbatim') {
+      const cur = beats[best.bi]!.filter((s) => s.keep).map((s) => s.t).join(' ')
+      const trimmed = trimStoryAgainstHook(cur, st.text, beats[hi]![0]!.t)
+      if (trimmed && !sameText(trimmed, cur)) { beats[best.bi] = splitSentences(trimmed).map((t) => ({ t, keep: true })); rec.trimmed++ }
+    }
+    if (rec.dropped || rec.trimmed) records.push(rec)
+  }
+  const out: B[] = []
+  script.forEach((b, bi) => {
+    const ss = beats[bi]!
+    if (!ss.length) { out.push(b); return }
+    const line = ss.filter((x) => x.keep).map((x) => x.t).join(' ')
+    if (line === lines[bi]) { out.push(b); return }
+    if (line.trim()) out.push({ ...b, line })
+  })
+  return { script: out, records }
+}
+
 // ── THE RECORD ─────────────────────────────────────────────────────────────
 
 /** 'timeout' = the gate ran out of time and fell back to measure-only for this request.
@@ -2426,6 +2551,8 @@ export interface InventionGateRecord {
   refill?: { refilled: number; topped_up?: number; deduped?: number }
   /** Trial (panel-10, storyHookDedup): how the hook/story repeat was resolved. */
   story_hook?: StoryHookRecord
+  /** Trial (panel-10, storyRetellDedup): paraphrased retellings resolved to one telling per story. */
+  story_retell?: StoryRetellRecord[]
   version: string
   model: string | null
   sentences: GateRecordSentence[]
@@ -2654,9 +2781,15 @@ export interface RunGateInput {
   /** Trial (panel-10; kill RELEVANT_REFILL=false on the edge): every refill
    *  (repair refill and top-up) is relevance-aware (relevantRefillUnits). */
   refillContext?: RefillContext
+  /** Trial (Using list, kill USING_ITEM_KILL=1 on the edge): the refill pool without her
+   *  never-use items. The judge still reads `ledger`; only refills come from this. */
+  refillLedger?: LedgerItem[]
   /** Trial (panel-10; kill STORY_HOOK_DEDUP=false on the edge): a hook that
    *  restates her verbatim story's opening is deduped (dedupeStoryHook). */
   storyHookDedup?: boolean
+  /** Trial (panel-10 advisor; kill STORY_RETELL_DEDUP=false on the edge): one
+   *  telling per story, verbatim or paraphrased (dedupeStoryRetellings). */
+  storyRetellDedup?: boolean
   /** Trial: text that ships word for word (her named story); never de-duplicated away. */
   protect?: string[]
   /** Trial (plan v5.3 §19; kill NARROW_REPAIR=false on the edge): repair only
@@ -2799,11 +2932,12 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     const p7 = input.holdAsks === true && ((typeof input.wordBudget === 'number' && input.wordBudget > 0) || input.spokenDedup === true)
     const target7 = input.targetProductId ?? null
     // PANEL-10 (trial; kill RELEVANT_REFILL=false): only items for THIS request, best first.
+    const pool7 = input.refillLedger ?? input.ledger
     const units7 = (said: string | readonly string[]): string[] => (input.refillContext
-      ? relevantRefillUnits(input.ledger, target7, said, input.refillContext).map((p) => p.text)
-      : refillUnits(input.ledger, target7, typeof said === 'string' ? said : said.join(' ')))
+      ? relevantRefillUnits(pool7, target7, said, input.refillContext).map((p) => p.text)
+      : refillUnits(pool7, target7, typeof said === 'string' ? said : said.join(' ')))
     const refillQueue = p7 ? units7(Array.isArray(bp.script) ? (bp.script as Array<{ line?: unknown }>).map((b) => String(b?.line ?? '')) : [])
-      : input.holdAsks ? refillCandidates(input.ledger, input.targetProductId ?? null, spokenText(bp)) : []
+      : input.holdAsks ? refillCandidates(pool7, input.targetProductId ?? null, spokenText(bp)) : []
     const usedRefills = new Set<string>()
     let refilled = 0
     // Each refill may be split into several sentences by the extractor.
@@ -2921,6 +3055,21 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
         if (sh.oldHook && sh.newHook && Array.isArray(bp.hook_options)) bp = { ...bp, hook_options: (bp.hook_options as unknown[]).map((h) => (typeof h === 'string' && sameText(h, sh.oldHook!) ? sh.newHook : h)) }
       }
     }
+    let storyRetell: StoryRetellRecord[] = []
+    if (input.storyRetellDedup && Array.isArray(bp.script)) {
+      const stories = [
+        ...(input.protect ?? []).map((t, n) => ({ id: `protect:${n}`, text: t })),
+        ...input.ledger.filter((it) => it.origin === 'her_story' && it.first_party).map((it) => ({ id: it.id, text: it.text })),
+      ]
+      const ls = Array.isArray((bp as { line_sources?: unknown }).line_sources) ? (bp as { line_sources: unknown[] }).line_sources : []
+      const sources = ls.map((l) => {
+        const r = (l ?? {}) as { sentence?: unknown; from?: unknown }
+        return { sentence: String(r.sentence ?? ''), ids: (Array.isArray(r.from) ? r.from : []).map((f) => String((f as { id?: unknown })?.id ?? '')).filter(Boolean) }
+      })
+      const before = bp.script as Array<{ line?: unknown }>
+      const rt = dedupeStoryRetellings(before, stories, { sources })
+      if (rt.records.length && !holdSpokenFloor(before, rt.script).held) { bp = { ...bp, script: rt.script }; storyRetell = rt.records }
+    }
     const refillRecord = input.holdAsks ? { refilled, ...(toppedUp ? { topped_up: toppedUp } : {}), ...(deduped ? { deduped } : {}) } : null
     const ebudget = eBudget(spokenWords(bp))
     const record: InventionGateRecord = {
@@ -2937,6 +3086,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       ...(placeholderBlock ? { placeholder_block: placeholderBlock } : {}),
       ...(refillRecord ? { refill: refillRecord } : {}),
       ...(storyHook ? { story_hook: storyHook } : {}),
+      ...(storyRetell.length ? { story_retell: storyRetell } : {}),
       ...(input.repairAudit ? { repair_audit: withAuditPatterns([...keptAuditEntries(first, acted), ...audit], input.ledger, products) } : {}),
     }
     // A declined slot that fell back to the general version is not offered again.
