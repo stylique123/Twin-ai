@@ -131,3 +131,6 @@ console.log('panel selftest: ok')
   assert.equal(panelArm({ accounts: [] }, 0, { PANEL_PLAN_B: 'on' }), 'plan_b')
 }
 console.log('panel arms selftest ok')
+
+// The modes harness self-test rides this one so the existing CI step runs it.
+await import('./panelModes.selftest.mjs')
