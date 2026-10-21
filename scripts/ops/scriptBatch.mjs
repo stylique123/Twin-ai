@@ -17,7 +17,7 @@ import { isPrivate, statedFigures, unbackedRole } from './.privacyGuard.bundle.m
 import { findNovelDetails, novelCounts } from './.novelDetail.bundle.mjs'
 import { storyCraft } from './.storyCraft.bundle.mjs'
 import { blueprintCompliance } from './.blueprintCompliance.bundle.mjs'
-import { runPanel } from './panelRun.mjs'
+import { runPanel, isPanelGroup, panelFilterFromEnv } from './panelRun.mjs'
 import { templateOf } from './templateOf.mjs'
 import { awaitChecked, backgroundPending, blueprintLoader } from './awaitChecked.mjs'
 
@@ -558,8 +558,10 @@ async function main() {
   for (const [k, v] of Object.entries({ SUPABASE_URL: URL_, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE })) if (!v) throw new Error(`missing ${k}`)
   // The fictional creator panel (owner, 13 Oct) runs as its own six accounts,
   // never the heartbeat: see panelRun.mjs. It is never mixed with other groups.
-  if ((process.argv.find((a) => a.startsWith('--group=')) ?? '').slice(8).split(',').map((x) => x.trim()).includes('panel')) {
-    await runPanel({ url: URL_, anon: ANON, service: SERVICE, batch: BATCH, limit: LIMIT, paceMs: PACE_MS })
+  // `panel:reference,panel:idea` (or PANEL_MODES / PANEL_RANGE) runs a subset; see panelRun.mjs.
+  const groupArg = (process.argv.find((a) => a.startsWith('--group=')) ?? '').slice(8)
+  if (isPanelGroup(groupArg)) {
+    await runPanel({ url: URL_, anon: ANON, service: SERVICE, batch: BATCH, limit: LIMIT, paceMs: PACE_MS, filter: panelFilterFromEnv(process.env, groupArg) })
     return
   }
   const auth = createClient(URL_, ANON)

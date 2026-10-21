@@ -42,7 +42,19 @@ for (const r of reqs) {
   const c = creators.get(r.creator)
   assert.ok(c, `${tag}: creator`)
   assert.ok(typeof r.note === 'string' && r.note.trim(), `${tag}: note`)
-  assert.ok(['idea', 'product'].includes(r.door), `${tag}: door`)
+  assert.ok(['idea', 'product'].includes(r.door) || (r.mode === 'reference' && r.door === 'reference'), `${tag}: door`)
+  if (r.mode != null) assert.ok(['reference', 'idea'].includes(r.mode) && r.door === r.mode, `${tag}: mode matches door`)
+  // Reference mode: a MADE-UP reference stored in the fixture, never a real third-party post.
+  if (r.mode === 'reference') {
+    const ref = r.reference
+    assert.equal(ref?.fictional, true, `${tag}: reference marked fictional`)
+    assert.match(String(ref.url), /^https:\/\/example\.com\/fictional-reference\//, `${tag}: reference url is a fictional example.com path`)
+    assert.ok(typeof ref.text === 'string' && ref.text.trim(), `${tag}: reference text stored`)
+    assert.ok(Array.isArray(ref.structure?.beats) && ref.structure.beats.length >= 3, `${tag}: reference structure stored`)
+    assert.ok(typeof ref.structure.cta === 'string' && ref.structure.cta.trim(), `${tag}: reference cta`)
+    assert.ok(['structure', 'pacing', 'idea_structure', 'stay_close'].includes(r.reference_use), `${tag}: reference_use`)
+  } else assert.ok(!('reference' in r), `${tag}: only reference mode carries a reference`)
+  if (r.mode === 'idea') assert.ok(!r.product, `${tag}: idea mode has no product`)
   assert.equal(r.door === 'product', Boolean(r.product), `${tag}: door matches product`)
   if (r.product) assert.ok(c.products.some((p) => p.key === r.product), `${tag}: product exists`)
   const t = TEMPLATES[r.template]
@@ -103,6 +115,13 @@ assert.ok(reqs.some((r) => r.template === 'T13' && !r.lacks.includes('urgency'))
 for (const t of ['T5', 'T10']) assert.ok(reqs.some((r) => r.template === t && r.lacks.includes('dated_item')), `${t} without a dated item`)
 assert.ok(reqs.some((r) => r.lacks.includes('hesitation')), 'an objection case without a hesitation item')
 assert.ok(reqs.some((r) => r.goal === 'leads' && r.creator === 'pip-sprocket'), 'an objection case WITH a hesitation item, as control')
+
+// Modes harness: eight Reference-mode and eight Idea-mode requests, appended after panel-47, one of each per creator.
+const byMode = count((r) => r.mode ?? 'panel')
+assert.equal(byMode.reference, 8, 'eight reference-mode requests')
+assert.equal(byMode.idea, 8, 'eight idea-mode requests')
+assert.ok(reqs.slice(0, 47).every((r) => !('mode' in r)), 'the first 47 requests are unchanged')
+for (const m of ['reference', 'idea']) assert.deepEqual(new Set(reqs.filter((r) => r.mode === m).map((r) => r.creator)), new Set(fixture.creators.map((c) => c.key)), `${m}: every creator`)
 
 if (process.argv.includes('--table')) console.log(JSON.stringify({ byTemplate, byProfile, byGoal, byType, byLack }, null, 1))
 console.log('panel fixtures selftest: ok')

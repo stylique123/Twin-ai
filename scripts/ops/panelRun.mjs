@@ -36,22 +36,92 @@ export const PANEL_SKIP_ANSWER = 'Nothing specific, keep it general.'
 export const PROFILE_SECONDS = { sprint: 30, standard: 60, deep: 90 }
 const FIXTURE = new URL('./fixtures/fictional-panel.json', import.meta.url)
 
+// ⚖️ MODES (modes harness). A request's mode is its explicit `mode` field:
+// 'reference' (remix a MADE-UP reference stored in the fixture) or 'idea' (the
+// creator's own idea text, door=idea, no product). Requests written before
+// modes existed carry no `mode` and read as 'panel', so PANEL_MODES=reference,idea
+// selects exactly the mode requests and nothing older.
+export const PANEL_MODE_NAMES = ['panel', 'reference', 'idea']
+export const modeOf = (r) => (r?.mode === 'reference' || r?.mode === 'idea' ? r.mode : 'panel')
+
+/** Which requests run. `modes`: list from PANEL_MODES or `--group=panel:reference,panel:idea`
+ * (empty = all). `range`: PANEL_RANGE "48-63" or "48,50,60-63", the 1-based request NUMBER as
+ * in its id panel-NN (empty = all). Returns the 0-based fixture indexes, in fixture order,
+ * so `n` (and the idempotency key `${batch}-${n}`) never moves when a subset runs. */
+export function panelSelection(fixture, { modes = [], range = '' } = {}) {
+  const want = new Set(modes.map((m) => String(m).trim().toLowerCase()).filter(Boolean))
+  for (const m of want) if (!PANEL_MODE_NAMES.includes(m)) throw new Error(`panel: unknown mode ${m} (use ${PANEL_MODE_NAMES.join(', ')})`)
+  let inRange = () => true
+  const spec = String(range ?? '').trim()
+  if (spec) {
+    const parts = spec.split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
+      const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(p)
+      if (!m) throw new Error(`panel: bad PANEL_RANGE part "${p}" (use e.g. 48-63)`)
+      const a = Number(m[1]), b = Number(m[2] ?? m[1])
+      if (a < 1 || b < a) throw new Error(`panel: bad PANEL_RANGE part "${p}"`)
+      return [a, b]
+    })
+    inRange = (num) => parts.some(([a, b]) => num >= a && num <= b)
+  }
+  return fixture.requests.map((r, n) => n).filter((n) => inRange(n + 1) && (!want.size || want.has(modeOf(fixture.requests[n]))))
+}
+
+/** Modes and range from the environment and a `--group=` value. `panel:reference` tokens in the
+ * group (the script-batch workflow's free-text `group` input) add to PANEL_MODES. */
+export function panelFilterFromEnv(env = process.env, group = '') {
+  const fromGroup = String(group ?? '').split(',').map((x) => x.trim()).filter((x) => x.startsWith('panel:')).map((x) => x.slice(6))
+  const fromEnv = String(env.PANEL_MODES ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+  return { modes: [...new Set([...fromEnv, ...fromGroup])], range: String(env.PANEL_RANGE ?? '').trim() }
+}
+
+/** Does a `--group=` value ask for the panel (`panel` or any `panel:<mode>` token)? */
+export const isPanelGroup = (group) => String(group ?? '').split(',').map((x) => x.trim()).some((x) => x === 'panel' || x.startsWith('panel:'))
+
 /** The panel scenarios (40 in the fixture), in fixture order, with the account and product resolved.
- * `limit` is applied BEFORE resolving accounts, so a limited run only needs its own creators seeded. */
-export function panelScenarios(fixture, accountsDoc, limit = Infinity) {
+ * `limit` is applied BEFORE resolving accounts (and after any mode/range filter), so a limited run
+ * only needs its own creators seeded. `n` is always the request's fixture index. */
+export function panelScenarios(fixture, accountsDoc, limit = Infinity, filter = {}) {
   const byKey = new Map((accountsDoc?.accounts ?? []).map((a) => [a.key, a]))
-  return fixture.requests.slice(0, limit).map((r, n) => {
+  return panelSelection(fixture, filter).slice(0, limit).map((n) => {
+    const r = fixture.requests[n]
     const acct = byKey.get(r.creator)
     if (!acct) throw new Error(`panel: no seeded account for creator ${r.creator}`)
     const productId = r.product ? acct.products?.[r.product] : null
     if (r.product && !productId) throw new Error(`panel: creator ${r.creator} has no seeded product ${r.product}`)
-    const body = { goal: r.goal, door: productId ? 'product' : 'idea', reference_note: r.note, target_seconds: PROFILE_SECONDS[r.profile] ?? [30, 45, 60][n % 3],
+    const mode = modeOf(r)
+    if (mode === 'reference' && !r.reference?.fictional) throw new Error(`panel: ${r.id} is reference mode without a fictional stored reference`)
+    const body = { goal: r.goal, door: mode === 'reference' ? 'reference' : productId ? 'product' : 'idea', reference_note: r.note, target_seconds: PROFILE_SECONDS[r.profile] ?? [30, 45, 60][n % 3],
       ...(productId ? { selected_product_id: productId } : {}),
+      // Reference mode: the made-up reference's example.com url plus the transcript row the run
+      // stores for it (transcript_id is filled in at run time by storeFictionalReference).
+      ...(mode === 'reference' ? { reference_url: r.reference.url, ...(r.reference_use ? { reference_use: r.reference_use } : {}) } : {}),
       // Coverage requests (plan v5.1 item I) name the idea angle the template choice ranks by.
       ...(r.angle ? { angle: { kind: r.angle, gist: r.note } } : {}) }
-    return { n, group: 'panel', label: `${r.creator} ${r.kind}`, id: r.id ?? null, template: r.template ?? null, profile: r.profile ?? null, lacks: r.lacks ?? [], creator: r.creator, kind: r.kind, product: r.product ?? null, owner_id: acct.owner_id, email: acct.email, body }
+    return { n, group: 'panel', mode, label: `${r.creator} ${r.kind}`, id: r.id ?? null, template: r.template ?? null, profile: r.profile ?? null, lacks: r.lacks ?? [], creator: r.creator, kind: r.kind, product: r.product ?? null, owner_id: acct.owner_id, email: acct.email, reference: mode === 'reference' ? r.reference : null, body }
   })
 }
+
+/** The `transcripts` row a fictional reference is stored as: the creator's own row (the edge reads
+ * transcript_id only for owner_id = the caller), subject 'reference' so it is never read as her voice. */
+export function fictionalTranscriptRow(ownerId, ref) {
+  if (!ref?.fictional) throw new Error('panel: refusing to store a reference not marked fictional')
+  if (!/^https:\/\/example\.com\//.test(String(ref.url))) throw new Error('panel: a fictional reference url must be at example.com')
+  return { owner_id: ownerId, source_url: ref.url, platform: ref.platform ?? null, duration_sec: ref.duration_sec ?? null, text: ref.text, structure: ref.structure ?? null, subject: 'reference' }
+}
+
+/** Store (or reuse) the fictional reference as a transcripts row; returns its id. Nothing is fetched. */
+export async function storeFictionalReference(admin, ownerId, ref) {
+  const row = fictionalTranscriptRow(ownerId, ref)
+  const { data: prior } = await admin.from('transcripts').select('id').eq('owner_id', ownerId).eq('source_url', row.source_url).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (prior?.id) return prior.id
+  const { data, error } = await admin.from('transcripts').insert(row).select('id').single()
+  if (error || !data?.id) throw new Error(`panel: could not store the fictional reference: ${error?.message ?? 'no id'}`)
+  return data.id
+}
+
+/** Requests × estimated USD per request (owner's planning figure, not a measured price). */
+export const PANEL_EST_USD_PER_REQUEST = 0.05
+export const panelEstimate = (count, perRequest = PANEL_EST_USD_PER_REQUEST) => Math.round(count * perRequest * 100) / 100
 
 /** The 409 readiness field → the fixture answer key (Need Check / questionUsefulness kinds). */
 export const ANSWER_KEY_FOR_FIELD = {
@@ -177,7 +247,7 @@ async function signInAs(url, anon, admin, email) {
   return client
 }
 
-export async function runPanel({ url, anon, service, batch, limit = Infinity, paceMs = 15000 }) {
+export async function runPanel({ url, anon, service, batch, limit = Infinity, paceMs = 15000, filter = panelFilterFromEnv() }) {
   const admin = createClient(url, service, { auth: { persistSession: false } })
   const fileId = Number(process.env.PANEL_FILE_ID || 0)
   if (!fileId) throw new Error('panel: PANEL_FILE_ID (the private test_run_files row from seedFictionalPanel.mjs) is required')
@@ -186,7 +256,8 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   const accounts = JSON.parse(row.content)
   const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'))
   const budget = Number(process.env.PANEL_BUDGET_USD || 2.5)
-  const list = panelScenarios(fixture, accounts, limit)
+  const list = panelScenarios(fixture, accounts, limit, filter)
+  if (filter.modes.length || filter.range) console.log(`panel ${batch}: subset modes=${filter.modes.join(',') || 'all'} range=${filter.range || 'all'} -> ${list.length} requests, est $${panelEstimate(list.length).toFixed(2)} at $${PANEL_EST_USD_PER_REQUEST}/request`)
   const mode = panelAnswerMode()
   const answersBy = new Map(fixture.creators.map((c) => [c.key, c.answers ?? {}]))
   const records = []
@@ -212,7 +283,10 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     await new Promise((r) => setTimeout(r, paceMs))
     // The model lengthen pass is OFF on panel measure runs unless BATCH_LENGTHEN=on
     // (cost). The deterministic word-budget repair runs either way.
-    let body = { ...sc.body, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.n), idempotency_key: `${batch}-${sc.n}` }
+    // Reference mode: the made-up reference is stored as this creator's transcripts row
+    // (subject 'reference'); the edge reads it by transcript_id and never fetches the url.
+    const refBody = sc.reference ? { transcript_id: await storeFictionalReference(admin, sc.owner_id, sc.reference) } : {}
+    let body = { ...sc.body, ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.n), idempotency_key: `${batch}-${sc.n}` }
     const post = async () => {
       const t0 = Date.now()
       const res = await fetch(`${url}/functions/v1/generate-blueprint`, {
@@ -250,7 +324,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     await admin.from('script_batch_results').insert({
       batch, n: sc.n,
-      scenario: { group: 'panel', label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.n).panel_arm ?? null), word_budget: bp?.word_budget ?? null, body },
+      scenario: { group: 'panel', mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.n).panel_arm ?? null), word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [
@@ -262,7 +336,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
       hooks: Array.isArray(bp?.hook_options) ? bp.hook_options : null,
       judge: null,
     })
-    console.log(`#${sc.n} panel/${sc.label}/${sc.body.goal} → ${r.status} gate=${bp?.invention_gate?.outcome ?? '-'} I=${bp?.invention_gate?.before?.I ?? '-'} asked=${qrec.questions_asked} used=${qrec.question_use.used}/${qrec.question_use.answered}`)
+    console.log(`#${sc.n} panel/${sc.mode}/${sc.label}/${sc.body.goal} → ${r.status} gate=${bp?.invention_gate?.outcome ?? '-'} I=${bp?.invention_gate?.before?.I ?? '-'} asked=${qrec.questions_asked} used=${qrec.question_use.used}/${qrec.question_use.answered}`)
   }
   console.log(`::notice title=panel-questions::${JSON.stringify(questionSummary(records))}`)
   const end = await spent()
