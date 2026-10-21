@@ -42,7 +42,7 @@ const job = (ledger: Record<string, unknown>): Job =>
 const scriptOf = (bp: Record<string, unknown>) => (bp.script as Array<{ line: string }>).map((b) => b.line)
 
 describe('story_retell_dedup through the worker gate', () => {
-  const lines = ['Why do candles tunnel?', WICK, 'Trim your wick before every burn.', 'I picked a wick that was too thin and the candle tunneled right through its middle.', 'Save this.']
+  const lines = ['Why do candles tunnel?', WICK, 'Trim your wick before every burn.', 'My first candle tunneled down the middle because the wick was too thin.', 'Save this.']
   it('on: the retelling in new words goes; off: it stays', async () => {
     const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
     const on = deps(lines)
