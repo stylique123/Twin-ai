@@ -307,6 +307,546 @@
     { "creator": "mayas-coffee", "kind": "story", "goal": "followers", "door": "idea", "angle": "feeling_story", "note": "what I thought roasting would be like", "template": "T7", "profile": "standard", "lacks": [], "id": "panel-44" },
     { "creator": "flowdesk", "kind": "leads", "goal": "leads", "door": "product", "product": "flowdesk", "angle": "result_first", "note": "a shop inbox before and after FlowDesk", "template": "T8", "profile": "deep", "lacks": ["hesitation"], "id": "panel-45" },
     { "creator": "glow-lab", "kind": "sell", "goal": "sell", "door": "product", "product": "melt-balm", "angle": "teach_list", "note": "balm or cream, which one fits your skin", "template": "T9", "profile": "standard", "lacks": [], "id": "panel-46" },
-    { "creator": "signal-daily", "kind": "educate", "goal": "authority", "door": "idea", "angle": "contrarian_claim", "note": "my take on mail apps labelling AI drafts", "template": "T10", "profile": "deep", "lacks": [], "outside": [{ "kind": "research", "text": "On October 14 the Lumen Mail app began labelling drafts written with its AI assistant.", "verified": true, "source": "https://example.com/lumen-mail-changelog" }], "id": "panel-47" }
+    { "creator": "signal-daily", "kind": "educate", "goal": "authority", "door": "idea", "angle": "contrarian_claim", "note": "my take on mail apps labelling AI drafts", "template": "T10", "profile": "deep", "lacks": [], "outside": [{ "kind": "research", "text": "On October 14 the Lumen Mail app began labelling drafts written with its AI assistant.", "verified": true, "source": "https://example.com/lumen-mail-changelog" }], "id": "panel-47" },
+    {
+      "creator": "mayas-coffee",
+      "kind": "educate",
+      "goal": "educate",
+      "mode": "reference",
+      "door": "reference",
+      "note": "remix this myth-busting format for coffee storage",
+      "reference_use": "structure",
+      "template": "T1",
+      "profile": "sprint",
+      "lacks": [],
+      "reference": {
+        "fictional": true,
+        "url": "https://example.com/fictional-reference/myth-fridge",
+        "platform": "tiktok",
+        "duration_sec": 34,
+        "text": "Stop doing this with your groceries. Most people think the fridge keeps everything fresher. It does not, not for bread. The cold pulls the moisture out and it goes stale faster. Keep it in a bread box instead. Tell me in the comments what you do instead.",
+        "structure": {
+          "hook": "Stop doing this with your groceries.",
+          "hook_window_sec": 3,
+          "beats": [
+            {
+              "beat": "Hook: names a common habit as a mistake",
+              "goal": "stop the scroll",
+              "at_sec": 0
+            },
+            {
+              "beat": "Myth: states what most people believe",
+              "goal": "build agreement",
+              "at_sec": 3
+            },
+            {
+              "beat": "Twist: explains why the habit backfires",
+              "goal": "surprise",
+              "at_sec": 11
+            },
+            {
+              "beat": "Fix: one simple replacement habit",
+              "goal": "give value",
+              "at_sec": 19
+            },
+            {
+              "beat": "Close: asks viewers to share their habit",
+              "goal": "comments",
+              "at_sec": 27
+            }
+          ],
+          "cta": "Tell me in the comments what you do instead.",
+          "pacing": "fast, one idea per cut",
+          "why_it_works": "Opens on a habit the viewer already has, then flips it, so the viewer feels caught and keeps watching for the fix."
+        }
+      },
+      "id": "panel-48"
+    },
+    {
+      "creator": "glow-lab",
+      "kind": "story",
+      "goal": "personal_brand",
+      "mode": "reference",
+      "door": "reference",
+      "note": "use this almost-quit confession structure for how I started",
+      "reference_use": "idea_structure",
+      "template": "T3",
+      "profile": "standard",
+      "lacks": [],
+      "reference": {
+        "fictional": true,
+        "url": "https://example.com/fictional-reference/confession-start",
+        "platform": "tiktok",
+        "duration_sec": 41,
+        "text": "I almost quit before I made the first one. Nothing on the shelf worked for me. My first try was a disaster and I threw it all out. Then I changed one small thing and it finally held. Follow along if you want to see what comes next.",
+        "structure": {
+          "hook": "I almost quit before I made the first one.",
+          "hook_window_sec": 3,
+          "beats": [
+            {
+              "beat": "Hook: admits almost giving up",
+              "goal": "curiosity",
+              "at_sec": 0
+            },
+            {
+              "beat": "Setup: the problem that started it",
+              "goal": "relatability",
+              "at_sec": 3
+            },
+            {
+              "beat": "Low point: the failed first attempt",
+              "goal": "tension",
+              "at_sec": 11
+            },
+            {
+              "beat": "Turn: the small change that worked",
+              "goal": "relief",
+              "at_sec": 19
+            },
+            {
+              "beat": "Close: invites viewers to follow the journey",
+              "goal": "follow",
+              "at_sec": 27
+            }
+          ],
+          "cta": "Follow along if you want to see what comes next.",
+          "pacing": "calm, talking head, slow build",
+          "why_it_works": "A confession hook makes the viewer root for the creator before any product appears."
+        }
+      },
+      "id": "panel-49"
+    },
+    {
+      "creator": "flowdesk",
+      "kind": "educate",
+      "goal": "leads",
+      "mode": "reference",
+      "door": "reference",
+      "note": "follow this mistakes list format for small shop support inboxes",
+      "reference_use": "structure",
+      "template": "T1",
+      "profile": "deep",
+      "lacks": [],
+      "reference": {
+        "fictional": true,
+        "url": "https://example.com/fictional-reference/three-mistakes",
+        "platform": "tiktok",
+        "duration_sec": 38,
+        "text": "You are making three mistakes with your inbox. One, you answer in the order things arrive. Two, you rewrite the same answer every time. Three, nobody writes down what was promised. Comment checklist and I will send it to you.",
+        "structure": {
+          "hook": "You are making three mistakes with your inbox.",
+          "hook_window_sec": 3,
+          "beats": [
+            {
+              "beat": "Hook: promises a short list of mistakes",
+              "goal": "curiosity",
+              "at_sec": 0
+            },
+            {
+              "beat": "Mistake one: answering in the order emails arrive",
+              "goal": "recognition",
+              "at_sec": 3
+            },
+            {
+              "beat": "Mistake two: rewriting the same answer each time",
+              "goal": "recognition",
+              "at_sec": 11
+            },
+            {
+              "beat": "Mistake three: no record of what was promised",
+              "goal": "stakes",
+              "at_sec": 19
+            },
+            {
+              "beat": "Close: offers a free checklist",
+              "goal": "lead",
+              "at_sec": 27
+            }
+          ],
+          "cta": "Comment checklist and I will send it to you.",
+          "pacing": "quick list, on-screen numbers",
+          "why_it_works": "A numbered list sets a clear end point, so viewers stay to hear the last item."
+        }
+      },
+      "id": "panel-50"
+    },
+    {
+      "creator": "coach-ana",
+      "kind": "educate",
+      "goal": "followers",
+      "mode": "reference",
+      "door": "reference",
+      "note": "copy the pacing of this do this not that video for beginner squats",
+      "reference_use": "pacing",
+      "template": "T1",
+      "profile": "sprint",
+      "lacks": [],
+      "reference": {
+        "fictional": true,
+        "url": "https://example.com/fictional-reference/do-not-that",
+        "platform": "tiktok",
+        "duration_sec": 24,
+        "text": "Do this, not that. Not that, rushing through it with no control. Do this, slow down and keep it steady. Slower reps teach your body the shape. Save this for your next session.",
+        "structure": {
+          "hook": "Do this, not that.",
+          "hook_window_sec": 3,
+          "beats": [
+            {
+              "beat": "Hook: split screen promise",
+              "goal": "stop the scroll",
+              "at_sec": 0
+            },
+            {
+              "beat": "Not that: the common wrong version",
+              "goal": "recognition",
+              "at_sec": 3
+            },
+            {
+              "beat": "Do this: the corrected version",
+              "goal": "value",
+              "at_sec": 11
+            },
+            {
+              "beat": "Why: one sentence on the reason",
+              "goal": "trust",
+              "at_sec": 19
+            },
+            {
+              "beat": "Close: asks to save for later",
+              "goal": "save",
+              "at_sec": 27
+            }
+          ],
+          "cta": "Save this for your next session.",
+          "pacing": "rapid cuts, mirrored shots",
+          "why_it_works": "The contrast pair is instantly readable without sound, so it holds silent scrollers."
+        }
+      },
+      "id": "panel-51"
+    },
+    {
+      "creator": "clay-kiln",
+      "kind": "story",
+      "goal": "personal_brand",
+      "mode": "reference",
+      "door": "reference",
+      "note": "use this process reveal format for one of my mugs",
+      "reference_use": "idea_structure",
+      "template": "T3",
+      "profile": "deep",
+      "lacks": [],
+      "reference": {
+        "fictional": true,
+        "url": "https://example.com/fictional-reference/process-reveal",
+        "platform": "tiktok",
+        "duration_sec": 45,
+        "text": "Watch this lump become something useful. First it gets shaped by hand. Halfway through, it nearly collapses. A quick fix and it holds. And here it is, finished and in use. Would you use one of these?",
+        "structure": {
+          "hook": "Watch this lump become something useful.",
+          "hook_window_sec": 3,
+          "beats": [
+            {
+              "beat": "Hook: shows the raw material",
+              "goal": "curiosity",
+              "at_sec": 0
+            },
+            {
+              "beat": "Process: the first shaping step",
+              "goal": "satisfaction",
+              "at_sec": 3
+            },
+            {
+              "beat": "Problem: something goes wrong midway",
+              "goal": "tension",
+              "at_sec": 11
+            },
+            {
+              "beat": "Fix: how the maker saves it",
+              "goal": "competence",
+              "at_sec": 19
+            },
+            {
+              "beat": "Reveal: the finished object in use",
+              "goal": "payoff",
+              "at_sec": 27
+            }
+          ],
+          "cta": "Would you use one of these?",
+          "pacing": "slow, satisfying, close-up hands",
+          "why_it_works": "Viewers stay for the reveal; the midway problem stops it feeling like an ad."
+        }
+      },
+      "id": "panel-52"
+    },
+    {
+      "creator": "signal-daily",
+      "kind": "educate",
+      "goal": "authority",
+      "mode": "reference",
+      "door": "reference",
+      "note": "remix this hot take structure about AI summaries",
+      "reference_use": "structure",
+      "template": "T1",
+      "profile": "standard",
+      "lacks": [],
+      "reference": {
+        "fictional": true,
+        "url": "https://example.com/fictional-reference/hot-take",
+        "platform": "tiktok",
+        "duration_sec": 39,
+        "text": "Unpopular opinion about the tools everyone loves. Most of them save you less time than you think. Last week one gave me a confident answer that was simply wrong. To be fair, for rough drafts they are great. Agree or disagree? Tell me below.",
+        "structure": {
+          "hook": "Unpopular opinion about the tools everyone loves.",
+          "hook_window_sec": 3,
+          "beats": [
+            {
+              "beat": "Hook: signals a contrarian view",
+              "goal": "curiosity",
+              "at_sec": 0
+            },
+            {
+              "beat": "Claim: states the opinion plainly",
+              "goal": "tension",
+              "at_sec": 3
+            },
+            {
+              "beat": "Evidence: one concrete example",
+              "goal": "credibility",
+              "at_sec": 11
+            },
+            {
+              "beat": "Nuance: when the popular view is right",
+              "goal": "fairness",
+              "at_sec": 19
+            },
+            {
+              "beat": "Close: asks viewers whether they agree",
+              "goal": "comments",
+              "at_sec": 27
+            }
+          ],
+          "cta": "Agree or disagree? Tell me below.",
+          "pacing": "direct to camera, steady",
+          "why_it_works": "A contrarian opener invites disagreement, and disagreement drives comments."
+        }
+      },
+      "id": "panel-53"
+    },
+    {
+      "creator": "pip-sprocket",
+      "kind": "entertain",
+      "goal": "entertain",
+      "mode": "reference",
+      "door": "reference",
+      "note": "do this escalating complaint sketch format with Sprocket",
+      "reference_use": "structure",
+      "template": "T12",
+      "profile": "sprint",
+      "lacks": [],
+      "reference": {
+        "fictional": true,
+        "url": "https://example.com/fictional-reference/escalating-complaint",
+        "platform": "tiktok",
+        "duration_sec": 29,
+        "text": "I need to talk to the manager of the sky. It is too blue. Frankly it has been too blue all week. Honestly I think it is doing it on purpose. Oh. I was wearing sunglasses. Follow for more complaints.",
+        "structure": {
+          "hook": "I need to talk to the manager of the sky.",
+          "hook_window_sec": 3,
+          "beats": [
+            {
+              "beat": "Hook: an absurd demand",
+              "goal": "laugh",
+              "at_sec": 0
+            },
+            {
+              "beat": "Escalation one: the complaint grows",
+              "goal": "laugh",
+              "at_sec": 3
+            },
+            {
+              "beat": "Escalation two: it becomes personal",
+              "goal": "laugh",
+              "at_sec": 11
+            },
+            {
+              "beat": "Reversal: the complainer is the problem",
+              "goal": "surprise",
+              "at_sec": 19
+            },
+            {
+              "beat": "Button: a final deadpan line",
+              "goal": "rewatch",
+              "at_sec": 27
+            }
+          ],
+          "cta": "Follow for more complaints.",
+          "pacing": "sketch, two characters, quick beats",
+          "why_it_works": "Each escalation is a small payoff, and the reversal rewards viewers who stayed."
+        }
+      },
+      "id": "panel-54"
+    },
+    {
+      "creator": "quiet-loom",
+      "kind": "educate",
+      "goal": "educate",
+      "mode": "reference",
+      "door": "reference",
+      "note": "use this things I wish I knew structure for beginner weaving",
+      "reference_use": "structure",
+      "template": "T1",
+      "profile": "standard",
+      "lacks": [
+        "creator_truth"
+      ],
+      "reference": {
+        "fictional": true,
+        "url": "https://example.com/fictional-reference/wish-i-knew",
+        "platform": "tiktok",
+        "duration_sec": 36,
+        "text": "Things I wish I knew before I started. Beginners pull too tight. The fancy tool matters less than you think. Setting up carefully saves hours later. Tell me what you are stuck on.",
+        "structure": {
+          "hook": "Things I wish I knew before I started.",
+          "hook_window_sec": 3,
+          "beats": [
+            {
+              "beat": "Hook: promises hard-won lessons",
+              "goal": "curiosity",
+              "at_sec": 0
+            },
+            {
+              "beat": "Lesson one: a beginner mistake",
+              "goal": "recognition",
+              "at_sec": 3
+            },
+            {
+              "beat": "Lesson two: a tool that matters less than you think",
+              "goal": "surprise",
+              "at_sec": 11
+            },
+            {
+              "beat": "Lesson three: a habit that saves time",
+              "goal": "value",
+              "at_sec": 19
+            },
+            {
+              "beat": "Close: asks beginners what they are stuck on",
+              "goal": "comments",
+              "at_sec": 27
+            }
+          ],
+          "cta": "Tell me what you are stuck on.",
+          "pacing": "calm, hands and materials, gentle music",
+          "why_it_works": "Lessons framed as regrets feel honest, so beginners trust the advice."
+        }
+      },
+      "id": "panel-55"
+    },
+    {
+      "creator": "mayas-coffee",
+      "kind": "educate",
+      "goal": "educate",
+      "mode": "idea",
+      "door": "idea",
+      "angle": "problem_question",
+      "note": "why your coffee tastes different at home than at the cafe",
+      "template": "T4",
+      "profile": "deep",
+      "lacks": [],
+      "id": "panel-56"
+    },
+    {
+      "creator": "glow-lab",
+      "kind": "educate",
+      "goal": "authority",
+      "mode": "idea",
+      "door": "idea",
+      "angle": "contrarian_claim",
+      "note": "what fragrance free actually means on a skincare label",
+      "template": "T2",
+      "profile": "standard",
+      "lacks": [],
+      "id": "panel-57"
+    },
+    {
+      "creator": "flowdesk",
+      "kind": "story",
+      "goal": "personal_brand",
+      "mode": "idea",
+      "door": "idea",
+      "angle": "feeling_story",
+      "note": "the support email that changed how we built FlowDesk",
+      "template": "T3",
+      "profile": "standard",
+      "lacks": [],
+      "id": "panel-58"
+    },
+    {
+      "creator": "coach-ana",
+      "kind": "educate",
+      "goal": "educate",
+      "mode": "idea",
+      "door": "idea",
+      "angle": "teach_list",
+      "note": "the warm up most beginners skip and why it matters",
+      "template": "T1",
+      "profile": "sprint",
+      "lacks": [],
+      "id": "panel-59"
+    },
+    {
+      "creator": "clay-kiln",
+      "kind": "entertain",
+      "goal": "entertain",
+      "mode": "idea",
+      "door": "idea",
+      "angle": "curiosity",
+      "note": "everything that can go wrong in one kiln firing",
+      "template": "T2",
+      "profile": "standard",
+      "lacks": [],
+      "id": "panel-60"
+    },
+    {
+      "creator": "signal-daily",
+      "kind": "educate",
+      "goal": "followers",
+      "mode": "idea",
+      "door": "idea",
+      "angle": "result_first",
+      "note": "one question to ask before trusting an AI answer",
+      "template": "T6",
+      "profile": "standard",
+      "lacks": [],
+      "id": "panel-61"
+    },
+    {
+      "creator": "pip-sprocket",
+      "kind": "story",
+      "goal": "personal_brand",
+      "mode": "idea",
+      "door": "idea",
+      "angle": "feeling_story",
+      "note": "what it is like to share a stage with a puppet who heckles you",
+      "template": "T12",
+      "profile": "sprint",
+      "lacks": [],
+      "id": "panel-62"
+    },
+    {
+      "creator": "quiet-loom",
+      "kind": "educate",
+      "goal": "educate",
+      "mode": "idea",
+      "door": "idea",
+      "angle": "teach_list",
+      "note": "how to choose yarn for a first winter scarf",
+      "template": "T1",
+      "profile": "standard",
+      "lacks": [
+        "creator_truth"
+      ],
+      "id": "panel-63"
+    }
   ]
 }
