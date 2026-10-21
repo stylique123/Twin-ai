@@ -8,6 +8,8 @@ Sources: `docs/wiring-ledger.md` (planned rows 8.1-x, reverse coverage check), `
 
 **Totals:** 1 done, 15 partial, 8 not started.
 
+Docs-only groundwork for the 8 NOT STARTED threads (protocols, checklists, the thread 10 spec) is in `docs/release/not-started-threads-groundwork.md`. Status stays NOT STARTED until the live part runs.
+
 | # | Thread | Status | Evidence | What is missing / next step |
 |---|---|---|---|---|
 | 1 | Phase R re-verify of the "live" list | PARTIAL | The Reference heartbeat 409 (#1076), the first Phase R item, was closed by #1196, #1200-#1202 and #1204. The plan v5.3 V ledger (#1295) shows every trial row is CALLED, but none is FIXED. | Nobody re-checked the rest of the "live" list end to end. Next: go through the list once on the live app and mark each item live, trial-only or dead. |
