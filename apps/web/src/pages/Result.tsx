@@ -912,7 +912,7 @@ export default function Result() {
     ? `That is longer than a short-form video normally runs (over ${spokenTime(runtimeCompare.ceilingSec)}) — worth trimming before you record.`
     : null
 
-  // ⚠️ SUNFLOWER #15: said when the reference had no personal story to borrow.
+  // ⚠️ MAYA #15: said when the reference had no personal story to borrow.
   // ⚠️ COFFEE REPORT 1.3: the shot list's opening row quoted a line that was
   // not the hook the teleprompter opens with (or had no hook row at all). It
   // now shows the SAME hook: a row quoting a hook option becomes the chosen
@@ -962,7 +962,7 @@ export default function Result() {
   const noStoryLine = (b.reference_read as { reference_has_story?: boolean | null }).reference_has_story === false
     ? 'The reference is tips or a list with no personal story in it — so any story in this script comes from what you told Twin, not from the reference.'
     : null
-  // ⚠️ SUNFLOWER #23: numbers nothing she gave Twin contains.
+  // ⚠️ MAYA #23: numbers nothing she gave Twin contains.
   const unsourced = Array.isArray((raw as { unsourced_figures?: unknown }).unsourced_figures)
     ? ((raw as { unsourced_figures: Array<{ beat: number; figure: string }> }).unsourced_figures) : []
   const unsourcedLine = unsourced.length

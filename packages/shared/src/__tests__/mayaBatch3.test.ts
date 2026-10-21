@@ -3,7 +3,7 @@ import { tidySubNiche } from '../nicheQuestions'
 import { referenceLengthFit, tooLongMatters } from '../editor/referenceCheck'
 import { unsourcedFigures } from '../script/scriptIntegrity'
 
-describe('Sunflower batch 3', () => {
+describe('Maya batch 3', () => {
   it('#1 drops a wrapper tail but keeps a real phrase', () => {
     expect(tidySubNiche('micro coffee roasting business')).toBe('micro coffee roasting')
     expect(tidySubNiche('custom Bible rebinding')).toBe('custom Bible rebinding')

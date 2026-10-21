@@ -3,10 +3,10 @@ import { brandIsHers } from './imageBrandCheck.js'
 import { genericName, findProductOnWeb } from '../productWebSearch.js'
 
 describe('a photo of someone else’s product is not hers', () => {
-  const hers = ['Sunflower Coffee Roasters', 'Brazil Roast', 'sunflowercoffeeroasters']
+  const hers = ['Maya Coffee Co', 'Brazil Roast', 'mayacoffeeco']
   it('refuses the live case', () => { expect(brandIsHers('MYLIBERICA Coffee 06 Signature Blend', hers)).toBe(false) })
   it('accepts her own brand and a photo with no brand', () => {
-    expect(brandIsHers('SUNFLOWER', hers)).toBe(true)
+    expect(brandIsHers('MAYA', hers)).toBe(true)
     expect(brandIsHers('', hers)).toBe(true)
   })
 })

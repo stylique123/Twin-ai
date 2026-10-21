@@ -4,12 +4,12 @@ import { nicheBucket } from '../../nicheQuestions'
 import { isPrivate } from '../privacyGuard'
 
 describe('audit 2026-09-30: the rules the prompt only advised', () => {
-  const lib = ['Single-Origin Limited Release', 'Signature Blend Beans', 'Sunflower Coffee Roasters']
+  const lib = ['Single-Origin Limited Release', 'Signature Blend Beans', 'Maya Coffee Co']
 
   it('an Idea script with nothing picked may not name her brand or a product', () => {
     const unpicked = unpickedNames(lib, [], 'how do I start a coffee cart')
     const r = enforceScriptRules([
-      { line: 'I get this question while brewing Sunflower Coffee Roasters Colombia washed beans. There is no clean formula.' },
+      { line: 'I get this question while brewing Maya Coffee Co Colombia washed beans. There is no clean formula.' },
     ], { unpicked, followAllowed: false })
     expect(r.beats[0].line).toBe('There is no clean formula.')
     expect(r.removed[0].reason).toBe('unpicked_product')
@@ -17,7 +17,7 @@ describe('audit 2026-09-30: the rules the prompt only advised', () => {
 
   it('the picked product, and a name she wrote herself, stay sayable', () => {
     expect(unpickedNames(lib, ['Signature Blend Beans'], '')).not.toContain('Signature Blend Beans')
-    expect(unpickedNames(lib, [], 'a video about Sunflower Coffee Roasters')).not.toContain('Sunflower Coffee Roasters')
+    expect(unpickedNames(lib, [], 'a video about Maya Coffee Co')).not.toContain('Maya Coffee Co')
   })
 
   it('a follow ask is cut unless she chose follow', () => {

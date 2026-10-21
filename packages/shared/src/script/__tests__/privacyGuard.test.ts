@@ -15,7 +15,7 @@ const LEAKED = [
   { section: 'Story', line: 'Between roasting strictly to order in small two-pound batches out of a tiny space, and dealing with neighbor complaints and police visits over roasting aromas, it is a constant learning process.' },
   { section: 'Proof', line: 'Now, every single lot starts with a tiny test batch, ensuring I only source specialty beans scoring above eighty before roasting for you.' },
   { section: 'Origin', line: 'Specialty coffee uses beans with cup scores above 80, which is why standard coffee felt so flat by comparison.' },
-  { section: 'CTA', line: 'Grab your Sunflower Coffee Roasters, the link is in my bio.' },
+  { section: 'CTA', line: 'Grab your Maya Coffee Co, the link is in my bio.' },
 ]
 const ALLOWED = 'Signature Blend Beans. 12oz $18, 5lb $65, whole bean or ground, roasted to order. Someone told me they could taste the difference between my roast and the grocery store bag.'
 
@@ -99,9 +99,9 @@ describe('owner fabrication audit 2026-10-01: a figure nothing she gave states i
 })
 
 describe('scrubLike (blind set 3 T5: private relocation story in her voice profile)', () => {
-  const priv = ['She had 26 days to move Sunflower Coffee from her home to a commercial space to avoid fines or a court date.']
+  const priv = ['She had 26 days to move Maya Coffee from her home to a commercial space to avoid fines or a court date.']
   it('cuts profile lines that retell a private fact without a listed word', () => {
-    const out = scrubLike({ dos: ['Introduce yourself and your mission to move from a home roastery to a commercial space.', 'Describe flavor notes vividly.'], hook_patterns: ["High-Stakes Countdown: 'I have 26 days to move sunflower coffee from my home to a commercial space.'"] }, priv)
+    const out = scrubLike({ dos: ['Introduce yourself and your mission to move from a home roastery to a commercial space.', 'Describe flavor notes vividly.'], hook_patterns: ["High-Stakes Countdown: 'I have 26 days to move maya coffee from my home to a commercial space.'"] }, priv)
     expect(out).toEqual({ dos: ['Describe flavor notes vividly.'], hook_patterns: [] })
   })
   it('leaves unrelated lines alone', () => {

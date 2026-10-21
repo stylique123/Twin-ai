@@ -35,7 +35,7 @@ export function RateThisScript({ generationId, ownerId }: { generationId: string
     const timer = setTimeout(() => {
       void supabase.from('script_ratings').select('generation_id').eq('generation_id', generationId).maybeSingle()
         .then(({ data, error }) => { if (alive && !error && !data) setOpen(true) }, () => {})
-    // ⚖️ SUNFLOWER #26: 6s was before she could read the script. 45s is enough
+    // ⚖️ MAYA #26: 6s was before she could read the script. 45s is enough
     // to read a 60-second script once; a quick leave never sees the prompt.
     }, RATE_DELAY_MS)
     return () => { alive = false; clearTimeout(timer) }

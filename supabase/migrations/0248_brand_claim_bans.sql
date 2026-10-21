@@ -1,4 +1,4 @@
--- CLAIMS A BRAND'S SCRIPTS MUST NEVER MAKE (Sunflower session #6).
+-- CLAIMS A BRAND'S SCRIPTS MUST NEVER MAKE (Maya session #6).
 --
 -- Only one claims list existed, set once at onboarding. A brand (and each of
 -- its products) can need its own — "can't claim this exact origin will return"

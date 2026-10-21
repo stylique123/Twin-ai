@@ -56,7 +56,7 @@ function offerWords(t: unknown): string[] {
 
 /**
  * Owner 2026-10-05 (blind set 2 #13, #15): a call's CTA said "let us build
- * your setup" and "pick the right coffee cart launch call" — neither is what
+ * your setup" and "pick the right brew bar setup call" — neither is what
  * the call is. A selling close describes the offer: it names the offer AND
  * carries at least two of its own words (price, length, what is covered).
  */

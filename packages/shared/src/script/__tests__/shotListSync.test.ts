@@ -56,7 +56,7 @@ describe('syncShotListSpokenText', () => {
     expect(result.resynced).toBe(1)
   })
 
-  // ⚖️ SUNFLOWER #16: an extra TALKING shot is now dropped, not blanked — a
+  // ⚖️ MAYA #16: an extra TALKING shot is now dropped, not blanked — a
   // blanked one was a phantom scene the teleprompter never counted.
   it('run-c-shaped: an extra talking shot with no matching final beat is dropped, not left stale', () => {
     const shotList = [
@@ -124,7 +124,7 @@ describe('syncShotListSpokenText', () => {
   })
 })
 
-describe('Sunflower #17–#18', () => {
+describe('Maya #17–#18', () => {
   it('a resynced row takes the beat label', () => {
     const r = syncShotListSpokenText(
       [{ shot: 'Detailing the deadline', shot_type: 'talking_head', spoken_text: 'old' }],
