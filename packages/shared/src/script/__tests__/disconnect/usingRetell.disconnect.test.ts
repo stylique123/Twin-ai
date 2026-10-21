@@ -1,5 +1,5 @@
 // DISCONNECT TEST, ledger rows 39 (Using list routes, kill USING_ITEM_KILL=1) and
-// 40 (paraphrased-retelling dedupe, kill STORY_RETELL_DEDUP=false). Fictional
+// 40 (paraphrased-retelling dedupe, default off, opt in STORY_RETELL_DEDUP=true). Fictional
 // fixture only (a made-up candle maker). No model call.
 import { describe, it, expect } from 'vitest'
 import type { LedgerItem } from '../../inventionGate'
@@ -38,8 +38,9 @@ describe('USING_ITEM_KILL disconnect', () => {
 })
 
 describe('STORY_RETELL_DEDUP disconnect', () => {
-  it('the edge sends story_retell_dedup under trialOn unless killed', () => {
+  it('the edge sends story_retell_dedup only when STORY_RETELL_DEDUP=true (default off)', () => {
     const extras = edgeAfter('const panel7GateExtras = ', 1400)
-    expect(extras).toContain("trialOn && Deno.env.get('STORY_RETELL_DEDUP') !== 'false' ? { story_retell_dedup: true }")
+    expect(extras).toContain("trialOn && Deno.env.get('STORY_RETELL_DEDUP') === 'true' ? { story_retell_dedup: true }")
+    expect(extras).not.toContain("Deno.env.get('STORY_RETELL_DEDUP') !== 'false'")
   })
 })

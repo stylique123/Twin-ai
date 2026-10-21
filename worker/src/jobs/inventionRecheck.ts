@@ -289,7 +289,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     ...(extra.hold_asks === true && extra.refill_context && typeof extra.refill_context === 'object'
       ? { refillContext: { topic: String(rec(extra.refill_context).topic ?? ''), angle: String(rec(extra.refill_context).angle ?? '') } } : {}),
     ...(extra.hold_asks === true && extra.story_hook_dedup === true ? { storyHookDedup: true } : {}),
-    // Panel-10 advisor, trial only (kill STORY_RETELL_DEDUP='false'): one telling per story.
+    // Panel-10 advisor, trial only, DEFAULT OFF (edge opts in with STORY_RETELL_DEDUP='true'): one telling per story.
     ...(extra.hold_asks === true && extra.story_retell_dedup === true ? { storyRetellDedup: true } : {}),
     // Using list "Never use", trial only (the edge sends `never_use` under trialOn;
     // kill USING_ITEM_KILL=1): no refill comes from an item she blocked.

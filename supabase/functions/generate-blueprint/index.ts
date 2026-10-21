@@ -7123,8 +7123,9 @@ async function handle(req: Request): Promise<Response> {
     // Panel-10 (trial; kills RELEVANT_REFILL=false, STORY_HOOK_DEDUP=false).
     ...(relevantRefillCtx() ? { refill_context: relevantRefillCtx() } : {}),
     ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' ? { story_hook_dedup: true } : {}),
-    // Panel-10 advisor (trial; kill STORY_RETELL_DEDUP=false): one telling per story, paraphrases included.
-    ...(trialOn && Deno.env.get('STORY_RETELL_DEDUP') !== 'false' ? { story_retell_dedup: true } : {}),
+    // Panel-10 advisor (trial; DEFAULT OFF, opt in STORY_RETELL_DEDUP=true): one telling per story.
+    // Off until a meaning-level check exists; while off no line is cut or changed.
+    ...(trialOn && Deno.env.get('STORY_RETELL_DEDUP') === 'true' ? { story_retell_dedup: true } : {}),
     // Using list (trial; kill USING_ITEM_KILL=1): the worker's refills skip her never-use items.
     ...(neverUseForGate().length ? { never_use: neverUseForGate() } : {}),
   })

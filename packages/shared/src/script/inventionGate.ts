@@ -2400,7 +2400,7 @@ export function dedupeStoryHook<B extends { line?: unknown }>(script: readonly B
   return { script: out, record: null }
 }
 
-// ── PARAPHRASED RETELLINGS (panel-10 advisor, trial; kill STORY_RETELL_DEDUP=false) ──
+// ── PARAPHRASED RETELLINGS (panel-10 advisor, trial, DEFAULT OFF; opt in STORY_RETELL_DEDUP=true) ──
 // Panel 10 (P10-02, 07, 09, 10, 15, 18): a story retold in NEW words still read
 // as a repeat; the story-hook dedupe above only sees verbatim repeats. Every
 // line that tells the same story (traced to the story's item id, or sharing
@@ -2799,7 +2799,7 @@ export interface RunGateInput {
   /** Trial (panel-10; kill STORY_HOOK_DEDUP=false on the edge): a hook that
    *  restates her verbatim story's opening is deduped (dedupeStoryHook). */
   storyHookDedup?: boolean
-  /** Trial (panel-10 advisor; kill STORY_RETELL_DEDUP=false on the edge): one
+  /** Trial (panel-10 advisor; default off; STORY_RETELL_DEDUP=true on the edge): one
    *  telling per story, verbatim or paraphrased (dedupeStoryRetellings). */
   storyRetellDedup?: boolean
   /** Trial: text that ships word for word (her named story); never de-duplicated away. */

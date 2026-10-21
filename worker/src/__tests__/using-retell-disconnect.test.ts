@@ -22,13 +22,13 @@ const judgeAllS = async (prompt: string) => {
   return JSON.stringify({ sentences: rows.map((m) => ({ i: Number(m[1]), class: 'S', item_ids: ['k-wick'], claim_types: [] })) })
 }
 
-function deps(lines: string[]) {
+function deps(lines: string[], lineSources?: unknown[]) {
   const saved: Array<Record<string, unknown>> = []
   const d: RecheckDeps = {
     model: 'fake-fast',
     strongModel: 'fake-strong',
     loadGeneration: async () => ({ id: GEN, user_id: OWNER, reference_note: '', blueprint: {
-      script: lines.map((line, n) => ({ section: n === 0 ? 'hook' : 'build', line })), check_status: 'unchecked', invention_gate: { outcome: 'unchecked', reason: 'queued' },
+      script: lines.map((line, n) => ({ section: n === 0 ? 'hook' : 'build', line })), ...(lineSources ? { line_sources: lineSources } : {}), check_status: 'unchecked', invention_gate: { outcome: 'unchecked', reason: 'queued' },
     } }),
     loadKnowledge: async () => [{ id: 'k-wick', kind: 'experience', text: WICK }, { id: 'k-van', kind: 'experience', text: VAN }],
     loadProducts: async () => [],
@@ -52,6 +52,28 @@ describe('story_retell_dedup through the worker gate', () => {
     expect(scriptOf(on.saved.at(-1)!)).toEqual(['Why do candles tunnel?', WICK, 'Trim your wick before every burn.', 'Save this.'])
     expect((on.saved.at(-1)!.invention_gate as { story_retell?: unknown }).story_retell).toEqual([{ story_id: 'k-wick', kept: 'verbatim', dropped: 1, trimmed: 0 }])
     expect(scriptOf(off.saved.at(-1)!)).toEqual(lines)
+  })
+})
+
+describe('STORY_RETELL_DEDUP default off', () => {
+  // Fictional: a script that tells the Wickline wick story twice (once verbatim, once in new words).
+  const lines = ['Why do candles tunnel?', WICK, 'Trim your wick before every burn.', 'My first candle tunneled down the middle because the wick was too thin.', 'Save this.']
+  const sources = [null, 'k-wick', null, 'k-wick', null]
+  it('switch unset: the retelling passes through byte-identical and no story_retell record changes anything', async () => {
+    const prev = process.env.STORY_RETELL_DEDUP
+    delete process.env.STORY_RETELL_DEDUP
+    try {
+      const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+      const off = deps(lines, sources)
+      // The edge sends no story_retell_dedup flag while the switch is unset.
+      await runInventionRecheck(job({}), off.d)
+      const bp = off.saved.at(-1)!
+      expect(JSON.stringify(scriptOf(bp))).toBe(JSON.stringify(lines))
+      expect(JSON.stringify(bp.line_sources)).toBe(JSON.stringify(sources))
+      expect((bp.invention_gate as { story_retell?: unknown }).story_retell).toBeUndefined()
+    } finally {
+      if (prev !== undefined) process.env.STORY_RETELL_DEDUP = prev
+    }
   })
 })
 
