@@ -18,7 +18,7 @@
 // inventionGate.ts (#1245); this module reads the promised count with it and
 // does not keep a second regex.
 
-import { listCounts, isNonAnswerText, isScaffoldText, spokenUnits, declinedSlots, MAX_ASKS, type LedgerItem, type GateQuestion, type AskKind } from './inventionGate.ts'
+import { listCounts, isNonAnswerText, isScaffoldText, spokenUnits, declinedSlots, MAX_ASKS, rankRefill, type RefillContext, type LedgerItem, type GateQuestion, type AskKind } from './inventionGate.ts'
 import { HOOK_MOVES } from './scriptFamily.ts'
 import {
   SCRIPT_TEMPLATES, DURATION_PROFILES, QUESTION_TEMPLATES,
@@ -451,7 +451,7 @@ export function lengthenCandidates(script: readonly ScriptBeat[], ledger: readon
   const pool = opts.units
     ? ledger.flatMap((it) => (/\n/.test(it.text) || words(it.text) > 45 ? spokenUnits(it.text).map((u, n) => ({ ...it, id: `${it.id}#${n}`, text: u })) : [it]))
     : ledger
-  return pool.filter((it) => {
+  const cands = pool.filter((it) => {
     if (!LENGTHEN_ORIGINS.has(it.origin) || !it.first_party) return false
     if (it.field === 'note' || it.field?.startsWith('template.')) return false
     if (it.product_id && it.product_id !== targetProductId) return false
@@ -464,6 +464,11 @@ export function lengthenCandidates(script: readonly ScriptBeat[], ledger: readon
     if (n < 5 || n > 45 || /\n/.test(it.text)) return false
     return !alreadySaid(it.text, lines)
   })
+  if (!opts.relevance) return cands
+  // PANEL-10 (trial; kill RELEVANT_REFILL=false): only items for THIS request,
+  // never a second story or a repeat, best first; low relevance stays short.
+  const byId = new Map(cands.map((it) => [it.id, it]))
+  return rankRefill(cands, ledger, targetProductId, lines, opts.relevance).map((p) => byId.get(p.id)!).filter(Boolean)
 }
 
 const asSentence = (t: string) => {
@@ -472,7 +477,11 @@ const asSentence = (t: string) => {
 }
 
 /** Add unused ledger items (their own text) as build beats before the close until the band floor is met. */
-export interface LengthenOpts { units?: boolean }
+export interface LengthenOpts {
+  units?: boolean
+  /** Trial (panel-10; kill RELEVANT_REFILL=false): relevance-aware lengthen (rankRefill). */
+  relevance?: RefillContext | null
+}
 
 export function lengthenFromLedger(script: readonly ScriptBeat[], profile: DurationProfile, ledger: readonly LedgerItem[], targetProductId: string | null = null, opts: LengthenOpts = {}): { script: ScriptBeat[]; added: string[] } {
   let out = script.map((b) => ({ ...b }))

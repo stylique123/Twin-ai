@@ -282,6 +282,12 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     // both judges call I; drop paraphrases of a story told verbatim.
     ...(extra.hold_asks === true && extra.narrow_repair === true ? { narrowRepair: true } : {}),
     ...(extra.hold_asks === true && extra.story_dedup === true ? { storyDedup: true } : {}),
+    // Panel-10, trial only (the edge sets these under trialOn; kills
+    // RELEVANT_REFILL / STORY_HOOK_DEDUP = 'false'): refill only items for this
+    // request; a hook that restates her verbatim story's opening is deduped.
+    ...(extra.hold_asks === true && extra.refill_context && typeof extra.refill_context === 'object'
+      ? { refillContext: { topic: String(rec(extra.refill_context).topic ?? ''), angle: String(rec(extra.refill_context).angle ?? '') } } : {}),
+    ...(extra.hold_asks === true && extra.story_hook_dedup === true ? { storyHookDedup: true } : {}),
     // ⚖️ SAVE-BEFORE-REPAIR (owner, 19 Oct). Trial only: `hold_asks` is set by
     // the edge under trialOn (test and panel accounts), never for a real
     // creator. The audit (pre-repair text) lands in blueprint.invention_gate on

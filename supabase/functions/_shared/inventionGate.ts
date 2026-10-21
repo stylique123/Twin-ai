@@ -1575,12 +1575,14 @@ export function holdSpokenFloor<B extends { line?: unknown }>(before: readonly B
 }
 
 /** Her unused first-party units inserted before the close until the floor is met. Pure. */
-export function refillToFloor<B extends { section?: unknown; line?: unknown }>(script: readonly B[], ledger: readonly LedgerItem[], targetProductId: string | null, floor = SPOKEN_LINE_FLOOR): { script: Array<B | { section: string; line: string; refill: true }>; added: number } {
+export function refillToFloor<B extends { section?: unknown; line?: unknown }>(script: readonly B[], ledger: readonly LedgerItem[], targetProductId: string | null, floor = SPOKEN_LINE_FLOOR, ctx: RefillContext | null = null): { script: Array<B | { section: string; line: string; refill: true }>; added: number } {
   const out: Array<B | { section: string; line: string; refill: true }> = [...script]
   let added = 0
   while (spokenLineCount(out as Array<{ line?: unknown }>) < floor) {
-    const said = out.map((b) => (typeof b?.line === 'string' ? b.line : '')).join(' ')
-    const next = refillUnits(ledger, targetProductId, said)[0]
+    const lines = out.map((b) => (typeof b?.line === 'string' ? b.line : ''))
+    // Panel-10 (trial, `ctx`): the floor takes the most relevant item of hers, never a
+    // second story or a repeat; the floor is a hard minimum, so one shared word is enough.
+    const next = ctx ? relevantRefillUnits(ledger, targetProductId, lines, ctx, 1)[0]?.text : refillUnits(ledger, targetProductId, lines.join(' '))[0]
     if (!next) break
     out.splice(Math.max(1, out.length - 1), 0, { section: 'body', line: next, refill: true })
     added++
@@ -2198,6 +2200,210 @@ export function topUpToBudget<B extends Record<string, unknown>>(script: readonl
   return { script: out, added }
 }
 
+// ── RELEVANCE-AWARE REFILL (panel-10, trial; kill RELEVANT_REFILL=false) ────
+// Panel 10: 31 refills on 15 scripts, most of them unrelated: an educate
+// script also told two unrelated stories of hers, and one story was told
+// twice. A refill item is now added only when it supports the request:
+// proof, an example, or a product fact that shares words with the request's
+// topic or angle (weight 2) or with the script's main story / product (weight
+// 1), at REFILL_MIN_RELEVANCE or more. A second story is never added when a
+// story is already told; an item is never repeated (by id or near text). The
+// queue ends where relevance ends: an honest shorter script beats a padded
+// one. Order: proof (and the one allowed story), then product facts, then a
+// call to action only when the script has none.
+
+export interface RefillContext {
+  /** The request's topic (her note; the product name on a product request). */
+  topic?: string
+  /** Her angle answer, when she gave one. */
+  angle?: string
+}
+
+export type RefillKind = 'proof' | 'story' | 'product_fact' | 'cta'
+export interface RefillPick { id: string; text: string; kind: RefillKind; score: number }
+
+/** One topic/angle word (2) or two story/product words (1 each). */
+export const REFILL_MIN_RELEVANCE = 2
+/** Words too common in her material to count as relevance (stemmed). */
+const REFILL_GENERIC = new Set(['first', 'time', 'once', 'now', 'day', 'year', 'people', 'tri', 'try', 'start', 'want', 'need', 'good', 'great', 'new'])
+const REFILL_CTA_RE = /\b(?:link in (?:my |our |the )?bio|in the comments|comment below|subscribe|follow (?:me|for)|save this|send this|book (?:a|your)|grab (?:yours|your|one|a)|order (?:now|yours|it|directly)|shop now)\b/i
+const KIND_RANK: Record<RefillKind, number> = { proof: 0, story: 0, product_fact: 1, cta: 2 }
+
+const relWords = (t: string) => new Set([...contentWords(t)].filter((w) => !REFILL_GENERIC.has(w)))
+
+/** Weighted overlap of `text` with the request (2 per word) and the anchor (1 per word). Pure. */
+export function refillRelevance(text: string, ctx: RefillContext, anchor = ''): number {
+  const topic = relWords(`${ctx.topic ?? ''} ${ctx.angle ?? ''}`)
+  const anch = relWords(anchor)
+  let s = 0
+  for (const w of relWords(text)) s += topic.has(w) ? 2 : anch.has(w) ? 1 : 0
+  return s
+}
+
+/** Her stories (ids) the script already tells: half the story's words in one
+ *  line, or 60% across the script (a hook and a body line splitting it). Pure. */
+export function storiesTold(lines: readonly string[], ledger: readonly LedgerItem[]): string[] {
+  const told: string[] = []
+  const all = contentWords(lines.join(' '))
+  for (const it of ledger) {
+    if (it.origin !== 'her_story' || !it.first_party) continue
+    const own = contentWords(it.text)
+    if (!own.size) continue
+    if (lines.some((l) => overlap(own, contentWords(l)) >= 0.5) || overlap(own, all) >= 0.6) told.push(it.id)
+  }
+  return told
+}
+
+/** Rank refill candidates for this request (see the block comment). Pure. */
+export function rankRefill(cands: ReadonlyArray<{ id: string; origin: string; text: string; product_id?: string | null }>, ledger: readonly LedgerItem[], targetProductId: string | null, script: string | readonly string[], ctx: RefillContext, minRelevance = REFILL_MIN_RELEVANCE): RefillPick[] {
+  const raw = typeof script === 'string' ? [script] : [...script]
+  const lines = [...raw, ...raw.flatMap((l) => splitSentences(String(l ?? '')))]
+  const told = new Set(storiesTold(raw, ledger))
+  const baseId = (id: string) => id.replace(/#\d+$/, '')
+  const anchor = [
+    ...ledger.filter((it) => told.has(it.id)).map((it) => it.text),
+    ...ledger.filter((it) => it.origin === 'product_fact' && !!targetProductId && it.product_id === targetProductId).map((it) => it.text),
+  ].join(' ')
+  const hasCta = lines.some((l) => REFILL_CTA_RE.test(l))
+  const request = [ctx.topic ?? '', ctx.angle ?? ''].filter((x) => x.trim())
+  const picks: RefillPick[] = []
+  for (const c of cands) {
+    const t = c.text.trim()
+    if (!t || told.has(baseId(c.id))) continue
+    // Her angle answer restated is the request itself, not proof.
+    if (c.origin === 'her_answer' && request.some((r) => nearDuplicate(r, t))) continue
+    if (lines.some((l) => nearDuplicate(l, t))) continue
+    const kind: RefillKind = REFILL_CTA_RE.test(t) ? 'cta' : c.origin === 'product_fact' ? 'product_fact' : c.origin === 'her_story' ? 'story' : 'proof'
+    if (kind === 'cta' && hasCta) continue
+    // A fact of the product this request is about supports it by construction.
+    const onTarget = kind === 'product_fact' && !!targetProductId && c.product_id === targetProductId
+    const score = Math.max(refillRelevance(t, ctx, anchor), onTarget ? minRelevance : 0)
+    if (score < minRelevance) continue
+    picks.push({ id: c.id, text: t, kind, score })
+  }
+  picks.sort((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || b.score - a.score)
+  const out: RefillPick[] = []
+  const ids = new Set<string>()
+  let storyOk = told.size === 0
+  for (const p of picks) {
+    if (ids.has(baseId(p.id)) || out.some((o) => nearDuplicate(o.text, p.text))) continue
+    if (p.kind === 'story') { if (!storyOk) continue; storyOk = false }
+    ids.add(baseId(p.id))
+    out.push(p)
+  }
+  return out
+}
+
+/** refillUnits, relevance-aware: her units for THIS request, best first. Pure. */
+export function relevantRefillUnits(ledger: readonly LedgerItem[], targetProductId: string | null, script: string | readonly string[], ctx: RefillContext, minRelevance = REFILL_MIN_RELEVANCE): RefillPick[] {
+  const said = contentSet(typeof script === 'string' ? script : script.join(' '))
+  const cands: Array<{ id: string; origin: string; text: string; product_id: string | null }> = []
+  for (const it of ledger) {
+    if (!REFILL_ORIGINS.has(it.origin) || !it.first_party) continue
+    if (it.field === 'note' || it.field?.startsWith('template.')) continue
+    if (it.product_id && it.product_id !== targetProductId) continue
+    if (isScaffoldText(it.text)) continue
+    spokenUnits(it.text).forEach((u, n) => {
+      const own = [...contentSet(u)]
+      if (!own.length || own.filter((w) => said.has(w)).length / own.length >= 0.5) return
+      cands.push({ id: n ? `${it.id}#${n}` : it.id, origin: it.origin, product_id: it.product_id, text: (u.charAt(0).toUpperCase() + u.slice(1)).replace(/([^.!?])$/, '$1.') })
+    })
+  }
+  return rankRefill(cands, ledger, targetProductId, script, ctx, minRelevance)
+}
+
+// ── STORY-HOOK DEDUPE (panel-10, trial; kill STORY_HOOK_DEDUP=false) ────────
+// Panel 10: a story hook followed by the same story verbatim read as a repeat
+// (6 scripts). When the hook (line 1) restates the story's opening beats, the
+// story line starts AFTER them; when it restates the closing beats, the story
+// line ends before them. When what is left is not a clean sentence, the story
+// stays whole and the hook becomes a teaser: a later beat of the same story,
+// in her own words. Nothing is invented; with no clean beat nothing changes.
+
+const BEAT_SPLIT = /,\s+(?=(?:and|so|but|which|because|then|while|when)\b)|\s+(?=because\b)|(?<=[.!?])\s+/i
+const CLEAN_START = /^(?:(?:so|and|then|but|because|while|when)\s+)?(?:(?:now|then)\s+)?(?:i|we|she|he|they|it|my|our|her|his|their|that|this)\b/i
+const normT = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/** The story's beats (clauses), each with its start offset in the story. Pure. */
+export function storyBeats(story: string): Array<{ text: string; at: number }> {
+  const out: Array<{ text: string; at: number }> = []
+  let rest = story
+  let at = 0
+  while (rest.length) {
+    const m = BEAT_SPLIT.exec(rest)
+    const end = m ? m.index : rest.length
+    const seg = rest.slice(0, end)
+    if (seg.trim()) out.push({ text: seg.trim(), at: at + seg.search(/\S/) })
+    if (!m) break
+    at += m.index + m[0].length
+    rest = rest.slice(m.index + m[0].length)
+  }
+  return out
+}
+
+/** A beat (or the story from a beat on) as a standalone sentence, or '' when not clean. */
+function cleanSentence(t: string, keepSo: boolean): string {
+  let s = t.trim().replace(/^[,;\s]+/, '').replace(/[,;\s]+$/, '')
+  if (!CLEAN_START.test(s)) return ''
+  s = s.replace(keepSo ? /^(?:and|but|because|while|when)\s+/i : /^(?:so|and|then|but|because|while|when)\s+/i, '')
+  if (wordCount(s) < 4) return ''
+  return (s.charAt(0).toUpperCase() + s.slice(1)).replace(/([^.!?])$/, '$1.')
+}
+
+export interface StoryHookRecord { action: 'trimmed_start' | 'trimmed_end' | 'teaser'; story_id: string; line: number }
+
+/** Hook vs her verbatim story (see the block comment). Pure. */
+export function dedupeStoryHook<B extends { line?: unknown }>(script: readonly B[], stories: ReadonlyArray<{ id: string; text: string }>): { script: B[]; record: StoryHookRecord | null; oldHook?: string; newHook?: string } {
+  const out = script.map((b) => ({ ...b }))
+  const hi = out.findIndex((b) => typeof b?.line === 'string' && b.line.trim().length > 0)
+  if (hi < 0) return { script: out, record: null }
+  const hookLine = String(out[hi]!.line)
+  const hook = splitSentences(hookLine)[0] ?? ''
+  const H = contentWords(hook)
+  if (H.size < 3) return { script: out, record: null }
+  for (const st of stories) {
+    const story = st.text.trim()
+    if (!story) continue
+    const si = out.findIndex((b, i) => i !== hi && typeof b?.line === 'string' && normT(b.line).includes(normT(story)))
+    if (si < 0) continue
+    const beats = storyBeats(story)
+    if (beats.length < 2) continue
+    const hit = beats.map((b) => { const B = contentWords(b.text); let h = 0; for (const w of B) if (H.has(w)) h++; return h >= 2 && h / B.size >= 0.5 })
+    const covered = new Set<string>()
+    beats.forEach((b, k) => { if (hit[k]) for (const w of contentWords(b.text)) if (H.has(w)) covered.add(w) })
+    if (covered.size / H.size < 0.6) continue
+    const line = String(out[si]!.line)
+    const pos = line.toLowerCase().indexOf(story.toLowerCase())
+    if (pos >= 0) {
+      const swap = (t: string) => `${line.slice(0, pos)}${t}${line.slice(pos + story.length)}`.replace(/\s+/g, ' ').trim()
+      let k = 0
+      while (k < beats.length && hit[k]) k++
+      if (k > 0 && k < beats.length && hit.slice(k).every((x) => !x)) {
+        const rest = cleanSentence(story.slice(beats[k]!.at), true)
+        if (rest) { out[si] = { ...out[si]!, line: swap(rest) }; return { script: out, record: { action: 'trimmed_start', story_id: st.id, line: si } } }
+      }
+      let j = beats.length
+      while (j > 0 && hit[j - 1]) j--
+      if (j > 0 && j < beats.length && hit.slice(0, j).every((x) => !x)) {
+        const head = story.slice(0, beats[j]!.at).trim().replace(/[,;\s]+$/, '')
+        if (wordCount(head) >= 4) {
+          out[si] = { ...out[si]!, line: swap((head.charAt(0).toUpperCase() + head.slice(1)).replace(/([^.!?])$/, '$1.')) }
+          return { script: out, record: { action: 'trimmed_end', story_id: st.id, line: si } }
+        }
+      }
+    }
+    // The teaser: the last clean beat the hook does not restate, verbatim.
+    for (let b = beats.length - 1; b >= 1; b--) {
+      if (hit[b]) continue
+      const t = cleanSentence(beats[b]!.text, false)
+      if (!t || nearDuplicate(t, hook)) continue
+      out[hi] = { ...out[hi]!, line: hookLine.replace(hook, t) }
+      return { script: out, record: { action: 'teaser', story_id: st.id, line: hi }, oldHook: hook, newHook: t }
+    }
+  }
+  return { script: out, record: null }
+}
+
 // ── THE RECORD ─────────────────────────────────────────────────────────────
 
 /** 'timeout' = the gate ran out of time and fell back to measure-only for this request.
@@ -2218,6 +2424,8 @@ export interface InventionGateRecord {
   placeholder_block?: PlaceholderBlock
   /** Trial (holdAsks): removed spoken lines refilled from her unused items. */
   refill?: { refilled: number; topped_up?: number; deduped?: number }
+  /** Trial (panel-10, storyHookDedup): how the hook/story repeat was resolved. */
+  story_hook?: StoryHookRecord
   version: string
   model: string | null
   sentences: GateRecordSentence[]
@@ -2443,6 +2651,12 @@ export interface RunGateInput {
    *  sent to review and the script is under it, her next unused first-party
    *  items are added before the close. */
   wordBudget?: number
+  /** Trial (panel-10; kill RELEVANT_REFILL=false on the edge): every refill
+   *  (repair refill and top-up) is relevance-aware (relevantRefillUnits). */
+  refillContext?: RefillContext
+  /** Trial (panel-10; kill STORY_HOOK_DEDUP=false on the edge): a hook that
+   *  restates her verbatim story's opening is deduped (dedupeStoryHook). */
+  storyHookDedup?: boolean
   /** Trial: text that ships word for word (her named story); never de-duplicated away. */
   protect?: string[]
   /** Trial (plan v5.3 §19; kill NARROW_REPAIR=false on the edge): repair only
@@ -2584,7 +2798,11 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     // spoken units, "already said" judged against the post-drop script.
     const p7 = input.holdAsks === true && ((typeof input.wordBudget === 'number' && input.wordBudget > 0) || input.spokenDedup === true)
     const target7 = input.targetProductId ?? null
-    const refillQueue = p7 ? refillUnits(input.ledger, target7, spokenText(bp))
+    // PANEL-10 (trial; kill RELEVANT_REFILL=false): only items for THIS request, best first.
+    const units7 = (said: string | readonly string[]): string[] => (input.refillContext
+      ? relevantRefillUnits(input.ledger, target7, said, input.refillContext).map((p) => p.text)
+      : refillUnits(input.ledger, target7, typeof said === 'string' ? said : said.join(' ')))
+    const refillQueue = p7 ? units7(Array.isArray(bp.script) ? (bp.script as Array<{ line?: unknown }>).map((b) => String(b?.line ?? '')) : [])
       : input.holdAsks ? refillCandidates(input.ledger, input.targetProductId ?? null, spokenText(bp)) : []
     const usedRefills = new Set<string>()
     let refilled = 0
@@ -2596,8 +2814,8 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       if (p7) {
         // "Already said" is judged WITHOUT the lines this round removes or rewrites.
         const leaving = new Set(steps.map((st) => st.i))
-        const staying = cur.sentences.filter((x) => x.surface === 'script' && !leaving.has(x.i)).map((x) => x.text).join(' ')
-        refillQueue.splice(0, refillQueue.length, ...refillUnits(input.ledger, target7, staying).filter((t) => !usedRefills.has(t)))
+        const staying = cur.sentences.filter((x) => x.surface === 'script' && !leaving.has(x.i)).map((x) => x.text)
+        refillQueue.splice(0, refillQueue.length, ...units7(staying).filter((t) => !usedRefills.has(t)))
       }
       const a = applyRepairs(bp, cur.sentences, steps, rewrites, { holdAsks: input.holdAsks === true, refill: refillQueue })
       if (p7) for (const o of a.outcomes) if (o.replacement && (o.action === 'refilled' || o.action === 'asked')) usedRefills.add(o.replacement)
@@ -2685,9 +2903,23 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
     const lost = repaired.dropped + repaired.asked + deduped + cur.classified.filter((c) => c.verdict === 'review' && c.surface === 'script').length
     if (input.holdAsks && typeof input.wordBudget === 'number' && input.wordBudget > 0 && lost > 0) {
       const cur7 = Array.isArray(bp.script) ? bp.script as Array<Record<string, unknown>> : []
-      const units = refillUnits(input.ledger, target7, cur7.map((b) => String(b?.line ?? '')).join(' ')).filter((t) => !usedRefills.has(t))
+      const units = units7(cur7.map((b) => String(b?.line ?? ''))).filter((t) => !usedRefills.has(t))
       const t = topUpToBudget(cur7, units, input.wordBudget)
       if (t.added) { bp = { ...bp, script: t.script }; toppedUp = t.added; refilled += t.added }
+    }
+    let storyHook: StoryHookRecord | null = null
+    if (input.storyHookDedup && Array.isArray(bp.script)) {
+      const stories = [
+        ...(input.protect ?? []).map((t, n) => ({ id: `protect:${n}`, text: t })),
+        ...input.ledger.filter((it) => it.origin === 'her_story' && it.first_party).map((it) => ({ id: it.id, text: it.text })),
+      ]
+      const sh = dedupeStoryHook(bp.script as Array<{ line?: unknown }>, stories)
+      if (sh.record) {
+        bp = { ...bp, script: sh.script }
+        storyHook = sh.record
+        // The teaser is the new line 1: the hook options carry it in place of the old hook.
+        if (sh.oldHook && sh.newHook && Array.isArray(bp.hook_options)) bp = { ...bp, hook_options: (bp.hook_options as unknown[]).map((h) => (typeof h === 'string' && sameText(h, sh.oldHook!) ? sh.newHook : h)) }
+      }
     }
     const refillRecord = input.holdAsks ? { refilled, ...(toppedUp ? { topped_up: toppedUp } : {}), ...(deduped ? { deduped } : {}) } : null
     const ebudget = eBudget(spokenWords(bp))
@@ -2704,6 +2936,7 @@ export async function runInventionGate(input: RunGateInput, deps: GateDeps): Pro
       review_lines: (input.checkLines ? reviewLinesWithReason : reviewLines)(cur.classified),
       ...(placeholderBlock ? { placeholder_block: placeholderBlock } : {}),
       ...(refillRecord ? { refill: refillRecord } : {}),
+      ...(storyHook ? { story_hook: storyHook } : {}),
       ...(input.repairAudit ? { repair_audit: withAuditPatterns([...keptAuditEntries(first, acted), ...audit], input.ledger, products) } : {}),
     }
     // A declined slot that fell back to the general version is not offered again.

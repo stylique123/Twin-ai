@@ -7052,7 +7052,16 @@ async function handle(req: Request): Promise<Response> {
     // Plan v5.3 §19 (trial; kills NARROW_REPAIR=false, STORY_DEDUP=false).
     ...(trialOn && Deno.env.get('NARROW_REPAIR') !== 'false' ? { narrow_repair: true } : {}),
     ...(trialOn && Deno.env.get('STORY_DEDUP') !== 'false' ? { story_dedup: true } : {}),
+    // Panel-10 (trial; kills RELEVANT_REFILL=false, STORY_HOOK_DEDUP=false).
+    ...(relevantRefillCtx() ? { refill_context: relevantRefillCtx() } : {}),
+    ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' ? { story_hook_dedup: true } : {}),
   })
+  // Panel-10 RELEVANCE-AWARE REFILL (trial; kill RELEVANT_REFILL=false): the
+  // request's topic (her note, the product's name) and angle; every refill
+  // (edge length pass, floor refill, the worker gate) adds only items for it.
+  const relevantRefillCtx = (): { topic: string; angle: string } | null => (trialOn && Deno.env.get('RELEVANT_REFILL') !== 'false'
+    ? { topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => x.trim()).join(' '), angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? '') }
+    : null)
   // ⚖️ ASYNC POLISH (owner decision 2, trial; ASYNC_POLISH=off kills it): the
   // quality-only passes never run on the request path; the worker's
   // invention_recheck job runs the polish before the gate and sets check_status.
@@ -17080,7 +17089,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const profile = templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null)
           // PANEL-7 (trial; kill LENGTH_REFILL=false): an item spanning lines is
           // offered line by line instead of refused whole (short_no_material on 4 of 8 Standard).
-          const wb = enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId, { units: Deno.env.get('LENGTH_REFILL') !== 'false' })
+          const wb = enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId, { units: Deno.env.get('LENGTH_REFILL') !== 'false', relevance: relevantRefillCtx() })
           bpw.script = wb.script
           bpw.word_budget = wb.record
           panel7Budget = wb.record.budget
@@ -17461,7 +17470,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
             targetProductId: tgt, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
           })
-          const rf = refillToFloor((blueprint as { script: Array<{ section?: unknown; line?: unknown }> }).script, ledgerF, tgt, floor)
+          const rf = refillToFloor((blueprint as { script: Array<{ section?: unknown; line?: unknown }> }).script, ledgerF, tgt, floor, relevantRefillCtx())
           if (rf.added) {
             ;(blueprint as Record<string, unknown>).script = rf.script
             ;(blueprint as Record<string, unknown>).floor_refill = { added: rf.added }

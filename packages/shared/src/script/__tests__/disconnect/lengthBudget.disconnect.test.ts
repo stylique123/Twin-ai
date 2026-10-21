@@ -45,7 +45,7 @@ describe('LENGTH_REFILL disconnect', () => {
     expect(off.script).toEqual(SCRIPT)
   })
   it('the edge still passes units from LENGTH_REFILL and the budget line into the brief', () => {
-    expect(EDGE).toContain("enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId, { units: Deno.env.get('LENGTH_REFILL') !== 'false' })")
+    expect(EDGE).toContain("enforceWordBudget(bpw.script as Array<Record<string, unknown>>, profile, ledgerForBudget, targetId, { units: Deno.env.get('LENGTH_REFILL') !== 'false', relevance: relevantRefillCtx() })")
     expect(edgeAfter('const durationBriefLine = ', 160)).toContain('budgetLine')
   })
 })
