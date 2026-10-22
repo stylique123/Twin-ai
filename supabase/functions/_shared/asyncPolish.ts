@@ -181,7 +181,13 @@ export interface HedgeResult {
   partial: string | null
   partialAt: 0 | 1 | null
   lastErr: unknown
+  /** Best-of-N (BEST_OF_N_JUDGE, trial): set only when `pick` was given AND both
+   *  drafts had already finished when the first valid one was taken. */
+  bestOfN?: { scores: [number, number]; chosen: 0 | 1 }
 }
+
+/** Best-of-N chooser: given the two finished valid drafts, which one ships. */
+export type HedgePick = (texts: [string, string]) => { scores: [number, number]; chosen: 0 | 1 }
 
 type Settled = { i: 0 | 1; text?: string; err?: unknown }
 
@@ -193,6 +199,9 @@ type Settled = { i: 0 | 1; text?: string; err?: unknown }
 export async function runHedged(attempts: [HedgeAttempt, HedgeAttempt], valid: (text: string) => boolean, opts: {
   startedAt: number; now?: () => number; hedgeAtMs?: number
   wait?: (ms: number, signal: AbortSignal) => Promise<void>
+  /** Best-of-N (default absent = today's behaviour, byte for byte). Never waits:
+   *  it only compares a draft that had ALREADY finished when the winner was taken. */
+  pick?: HedgePick
 }, hooks: HedgeHooks = {}): Promise<HedgeResult> {
   const now = opts.now ?? (() => Date.now())
   const hedgeAt = opts.hedgeAtMs ?? WRITER_HEDGE_AT_MS
@@ -209,8 +218,9 @@ export async function runHedged(attempts: [HedgeAttempt, HedgeAttempt], valid: (
     res.calls += 1
     return Promise.resolve(hooks.onStart?.(i))
       .then(() => attempts[i].run(t, ctrls[i]!.signal))
-      .then((text) => ({ i, text }), (err) => ({ i, err }))
+      .then((text) => { if (opts.pick) done[i] = text; return { i, text } }, (err) => ({ i, err }))
   }
+  const done: Array<string | undefined> = [undefined, undefined]
   /** Settles one result; true = it is the answer. */
   const take = async (s: Settled): Promise<boolean> => {
     if (s.err !== undefined || s.text === undefined) {
@@ -255,7 +265,19 @@ export async function runHedged(attempts: [HedgeAttempt, HedgeAttempt], valid: (
   res.hedged = true
   const a = await Promise.race([p0, p1])
   const other = a.i === 0 ? p1 : p0
-  if (await take(a)) { await finishOther(other, a.i === 0 ? 1 : 0); return res }
+  if (await take(a)) {
+    const o = a.i === 0 ? 1 : 0
+    // Already finished before the loser is aborted — no added wait, ever.
+    const ready = opts.pick && done[o] !== undefined && valid(done[o]!) ? done[o]! : null
+    const first = res.text!
+    await finishOther(other, o)
+    if (opts.pick && ready != null) {
+      const texts: [string, string] = a.i === 0 ? [first, ready] : [ready, first]
+      const p = opts.pick(texts)
+      res.text = texts[p.chosen]; res.winner = p.chosen; res.bestOfN = p
+    }
+    return res
+  }
   await take(await other)
   return res
 }

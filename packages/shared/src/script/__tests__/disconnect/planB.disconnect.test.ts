@@ -48,7 +48,7 @@ describe('PLAN_B_ASSEMBLY disconnect', () => {
     expect(off).toEqual(['Candles are cozy.', 'Shop now.'])
   })
   it('the edge still assembles under the gate and replaces the script', () => {
-    const block = edgeAfter('if (planBOn && planBTarget && blueprint', 3600)
+    const block = edgeAfter('if (planBOn && planBTarget && blueprint', 5200)
     expect(block).toContain('const asm = assemblePlanB(inB)')
     expect(block).toContain('bpb2.script = out.script')
     expect(EDGE).toContain("const polishOn = Deno.env.get('PLAN_B_POLISH') !== 'off' && optionalPassTime('plan_b_polish')")

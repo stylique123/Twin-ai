@@ -271,6 +271,9 @@ const SOURCES = [
   // CHECK THIS LINE (backlog d, trial only): the worker builds check_lines, the edge applies a decision.
   ['packages/shared/src/script/checkLines.ts', 'supabase/functions/_shared/checkLines.ts'],
   ['packages/shared/src/script/checkLines.ts', 'worker/src/generated/checkLines.ts'],
+  // Craft + hook judges (craft rubric v1): deterministic, unpaid; best-of-N on the hedge drafts (BEST_OF_N_JUDGE, default off).
+  ['packages/shared/src/script/hookJudge.ts', 'supabase/functions/_shared/hookJudge.ts'],
+  ['packages/shared/src/script/craftJudge.ts', 'supabase/functions/_shared/craftJudge.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

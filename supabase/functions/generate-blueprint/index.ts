@@ -86,6 +86,7 @@ import { sanitizeNeverUse, neverUseEntryOf, addNeverUse, filterLedgerByNeverUse,
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
 import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerHedgeOn, ASYNC_WRITER_END_MS } from '../_shared/asyncPolish.ts'
+import { bestOfNOn, pickByCraft, candidateScore, blueprintLines } from '../_shared/craftJudge.ts'
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
@@ -6382,6 +6383,11 @@ interface WriterLadder { retryPrompt?: string; usedAttempt?: number
   hedge?: boolean
   /** Hedge counts (calls started, hedged, loser aborted) — counts only. */
   hedgeCalls?: number; hedged?: boolean; hedgeAborted?: number
+  /** Best-of-N (BEST_OF_N_JUDGE, test accounts, default off): compare the two
+   *  hedge drafts with the craft judge when BOTH had already finished. */
+  bestOfN?: boolean
+  /** What best-of-N saw and chose (scores only). */
+  bestOfNRecord?: { scores: Record<string, number>; chosen: string }
   /** Counts for the failure record (codes and counts only). */
   failed?: number; skipped?: number; lastCode?: string | null }
 
@@ -6446,7 +6452,7 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       run: (t: number, signal: AbortSignal) => callOnce(apiKey, system, i >= 1 && ladder.retryPrompt ? ladder.retryPrompt : prompt, attempts[i].model, attempts[i].thinkBudget, t, schema, signal),
     })
     const valid = (text: string) => { try { return blueprintComplete(JSON.parse(text)) } catch { return false } }
-    const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt }, {
+    const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt, ...(ladder.bestOfN === true ? { pick: pickByCraft } : {}) }, {
       onStart: async (i) => { rows[i] = await record?.started(i, attempts[i].model) ?? null },
       onSettle: async (i, outcome, err) => {
         if (outcome === 'succeeded') await record?.settled(rows[i], 'succeeded')
@@ -6460,6 +6466,10 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       },
     })
     ladder.hedgeCalls = h.calls; ladder.hedged = h.hedged; ladder.hedgeAborted = h.aborted
+    if (h.bestOfN) {
+      ladder.bestOfNRecord = { scores: { attempt_0: h.bestOfN.scores[0], attempt_1: h.bestOfN.scores[1] }, chosen: `attempt_${h.bestOfN.chosen}` }
+      console.log(JSON.stringify({ event: 'best_of_n', ...ladder.bestOfNRecord }))
+    }
     console.log(JSON.stringify({ event: 'writer_hedge', calls: h.calls, hedged: h.hedged, aborted: h.aborted, winner: h.winner, elapsed_ms: Date.now() - ladder.startedAt }))
     if (h.text != null) { ladder.usedAttempt = h.winner ?? 0; return h.text }
     if (h.partial != null) { ladder.usedAttempt = h.partialAt ?? 0; return h.partial }
@@ -12790,7 +12800,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
     asyncPolish = asyncPolishOn(trialOn, Deno.env.get('ASYNC_POLISH'))
     const deadlineFields = asyncPolish
-      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')) }
+      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...(bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE')) ? { bestOfN: true } : {}) }
       : writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
       ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...deadlineFields }
@@ -17459,9 +17469,21 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             if (!vv.keep) pol = { lines: [...asm.lines], polished: 0, fell_back: pol.fell_back + pol.polished }
           }
           const out = planBScript(pol.lines, storyItem?.text ?? null)
+          // Best-of-N (BEST_OF_N_JUDGE, default off): Plan B is the third candidate.
+          // A panel arm request keeps its arm; nothing here waits on a model.
+          const bonB = writerLadderForFailure?.bestOfN === true && panelArmReq == null
+            ? { writer: candidateScore(blueprintLines(bpb2)), plan_b: candidateScore(out.script.map((x) => String(x.line ?? ''))) } : null
+          const keepWriter = bonB != null && bonB.writer > bonB.plan_b
+          if (bonB) {
+            const prev = writerLadderForFailure!.bestOfNRecord
+            writerLadderForFailure!.bestOfNRecord = { scores: { ...(prev?.scores ?? {}), writer_final: bonB.writer, plan_b: bonB.plan_b }, chosen: keepWriter ? (prev?.chosen ?? 'writer') : 'plan_b' }
+            console.log(JSON.stringify({ event: 'best_of_n', ...writerLadderForFailure!.bestOfNRecord }))
+          }
+          if (!keepWriter) {
           bpb2.script = out.script
           if (out.script[0]?.line) bpb2.hook_options = [out.script[0].line]
           if (Array.isArray(bpb2.shot_list)) bpb2.shot_list = syncShotListSpokenText(bpb2.shot_list as Array<{ spoken_text?: unknown }>, bpb2.script as unknown[]).shots
+          }
           bpb2.plan_b = planBRecord(out.script, asm.sources, pol.fell_back)
           console.log(JSON.stringify({ event: 'plan_b_assembled', ...(bpb2.plan_b as Record<string, unknown>), profile: profileB, sections: asm.sections, asked_items: askedB.length, facts_used: asm.facts_used, story: !!storyItem, dedup_removed: out.removed }))
         } else {
@@ -17518,6 +17540,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       if (asyncPolish) {
         ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}) }
         // The hedge's extra cost, visible on the row (counts only).
+        if (writerLadderForFailure?.bestOfNRecord) bpg.best_of_n = writerLadderForFailure.bestOfNRecord
         if (writerLadderForFailure?.hedgeCalls != null) bpg.writer_hedge = { calls: writerLadderForFailure.hedgeCalls, hedged: writerLadderForFailure.hedged === true, aborted: writerLadderForFailure.hedgeAborted ?? 0 }
         bpg.polish_pending = { steps: polishDeferred.length ? [...polishDeferred] : ['self_review'], at: new Date().toISOString() }
         console.log(JSON.stringify({ event: 'async_polish_queued', deferred: polishDeferred.length, elapsed_ms: Date.now() - reqStartedAt }))
