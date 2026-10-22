@@ -10,6 +10,10 @@
 //                            ledger WITH TEXT (fictional material only), plus the
 //                            gate record (classes) and writer_supply, for scoring
 //                            the labels afterwards.
+//   judge-prescore.csv       the rule-based craft judge's PRE-SCORE per script
+//                            (script_id, craft_1_to_7, raw, caps). A separate file so
+//                            sentences.csv stays blind; it only pre-screens
+//                            (Fast Path §5: the judge pre-screens, the advisor labels).
 // With --to-db it also stores the bundle as one private test_run_files row
 // (kind 'other') and prints only that row's id.
 //
@@ -75,6 +79,22 @@ export function gatePending(bp) {
     && !['done', 'failed'].includes(bp?.gate_progress?.step)
 }
 
+/** One pre-score row per script: the rule-based craft judge on its spoken lines. */
+export function prescoreRow(scriptId, lines, scoreCraft) {
+  const r = scoreCraft(lines.filter((l) => typeof l === 'string' && l.trim()))
+  const caps = Array.isArray(r?.caps) ? r.caps.join('|') : ''
+  return [scriptId, Number.isFinite(r?.craft) ? r.craft : '', Number.isFinite(r?.raw) ? Number(r.raw).toFixed(2) : '', caps]
+}
+
+/** The judge bundle, built on the fly when the workflow did not build it. */
+async function loadCraftJudge() {
+  const target = join(REPO, 'scripts', 'ops', '.craftJudge.bundle.mjs')
+  try { return await import(target) } catch { /* not built yet */ }
+  const { buildSync } = await import('esbuild')
+  buildSync({ entryPoints: [join(REPO, 'packages/shared/src/script/craftJudge.ts')], bundle: true, format: 'esm', platform: 'node', outfile: target, logLevel: 'silent' })
+  return import(target)
+}
+
 export function assertOutsideRepo(out) {
   const abs = resolve(out)
   const rel = relative(REPO, abs)
@@ -102,6 +122,8 @@ async function main() {
     await new Promise((r) => setTimeout(r, 10_000))
   }
   mkdirSync(join(out, 'scripts'), { recursive: true })
+  const { scoreCraft } = await loadCraftJudge()
+  const pre = ['script_id,craft_1_to_7,raw,caps']
   const csv = [CSV_HEADER.join(',')]
   const bundle = []
   for (const row of panelRows) {
@@ -134,9 +156,11 @@ async function main() {
       questions: panelQuestions(row.scenario, bp),
     }
     writeFileSync(join(out, 'scripts', `${scriptId.replace(/[^A-Za-z0-9_.-]/g, '_')}.json`), JSON.stringify(file, null, 2))
+    pre.push(prescoreRow(scriptId, file.script.map((b) => b.line), scoreCraft).map(csvCell).join(','))
     bundle.push(file)
   }
   writeFileSync(join(out, 'sentences.csv'), csv.join('\n') + '\n')
+  writeFileSync(join(out, 'judge-prescore.csv'), pre.join('\n') + '\n')
   console.log(`exported ${bundle.length} panel scripts, ${csv.length - 1} sentences`)
   console.log(`panel questions: ${JSON.stringify(questionSummary(bundle.map((f) => f.questions)))}`)
   if (process.argv.includes('--to-db')) {
