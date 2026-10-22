@@ -8460,7 +8460,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // rule the plan screen uses) is removed before the writer sees the profile:
   // a list entry is dropped, a sentence in a text field is cut.
   // ⚠️ AND OF WHAT SHE REJECTED (batch audit 2026-10-03): a hook sample that
-  // opens "Hello, I'm Savannah" after she said never to is dropped the same way,
+  // opens "Hello, I'm Maya" after she said never to is dropped the same way,
   // and the account-level offer line loses another product's price or size.
   const vp = (() => {
     // Blind set 3 T5: a hook pattern retelling her private relocation story had
@@ -9416,7 +9416,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // invention gate of a RESCUED script too (panel-current-2 #8 had no gate record).
   let gateBoard: Array<{ id?: unknown; kind?: unknown; text?: unknown }> = []
   let outsideSelected: { offered: number; kept: number; min_score: number } | null = null
-  // Everything the writer was given, kept for the figure audit (Sunflower #23).
+  // Everything the writer was given, kept for the figure audit (Maya #23).
   let writerMaterial = ''
   let refunded = false
   // A panel account spent nothing (see spend above), so every refund path is a
@@ -15584,7 +15584,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           if (typeof b?.line === 'string') b.line = collapseDoubledNumbers(b.line)
         }
       }
-      // ⚠️ SUNFLOWER #23: figures in the final script that nothing she gave
+      // ⚠️ MAYA #23: figures in the final script that nothing she gave
       // Twin contains — shown on the result as "check before you record".
       if (Array.isArray(script) && writerMaterial) {
         ;(blueprint as { unsourced_figures?: unknown }).unsourced_figures = unsourcedFigures(
@@ -15942,7 +15942,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       ((blueprint as { reference_read: Record<string, unknown> }).reference_read.reference_duration_sec =
         ref?.duration_sec ?? null)
 
-    // ⚠️ SUNFLOWER #15: A REFERENCE WITH NO PERSONAL STORY IN IT. Listicles and
+    // ⚠️ MAYA #15: A REFERENCE WITH NO PERSONAL STORY IN IT. Listicles and
     // advice round-ups carry no "I"/"my" narrative, so any story in the adapted
     // script cannot have come from the reference. Measured, not asked: the share
     // of first-person words in its transcript. The client says so plainly.

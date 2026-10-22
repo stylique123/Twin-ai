@@ -83,7 +83,7 @@ export function cleanBeats<T extends { line?: unknown }>(beats: readonly T[], go
 
 // ⚠️ BLIND SET 2 (owner 2026-10-05): her profile's own labels said out loud —
 // "for beginners and everyday people" (#11, #12), "Starting and operating
-// Sunflower Coffee Roasters as a micro specialty coffee roaster…" (#11) — and
+// Maya Coffee Co as a micro specialty coffee roaster…" (#11) — and
 // the closer template back as "So remember: here is the operational reality
 // that changes everything." (#8). The writer is told never to say labels; it
 // still does, so they are removed after writing.
@@ -106,7 +106,7 @@ export function dropEchoCloser<T extends { line?: unknown }>(beats: readonly T[]
 /**
  * Her audience labels as a run ("everyday people and beginners") become one
  * plain phrase; a line that opens with a scan topic ("Starting and operating
- * X as a micro specialty coffee roaster in Farmington, NM,") loses that clause.
+ * X as a micro specialty coffee roaster in Riverton, WY,") loses that clause.
  */
 export function stripProfileLabels(line: string, labels: readonly string[], topics: readonly string[] = []): string {
   let out = line

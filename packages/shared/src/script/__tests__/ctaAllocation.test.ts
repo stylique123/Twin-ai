@@ -51,7 +51,7 @@ describe('closing-ask fixes (owner 2026-10-05, blind set 2)', () => {
   })
   it('a selling close must describe the offer', () => {
     expect(closeDescribesOffer('Book my Brew Bar Setup Call through the link in my bio and let us build your setup.', name, offer)).toBe(false)
-    expect(closeDescribesOffer("DM me and I'll help you pick the right coffee cart launch call.", name, offer)).toBe(false)
+    expect(closeDescribesOffer("DM me and I'll help you pick the right brew bar setup call.", name, offer)).toBe(false)
     expect(closeDescribesOffer('I offer a Brew Bar Setup Call: a 60-minute one-on-one video call for $75 to plan your equipment, menu, and first market.', name, offer)).toBe(true)
   })
   it('rewrites the close from her offer', () => {

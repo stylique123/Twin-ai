@@ -17,7 +17,7 @@ describe('offer rows', () => {
   })
 })
 
-describe('what is included belongs to each option (Sunflower #7)', () => {
+describe('what is included belongs to each option (Maya #7)', () => {
   it('round-trips a per-row includes', () => {
     const text = serializeOffer([{ name: '12oz bag', price: '$18', includes: 'whole bean' }, { name: '5lb bulk', price: '$70', includes: 'ground to order' }], '')
     expect(text).toBe('12oz bag — $18 (includes: whole bean)\n5lb bulk — $70 (includes: ground to order)')

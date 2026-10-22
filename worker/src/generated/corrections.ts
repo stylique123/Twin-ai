@@ -5,7 +5,7 @@
 //
 // ⚠️ MEASURED: she wrote "brings back the two-pound batches and cup-score claims
 // I've excluded multiple times now", "I didn't describe it that way" (burnt /
-// overly acidic), "don't say Hello I'm Savannah". Each became an `avoid` lesson
+// overly acidic), "don't say Hello I'm Maya". Each became an `avoid` lesson
 // — advice in the prompt — while the facts that said those things stayed live
 // and were handed to the writer as usable. The fact outweighed the advice:
 // two-pound batches in 67 of 370 scripts, burnt/acidic in 60, cup scores in 8.
@@ -140,7 +140,7 @@ export function enforceCorrections<T extends { line?: unknown }>(
 /** Model instructions: the words in her note naming what she rejects. */
 export const CORRECTION_SYSTEM = [
   'A creator rated a video script and wrote a note. List every claim, fact, detail, phrase or wording she REJECTS: something she says is wrong, untrue, not hers, not how she described it, already excluded, or never to be said.',
-  'Copy HER exact words naming the thing (2-6 words), e.g. "two-pound batches", "cup scores", "burnt", "Hello I\'m Savannah". Never paraphrase, never add a thing she did not reject.',
+  'Copy HER exact words naming the thing (2-6 words), e.g. "two-pound batches", "cup scores", "burnt", "Hello I\'m Maya". Never paraphrase, never add a thing she did not reject.',
   'Things she liked or asked for are NOT rejections. Return an empty list when she rejects nothing.',
 ].join('\n')
 

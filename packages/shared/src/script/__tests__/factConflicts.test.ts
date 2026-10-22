@@ -4,7 +4,7 @@ import { originConflict } from '../factConflicts.js'
 describe('originConflict (owner 2026-10-06: the writer never chooses between conflicting facts)', () => {
   const rows = [
     { id: 1, text: 'Offers a signature Brazil roast geared toward espresso, roasted to order.' },
-    { id: 2, text: 'Sunflower Signature Blend is a Colombia washed medium roast.' },
+    { id: 2, text: 'Maya Signature Blend is a Colombia washed medium roast.' },
     { id: 3, text: 'Offers an Ethiopia light roast with blueberry notes.' },
     { id: 4, text: 'I roast in small batches.' },
   ]

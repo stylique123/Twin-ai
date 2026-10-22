@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { offerPieces } from '../productSplit'
 
-const SCAN = 'Fresh roasted-to-order specialty coffee beans (Sunflower Coffee Roasters) and practical mentorship/tips for building a mobile coffee cart business.'
+const SCAN = 'Fresh roasted-to-order specialty coffee beans (Maya Coffee Co) and practical mentorship/tips for building a mobile coffee cart business.'
 
 describe('a bundled offer splits by kind', () => {
   it('uses the scan items while the text is the scan’s', () => {
