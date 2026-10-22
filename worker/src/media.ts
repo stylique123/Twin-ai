@@ -1115,7 +1115,7 @@ async function transcribeViaDownload(
     )
     await whisper('auto', '1')
     let parsed = JSON.parse(await readFile(outPath, 'utf8')) as Transcript
-    // ⚠️ A SPEAKING VIDEO READ AS SILENT (Sunflower #13). A 62-second business
+    // ⚠️ A SPEAKING VIDEO READ AS SILENT (Maya #13). A 62-second business
     // talk downloaded fine (≈1 MB of audio) and came back with zero words on
     // four runs: auto language detection on a music-led opening can settle on
     // nothing. Before calling a real-length clip silent, read it once more with

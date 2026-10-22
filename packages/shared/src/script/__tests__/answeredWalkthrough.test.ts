@@ -77,6 +77,6 @@ describe('neutral wording and presumed nouns (owner 2026-10-05)', () => {
       .toEqual({ ok: false, reason: 'presumes_it_happened' })
   })
   it.each(['your podcast', 'your team', 'your studio', 'your shop', 'your roasting mornings', 'your events'])('presumed when her facts never name it: %s', (n) => {
-    expect(presumedVentures(`What happens in ${n} that nobody sees?`, 'Sunflower Coffee Roasters roasts small batches.').length).toBeGreaterThan(0)
+    expect(presumedVentures(`What happens in ${n} that nobody sees?`, 'Maya Coffee Co roasts small batches.').length).toBeGreaterThan(0)
   })
 })
