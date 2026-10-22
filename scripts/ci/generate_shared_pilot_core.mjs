@@ -169,6 +169,8 @@ const SOURCES = [
   ['packages/shared/src/script/outsideSelect.ts', 'supabase/functions/_shared/outsideSelect.ts'],
   // Release flags (owner rule): per-component stage, rollout and kill switch. Default S0 = today's trialOn.
   ['packages/shared/src/script/releaseFlags.ts', 'supabase/functions/_shared/releaseFlags.ts'],
+  // The canary switch (Fast Path v1 Track B): one server-side account allowlist + one kill switch.
+  ['packages/shared/src/script/canary.ts', 'supabase/functions/_shared/canary.ts'],
   // S1 shadow runner (pure part) and the rollback monitor's rules (docs/release/shadow-and-flags.md §3, §6).
   ['packages/shared/src/script/shadowRunner.ts', 'supabase/functions/_shared/shadowRunner.ts'],
   ['packages/shared/src/script/releaseMonitor.ts', 'supabase/functions/_shared/releaseMonitor.ts'],

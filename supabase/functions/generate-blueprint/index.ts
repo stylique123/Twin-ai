@@ -89,6 +89,7 @@ import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerH
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
+import { isCanaryAccount } from '../_shared/canary.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, resolveTargetProduct as resolveInventionTarget, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
@@ -7105,7 +7106,12 @@ async function handle(req: Request): Promise<Response> {
   // Paired test (owner 2026-10-06): the test account may switch the trial off
   // for one request (`trial_off: true`) so enforced and plain scripts are
   // compared from the same facts. Real creators never have the trial.
-  let trialOn = isHeartbeat
+  // 🐤 THE CANARY (Fast Path v1, Track B): ONE named real account (the owner's)
+  // gets exactly the test accounts' path. Server env only (CANARY_ACCOUNT_IDS),
+  // at most one id, kill switch CANARY_KILL=1 → the old flow for everyone.
+  // Its generations stay REAL data (is_heartbeat stays false). _shared/canary.ts.
+  const isCanary = !isHeartbeat && isCanaryAccount(user.id, Deno.env.get('CANARY_ACCOUNT_IDS'), Deno.env.get('CANARY_KILL'))
+  let trialOn = isHeartbeat || isCanary
   // SOFTWARE (trial 2026-10-08): the ~25s target for app/software/course/community videos, set once the product is known.
   let softwareTargetSec: number | null = null
   const reqStartedAt = Date.now()
@@ -7195,7 +7201,7 @@ async function handle(req: Request): Promise<Response> {
   // The registry is read only when RELEASE_REGISTRY_SOURCE=table (_shared/shadowRun.ts);
   // otherwise `releaseRegistry` is undefined and the default (S0) applies.
   // A shadow re-run serves the old path for everything except its one component.
-  const releaseAccount = { userId: user.id, isTestAccount: isHeartbeat, trialOff: isHeartbeat && !trialOn }
+  const releaseAccount = { userId: user.id, isTestAccount: isHeartbeat || isCanary, isCanary, trialOff: isHeartbeat && !trialOn }
   const releaseRegistry = isShadowRun ? undefined : await loadReleaseRegistry(adminRw, Deno.env)
   // Golden set (scripts/ops/goldenSet.mjs): a TEST account may send `release_off`
   // naming components to run on the old path for this request (the per-component
@@ -17592,6 +17598,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         blueprint: {
           ...(blueprint as Record<string, unknown>),
           ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
+          // 🐤 Canary tag: the daily error and cost report finds canary scripts by it.
+          ...(isCanary ? { canary: true } : {}),
           // The voice card this script was written and cleaned against, and how
           // well the shipped lines match it (0-100, deterministic).
           ...(voiceCard ? (() => {
