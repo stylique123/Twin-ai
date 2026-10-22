@@ -9,6 +9,7 @@
 2. Supabase dashboard → **Edge Functions** → **Secrets** (or **Settings → Edge Functions → Secrets**) → **Add new secret**:
    - Name `CANARY_ACCOUNT_IDS`, value: the UID from step 1. Save.
 3. Make one script on your account. Its saved blueprint should show `"canary": true`.
+4. **The screens:** in the web app's hosting settings (Vercel → the web project → **Settings → Environment Variables**), add `VITE_CANARY_ACCOUNT_ID` = the same UID, then redeploy the web app. You now see the trial screens (check this line, the general-version banner, the Using list, the product questions). `VITE_CANARY_KILL=1` hides them; the writer's kill switch stays `CANARY_KILL` on the server.
 
 At most **one** id is accepted. A list of two or more is refused whole (widening the canary is a separate decision).
 
