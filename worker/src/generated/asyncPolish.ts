@@ -182,11 +182,13 @@ export interface HedgeResult {
   lastErr: unknown
   /** Best-of-N (BEST_OF_N_JUDGE, trial): set only when `pick` was given AND both
    *  drafts had already finished when the first valid one was taken. */
-  bestOfN?: { scores: [number, number]; chosen: 0 | 1 }
+  bestOfN?: HedgePickResult & { graceMs?: number }
 }
 
-/** Best-of-N chooser: given the two finished valid drafts, which one ships. */
-export type HedgePick = (texts: [string, string]) => { scores: [number, number]; chosen: 0 | 1 }
+export type HedgePickResult = { scores: [number, number]; chosen: 0 | 1; compared?: boolean; checks?: unknown }
+/** Best-of-N chooser: given the two finished valid drafts and the draft today's
+ *  code would ship (`fallback`), which one ships. */
+export type HedgePick = (texts: [string, string], fallback: 0 | 1) => HedgePickResult
 
 type Settled = { i: 0 | 1; text?: string; err?: unknown }
 
@@ -201,6 +203,10 @@ export async function runHedged(attempts: [HedgeAttempt, HedgeAttempt], valid: (
   /** Best-of-N (default absent = today's behaviour, byte for byte). Never waits:
    *  it only compares a draft that had ALREADY finished when the winner was taken. */
   pick?: HedgePick
+  /** Best-of-N grace (only with `pick`): when the first valid draft lands and the
+   *  other is still running, let it run up to this long, and only when that still
+   *  ends inside ASYNC_WRITER_END_MS; otherwise it is cancelled as today. */
+  graceMs?: number
 }, hooks: HedgeHooks = {}): Promise<HedgeResult> {
   const now = opts.now ?? (() => Date.now())
   const hedgeAt = opts.hedgeAtMs ?? WRITER_HEDGE_AT_MS
@@ -266,14 +272,29 @@ export async function runHedged(attempts: [HedgeAttempt, HedgeAttempt], valid: (
   const other = a.i === 0 ? p1 : p0
   if (await take(a)) {
     const o = a.i === 0 ? 1 : 0
-    // Already finished before the loser is aborted — no added wait, ever.
-    const ready = opts.pick && done[o] !== undefined && valid(done[o]!) ? done[o]! : null
+    // Already finished before the loser is aborted — no added wait.
+    let ready = opts.pick && done[o] !== undefined && valid(done[o]!) ? done[o]! : null
     const first = res.text!
+    // Grace (best-of-N only): never past the writer deadline.
+    let graced: number | undefined
+    if (opts.pick && ready == null && done[o] === undefined && (opts.graceMs ?? 0) > 0 && left() >= opts.graceMs!) {
+      const g = Math.min(opts.graceMs!, left())
+      const gc = new AbortController()
+      const t0 = now()
+      const r = await Promise.race([other, wait(g, gc.signal).then(() => null)])
+      gc.abort()
+      graced = now() - t0
+      if (r && r.text !== undefined && valid(r.text)) ready = r.text
+    }
     await finishOther(other, o)
+    // Today's choice: the grace-finished draft would have been cancelled; an
+    // already-finished one is the one finishOther settled last.
+    const fallback: 0 | 1 = graced !== undefined ? a.i : (res.winner ?? a.i)
+    if (graced !== undefined) { res.text = first; res.winner = a.i }
     if (opts.pick && ready != null) {
       const texts: [string, string] = a.i === 0 ? [first, ready] : [ready, first]
-      const p = opts.pick(texts)
-      res.text = texts[p.chosen]; res.winner = p.chosen; res.bestOfN = p
+      const p = opts.pick(texts, fallback)
+      res.text = texts[p.chosen]; res.winner = p.chosen; res.bestOfN = graced !== undefined ? { ...p, graceMs: graced } : p
     }
     return res
   }
