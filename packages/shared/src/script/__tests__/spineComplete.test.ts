@@ -1,7 +1,7 @@
 // Spine completeness + ending (craft rubric v1 C/F). Fictional material only
 // (Maya's Coffee, scripts/ops/fixtures/fictional-panel.json). No model call.
 import { describe, it, expect } from 'vitest'
-import { completeSpine, reorderEnding, reorderCheck, spineCoverage, isCtaLine, isProblemLine, spineCompleteOn, polishReorderOn } from '../planner/spineComplete'
+import { completeSpine, reorderEnding, reorderCheck, spineCoverage, isCtaLine, isProblemLine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, MISSING_PROBLEM_QUESTION } from '../planner/spineComplete'
 import { polishCheck } from '../planner/planBAssembly'
 import { polishFactChecks } from '../voice/voiceCard'
 
@@ -104,5 +104,33 @@ describe('heuristics', () => {
     expect(isProblemLine('Roasted on Tuesdays.')).toBe(false)
     expect(isCtaLine('FlowDesk: free 14-day trial, link in bio.')).toBe(true)
     expect(isCtaLine('I roast on Tuesdays.')).toBe(false)
+  })
+})
+
+describe('missing problem: ask her, never invent', () => {
+  const noProblem = beats(['How fresh are your coffee beans, really?', 'Each bag has the roast date written on the label by hand.', 'Grab a bag, link in bio.'])
+  const thin = [{ id: 'fact:0', text: 'Each bag has the roast date written on the label by hand' }]
+  it('asks the product-slot question when her material has no on-topic problem item', () => {
+    const q = missingProblemQuestion(noProblem, { material: thin, offer, topic: 'coffee beans' })
+    expect(q).toEqual(MISSING_PROBLEM_QUESTION)
+    expect(q!.writes_to).toBe('spine.problem')
+    const done = completeSpine(noProblem, { material: thin, offer, topic: 'coffee beans' })
+    expect(done.record.problem_added).toBeNull()
+    expect(done.script.map((b) => b.line)).toEqual(noProblem.map((b) => b.line).filter((l) => l !== undefined))
+  })
+  it('does not ask when her material already has the problem item, or the script has one', () => {
+    expect(missingProblemQuestion(noProblem, { material, offer, topic: 'coffee beans flat' })).toBeNull()
+    expect(missingProblemQuestion(beats(['Most people store beans wrong and they go flat.', 'Grab a bag, link in bio.']), { material: thin })).toBeNull()
+  })
+  it('her answer is used verbatim after the hook, with its answer id, and stops the question', () => {
+    const ans = problemAnswerItem('  My buyers never know   how old their beans are. ')!
+    expect(ans).toEqual({ id: 'answer:spine.problem', text: 'My buyers never know how old their beans are.' })
+    expect(missingProblemQuestion(noProblem, { material: thin, problemAnswer: ans })).toBeNull()
+    const done = completeSpine(noProblem, { material: thin, offer, topic: 'coffee beans', problemAnswer: ans })
+    expect(done.script[1]).toMatchObject({ section: 'problem', line: ans.text, source_ids: ['answer:spine.problem'], spine_added: true })
+    expect(done.record.problem_from_answer).toBe(true)
+  })
+  it('a skip or empty answer is not her fact', () => {
+    for (const a of ['', 'skip', 'n/a', 'idk', undefined, 42]) expect(problemAnswerItem(a)).toBeNull()
   })
 })

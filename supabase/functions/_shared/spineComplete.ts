@@ -8,7 +8,9 @@
 //    only for test/panel accounts under the trial). A deterministic completion
 //    step on the shipped script:
 //      (a) no problem / reality-check line → place HER on-topic problem or pain
-//          item, verbatim, right after the hook (never an invented line);
+//          item, verbatim, right after the hook (never an invented line); when
+//          her material has none, ASK her ('missing_problem', writes_to
+//          'spine.problem'); her answer is stored as her fact and placed verbatim;
 //      (c) exactly one call to action, at the end: extra CTA lines are dropped
 //          (the last one kept), a CTA in the middle moves to the end, and her
 //          offer is appended when no CTA is there at all.
@@ -90,7 +92,7 @@ export function spineCoverage(lines: readonly string[], material: readonly Spine
 
 // ── C. COMPLETION ──────────────────────────────────────────────────────────
 
-export interface SpineCompleteRecord { problem_added: string | null; ctas_removed: number; cta_moved: boolean; cta_appended: string | null }
+export interface SpineCompleteRecord { problem_added: string | null; ctas_removed: number; cta_moved: boolean; cta_appended: string | null; problem_from_answer?: true }
 export interface SpineCompleteInput {
   /** Her first-party items (stories, facts, answers). Never the offer. */
   material: readonly SpineItem[]
@@ -98,6 +100,39 @@ export interface SpineCompleteInput {
   offer?: SpineItem | null
   /** What the video is about (request note, product name, goal). */
   topic?: string
+  /** Her own answer to MISSING_PROBLEM_QUESTION (already gated, stored as her fact). Used verbatim, first. */
+  problemAnswer?: SpineItem | null
+}
+
+// ── MISSING PROBLEM → ASK HER (owner decision; same gate) ──────────────────
+// When no on-topic problem/pain item is in her material, the step never invents
+// one: it ASKS her. Her answer arrives keyed by `writes_to` (readiness_answers),
+// is stored as her fact (creator_knowledge, source 'asked', `asked:spine:problem`)
+// and is placed after the hook word for word on the next build.
+
+/** Where her answer lands: readiness_answers key and `writes_to`. */
+export const SPINE_PROBLEM_KEY = 'spine.problem'
+export const MISSING_PROBLEM_QUESTION = {
+  scope: 'script' as const, kind: 'detail' as const,
+  text: 'What problem does this solve for your customer, in your words?',
+  writes_to: SPINE_PROBLEM_KEY,
+}
+export type MissingProblemQuestion = typeof MISSING_PROBLEM_QUESTION
+
+/** Her answer as a spine item, or null for empty / skip / non-answers. */
+export function problemAnswerItem(answer: unknown): SpineItem | null {
+  const t = typeof answer === 'string' ? answer.replace(/\s+/g, ' ').trim() : ''
+  if (t.length < 4 || /^(?:skip(?:ped)?|n\/?a|none|no|idk|i don'?t know|not sure|-+)\.?$/i.test(t)) return null
+  return { id: `answer:${SPINE_PROBLEM_KEY}`, text: t }
+}
+
+const hasProblemLine = (script: readonly SpineBeat[]) => script.some((b) => { const t = spokenText(b); return !!t && !isCtaLine(t) && isProblemLine(t) })
+
+/** The 'missing_problem' question: only when the script has no problem line, her material has no on-topic problem item, and she has not answered. */
+export function missingProblemQuestion(script: readonly SpineBeat[], input: SpineCompleteInput): MissingProblemQuestion | null {
+  if (!script.some((b) => spokenText(b))) return null
+  if (hasProblemLine(script) || input.problemAnswer || pickProblemItem(script, input)) return null
+  return { ...MISSING_PROBLEM_QUESTION }
 }
 
 /** Her on-topic problem/pain item not already said, or null. Verbatim only. */
@@ -125,7 +160,10 @@ export function completeSpine(script: readonly SpineBeat[], input: SpineComplete
   // (a) problem / reality check
   const sp = spoken()
   if (sp.length && !sp.some((i) => { const t = spokenText(out[i]!); return !isCtaLine(t) && isProblemLine(t) })) {
-    const item = pickProblemItem(out, input)
+    const said = new Set(out.map((b) => norm(spokenText(b))))
+    const ans = input.problemAnswer && String(input.problemAnswer.text ?? '').trim() && !said.has(norm(input.problemAnswer.text)) ? { id: input.problemAnswer.id, text: String(input.problemAnswer.text).trim() } : null
+    const item = ans ?? pickProblemItem(out, input)
+    if (ans) record.problem_from_answer = true
     if (item) {
       const at = sp[0]! + 1
       out.splice(at, 0, { section: 'problem', line: item.text, source_ids: [item.id], spine_added: true })

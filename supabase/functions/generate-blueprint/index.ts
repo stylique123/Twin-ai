@@ -112,7 +112,7 @@ import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
-import { completeSpine, spineCompleteOn, polishReorderOn } from '../_shared/spineComplete.ts'
+import { completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY } from '../_shared/spineComplete.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -17485,17 +17485,45 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           targetProductId: tgtS, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
         }))
         const offerS = ledgerS.find((it) => it.origin === 'offer' && it.text.trim())
-        const sc = completeSpine(bps.script as Array<Record<string, unknown>>, {
-          material: ledgerS.filter((it) => it.first_party && it.origin !== 'offer' && it.id !== 'note' && it.text.trim()).map((it) => ({ id: it.id, text: it.text })),
+        // MISSING PROBLEM → ASK HER (owner decision): her answer to the
+        // 'missing_problem' question comes back keyed by its writes_to, passes
+        // the same answer gate as every asked answer (filler / a direction is
+        // neither stored nor used), is stored as her fact through the same
+        // row the angle questions use (answerFactRow, source 'asked'), and is
+        // placed after the hook word for word. Never an invented problem line.
+        const rawProblem = (body.readiness_answers as Record<string, unknown> | undefined)?.[SPINE_PROBLEM_KEY]
+        let problemAnswer = problemAnswerItem(rawProblem)
+        if (problemAnswer) {
+          const g = gateAnswer(problemAnswer.text, {}, { known: await knownForGate(admin, ownerId) })
+          if (g.outcome === 'filler' || g.outcome === 'direction') problemAnswer = null
+          else {
+            const row = answerFactRow({ ownerId, voiceId: (voice as { id?: string } | null)?.id ?? null, productId: tgtS, key: 'spine:problem', piece: 'problem', answer: problemAnswer.text, now: new Date().toISOString() })
+            if (row) {
+              const { error: pErr } = await admin.from('creator_knowledge').insert({ ...row, sensitive: g.sensitive === true })
+              console.log(JSON.stringify({ event: 'spine_problem_answer_stored', ok: !pErr || pErr.code === '23505' }))
+            }
+          }
+        }
+        const spineInput = {
+          material: ledgerS.filter((it) => it.first_party && it.origin !== 'offer' && it.id !== 'note' && it.id !== `answer:${SPINE_PROBLEM_KEY}` && it.text.trim()).map((it) => ({ id: it.id, text: it.text })),
           offer: offerS ? { id: offerS.id, text: offerS.text } : null,
           topic: `${String(reference_note ?? '')} ${String((ownedEntity as { name?: unknown } | null)?.name ?? '')}`,
-        })
+          problemAnswer,
+        }
+        const askProblem = missingProblemQuestion(bps.script as Array<Record<string, unknown>>, spineInput)
+        const sc = completeSpine(bps.script as Array<Record<string, unknown>>, spineInput)
         bps.spine_complete = sc.record
+        if (askProblem) {
+          // The existing ask flow: blueprint.gate_questions (NeedsAnswerGate), answered into readiness_answers.
+          const prior = Array.isArray(bps.gate_questions) ? (bps.gate_questions as Array<{ text?: unknown; writes_to?: unknown }>) : []
+          bps.gate_questions = mergeQuestions(prior, [askProblem])
+          ;(bps.spine_complete as Record<string, unknown>).problem_asked = 'missing_problem'
+        }
         if (sc.record.problem_added || sc.record.ctas_removed || sc.record.cta_moved || sc.record.cta_appended) {
           bps.script = sc.script
           if (Array.isArray(bps.shot_list)) bps.shot_list = syncShotListSpokenText(bps.shot_list as Array<{ spoken_text?: unknown }>, bps.script as unknown[]).shots
         }
-        console.log(JSON.stringify({ event: 'spine_complete', problem_added: !!sc.record.problem_added, ctas_removed: sc.record.ctas_removed, cta_moved: sc.record.cta_moved, cta_appended: !!sc.record.cta_appended }))
+        console.log(JSON.stringify({ event: 'spine_complete', problem_added: !!sc.record.problem_added, problem_from_answer: !!sc.record.problem_from_answer, problem_asked: !!askProblem, ctas_removed: sc.record.ctas_removed, cta_moved: sc.record.cta_moved, cta_appended: !!sc.record.cta_appended }))
       } catch { /* the spine step never fails a build */ }
     }
     // ⚖️ PACKAGING KEEPS THE PROMISE (plan v5.1 item G, trial only; kill:

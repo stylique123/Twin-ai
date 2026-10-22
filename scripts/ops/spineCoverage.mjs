@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spineCoverage, completeSpine, reorderEnding } from '../../packages/shared/src/script/planner/spineComplete.ts'
+import { spineCoverage, completeSpine, reorderEnding, missingProblemQuestion } from '../../packages/shared/src/script/planner/spineComplete.ts'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -65,13 +65,20 @@ export function materialFor(text, panel) {
 }
 
 export function measure(rows, panel) {
-  const tally = { n: 0, before: { problem: 0, truth: 0, cta: 0, all: 0 }, after: { problem: 0, truth: 0, cta: 0, all: 0 }, changed: 0, per: [] }
+  const tally = { n: 0, before: { problem: 0, truth: 0, cta: 0, all: 0 }, after: { problem: 0, truth: 0, cta: 0, all: 0 }, changed: 0, missingProblem: 0, wouldAsk: 0, per: [] }
   for (const r of rows) {
     const lines = scriptLines(r.script_text)
     const m = materialFor(r.script_text, panel)
     const b = spineCoverage(lines, m.material)
     const beats = lines.map((line, i) => ({ section: i === 0 ? 'hook' : 'body', line }))
     const done = completeSpine(beats, m)
+    // Missing problem after completion: her material had no on-topic problem item.
+    // SPINE_COMPLETE then ASKS her (missing_problem) instead of inventing one.
+    const ask = missingProblemQuestion(beats, m)
+    if (!spineCoverage(done.script.map((x) => String(x.line ?? '')).filter(Boolean), m.material).problem) {
+      tally.missingProblem++
+      if (ask) tally.wouldAsk++
+    }
     const ended = reorderEnding(done.script).next
     const afterLines = ended.map((x) => String(x.line ?? '')).filter(Boolean)
     const a = spineCoverage(afterLines, m.material)
@@ -81,7 +88,7 @@ export function measure(rows, panel) {
       tally[k].all += v.problem && v.truth && v.oneCtaAtEnd ? 1 : 0
     }
     if (afterLines.join('\n') !== lines.join('\n')) tally.changed++
-    tally.per.push({ id: r.script_id, creator: m.creator, before: b, after: a, record: done.record })
+    tally.per.push({ id: r.script_id, creator: m.creator, before: b, after: a, record: done.record, asks: ask ? ask.writes_to : null })
   }
   return tally
 }
@@ -101,4 +108,5 @@ if (isMain) {
   console.log(`panel ${want}: ${t.n} scripts`)
   for (const k of ['before', 'after']) console.log(`${k.padEnd(6)} problem/reality ${pct(t[k].problem)}  her truth ${pct(t[k].truth)}  one CTA at end ${pct(t[k].cta)}  all three ${pct(t[k].all)}`)
   console.log(`scripts changed by SPINE_COMPLETE + POLISH_REORDER: ${t.changed}`)
+  console.log(`still missing a problem line after completion: ${t.missingProblem}; of those, would get the missing_problem question: ${t.wouldAsk}/${t.missingProblem}`)
 }
