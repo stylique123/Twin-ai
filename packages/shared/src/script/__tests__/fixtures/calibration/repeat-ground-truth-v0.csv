@@ -1,0 +1,21 @@
+panel,script_id,repeat_note,confidence
+P6,P6-01,"hook line then line 2 repeats it, then placeholder",high
+P6,P6-03,story repeated in lines 1 and 2,high
+P6,P6-06,story in lines 1 and 3,high
+P6,P6-09,story told three times (lines 1 to 3),high
+P6,P6-13,story in lines 1 and 2,high
+P7,P7-04,story in lines 1 and 2,high
+P7,P7-09,same story told three times,high
+P7,P7-10,story in lines 3 and 4,high
+P7,P7-14,story in lines 1 and 2,med
+P7,P7-12,14-day trial stated in lines 1 and 5,med
+P8,P8-02,roast and ship fact in lines 1 and 3,med
+P8,P8-15,trial stated in lines 1 and 3,med
+P8,P8-16,story in lines 1 and 5,high
+P8,P8-17,story in lines 1 and 2,high
+P10,P10-02,buyer story in lines 1 and 3,high
+P10,P10-07,deadlift story in lines 1 and 6,high
+P10,P10-09,origin beat in lines 1 and 3,med
+P10,P10-10,origin beat in lines 1 and 3,med
+P10,P10-15,misquote story in lines 1 and 2,high
+P10,P10-18,kiln story in lines 1 and 2,high
