@@ -221,6 +221,9 @@ const SOURCES = [
   ['packages/shared/src/script/shotListSync.ts', 'worker/src/generated/shotListSync.ts'],
   // The zero-invention gate: the worker's invention_recheck re-runs the edge's exact gate.
   ['packages/shared/src/script/inventionGate.ts', 'worker/src/generated/inventionGate.ts'],
+  // The Using list's block list (trial): the edge filters the writer's items, the worker its refill pool.
+  ['packages/shared/src/script/usingBlock.ts', 'supabase/functions/_shared/usingBlock.ts'],
+  ['packages/shared/src/script/usingBlock.ts', 'worker/src/generated/usingBlock.ts'],
   ['packages/shared/src/script/beatCamera.ts', 'worker/src/generated/beatCamera.ts'],
   ['packages/shared/src/script/itemFormat.ts', 'worker/src/generated/itemFormat.ts'],
   ['packages/shared/src/script/storyRotation.ts', 'worker/src/generated/storyRotation.ts'],

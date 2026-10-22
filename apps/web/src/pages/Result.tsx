@@ -791,7 +791,15 @@ export default function Result() {
   const checkLineCard = <CheckThisLine userId={session?.user?.id} generationId={gen.id} blueprint={raw as Parameters<typeof CheckThisLine>[0]['blueprint']} onDone={refreshGen} />
   // Plan v5.4 O (trial only; null for every other account): general-version banner and the "Using" list.
   const generalBanner = <GeneralVersionBanner userId={session?.user?.id} blueprint={raw as { degraded?: unknown }} onBackToQuestions={() => navigate('/v2')} />
-  const usingList = <UsingList userId={session?.user?.id} blueprint={raw as { line_sources?: unknown }} />
+  const usingList = (
+    <UsingList userId={session?.user?.id} generationId={gen.id} blueprint={raw as { line_sources?: unknown }}
+      onRemoved={(next) => setGen((prev) => {
+        if (!prev) return prev
+        const g = { ...prev, blueprint: { ...(prev.blueprint ?? {}), script: next.script, line_sources: next.line_sources } } as typeof prev
+        GEN_CACHE[prev.id] = g
+        return g
+      })} />
+  )
   const rr = raw.reference_read ?? ({} as NonNullable<Generation['blueprint']>['reference_read'])
   const br = raw.b_roll_stats ?? { original_b_roll_count: '0', suggested_b_roll_count: '0' }
   const b = {
