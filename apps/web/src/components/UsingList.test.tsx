@@ -40,33 +40,50 @@ describe('usingItemsOf', () => {
   })
 })
 
+const GEN = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+
 describe('UsingList', () => {
   it('hidden for a real creator', () => {
-    const { container } = render(<UsingList userId="someone-else" blueprint={bp} send={vi.fn()} />)
+    const { container } = render(<UsingList userId="someone-else" generationId={GEN} blueprint={bp} send={vi.fn()} />)
     expect(container.innerHTML).toBe('')
   })
   it('hidden under the kill switch', () => {
     vi.stubEnv('VITE_USING_LIST_KILL', '1')
-    const { container } = render(<UsingList userId={TRIAL} blueprint={bp} send={vi.fn()} />)
+    const { container } = render(<UsingList userId={TRIAL} generationId={GEN} blueprint={bp} send={vi.fn()} />)
     expect(container.innerHTML).toBe('')
   })
-  it('shows each item with its tag; "Never use" only on her stored facts; no "Remove"', () => {
-    render(<UsingList userId={TRIAL} blueprint={bp} send={vi.fn()} />)
+  it('every row has "Remove" and "Never use" (any kind)', () => {
+    render(<UsingList userId={TRIAL} generationId={GEN} blueprint={bp} send={vi.fn()} />)
     expect(screen.getAllByTestId('using-tag').map((t) => t.textContent)).toEqual(['Your fact', 'Your answer', 'Product', 'Outside'])
-    expect(screen.getAllByText('Never use')).toHaveLength(1)
-    expect(screen.queryByText('Remove')).toBeNull()
+    expect(screen.getAllByText('Never use')).toHaveLength(4)
+    expect(screen.getAllByText('Remove')).toHaveLength(4)
   })
-  it('"Never use" sends the fact id and confirms', async () => {
+  it('her idea for this video can be removed, not blocked', () => {
+    const idea = { line_sources: [{ beat: 0, sentence: 'Kites for windy beaches.', from: [{ kind: 'her_words', label: 'Your idea for this video' }] }] }
+    render(<UsingList userId={TRIAL} generationId={GEN} blueprint={idea} send={vi.fn()} />)
+    expect(screen.getAllByText('Remove')).toHaveLength(1)
+    expect(screen.queryByText('Never use')).toBeNull()
+  })
+  it('"Never use" sends the item (any kind) to using_item and confirms', async () => {
     const send = vi.fn().mockResolvedValue({ ok: true })
-    render(<UsingList userId={TRIAL} blueprint={bp} send={send} />)
-    fireEvent.click(screen.getByText('Never use'))
+    render(<UsingList userId={TRIAL} generationId={GEN} blueprint={bp} send={send} />)
+    fireEvent.click(screen.getAllByText('Never use')[3]!)
     await screen.findByText("Twin won't use this again")
-    expect(send).toHaveBeenCalledWith(FACT_ID)
+    expect(send).toHaveBeenCalledWith(GEN, { kind: 'audience', label: 'Viewers ask about wind' }, 'never_use')
+  })
+  it('"Remove" hands the new script to the page', async () => {
+    const script = [{ section: 'hook', line: 'The kite folds into a pocket.' }]
+    const send = vi.fn().mockResolvedValue({ ok: true, script, line_sources: [] })
+    const onRemoved = vi.fn()
+    render(<UsingList userId={TRIAL} generationId={GEN} blueprint={bp} send={send} onRemoved={onRemoved} />)
+    fireEvent.click(screen.getAllByText('Remove')[0]!)
+    await waitFor(() => expect(onRemoved).toHaveBeenCalledWith({ script, line_sources: [] }))
+    expect(send).toHaveBeenCalledWith(GEN, { kind: 'fact', label: 'Sewed the first kite at home', id: FACT_ID }, 'remove')
   })
   it('a failed save says so', async () => {
     const send = vi.fn().mockResolvedValue({ ok: false })
-    render(<UsingList userId={TRIAL} blueprint={bp} send={send} />)
-    fireEvent.click(screen.getByText('Never use'))
+    render(<UsingList userId={TRIAL} generationId={GEN} blueprint={bp} send={send} />)
+    fireEvent.click(screen.getAllByText('Never use')[0]!)
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
   })
 })

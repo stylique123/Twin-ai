@@ -82,6 +82,7 @@ import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser, capQuestions } from '../_shared/beatCleanup.ts'
 import { robotPass } from '../_shared/robotPhrases.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
+import { sanitizeNeverUse, neverUseEntryOf, addNeverUse, filterLedgerByNeverUse, knowledgeBlocked, outsideAllowed, removeUsingItem, type NeverUseEntry, type TracedRow, type UsingItemRef } from '../_shared/usingBlock.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
 import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerHedgeOn, ASYNC_WRITER_END_MS } from '../_shared/asyncPolish.ts'
@@ -90,7 +91,7 @@ import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } fro
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
-import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
+import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, resolveTargetProduct as resolveInventionTarget, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
@@ -6780,6 +6781,73 @@ async function handle(req: Request): Promise<Response> {
     console.log(JSON.stringify({ event: 'check_line', generation_id: gid, line_index: res.line_index, decision: res.decision, reason: res.reason }))
     return json({ ok: true, decision: res.decision, line_index: res.line_index, line: res.line, check_lines: next.check_lines })
   }
+  // ⚖️ THE USING LIST'S BUTTONS (web #1300 UsingList.tsx; usingBlock.ts). TRIAL
+  // ONLY: test accounts (heartbeat or fictional panel, from identity, never the
+  // body); USING_ITEM_KILL=1 returns `disabled` to everyone. The caller must own
+  // the generation (owner-checked in the query).
+  //   using_item {generation_id, item: {kind, label, id?}, action: 'remove'}
+  //     → the lines traced to that item leave THIS script; the gap is refilled
+  //       from her other items by the panel-10 relevance rules.
+  //   using_item {generation_id, item, action: 'never_use'}
+  //     → the item joins her block list (brand_voices.profile.never_use on the
+  //       default voice); a stored fact is also switched off (creator_excluded_at).
+  // Logs: ids, kinds and counts only, never her text.
+  if (specMode === 'using_item') {
+    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    if (!testAccount || Deno.env.get('USING_ITEM_KILL') === '1') return json({ disabled: true })
+    const sb = createClient(supabaseUrl, serviceKey)
+    const b = (peek ?? {}) as { generation_id?: unknown; item?: unknown; action?: unknown }
+    const gid = String(b.generation_id ?? '')
+    if (!/^[0-9a-f-]{36}$/i.test(gid)) return json({ error: 'generation_id (uuid) is required' }, 400)
+    if (b.action !== 'remove' && b.action !== 'never_use') return json({ error: 'action must be remove or never_use' }, 400)
+    const ri = (b.item ?? {}) as { kind?: unknown; label?: unknown; id?: unknown }
+    if (typeof ri.kind !== 'string' || typeof ri.label !== 'string' || !ri.label.trim()) return json({ error: 'item {kind, label} is required' }, 400)
+    const item: UsingItemRef = { kind: ri.kind.slice(0, 20), label: ri.label.slice(0, 200), ...(typeof ri.id === 'string' && /^[0-9a-f-]{36}$/i.test(ri.id) ? { id: ri.id } : {}) }
+    const { data: gen } = await sb.from('generations').select('id, user_id, brand_voice_id, reference_note, blueprint')
+      .eq('id', gid).eq('user_id', user.id).maybeSingle()
+    if (!gen || !gen.blueprint || typeof gen.blueprint !== 'object') return json({ error: 'Generation not found' }, 404)
+    const { data: prods } = await sb.from('product_entities').select('id,name,knowledge,offer').eq('owner_id', user.id).is('archived_at', null)
+    const productId = item.kind === 'product'
+      ? String(((prods ?? []) as Array<{ id?: unknown; name?: unknown }>).find((p) => String(p.name ?? '').trim().toLowerCase() === item.label.trim().toLowerCase())?.id ?? '') || null
+      : null
+    const { data: v } = await sb.from('brand_voices').select('id, profile').eq('owner_id', user.id).eq('is_default', true).maybeSingle()
+    const prof = ((v?.profile ?? {}) as Record<string, unknown>)
+    const list = sanitizeNeverUse(prof.never_use)
+    if (b.action === 'never_use') {
+      const entry = neverUseEntryOf(item, productId)
+      if (!entry) return json({ error: 'not_blockable' }, 400)
+      if (!v) return json({ error: 'no_voice' }, 409)
+      const next = addNeverUse(list, { ...entry, at: new Date().toISOString() })
+      const { error: upErr } = await sb.from('brand_voices').update({ profile: { ...prof, never_use: next } }).eq('id', v.id).eq('owner_id', user.id)
+      if (upErr) return json({ error: "We couldn't save that — try again." }, 500)
+      if (entry.kind === 'fact' && entry.id) {
+        await sb.from('creator_knowledge').update({ creator_excluded_at: new Date().toISOString() }).eq('id', entry.id).eq('owner_id', user.id)
+      }
+      console.log(JSON.stringify({ event: 'using_never_use', generation_id: gid, kind: entry.kind, has_id: !!entry.id, list: next.length }))
+      return json({ ok: true, action: 'never_use', kind: entry.kind })
+    }
+    // remove: the same ledger the worker's re-check rebuilds (the knowledge this
+    // generation spent, plus her products), minus her blocked items.
+    const bp = gen.blueprint as Record<string, unknown>
+    if (!Array.isArray(bp.script)) return json({ error: 'no_script' }, 400)
+    const { data: uses } = await sb.from('creator_knowledge_uses').select('knowledge_id').eq('generation_id', gid)
+    const ids = (uses ?? []).map((u: { knowledge_id?: unknown }) => u.knowledge_id).filter((x): x is string => typeof x === 'string')
+    const { data: k } = ids.length ? await sb.from('creator_knowledge').select('id,kind,text').in('id', ids).is('creator_excluded_at', null) : { data: [] }
+    // The product this script is about: the one it names most (none when unclear).
+    const target = resolveInventionTarget('-', (prods ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown }>,
+      { lines: (bp.script as Array<{ line?: unknown }>).map((x) => String(x?.line ?? '')) })
+    const ledger = buildInventionLedger({ knowledge: k ?? [], answers: {}, note: '', products: prods ?? [], targetProductId: target, offer: '', outside: [], now: Date.now() })
+    const res = removeUsingItem(bp.script as Array<{ section?: unknown; line?: unknown }>, (Array.isArray(bp.line_sources) ? bp.line_sources : []) as TracedRow[], item,
+      { ledger, targetProductId: target, ctx: { topic: String(gen.reference_note ?? ''), angle: '' }, productId, neverUse: list })
+    if (!res.removed) return json({ error: 'not_in_script' }, 400)
+    const next: Record<string, unknown> = { ...bp, script: res.script, line_sources: res.line_sources,
+      using_removed: [...(Array.isArray(bp.using_removed) ? bp.using_removed : []), { kind: item.kind, ...(item.id ? { id: item.id } : {}), removed: res.removed, refilled: res.refilled, at: new Date().toISOString() }] }
+    resyncShotListToScript(next)
+    const { error: upErr } = await sb.from('generations').update({ blueprint: next }).eq('id', gid).eq('user_id', user.id)
+    if (upErr) return json({ error: "We couldn't save that — try again." }, 500)
+    console.log(JSON.stringify({ event: 'using_remove', generation_id: gid, kind: item.kind, removed: res.removed, beats_dropped: res.beats_dropped, refilled: res.refilled }))
+    return json({ ok: true, action: 'remove', removed: res.removed, refilled: res.refilled, script: res.script, line_sources: res.line_sources })
+  }
   if (specMode === 'fact_confirm' || specMode === 'spec_confirm' || specMode === 'fact_private') {
     const sb = createClient(supabaseUrl, serviceKey)
     const b2 = (peek ?? {}) as { knowledge_id?: unknown; yes?: unknown; private?: unknown }
@@ -7055,7 +7123,13 @@ async function handle(req: Request): Promise<Response> {
     // Panel-10 (trial; kills RELEVANT_REFILL=false, STORY_HOOK_DEDUP=false).
     ...(relevantRefillCtx() ? { refill_context: relevantRefillCtx() } : {}),
     ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' ? { story_hook_dedup: true } : {}),
+    // Panel-10 advisor (trial; DEFAULT OFF, opt in STORY_RETELL_DEDUP=true): one telling per story.
+    // Off until a meaning-level check exists; while off no line is cut or changed.
+    ...(trialOn && Deno.env.get('STORY_RETELL_DEDUP') === 'true' ? { story_retell_dedup: true } : {}),
+    // Using list (trial; kill USING_ITEM_KILL=1): the worker's refills skip her never-use items.
+    ...(neverUseForGate().length ? { never_use: neverUseForGate() } : {}),
   })
+  let neverUseForGate = (): NeverUseEntry[] => []
   // Panel-10 RELEVANCE-AWARE REFILL (trial; kill RELEVANT_REFILL=false): the
   // request's topic (her note, the product's name) and angle; every refill
   // (edge length pass, floor refill, the worker gate) adds only items for it.
@@ -7261,6 +7335,13 @@ async function handle(req: Request): Promise<Response> {
     .eq('owner_id', ownerId)
     .eq('is_default', true)
     .maybeSingle()
+  // ⚖️ USING LIST "NEVER USE" (trial; kill USING_ITEM_KILL=1): her per-creator
+  // block list on the default voice (profile.never_use). The planner, every
+  // refill, Plan B and the outside selection read their items through it.
+  const neverUse: NeverUseEntry[] = trialOn && Deno.env.get('USING_ITEM_KILL') !== '1'
+    ? sanitizeNeverUse(((voice as { profile?: { never_use?: unknown } } | null)?.profile ?? {}).never_use) : []
+  neverUseForGate = () => neverUse
+  const nuL = <T extends InventionLedgerItem>(l: T[]): T[] => (neverUse.length ? filterLedgerByNeverUse(l, neverUse) : l)
 
   // THE OWNED ENTITY — what the creator actually sells, minted from `workKind`.
   //
@@ -9825,11 +9906,16 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         // request reach the writer. Selected before the board is built, so the
         // invention-gate ledger (built from gateBoard) is what the writer saw.
         let notes = notes0, trends = trends0, moments = moments0, research = research0, reddit = reddit0
+        // Using list "Never use" (trial): an outside item she blocked is never offered.
+        if (neverUse.some((e) => e.kind === 'outside')) {
+          const ok = <T,>(xs: T[]): T[] => xs.filter((x) => outsideAllowed(x, neverUse))
+          notes = ok(notes); trends = ok(trends); moments = ok(moments); research = ok(research); reddit = ok(reddit)
+        }
         if (newOn('outside_select')) {
           // Owner (panel-current-5, trial; kill switch OUTSIDE_MIN_RELEVANCE='false'):
           // a real floor of request words, niche words not counted, zero allowed.
           const outsideRequest = [reference_note, intent.focus, intent.outcome, body.angle, offer !== 'unspecified' ? offer : ''].map((v) => String(v ?? ''))
-          const sel = pickOutsideForWriter({ notes: notes0, trends: trends0, moments: moments0, research: research0, reddit: reddit0 },
+          const sel = pickOutsideForWriter({ notes, trends, moments, research, reddit },
             [...outsideRequest, subNiche, niche].map((v) => String(v ?? '')),
             outsideFloorOn ? { requestTexts: outsideRequest } : {})
           ;({ notes, trends, moments, research, reddit } = sel.lists)
@@ -10399,6 +10485,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       : []
     const speakable = ((storyCut ? storyCut.rows : speakableAll) as typeof speakableAll)
       .filter((k) => !subjectTopics.includes(k))
+      // Using list "Never use" (trial): a fact or answer she blocked never reaches the writer.
+      .filter((k) => !neverUse.length || !knowledgeBlocked(k as { id?: unknown; text?: unknown }, neverUse))
       .map((k) => (trialOn && typeof (k as { text?: unknown }).text === 'string' ? { ...k, text: dropWriterNotes(String((k as { text?: unknown }).text)) } : k)) as typeof speakableAll
     if (storyCut?.dropped.length) console.log(JSON.stringify({ event: 'one_story', kept: storyCut.kept ? String(storyCut.kept.text ?? '').slice(0, 60) : null, dropped: storyCut.dropped.length }))
     // PLAN 0.1/0.2 (trial): the writer's material read through the one item
@@ -12485,12 +12573,12 @@ ${fenced('claims this creator may NOT make', forbidden)}
         // floor kept, so 18 of 22 went to sprint. It now reads the ledger the
         // writer is handed (same builder as the template ledger below).
         const durTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
-        const durLedger = buildInventionLedger({
+        const durLedger = nuL(buildInventionLedger({
           knowledge: provenanceSupply, answers: { ...(answers ?? {}) }, note: reference_note,
           products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
           targetProductId: durTarget, offer: typeof readyOffer === 'string' ? readyOffer : '',
           outside: boardMaterial.map((m, n) => ({ id: m.id ?? `${m.kind}:${n}`, kind: m.kind, text: m.text })), now: Date.now(),
-        })
+        }))
         durationChoice = chooseDuration(profileForSeconds(want, software), { ...countsFromLedger(durLedger, durTarget), note_moment: noteMomentForVideo })
         if (durationChoice.chosen !== durationChoice.requested) {
           const p = DURATION_PROFILES[durationChoice.chosen]
@@ -12602,13 +12690,13 @@ This is the video's position. Every field below must serve it. If the reference'
     let templateLedger: InventionLedgerItem[] = []
     const templateChoices: TemplatePlan[] = newOn('templates') ? (() => {
       try {
-        templateLedger = buildInventionLedger({
+        templateLedger = nuL(buildInventionLedger({
           knowledge: provenanceSupply, answers: { ...(answers ?? {}) }, note: reference_note,
           products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
           targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
           offer: typeof readyOffer === 'string' ? readyOffer : '',
           outside: boardMaterial.map((m, n) => ({ id: m.id ?? `${m.kind}:${n}`, kind: m.kind, text: m.text })), now: Date.now(),
-        })
+        }))
         return chooseTemplates({
           goal: String(videoGoal ?? body.goal ?? ''), angle: pickedAngle ? String(pickedAngle.kind ?? '') : null,
           ledger: templateLedger, targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
@@ -17081,11 +17169,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       try {
         if (Array.isArray(bpw.script)) {
           const targetId = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
-          const ledgerForBudget = templateLedger.length ? templateLedger : buildInventionLedger({
+          const ledgerForBudget = templateLedger.length ? templateLedger : nuL(buildInventionLedger({
             knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
             products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
             targetProductId: targetId, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
-          })
+          }))
           const profile = templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null)
           // PANEL-7 (trial; kill LENGTH_REFILL=false): an item spanning lines is
           // offered line by line instead of refused whole (short_no_material on 4 of 8 Standard).
@@ -17349,12 +17437,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const bpb2 = blueprint as Record<string, unknown>
         // Her onboarding answers (the 'asked' creator_knowledge rows) are first-party items too.
         const askedB = (knowledgeRows as Array<{ id?: unknown; kind?: unknown; text?: unknown; source?: unknown }>).filter((k) => String(k?.source ?? '') === 'asked' && !provenanceSupply.some((s) => String(s.id ?? '') === String(k?.id ?? '')))
-        const ledgerB0 = templateLedger.length ? templateLedger : buildInventionLedger({
+        const ledgerB0 = templateLedger.length ? templateLedger : nuL(buildInventionLedger({
           knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
           products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
           targetProductId: planBTarget, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
-        })
-        const ledgerB = askedB.length ? [...ledgerB0, ...buildInventionLedger({ knowledge: askedB, now: Date.now() }).filter((it) => it.origin !== 'offer' && it.id !== 'note')] : ledgerB0
+        }))
+        const ledgerB = askedB.length ? [...ledgerB0, ...nuL(buildInventionLedger({ knowledge: askedB, now: Date.now() })).filter((it) => it.origin !== 'offer' && it.id !== 'note')] : ledgerB0
         const storyItem = storyFirstPick ?? (() => { const s = ledgerB.find((it) => it.origin === 'her_story' && it.first_party && it.text.trim()); return s ? { id: s.id, text: s.text } : null })()
         const profileB = templatePlan ? templateProfile : profileForSeconds(body.target_seconds, softwareTargetSec != null)
         const inB = planBInputFromLedger(ledgerB, storyItem, planBTarget, profileB)
@@ -17465,11 +17553,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       if (trialOn && spoken.length < floor && Array.isArray((blueprint as { script?: unknown }).script)) {
         try {
           const tgt = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
-          const ledgerF = templateLedger.length ? templateLedger : buildInventionLedger({
+          const ledgerF = templateLedger.length ? templateLedger : nuL(buildInventionLedger({
             knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
             products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
             targetProductId: tgt, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
-          })
+          }))
           const rf = refillToFloor((blueprint as { script: Array<{ section?: unknown; line?: unknown }> }).script, ledgerF, tgt, floor, relevantRefillCtx())
           if (rf.added) {
             ;(blueprint as Record<string, unknown>).script = rf.script
