@@ -7,7 +7,7 @@
 //
 // ⚠️ A topic the scan inferred from her captions ("Building and operating a
 // small batch coffee roasting and coffee cart business") reached a script as
-// "Building my coffee cart business in Farmington taught me…" — a claim she
+// "Building my coffee cart business in Riverton taught me…" — a claim she
 // operates a cart, which she never made. The writer is told; it still did.
 // So the finished line is checked: a business, role or venture claimed in the
 // first person must be named in what she stated herself (her facts, brand,

@@ -399,7 +399,7 @@ function audit(d) {
   // 11 — repeated corrections
   const CORR = [
     ['invented origin "bins"', /\bbins\b/i], ['"six months"', /\bsix months\b/i], ['custom roasts', /custom roast/i],
-    ['"half the batch was scorching"', /scorch/i], ['"smelled completely off"', /smelled completely off/i], ['"Hello, I am Savannah / welcome back" greeting', /(hello,? i'?m savannah|hello,? i am savannah|welcome back)/i],
+    ['"half the batch was scorching"', /scorch/i], ['"smelled completely off"', /smelled completely off/i], ['"Hello, I am Maya / welcome back" greeting', /(hello,? i'?m maya|hello,? i am maya|welcome back)/i],
     ['"for twenty years"', /twenty years/i], ['"burnt / overly acidic"', /overly acidic|burnt/i], ['"permanent rule"', /permanent rule|formal rule/i], ['"roast date stamp"', /roast date/i],
     ['"half a gram" / exact grind numbers', /half a gram|\bgrams?\b/i], ['police / neighbor complaints', /police|neighbou?r|code enforcement|officer/i], ['two-pound batches', /two[- ]pound|2[- ]?(lb|pound)/i], ['cup scores', /cup score/i],
     ['velvety body / excluded Brazil-Ethiopia notes', /velvety|milk chocolate|roasted nuts|blueberr/i], ['invented espresso technique (tamp, honey, cinnamon)', /\btamp|honey|cinnamon/i],
