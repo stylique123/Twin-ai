@@ -263,7 +263,7 @@ export function classifyReferenceRead(input: ReferenceReadInput): ReferenceReadV
   return { cls: 'usable', message: null, overrideAllowed: false }
 }
 
-// ── LENGTH FIT, JUDGED PER FIDELITY OPTION (Sunflower #11–#12) ─────────────
+// ── LENGTH FIT, JUDGED PER FIDELITY OPTION (Maya #11–#12) ─────────────
 //
 // ⚖️ A DEGREE PROBLEM, SO A WARNING WITH AN OVERRIDE — NEVER A REFUSAL.
 // "Match its opening and hook" borrows the first seconds only, so a reference

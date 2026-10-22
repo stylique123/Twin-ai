@@ -43,7 +43,7 @@ const draftOf = (patch: Partial<OnboardingDraft> = {}): OnboardingDraft => ({
 
 // ⚠️ A REAL SIGN-OFF FROM A REAL ACCOUNT, because the inference is the whole
 // subject of this file and a made-up CTA would not exercise it. This is the
-// keyword mechanic extracted from @carlaangelfit, the account the blank step
+// keyword mechanic extracted from a creator's account, the account the blank step
 // was reported on.
 const REAL_CTA = ["comment the word 'CORE' and I'll send you a pregnancy-safe routine"]
 // A genuine sign-off that asks for nothing. The renderer's comment names this

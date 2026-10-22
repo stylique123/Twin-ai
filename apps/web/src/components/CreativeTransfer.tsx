@@ -74,7 +74,7 @@ export function CreativeTransfer({ generationId, blueprint, referenceAnalysis }:
   const [looking, setLooking] = useState(true)
   useEffect(() => {
     let live = true
-    // ⚠️ SUNFLOWER #27: the shot analysis can land a minute or two after the
+    // ⚠️ MAYA #27: the shot analysis can land a minute or two after the
     // script. Keep looking for a few minutes rather than saying "not analysed".
     let tries = 0
     let timer: ReturnType<typeof setTimeout> | undefined

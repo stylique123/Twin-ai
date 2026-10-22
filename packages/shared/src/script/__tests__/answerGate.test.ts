@@ -102,7 +102,7 @@ describe('owner review 2026-10-05: no false filler, no ordinary-word privacy, of
     expect(g.heldText).toBe('I run my coffee cart business on weekends now.')
   })
   it('"my roastery" is not held for a creator whose brand is a roastery', () => {
-    expect(gateAnswer('I was alone in my roastery at 5am when the batch caught.', {}, { known: 'Sunflower Coffee Roasters roastery' }).hold).toEqual([])
+    expect(gateAnswer('I was alone in my roastery at 5am when the batch caught.', {}, { known: 'Maya Coffee Co roastery' }).hold).toEqual([])
     expect(gateAnswer('I was alone in my roastery at 5am when the batch caught.', {}).hold.length).toBeGreaterThan(0)
   })
 })
