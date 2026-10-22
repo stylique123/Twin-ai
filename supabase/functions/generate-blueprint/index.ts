@@ -112,6 +112,7 @@ import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
+import { completeSpine, spineCompleteOn, polishReorderOn } from '../_shared/spineComplete.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -17469,6 +17470,34 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
       } catch { /* Plan B never fails a build: the writer's script stays */ }
     }
+    // ⚖️ SPINE COMPLETENESS (craft rubric v1 item C; trial, test accounts only,
+    // DEFAULT OFF: SPINE_COMPLETE=on turns it on). Deterministic: when no
+    // problem/reality line is there, her on-topic problem item is placed after
+    // the hook VERBATIM (never an invented line); exactly one CTA ends the
+    // script (extras dropped, her offer appended when none). Never adds a claim.
+    if (spineCompleteOn(trialOn, isHeartbeat, Deno.env.get('SPINE_COMPLETE')) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bps = blueprint as Record<string, unknown>
+        const tgtS = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+        const ledgerS = templateLedger.length ? templateLedger : nuL(buildInventionLedger({
+          knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: tgtS, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+        }))
+        const offerS = ledgerS.find((it) => it.origin === 'offer' && it.text.trim())
+        const sc = completeSpine(bps.script as Array<Record<string, unknown>>, {
+          material: ledgerS.filter((it) => it.first_party && it.origin !== 'offer' && it.id !== 'note' && it.text.trim()).map((it) => ({ id: it.id, text: it.text })),
+          offer: offerS ? { id: offerS.id, text: offerS.text } : null,
+          topic: `${String(reference_note ?? '')} ${String((ownedEntity as { name?: unknown } | null)?.name ?? '')}`,
+        })
+        bps.spine_complete = sc.record
+        if (sc.record.problem_added || sc.record.ctas_removed || sc.record.cta_moved || sc.record.cta_appended) {
+          bps.script = sc.script
+          if (Array.isArray(bps.shot_list)) bps.shot_list = syncShotListSpokenText(bps.shot_list as Array<{ spoken_text?: unknown }>, bps.script as unknown[]).shots
+        }
+        console.log(JSON.stringify({ event: 'spine_complete', problem_added: !!sc.record.problem_added, ctas_removed: sc.record.ctas_removed, cta_moved: sc.record.cta_moved, cta_appended: !!sc.record.cta_appended }))
+      } catch { /* the spine step never fails a build */ }
+    }
     // ⚖️ PACKAGING KEEPS THE PROMISE (plan v5.1 item G, trial only; kill:
     // PACKAGING_PROMISE=false). Every title and publish caption must inherit the
     // hook that shipped and promise nothing the script does not pay off: a failing
@@ -17516,7 +17545,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
-        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}) }
+        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }
         // The hedge's extra cost, visible on the row (counts only).
         if (writerLadderForFailure?.hedgeCalls != null) bpg.writer_hedge = { calls: writerLadderForFailure.hedgeCalls, hedged: writerLadderForFailure.hedged === true, aborted: writerLadderForFailure.hedgeAborted ?? 0 }
         bpg.polish_pending = { steps: polishDeferred.length ? [...polishDeferred] : ['self_review'], at: new Date().toISOString() }
