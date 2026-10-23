@@ -154,8 +154,13 @@ describe('creator_knowledge writers', () => {
     // Plan v5.1 M (trial only): her answer to an angle question, built by the
     // pure answerFactRow (source 'asked', basis 'stated', owner-confirmed).
     const mn = allInserts.filter((i) => /^\s*\.\.\.row\b/.test(i))
-    expect(mn).toHaveLength(1)
+    // SPINE_COMPLETE (trial, default off): her answer to the missing_problem
+    // question, read from readiness_answers['spine.problem'], same pure row.
+    expect(mn).toHaveLength(2)
     expect(code).toMatch(/const row = [\s\S]{0,200}answerFactRow\(\{ ownerId: user\.id[^}]*answer: herAnswer/)
+    expect(code).toMatch(/const row = answerFactRow\(\{ ownerId, [\s\S]{0,200}key: 'spine:problem'[\s\S]{0,60}answer: problemAnswer\.text/)
+    expect(code).toMatch(/let problemAnswer = problemAnswerItem\(rawProblem\)/)
+    expect(code).toMatch(/const rawProblem = \(body\.readiness_answers [^\n]*\[SPINE_PROBLEM_KEY\]/)
     const inserts = allInserts.filter((i) => !checkLine.includes(i) && !mn.includes(i))
     // 2026-10-05: an answer is split into what is hers now and the claim
     // sentences held for her yes — still only her own words, two rows each.
