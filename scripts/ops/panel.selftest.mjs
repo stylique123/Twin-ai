@@ -20,7 +20,9 @@ for (const c of fixture.creators) {
     assert.equal(kinds.length, 4, c.key)
   }
   if (c.key === 'quiet-loom') assert.equal(c.stories.length, 0, 'quiet-loom has no creator truth on purpose')
-  else assert.ok(c.stories.length >= 3 && c.stories.length <= 5, `${c.key}: 3-5 stories`)
+  // Richer-fixtures proposal: originals (3-4) plus up to five appended on-topic items, marked fictional.
+  else assert.ok(c.stories.length >= 3 && c.stories.length <= 9, `${c.key}: 3-9 stories`)
+  for (const s of c.stories.slice(5)) assert.equal(s.fictional, true, `${c.key}: appended story marked fictional`)
   assert.ok(c.products.length >= 1 && c.products.length <= 3, `${c.key}: 1-3 products`)
   for (const s of c.stories) assert.ok(s.text.length <= 240, `${c.key}: story fits creator_knowledge`)
   for (const p of c.products) for (const f of p.facts) if (f.field === 'testimonial') {

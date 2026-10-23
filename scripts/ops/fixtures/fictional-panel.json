@@ -20,7 +20,11 @@
         { "kind": "experience", "text": "I started roasting in my garage with a secondhand popcorn popper, and the first batch set off the smoke alarm twice." },
         { "kind": "experience", "text": "At my first market stall I sold out of Harbor Blend by ten in the morning and spent the rest of the day handing out samples from an empty table." },
         { "kind": "experience", "text": "A regular told me her beans tasted flat after a week, and when I asked, she was keeping them in the fridge next to the onions." },
-        { "kind": "opinion", "text": "I think most people who say they hate light roast have only ever had it stale." }
+        { "kind": "opinion", "text": "I think most people who say they hate light roast have only ever had it stale." },
+        { "kind": "experience", "text": "Here's the thing, I once left a bag of Harbor Blend on my own counter for five weeks, and when I brewed it the smell had gone from chocolate to cardboard.", "fictional": true },
+        { "kind": "experience", "text": "The week I bought a proper drum roaster, I roasted my old garage favourite again and honestly could not get it to taste the same for a month.", "fictional": true },
+        { "kind": "framework", "text": "To check if your beans are stale, read the roast date, smell a handful, then watch the bloom; fresh beans swell and bubble when the water hits, old ones just sit there.", "fictional": true },
+        { "kind": "opinion", "text": "Honestly, I think the roast date on the bag matters more than the country on the label.", "fictional": true }
       ],
       "products": [
         { "key": "harbor", "name": "Harbor Blend", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Harbor Blend, 12 oz bag, link in bio",
@@ -33,7 +37,9 @@
         { "key": "nightowl", "name": "Night Owl Espresso", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Night Owl Espresso, link in bio",
           "facts": [
             { "field": "price", "value": "$19 for a 12 oz bag" },
-            { "field": "process_step", "value": "A darker roast pulled just after second crack, meant for espresso" }
+            { "field": "process_step", "value": "A darker roast pulled just after second crack, meant for espresso" },
+            { "field": "size", "value": "12 oz whole-bean bag", "fictional": true },
+            { "field": "includes", "value": "Each bag has the roast date written on the label by hand", "fictional": true }
           ] }
       ],
       "creator_type": "physical_product",
@@ -57,7 +63,11 @@
         { "kind": "experience", "text": "I made the first jar of the moisturizer in my kitchen because every store cream I tried left my cheeks red by lunchtime." },
         { "kind": "experience", "text": "My first batch separated in the jar overnight, and I threw out forty jars before I got the emulsion right." },
         { "kind": "experience", "text": "A customer emailed me a photo of her empty jar with a note that said she finally found one that does not sting." },
-        { "kind": "opinion", "text": "I think fragrance is in most skincare for the shopper, not for the skin." }
+        { "kind": "opinion", "text": "I think fragrance is in most skincare for the shopper, not for the skin." },
+        { "kind": "experience", "text": "In my experience, the batch I threw out taught me more than any good one; I now write the temperature of every step in a notebook beside the stove.", "fictional": true },
+        { "kind": "experience", "text": "Before Calm Cream, I patch-tested each new version on my inner arm for three days and kept a simple chart of any redness.", "fictional": true },
+        { "kind": "framework", "text": "When I read a label, I look for fragrance, parfum and essential oils first, then I patch-test on the inner arm for a few days before using it on my face.", "fictional": true },
+        { "kind": "opinion", "text": "I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.", "fictional": true }
       ],
       "products": [
         { "key": "calm-cream", "name": "Calm Cream", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Calm Cream, 50 ml jar, link in bio",
@@ -73,7 +83,8 @@
           "facts": [
             { "field": "price", "value": "$22 for a 90 g tin" },
             { "field": "size", "value": "90 g tin" },
-            { "field": "includes", "value": "A cleansing balm that rinses off with warm water" }
+            { "field": "includes", "value": "A cleansing balm that rinses off with warm water" },
+            { "field": "process_step", "value": "Made in small batches and poured by hand into each tin", "fictional": true }
           ] }
       ],
       "creator_type": "physical_product",
@@ -96,14 +107,19 @@
       "stories": [
         { "kind": "experience", "text": "I built the first version of FlowDesk over a winter because my partner and I kept answering the same customer email twice." },
         { "kind": "experience", "text": "Our first paying customer found a bug in the first hour, and I fixed it on a call with her while she watched." },
-        { "kind": "experience", "text": "I once lost a whole Saturday to a support ticket that was really a typo in our help page." }
+        { "kind": "experience", "text": "I once lost a whole Saturday to a support ticket that was really a typo in our help page." },
+        { "kind": "experience", "text": "Look. Week one, our first customer's bug was a duplicate email. Same message, two cards. Fixed it live. She signed up for a year that afternoon.", "fictional": true },
+        { "kind": "experience", "text": "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.", "fictional": true },
+        { "kind": "framework", "text": "Stop answering twice. Tag every email for a week. Find the top five repeats. Write one reply each. Save them. Ship it.", "fictional": true },
+        { "kind": "opinion", "text": "Look. Most small shops do not need a help desk. They need fewer repeat emails.", "fictional": true }
       ],
       "products": [
         { "key": "flowdesk", "name": "FlowDesk", "type": "SAAS", "relationship": "OWN_PRODUCT", "offer": "FlowDesk free 14-day trial, link in bio",
           "facts": [
             { "field": "price", "value": "$12 per month for up to three teammates" },
             { "field": "includes", "value": "A shared inbox that turns each email into a card on a board" },
-            { "field": "includes", "value": "A 14-day free trial with no card needed" }
+            { "field": "includes", "value": "A 14-day free trial with no card needed" },
+            { "field": "includes", "value": "Saved replies for the questions your shop gets every week", "fictional": true }
           ] }
       ],
       "creator_type": "software",
@@ -127,14 +143,19 @@
         { "kind": "experience", "text": "The first time I tried a deadlift I copied a video and my lower back felt it for a week, which is why I teach the hip hinge with a broomstick first." },
         { "kind": "experience", "text": "One of my first clients trained in a hallway with one pair of dumbbells, and we built her whole plan around that hallway." },
         { "kind": "experience", "text": "I skipped warm-ups for a year and pulled a hamstring sprinting for a bus." },
-        { "kind": "opinion", "text": "I think beginners quit because the plan is too big, not because they are lazy." }
+        { "kind": "opinion", "text": "I think beginners quit because the plan is too big, not because they are lazy." },
+        { "kind": "experience", "text": "After my deadlift went wrong I spent a whole month with just a broomstick and a mirror, and legit, my form has never been better!", "fictional": true },
+        { "kind": "experience", "text": "A client learned the hip hinge touching her hips to a wall every morning while the kettle boiled, and three weeks later she deadlifted her first kettlebell!", "fictional": true },
+        { "kind": "framework", "text": "Hip hinge at home: stand a foot from a wall, soft knees, push your hips back until they tap it, keep the broomstick on your head, back and tailbone, then stand tall. One more rep!", "fictional": true },
+        { "kind": "opinion", "text": "Legit, I think a five-minute warm-up does more for beginners than any fancy workout plan!", "fictional": true }
       ],
       "products": [
         { "key": "starter", "name": "Home Strength Starter", "type": "SERVICE", "relationship": "OWN_SERVICE", "offer": "Book a free 15-minute intro call, link in bio",
           "facts": [
             { "field": "price", "value": "$90 per month" },
             { "field": "includes", "value": "A weekly plan built around the equipment you already have" },
-            { "field": "includes", "value": "One video check-in call every two weeks" }
+            { "field": "includes", "value": "One video check-in call every two weeks" },
+            { "field": "includes", "value": "A short warm-up video for every session", "fictional": true }
           ] }
       ],
       "creator_type": "service_coach",
@@ -157,7 +178,11 @@
       "stories": [
         { "kind": "experience", "text": "My first kiln load came out with every mug glued to the shelf because I glazed the bottoms." },
         { "kind": "experience", "text": "I threw the same mug shape about two hundred times before the handles stopped cracking in the kiln." },
-        { "kind": "experience", "text": "A buyer at a craft fair picked up a mug, turned it over, and asked why the bottom was not glazed, so now I explain it on every label." }
+        { "kind": "experience", "text": "A buyer at a craft fair picked up a mug, turned it over, and asked why the bottom was not glazed, so now I explain it on every label." },
+        { "kind": "experience", "text": "After that first kiln load I spent a whole evening, mind you, grinding glaze off the shelves with a stone, which is how I learned to wax every foot before glazing.", "fictional": true },
+        { "kind": "experience", "text": "I once glazed a Tide Mug all the way down out of stubbornness, and the clay decided, as it does, to weld it to the shelf for good.", "fictional": true },
+        { "kind": "framework", "text": "Before glazing I wax the foot, wipe a finger's width above it with a damp sponge, dip for three seconds, and let it dry overnight before it goes in the kiln.", "fictional": true },
+        { "kind": "opinion", "text": "I think a bare clay foot is honest, mind you, it shows what the mug is made of.", "fictional": true }
       ],
       "products": [
         { "key": "mug", "name": "Tide Mug", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Tide Mug, next batch drops in the shop, link in bio",
@@ -170,7 +195,9 @@
         { "key": "bowl", "name": "Moss Bowl", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Moss Bowl, link in bio",
           "facts": [
             { "field": "price", "value": "$46 per bowl" },
-            { "field": "process_step", "value": "Glazed in a green that pools darker at the rim" }
+            { "field": "process_step", "value": "Glazed in a green that pools darker at the rim" },
+            { "field": "size", "value": "Holds about 20 oz", "fictional": true },
+            { "field": "includes", "value": "Dishwasher safe, with an unglazed foot", "fictional": true }
           ] }
       ],
       "creator_type": "maker",
@@ -193,13 +220,18 @@
       "stories": [
         { "kind": "experience", "text": "I asked an AI tool to summarize my own newsletter and it confidently quoted a sentence I never wrote." },
         { "kind": "experience", "text": "I spent a week letting an AI assistant plan my calendar and it double-booked me on the one day I had a dentist appointment." },
-        { "kind": "opinion", "text": "I think the most useful AI feature most people ignore is asking it to show its sources." }
+        { "kind": "opinion", "text": "I think the most useful AI feature most people ignore is asking it to show its sources." },
+        { "kind": "experience", "text": "Real talk, after the misquote I asked the same tool to show sources, and it linked a paragraph that did not contain the quote at all. So what? I check the link every time now.", "fictional": true },
+        { "kind": "experience", "text": "I tested three AI summarizers on the same issue of my newsletter, and the catch was only one kept the numbers right.", "fictional": true },
+        { "kind": "framework", "text": "Before trusting an AI answer: ask for its sources, open one, find the exact sentence, and if it is not there, treat the whole answer as a draft.", "fictional": true },
+        { "kind": "opinion", "text": "Real talk, I think an AI tool that admits it does not know is worth more than one that always answers.", "fictional": true }
       ],
       "products": [
         { "key": "newsletter", "name": "Signal Daily Newsletter", "type": "DIGITAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Subscribe to the free newsletter, link in bio",
           "facts": [
             { "field": "price", "value": "Free" },
-            { "field": "includes", "value": "One email every weekday with one AI tool tested" }
+            { "field": "includes", "value": "One email every weekday with one AI tool tested" },
+            { "field": "includes", "value": "Each issue ends with the catch: one thing the tool gets wrong", "fictional": true }
           ] }
       ],
       "creator_type": "entertainer",
@@ -225,13 +257,17 @@
         { "kind": "experience", "text": "The first time I performed Sprocket live, his arm fell off mid-joke and the crowd laughed harder at that than at anything I wrote." },
         { "kind": "experience", "text": "I rewrote our opening sketch on the train because a stranger told me the ending made her sad." },
         { "kind": "experience", "text": "I once forgot the whole second act and Sprocket improvised a complaint about the lighting until I remembered it." },
-        { "kind": "opinion", "text": "I think puppets let people laugh at things they would never laugh at if a person said them." }
+        { "kind": "opinion", "text": "I think puppets let people laugh at things they would never laugh at if a person said them." },
+        { "kind": "experience", "text": "Oh no, at our first sing-along nobody sang, so Sprocket sang alone, very badly, and by the second chorus the whole room joined in to make him stop!", "fictional": true },
+        { "kind": "experience", "text": "Backstage, Sprocket's spare arm lives in a sock drawer, and once I grabbed a sock instead, so he did a whole sketch with a sock arm. FLOP!", "fictional": true },
+        { "kind": "framework", "text": "Our backstage check: spare arm, spare eyes, the lighting cue sheet, and one silly line for Sprocket in case anything breaks, which it will!", "fictional": true }
       ],
       "products": [
         { "key": "live-show", "name": "Pip and Sprocket Live", "type": "SERVICE", "relationship": "OWN_SERVICE", "offer": "Tickets for Pip and Sprocket Live at https://example.com/pip-live",
           "facts": [
             { "field": "includes", "value": "A live puppet comedy show with an audience sing-along at the end" },
-            { "field": "hesitation", "value": "People worry a puppet show is meant for kids; the live show is written for adults" }
+            { "field": "hesitation", "value": "People worry a puppet show is meant for kids; the live show is written for adults" },
+            { "field": "process_step", "value": "Every show ends with an audience sing-along led by Sprocket", "fictional": true }
           ] }
       ]
     },
@@ -255,7 +291,10 @@
       "products": [
         { "key": "scarf", "name": "Harbor Fog Scarf", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Harbor Fog Scarf at https://example.com/quiet-loom",
           "facts": [
-            { "field": "includes", "value": "Hand-woven from undyed wool" }
+            { "field": "includes", "value": "Hand-woven from undyed wool" },
+            { "field": "size", "value": "About 180 cm long and 30 cm wide", "fictional": true },
+            { "field": "process_step", "value": "Woven by hand on a floor loom, then washed and pressed", "fictional": true },
+            { "field": "price", "value": "$85 per scarf", "fictional": true }
           ] }
       ]
     }
