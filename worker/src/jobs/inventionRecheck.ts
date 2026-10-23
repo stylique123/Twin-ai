@@ -26,7 +26,7 @@ import {
 } from '../generated/inventionGate.js'
 import { resyncShotListToScript } from '../generated/shotListSync.js'
 import { filterLedgerByNeverUse, sanitizeNeverUse } from '../generated/usingBlock.js'
-import { buildCheckLines, buildTargetedCheckLines, targetedFlagsOn, checkLinesLog, CHECK_LINES_VERSION, TARGETED_FLAGS_VERSION, buildTargetedCheckLinesV2, targetedFlagsV2On, TARGETED_FLAGS_V2_VERSION, blockWrongProductLines, wrongProductBlockOn } from '../generated/checkLines.js'
+import { buildCheckLines, buildTargetedCheckLines, targetedFlagsOn, checkLinesLog, CHECK_LINES_VERSION, TARGETED_FLAGS_VERSION, buildTargetedCheckLinesV2, targetedFlagsV2On, TARGETED_FLAGS_V2_VERSION, blockWrongProductLines, wrongProductBlockOn, polishCheckV2, voiceBareLine, type PolishScopeV2 } from '../generated/checkLines.js'
 import {
   ASYNC_POLISH_BUDGET_MS, POLISH_EDITOR_SYSTEM, POLISH_COMPARE_SYSTEM, POLISH_REWRITE_SCHEMA, POLISH_COMPARE_SCHEMA,
   polishEditorPrompt, applyPolishRewrites, polishComparePrompt, editedWins, POLISH_VOICE_MAX_REWRITES, type PolishBeat,
@@ -112,7 +112,7 @@ export function polishVoiceOf(v: unknown): PolishVoice | null {
  * (word_budget) replaces the request-path lengthen passes. A polish that fails
  * or runs out of time keeps the draft: it never blocks the check.
  */
-export async function runPolish(bp: Record<string, unknown>, material: string, opts: { goal?: string; subject?: string; voice?: PolishVoice | null }, deps: Pick<RecheckDeps, 'callModel' | 'model' | 'now' | 'random'>): Promise<PolishRecord> {
+export async function runPolish(bp: Record<string, unknown>, material: string, opts: { goal?: string; subject?: string; voice?: PolishVoice | null; checkV2?: PolishScopeV2 | null }, deps: Pick<RecheckDeps, 'callModel' | 'model' | 'now' | 'random'>): Promise<PolishRecord> {
   const clock = deps.now ?? (() => Date.now())
   const t0 = clock()
   const steps = Array.isArray(rec(bp.polish_pending).steps) ? (rec(bp.polish_pending).steps as unknown[]).map(String) : []
@@ -123,6 +123,17 @@ export async function runPolish(bp: Record<string, unknown>, material: string, o
     const voiceBrief = v ? voicePolishBrief({ card: v.card, styleNote: v.style_note, samples: v.samples }) : ''
     const raw = await deps.callModel(POLISH_EDITOR_SYSTEM, polishEditorPrompt(beats, material, { goal: opts.goal, subject: opts.subject, voice: voiceBrief }), POLISH_REWRITE_SCHEMA, ASYNC_POLISH_BUDGET_MS, { model: deps.model })
     const applied = applyPolishRewrites(beats, raw, material, v ? POLISH_VOICE_MAX_REWRITES : 2)
+    // POLISH_CHECK_V2 (test accounts, default off): each kept rewrite must add no
+    // first-person claim, number, name or detail outside her items in scope, and
+    // no fact of another product; a failing rewrite reverts to its line.
+    if (opts.checkV2 && applied.kept) {
+      applied.next.forEach((b, i) => {
+        const before = String(beats[i]?.line ?? ''), after = String(b.line ?? '')
+        if (after === before) return
+        const r = polishCheckV2(before, after, opts.checkV2!)
+        if (!r.ok) { applied.next[i] = { ...beats[i] }; applied.kept -= 1; applied.rejected.push(r.reason!) }
+      })
+    }
     let verdict: PolishRecord['verdict'] = 'none'
     // ⚖️ VOICE CHECK (panel-10): with her card on the job, the polish is kept
     // only when the voice score improves AND the claim/number/name checks pass.
@@ -147,6 +158,12 @@ export async function runPolish(bp: Record<string, unknown>, material: string, o
   } catch {
     return { kept: 0, rejected: [], verdict: 'error', ms: clock() - t0, steps }
   }
+}
+
+/** Her style note and samples (voice words a rewrite may add). */
+function voiceTextOf(v: unknown): string {
+  const o = rec(v)
+  return [typeof o.style_note === 'string' ? o.style_note : '', ...(Array.isArray(o.samples) ? o.samples.filter((x): x is string => typeof x === 'string') : [])].join('\n')
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {})
@@ -235,7 +252,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   if (bp.polish_pending && Object.keys(polishOpts).length) {
     writeProgress(gateProgress('polishing', 0, 0, clock()), true)
     const material = ledger.map((it) => String((it as { text?: unknown }).text ?? '')).filter(Boolean).join('\n')
-    const polish = await runPolish(bp, material, { goal: String(polishOpts.goal ?? ''), subject: String(polishOpts.subject ?? ''), voice: polishVoiceOf(polishOpts.voice) }, { ...deps, now: clock })
+    const polish = await runPolish(bp, material, { goal: String(polishOpts.goal ?? ''), subject: String(polishOpts.subject ?? ''), voice: polishVoiceOf(polishOpts.voice), checkV2: extra.polish_check_v2 === true ? { items: ledger, products, productId: target, voiceText: voiceTextOf(polishOpts.voice) } : null }, { ...deps, now: clock })
     delete bp.polish_pending
     bp.polish = polish
     if (Array.isArray(bp.script) && polish.verdict === 'edited') resyncShotListToScript(bp)
@@ -244,6 +261,22 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     if (deps.saveProgress) await deps.saveProgress(generationId, { ...bp }).catch(() => {})
   } else if (bp.polish_pending) {
     delete bp.polish_pending
+  }
+  // VOICE_BARE_LINES (test accounts, default off): bare price/spec lines and the
+  // CTA in her register (her style note). Words, numbers and names never change.
+  if (extra.voice_bare_lines === true && Array.isArray(bp.script)) {
+    const note = String(rec(polishOpts.voice).style_note ?? '')
+    if (note) {
+      let changed = 0
+      bp.script = (bp.script as Array<Record<string, unknown>>).map((b) => {
+        const line = typeof b?.line === 'string' ? b.line : ''
+        const next = line ? voiceBareLine(line, String(b.section ?? ''), note) : line
+        if (!line || next === line || !polishCheckV2(line, next, { items: ledger, products, productId: target, voiceText: note }).ok) return b
+        changed++
+        return { ...b, line: next }
+      })
+      bp.voice_bare_lines = { changed }
+    }
   }
   writeProgress(gateProgress('judging', 0, 0, clock()), true)
 
@@ -371,7 +404,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     // product facts carry their product_entities id on the ledger.
     const v2 = targeted && targetedFlagsV2On(deps.targetedFlagsV2Flag)
     if (v2 && wrongProductBlockOn(deps.wrongProductBlockFlag)) {
-      const blk = blockWrongProductLines(bp as GateBlueprint, ledger, products)
+      const blk = blockWrongProductLines(bp as GateBlueprint, ledger, products, extra.polish_check_v2 === true ? target : undefined)
       if (blk.blocked.length) {
         bp.script = (blk.blueprint as Record<string, unknown>).script
         bp.wrong_product_blocked = blk.blocked

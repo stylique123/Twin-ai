@@ -441,14 +441,15 @@ export interface WrongProductBlock { line_index: number; product_id: string }
 /** BLOCK (kill WRONG_PRODUCT_BLOCK=false): each script sentence naming product A
  *  with a fact only product B holds is DROPPED (an emptied beat is removed).
  *  Returns a new blueprint and what was dropped (indices and ids, never text). */
-export function blockWrongProductLines(bp: GateBlueprint, items: readonly TargetedItemV2[], products: readonly TargetedProduct[]): { blueprint: GateBlueprint; blocked: WrongProductBlock[] } {
+export function blockWrongProductLines(bp: GateBlueprint, items: readonly TargetedItemV2[], products: readonly TargetedProduct[], scopePid?: string | null): { blueprint: GateBlueprint; blocked: WrongProductBlock[] } {
   const script = scriptOf(bp as Record<string, unknown>)
   if (!script.length || !products.length) return { blueprint: bp, blocked: [] }
   const blocked: WrongProductBlock[] = []
   const drop = new Map<number, string[]>()
   for (const s of extractSentences(bp)) {
     if (s.surface !== 'script') continue
-    const pid = wrongProductOf(s.text, items, products)
+    // POLISH_CHECK_V2: a line naming no product is scoped to the video's product (scopePid).
+    const pid = scopePid !== undefined ? wrongProductScoped(s.text, items, products, scopePid) : wrongProductOf(s.text, items, products)
     if (!pid) continue
     blocked.push({ line_index: s.at, product_id: pid })
     drop.set(s.at, [...(drop.get(s.at) ?? []), s.text])
@@ -486,3 +487,145 @@ export function buildTargetedCheckLinesV2(bp: GateBlueprint, items: readonly Tar
 export function targetedFlagsV2On(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() !== 'false' }
 export function wrongProductBlockOn(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() !== 'false' }
 export function hookClaimGateOn(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() !== 'false' }
+
+// ── POLISH CHECK v2 (panel 11; flag POLISH_CHECK_V2, default off, test accounts only) ──
+//
+// Panel 11: the polish step shipped an invented first-person claim ("a fast
+// summary that invents details costs me more time than doing the reading
+// myself") and another product's roast detail on Harbor Blend (the line named
+// no product; it was SOURCED to Harbor Blend). v2 rejects a rewrite that adds,
+// over the line it replaces and her items in scope:
+//   new_first_person  a new I/me/my/we sentence no first-party item backs
+//   new_number        a number in neither the line nor an in-scope item
+//   new_name          a proper name in neither the line, her items nor a product name
+//   new_detail        two or more new content words (an object or a scene) from nowhere
+//   wrong_product     a fact only ANOTHER product holds, scoped to the product the
+//                     line names, else the line's own source product, else the video's
+// Pure; no model call.
+
+export type PolishRejectV2 = 'new_first_person' | 'new_number' | 'new_name' | 'new_detail' | 'wrong_product'
+export const POLISH_CHECK_V2_VERSION = 'polish-check-v2'
+export interface PolishScopeV2 {
+  items: readonly TargetedItemV2[]
+  products?: readonly TargetedProduct[]
+  /** The product this line is about when it names none (its source item's product, else the video's). */
+  productId?: string | null
+  /** Her style note and samples: voice words (not facts) a rewrite may add. */
+  voiceText?: string | null
+}
+/** Words a voice rewrite may add without adding a fact. */
+const VOICE_FILLER = new Set(['honestly', 'thing', 'here', 'look', 'okay', 'real', 'talk', 'catch', 'legit', 'gonna', 'got', 'mind', 'really', 'simple', 'gently', 'please', 'experience', 'slowly', 'quick', 'whole', 'story', 'note', 'just', 'kind', 'bit', 'little', 'today', 'now', 'right', 'sure', 'want', 'know', 'think', 'tell', 'say', 'said', 'thing'].map((w) => [...contentWords(w)][0] ?? w))
+const FIRST_PERSON = /\b(?:i|i'm|i've|i'd|i'll|me|my|mine|myself|we|we're|we've|our|ours|us)\b/i
+const normS = (s: string) => lc(s).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+const sentencesOf = (t: string) => String(t ?? '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean)
+const numsOf = (t: string) => (String(t ?? '').match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(/,/g, ''))
+function namesIn(t: string): string[] {
+  const out: string[] = []
+  for (const s of sentencesOf(t)) s.split(/\s+/).slice(1).forEach((w) => { const c = w.replace(/[^A-Za-z'-]/g, '').replace(/'s$/, ''); if (/^[A-Z][a-z]/.test(c)) out.push(c.toLowerCase()) })
+  return out
+}
+const inScope = (it: TargetedItemV2, pid: string | null | undefined) => !it.product_id || !pid || it.product_id === pid
+
+/** WRONG PRODUCT, SCOPED: the product the line names, else `scopePid`; a fact only another product holds. */
+export function wrongProductScoped(text: string, items: readonly TargetedItemV2[], products: readonly TargetedProduct[], scopePid: string | null | undefined): string | null {
+  const pid = namedProduct(text, products)?.id ?? scopePid ?? null
+  if (!pid) return null
+  const line = contentWords(text)
+  for (const it of items) {
+    if (!it.product_id || it.product_id === pid || (it.origin && it.origin !== 'product_fact')) continue
+    const { share, size } = factShare(line, it.text)
+    if (size < 3 || share < WRONG_PRODUCT_SHARE) continue
+    const backed = items.some((o) => o !== it && o.product_id !== it.product_id && factShare(contentWords(o.text), it.text).share >= WRONG_PRODUCT_SHARE)
+    if (!backed) return it.product_id
+  }
+  return null
+}
+
+/** Is `polished` an allowed rewrite of `original` given her items in scope? */
+export function polishCheckV2(original: string, polished: string, scope: PolishScopeV2): { ok: boolean; reason: PolishRejectV2 | null } {
+  const p = String(polished ?? '').trim()
+  const no = (reason: PolishRejectV2) => ({ ok: false, reason })
+  if (!p || normS(p) === normS(original)) return { ok: true, reason: null }
+  const products = scope.products ?? []
+  const pid = namedProduct(p, products)?.id ?? scope.productId ?? null
+  const scoped = scope.items.filter((it) => inScope(it, pid))
+  if (products.length && wrongProductScoped(p, scope.items, products, pid)) return no('wrong_product')
+  const known = [original, ...scoped.map((it) => it.text)].join('\n')
+  const knownNums = new Set(numsOf(known))
+  if (numsOf(p).some((n) => !knownNums.has(n))) return no('new_number')
+  const lowKnown = lc([known, ...products.map((x) => x.name)].join('\n'))
+  if (namesIn(p).some((n) => !lowKnown.includes(n))) return no('new_name')
+  const origS = new Set(sentencesOf(original).map(normS))
+  const mine = scoped.filter((it) => it.first_party && it.origin !== 'product_fact')
+  for (const s of sentencesOf(p)) {
+    if (origS.has(normS(s)) || !FIRST_PERSON.test(s)) continue
+    const w = contentWords(s)
+    const ow = contentWords(original)
+    const added = [...w].filter((x) => !ow.has(x) && !VOICE_FILLER.has(x))
+    if (!added.length) continue
+    const backed = mine.some((it) => { const iw = contentWords(it.text); return added.filter((x) => iw.has(x)).length / added.length >= 0.6 })
+    if (!backed) return no('new_first_person')
+  }
+  const allowed = new Set([...contentWords(known), ...contentWords(scope.voiceText ?? ''), ...VOICE_FILLER])
+  const fresh = [...contentWords(p)].filter((w) => !allowed.has(w))
+  if (fresh.length >= 2) return no('new_detail')
+  return { ok: true, reason: null }
+}
+
+/** env POLISH_CHECK_V2 / VOICE_BARE_LINES: on only when exactly 'on' (default off). */
+export function polishCheckV2On(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() === 'on' }
+export function voiceBareLinesOn(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() === 'on' }
+
+// ── VOICE ON BARE LINES (panel 11 voice sheet; flag VOICE_BARE_LINES, default off) ──
+// Bare price/spec lines and CTAs shipped in no one's voice ("$28 for a 50 ml
+// jar.", "Send this to a friend who is ready to start." for the high-energy
+// coach, "Stop buying …" for the calm, hedged maker). Deterministic: her style
+// note picks a register; the words, numbers and names of the line never change
+// (only a lead-in, a tail and end punctuation are added; the caller re-checks).
+
+export type VoiceRegister = 'energetic' | 'calm' | 'clipped' | 'plain'
+export function voiceRegister(styleNote: string | null | undefined): VoiceRegister {
+  const n = lc(String(styleNote ?? ''))
+  if (/high-energy|lots of exclamations|you've got this/.test(n)) return 'energetic'
+  if (/\bcalm\b|hedged|careful|no exclamations/.test(n) && !/\bclipped\b/.test(n)) return 'calm'
+  if (/clipped|very short sentences/.test(n)) return 'clipped'
+  return 'plain'
+}
+/** A signature lead-in from her style note: the first short quoted phrase that carries no fact. */
+export function signaturePhrase(styleNote: string | null | undefined): string | null {
+  for (const m of String(styleNote ?? '').matchAll(/'([^']{2,24})'/g)) {
+    const t = m[1]!.trim()
+    if (/\d/.test(t) || t.split(/\s+/).length > 4 || /^(?:i|we|you|always|mostly)$/i.test(t)) continue
+    if (/^(?:the clay decides|thread by thread|one more rep|so what\?)$/i.test(t)) continue
+    return t
+  }
+  return null
+}
+const BLUNT_IMPERATIVE = /^(?:stop|tell|send|grab|buy|tap|drop|try|get|book|subscribe|share|click|comment|follow|go|order|join|start|save)\b/i
+/** A bare line: a CTA, or a short price/spec line (a number and at most eight words). */
+export function isBareLine(section: string, line: string): boolean {
+  const s = lc(section)
+  const words = String(line ?? '').trim().split(/\s+/).filter(Boolean)
+  if (/cta|close|call/.test(s)) return true
+  if (/hook/.test(s)) return BLUNT_IMPERATIVE.test(String(line).trim())
+  return /\d/.test(line) && words.length <= 8
+}
+/** One bare line in her register. Never changes a word, number or name of the line. */
+export function voiceBareLine(line: string, section: string, styleNote: string | null | undefined): string {
+  const t = String(line ?? '').trim()
+  if (!t || !isBareLine(section, t)) return t
+  const reg = voiceRegister(styleNote)
+  const body = t.replace(/[.!?]+$/, '')
+  const lower = body.charAt(0).toLowerCase() + body.slice(1)
+  const keepCase = /^[$\d]|^[A-Z][a-z]+ [A-Z]/.test(body) ? body : lower
+  const isCta = /cta|close|call/.test(lc(section))
+  if (reg === 'energetic') return isCta ? `${body}! You've got this!` : `Okay, ${keepCase}!`
+  if (reg === 'calm') {
+    if (BLUNT_IMPERATIVE.test(body)) return `If it helps, gently, ${lower}.`
+    return `${body}, if that helps.`
+  }
+  if (reg === 'clipped') return `Look. ${body}.`
+  const sig = signaturePhrase(styleNote)
+  if (sig && !lc(t).includes(lc(sig))) return `${sig.charAt(0).toUpperCase() + sig.slice(1).replace(/[:,.]$/, '')}, ${keepCase}.`
+  return t
+}
