@@ -2610,7 +2610,11 @@ export default function V2Building() {
           </div>
         </div>
       )}
-      <AngleQuestionsCard goal={answersRef.current.video_goal || undefined} onAnswers={onMnAnswers} />
+      {/* The product this video is about (Product Mode's card), so the angles see
+          its offer and the answers are saved as that product's facts. A
+          `brand:` pick or no pick sends nothing (the server checks the uuid). */}
+      <AngleQuestionsCard goal={answersRef.current.video_goal || undefined} onAnswers={onMnAnswers}
+        productId={/^[0-9a-f-]{36}$/i.test(state.selected_product_id ?? '') ? state.selected_product_id : undefined} />
     </>
   )
   const renderAsk = (q: AskItem) => q.purpose ? renderPurpose(q) : renderAskInner(q)

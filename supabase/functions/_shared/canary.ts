@@ -51,3 +51,23 @@ export function isCanaryAccount(userId: string, accountsRaw: string | undefined 
   const id = String(userId ?? '').trim().toLowerCase()
   return id !== '' && canaryAccounts(accountsRaw).includes(id)
 }
+
+/**
+ * The trial-only side doors of generate-blueprint (angle_plan / angle_answer,
+ * check_line, using_item, voice_card) are answered for this account. Same
+ * rule as the main path's `trialOn` before a request's `trial_off`: the
+ * heartbeat test account, a fictional panel account, or the canary. Every
+ * input is identity or server env, never the request body.
+ */
+export function trialSideDoorOpen(input: {
+  userId: string
+  heartbeatUserId: string | undefined | null
+  isPanel: boolean
+  canaryAccountsRaw: string | undefined | null
+  canaryKillRaw: string | undefined | null
+}): boolean {
+  const hb = String(input.heartbeatUserId ?? '')
+  if (hb !== '' && input.userId === hb) return true
+  if (input.isPanel) return true
+  return isCanaryAccount(input.userId, input.canaryAccountsRaw, input.canaryKillRaw)
+}
