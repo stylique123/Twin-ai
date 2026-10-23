@@ -2217,6 +2217,12 @@ export interface RefillContext {
   topic?: string
   /** Her angle answer, when she gave one. */
   angle?: string
+  /** REFILL_V2 (trial, default off): the second refill rule below. */
+  v2?: boolean
+  /** REFILL_V2: her niche (voice niche / sub-niche); an opinion that fits it may be added. */
+  niche?: string
+  /** REFILL_V2: the target product's name on a sell/leads request. */
+  product?: string
 }
 
 export type RefillKind = 'proof' | 'story' | 'product_fact' | 'cta'
@@ -2256,6 +2262,7 @@ export function storiesTold(lines: readonly string[], ledger: readonly LedgerIte
 
 /** Rank refill candidates for this request (see the block comment). Pure. */
 export function rankRefill(cands: ReadonlyArray<{ id: string; origin: string; text: string; product_id?: string | null }>, ledger: readonly LedgerItem[], targetProductId: string | null, script: string | readonly string[], ctx: RefillContext, minRelevance = REFILL_MIN_RELEVANCE): RefillPick[] {
+  if (ctx.v2) return rankRefillV2(cands, ledger, targetProductId, script, ctx)
   const raw = typeof script === 'string' ? [script] : [...script]
   const lines = [...raw, ...raw.flatMap((l) => splitSentences(String(l ?? '')))]
   const told = new Set(storiesTold(raw, ledger))
@@ -2294,6 +2301,106 @@ export function rankRefill(cands: ReadonlyArray<{ id: string; origin: string; te
   return out
 }
 
+// ── REFILL V2 (panel-11 advisor; trial, DEFAULT OFF: REFILL_V2=true or panel arm 'refill_v2') ──
+// Panel 11: the relevance filter above blocked every refill (31 -> 0) and the
+// writer arm fell to 56 median words. V2 judges each item by what it is:
+//   story   - her on-topic story: the first one at one request word, a second
+//             one only at two request words (it explains the same thing), never
+//             one the script already tells (half its words in a line, or three
+//             of its distinctive words in one line, e.g. a hook teasing it).
+//             On a product request her story that names the product (origin)
+//             is allowed unless a line already repeats it. One story at most.
+//   opinion - her opinion when it shares a word with the request or her niche.
+//   fact    - product facts of the target product (sell / leads) only.
+//   other   - her other items at one request word; a CTA only when none is said.
+// Never an unrelated story, never a repeat (id or near text).
+const isOpinion = (it: { origin: string; field?: string | null; text: string }) => it.field === 'opinion' || /^i think\b/i.test(it.text.trim())
+
+/** relWords plus two-letter acronyms (AI, UX), which contentWords drops. */
+const relWordsV2 = (t: string) => { const s = relWords(t); for (const m of String(t ?? '').match(/\b[A-Z]{2}\b/g) ?? []) s.add(m.toLowerCase()); return s }
+const FIRST_PERSON_LINE_RE = /\b(?:i|my|me|we|our|us)\b/i
+/** Her stories the script tells, V2: the V1 test, or 2 of its distinctive words (not the request's) in one first-person line (her telling it). Pure. */
+export function storiesToldV2(lines: readonly string[], ledger: readonly LedgerItem[], topic = ''): string[] {
+  const told = new Set(storiesTold(lines, ledger))
+  const req = relWordsV2(topic)
+  for (const it of ledger) {
+    if (it.origin !== 'her_story' || !it.first_party || told.has(it.id)) continue
+    const own = new Set([...relWordsV2(it.text)].filter((w) => !req.has(w)))
+    if (lines.some((l) => FIRST_PERSON_LINE_RE.test(l) && [...relWordsV2(l)].filter((w) => own.has(w)).length >= 2)) told.add(it.id)
+  }
+  return [...told]
+}
+
+/** rankRefill under REFILL_V2 (see the block comment). Pure. */
+export function rankRefillV2(cands: ReadonlyArray<{ id: string; origin: string; text: string; product_id?: string | null }>, ledger: readonly LedgerItem[], targetProductId: string | null, script: string | readonly string[], ctx: RefillContext): RefillPick[] {
+  const raw = typeof script === 'string' ? [script] : [...script]
+  const lines = [...raw, ...raw.flatMap((l) => splitSentences(String(l ?? '')))]
+  const told = new Set(storiesToldV2(raw, ledger, [ctx.topic ?? '', ctx.angle ?? ''].join(' ')))
+  const baseId = (id: string) => id.replace(/#\d+$/, '')
+  const byId = new Map(ledger.map((it) => [it.id, it]))
+  const request = [ctx.topic ?? '', ctx.angle ?? ''].filter((x) => x.trim())
+  const reqW = relWordsV2(request.join(' '))
+  const nicheW = relWordsV2(ctx.niche ?? '')
+  const prodW = relWordsV2(ctx.product ?? '')
+  const factW = relWordsV2(ledger.filter((it) => it.origin === 'product_fact' && !!targetProductId && it.product_id === targetProductId).map((it) => it.text).join(' '))
+  const hasCta = lines.some((l) => REFILL_CTA_RE.test(l))
+  const hits = (t: string, set: Set<string>) => [...relWordsV2(t)].filter((w) => set.has(w)).length
+  const picks: Array<RefillPick & { rank: number }> = []
+  for (const c of cands) {
+    const t = c.text.trim()
+    if (!t) continue
+    if (c.origin === 'her_answer' && request.some((r) => nearDuplicate(r, t))) continue
+    const it = byId.get(baseId(c.id))
+    // Her product origin story (sell / leads): a hook that states the same problem is not a retelling;
+    // only a line holding most of the story's own words is.
+    const origin = c.origin === 'her_story' && !!targetProductId && prodW.size > 0 && hits(t, prodW) > 0
+    const own = relWordsV2(t)
+    if (origin ? lines.some((l) => own.size > 0 && [...own].filter((w) => relWordsV2(l).has(w)).length / own.size >= 0.6) : lines.some((l) => nearDuplicate(l, t))) continue
+    const req = hits(t, reqW)
+    if (REFILL_CTA_RE.test(t)) { if (!hasCta) picks.push({ id: c.id, text: t, kind: 'cta', score: 1, rank: 3 }); continue }
+    if (c.origin === 'product_fact') {
+      if (targetProductId && c.product_id === targetProductId) picks.push({ id: c.id, text: t, kind: 'product_fact', score: 2 + req, rank: 1 })
+      continue
+    }
+    if (c.origin === 'her_story') {
+      if (origin) { picks.push({ id: c.id, text: t, kind: 'story', score: 4 + req, rank: 0 }); continue }
+      if (told.has(baseId(c.id))) continue
+      // On a product request her first story may carry the pitch: one shared word with the request, her niche or the product's facts.
+      const pitch = !!targetProductId && told.size === 0 && hits(t, factW) + hits(t, nicheW) >= 1
+      if ((told.size === 0 && req >= 1) || req >= 2 || pitch) picks.push({ id: c.id, text: t, kind: 'story', score: 2 * req + (pitch ? hits(t, factW) + hits(t, nicheW) : 0), rank: 0 })
+      continue
+    }
+    if (it && isOpinion(it)) { if (req + hits(t, nicheW) >= 1) picks.push({ id: c.id, text: t, kind: 'proof', score: 2 * req + hits(t, nicheW), rank: 2 }); continue }
+    if (req >= 1) picks.push({ id: c.id, text: t, kind: 'proof', score: 2 * req, rank: 2 })
+  }
+  picks.sort((a, b) => a.rank - b.rank || b.score - a.score)
+  const out: RefillPick[] = []
+  const ids = new Set<string>()
+  let storyOk = true
+  for (const p of picks) {
+    if (ids.has(baseId(p.id)) || out.some((o) => nearDuplicate(o.text, p.text))) continue
+    if (p.kind === 'story') { if (!storyOk) continue; storyOk = false }
+    ids.add(baseId(p.id))
+    out.push({ id: p.id, text: p.text, kind: p.kind, score: p.score })
+  }
+  return out
+}
+
+/** PANEL-12 refill arms (plan v6.1 §27): the per-request arm a test-account panel request may name. */
+export type RefillArm = 'baseline_p10' | 'refill_v2'
+export function refillArmOf(v: unknown): RefillArm | null { return v === 'baseline_p10' || v === 'refill_v2' ? v : null }
+
+/** The edge's refill context (pure, so the edge stays one line and the switches are testable):
+ *  null = the old unfiltered refill. Trial only. 'baseline_p10' (panel-10 config) is always null;
+ *  RELEVANT_REFILL=false is null unless V2 is on; V2 = REFILL_V2=true or arm 'refill_v2', killed by REFILL_V2=off. */
+export function refillContextFor(o: { trialOn: boolean; arm: RefillArm | null; env: { RELEVANT_REFILL?: string; REFILL_V2?: string }; topic: string; angle: string; niche?: string; product?: string }): RefillContext | null {
+  if (!o.trialOn || o.arm === 'baseline_p10') return null
+  const v2 = o.env.REFILL_V2 !== 'off' && (o.env.REFILL_V2 === 'true' || o.arm === 'refill_v2')
+  if (o.env.RELEVANT_REFILL === 'false' && !v2) return null
+  const base = { topic: o.topic, angle: o.angle }
+  return v2 ? { ...base, v2: true, niche: o.niche ?? '', product: o.product ?? '' } : base
+}
+
 /** refillUnits, relevance-aware: her units for THIS request, best first. Pure. */
 export function relevantRefillUnits(ledger: readonly LedgerItem[], targetProductId: string | null, script: string | readonly string[], ctx: RefillContext, minRelevance = REFILL_MIN_RELEVANCE): RefillPick[] {
   const said = contentSet(typeof script === 'string' ? script : script.join(' '))
@@ -2305,7 +2412,8 @@ export function relevantRefillUnits(ledger: readonly LedgerItem[], targetProduct
     if (isScaffoldText(it.text)) continue
     spokenUnits(it.text).forEach((u, n) => {
       const own = [...contentSet(u)]
-      if (!own.length || own.filter((w) => said.has(w)).length / own.length >= 0.5) return
+      // REFILL_V2: her stories skip this test; rankRefillV2 judges them (told / near text).
+      if (!own.length || (!(ctx.v2 && it.origin === 'her_story') && own.filter((w) => said.has(w)).length / own.length >= 0.5)) return
       cands.push({ id: n ? `${it.id}#${n}` : it.id, origin: it.origin, product_id: it.product_id, text: (u.charAt(0).toUpperCase() + u.slice(1)).replace(/([^.!?])$/, '$1.') })
     })
   }

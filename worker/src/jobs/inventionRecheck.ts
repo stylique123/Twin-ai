@@ -287,7 +287,9 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     // RELEVANT_REFILL / STORY_HOOK_DEDUP = 'false'): refill only items for this
     // request; a hook that restates her verbatim story's opening is deduped.
     ...(extra.hold_asks === true && extra.refill_context && typeof extra.refill_context === 'object'
-      ? { refillContext: { topic: String(rec(extra.refill_context).topic ?? ''), angle: String(rec(extra.refill_context).angle ?? '') } } : {}),
+      ? { refillContext: { topic: String(rec(extra.refill_context).topic ?? ''), angle: String(rec(extra.refill_context).angle ?? ''),
+        // REFILL_V2 (trial, default off; the edge sets v2 only under REFILL_V2=true or refill_arm 'refill_v2').
+        ...(rec(extra.refill_context).v2 === true ? { v2: true, niche: String(rec(extra.refill_context).niche ?? ''), product: String(rec(extra.refill_context).product ?? '') } : {}) } } : {}),
     ...(extra.hold_asks === true && extra.story_hook_dedup === true ? { storyHookDedup: true } : {}),
     // Panel-10 advisor, trial only, DEFAULT OFF (edge opts in with STORY_RETELL_DEDUP='true'): one telling per story.
     ...(extra.hold_asks === true && extra.story_retell_dedup === true ? { storyRetellDedup: true } : {}),

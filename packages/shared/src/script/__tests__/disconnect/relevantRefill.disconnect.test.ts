@@ -2,7 +2,7 @@
 // Kill switches RELEVANT_REFILL=false and STORY_HOOK_DEDUP=false. Fictional fixture only
 // (a made-up candle maker). No model call.
 import { describe, it, expect } from 'vitest'
-import type { LedgerItem } from '../../inventionGate'
+import { refillContextFor, refillArmOf, type LedgerItem } from '../../inventionGate'
 import { enforceWordBudget } from '../../templates/scriptTemplates'
 import { EDGE, edgeExpr, evalEdge, edgeAfter } from './edge'
 
@@ -12,8 +12,11 @@ const ledger = [it2('van', 'I drove a borrowed van to my first night market and 
 const SCRIPT = [{ line: 'Why does your candle tunnel?' }, { line: WICK }, { line: 'Save this.' }]
 
 /** The edge's request context (index.ts, `relevantRefillCtx`), evaluated from the edge source. */
-const ctxFor = (env: Record<string, string>, trialOn = true) =>
-  (evalEdge(edgeExpr('relevantRefillCtx'), { trialOn, reference_note: 'why candles tunnel', ownedEntity: null, body: {} }, env) as () => unknown)()
+const ctxFor = (env: Record<string, string>, trialOn = true, arm: unknown = undefined) => {
+  const scope = { trialOn, isHeartbeat: true, reference_note: 'why candles tunnel', ownedEntity: null, body: { refill_arm: arm }, voice: { profile: { niche: 'candles' } }, refillContextFor, refillArmOf }
+  const refillArm = evalEdge(edgeExpr('refillArm'), scope, env)
+  return (evalEdge(edgeExpr('relevantRefillCtx'), { ...scope, refillArm }, env) as () => unknown)()
+}
 
 describe('RELEVANT_REFILL disconnect', () => {
   it('on: the edge length pass adds no unrelated story; RELEVANT_REFILL=false: it does', () => {
@@ -29,6 +32,15 @@ describe('RELEVANT_REFILL disconnect', () => {
     expect(EDGE).toContain('ledgerF, tgt, floor, relevantRefillCtx())')
     const extras = edgeAfter('const panel7GateExtras = ', 900)
     expect(extras).toContain('refill_context: relevantRefillCtx()')
-    expect(extras).toContain("Deno.env.get('STORY_HOOK_DEDUP') !== 'false' ? { story_hook_dedup: true }")
+    expect(extras).toContain("Deno.env.get('STORY_HOOK_DEDUP') !== 'false' && refillArm() !== 'baseline_p10' ? { story_hook_dedup: true }")
+  })
+  it('refill arms: baseline_p10 is the panel-10 refill (no context); refill_v2 turns V2 on; REFILL_V2=off kills it', () => {
+    expect(ctxFor({}, true, 'baseline_p10')).toBeNull()
+    expect(ctxFor({}, true, 'refill_v2')).toMatchObject({ v2: true, niche: 'candles' })
+    expect(ctxFor({ REFILL_V2: 'true' })).toMatchObject({ v2: true })
+    expect(ctxFor({ REFILL_V2: 'off' }, true, 'refill_v2')).toEqual({ topic: 'why candles tunnel', angle: '' })
+    expect(ctxFor({})).toEqual({ topic: 'why candles tunnel', angle: '' })
+    expect(ctxFor({}, false, 'refill_v2')).toBeNull()
+    expect(EDGE).toContain('.refill_arm = refillArm()')
   })
 })

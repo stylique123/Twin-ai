@@ -134,3 +134,13 @@ console.log('panel arms selftest ok')
 
 // The modes harness self-test rides this one so the existing CI step runs it.
 await import('./panelModes.selftest.mjs')
+
+// PANEL-12 REFILL ARMS (plan v6.1 §27): one refill arm per batch, from the row or env.
+{
+  const noEnv = {}
+  assert.deepEqual(armBody({ accounts: [], refill_arm: 'refill_v2' }, 3, noEnv), { refill_arm: 'refill_v2' })
+  assert.deepEqual(armBody({ accounts: [], refill_arm: 'baseline_p10', ab_split: 'alternate' }, 1, noEnv), { plan_b: true, panel_arm: 'plan_b', refill_arm: 'baseline_p10' })
+  assert.deepEqual(armBody({ accounts: [], refill_arm: 'other' }, 3, noEnv), {})
+  assert.deepEqual(armBody({ accounts: [] }, 3, { PANEL_REFILL_ARM: 'baseline_p10' }), { refill_arm: 'baseline_p10' })
+  console.log('panel selftest (refill arms): ok')
+}

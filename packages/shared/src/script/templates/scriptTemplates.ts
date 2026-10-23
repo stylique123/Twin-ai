@@ -458,6 +458,8 @@ export function lengthenCandidates(script: readonly ScriptBeat[], ledger: readon
     if (isScaffoldText(it.text) || QUOTED_FIELD_RE.test(it.field ?? '')) return false
     const n = words(it.text)
     if (n < 5 || n > 45 || /\n/.test(it.text)) return false
+    // REFILL_V2 (trial, default off): her stories are judged by rankRefillV2 (told / near text).
+    if (opts.relevance?.v2 && it.origin === 'her_story') return true
     return !alreadySaid(it.text, lines)
   })
   if (!opts.relevance) return cands
