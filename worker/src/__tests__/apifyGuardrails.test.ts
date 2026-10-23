@@ -10,7 +10,7 @@ import {
 
 const L = { dailyUsd: 2, monthlyUsd: 10, alertUsd: 5, runMaxUsd: 0.4 }
 
-/** A fictional in-memory ledger with the same rule as 0293 apify_reserve. */
+/** A fictional in-memory ledger with the same rule as 0294 apify_reserve. */
 function fakeLedger() {
   const rows: number[] = []
   const reserve: GuardDeps['reserve'] = async ({ usd, l }) => {

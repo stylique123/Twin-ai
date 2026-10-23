@@ -397,7 +397,7 @@ Deno.serve(async (req: Request) => {
   try {
     // Apify guardrails (owner, 23 Oct): panel/test accounts never start a run,
     // and every run reserves its cap against the hard daily/monthly stops
-    // (0293 apify_reserve). No ledger answer = no run (fail closed).
+    // (0294 apify_reserve). No ledger answer = no run (fail closed).
     if (isPanelAccount(user) || String(Deno.env.get('APIFY_TEST_MODE') ?? '').trim().toLowerCase() === 'true') {
       throw new Error('apify stubbed for test accounts')
     }

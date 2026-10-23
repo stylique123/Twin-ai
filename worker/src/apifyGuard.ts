@@ -2,7 +2,7 @@
 // `guardedApifyFetch`, which in order:
 //   1. returns nothing (no call) for test mode (APIFY_TEST_MODE=true) and for
 //      test / fictional-panel owners — those accounts NEVER spend Apify;
-//   2. reserves the run's cap in `apify_spend_ledger` (0293 apify_reserve),
+//   2. reserves the run's cap in `apify_spend_ledger` (0294 apify_reserve),
 //      which refuses past the HARD daily / monthly stops — and a failed
 //      reservation (e.g. migration not applied) is a refusal: fail closed;
 //   3. starts the run with `maxTotalChargeUsd` = that cap, so Apify itself
@@ -108,7 +108,7 @@ export async function guardedApifyFetch(
   } finally { clearTimeout(timer) }
 }
 
-/** Production deps: the worker's token, the 0293 RPC, TEST_OWNER_IDS. */
+/** Production deps: the worker's token, the 0294 RPC, TEST_OWNER_IDS. */
 export async function liveApifyDeps(token: string, log?: GuardDeps['log']): Promise<GuardDeps> {
   return {
     token, log, fetch: (...a) => globalThis.fetch(...a),
