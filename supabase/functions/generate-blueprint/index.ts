@@ -71,7 +71,7 @@ import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
 import { pickAngleCards, angleCardsRecord, ANGLE_SPECS, pickAngles, anglePickRecord, type AngleMaterial } from '../_shared/angleFit.ts'
-import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, type OutsideItem } from '../_shared/questionUsefulness.ts'
+import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, angleMaterialUsable, type OutsideItem } from '../_shared/questionUsefulness.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -89,7 +89,7 @@ import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerH
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
-import { isCanaryAccount } from '../_shared/canary.ts'
+import { isCanaryAccount, trialSideDoorOpen } from '../_shared/canary.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, resolveTargetProduct as resolveInventionTarget, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
@@ -6707,8 +6707,11 @@ async function handle(req: Request): Promise<Response> {
   //   voice_card {action: 'edit', edits}    → her edits saved on brand_voices.profile.voice_card_edits
   // Edits only remove items or add never-says; an added phrase of hers is kept
   // only when it is verbatim in her own material. Logs: counts only.
+  // 🐤 Trial side doors (voice_card, check_line, using_item, angle_plan/answer):
+  // the heartbeat/panel test accounts AND the canary (CANARY_ACCOUNT_IDS, kill CANARY_KILL).
+  const sideDoorOpen = () => trialSideDoorOpen({ userId: user.id, heartbeatUserId: Deno.env.get('HEARTBEAT_USER_ID'), isPanel: isPanelAccount(user), canaryAccountsRaw: Deno.env.get('CANARY_ACCOUNT_IDS'), canaryKillRaw: Deno.env.get('CANARY_KILL') })
   if (specMode === 'voice_card') {
-    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    const testAccount = sideDoorOpen()
     if (!testAccount || String(Deno.env.get('VOICE_CARD_ENABLED') ?? '').trim().toLowerCase() === 'false') return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { action?: unknown; edits?: unknown }
@@ -6731,7 +6734,7 @@ async function handle(req: Request): Promise<Response> {
     return json({ card: card ? voiceCardView(card) : null, reason: built.reason, material: built.material, edits: savedEdits })
   }
   if (specMode === 'check_line') {
-    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    const testAccount = sideDoorOpen()
     if (!testAccount || !checkLineOn(Deno.env.get('CHECK_LINE_KILL'))) return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { generation_id?: unknown; line_index?: unknown; decision?: unknown; text?: unknown }
@@ -6794,7 +6797,7 @@ async function handle(req: Request): Promise<Response> {
   //       default voice); a stored fact is also switched off (creator_excluded_at).
   // Logs: ids, kinds and counts only, never her text.
   if (specMode === 'using_item') {
-    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    const testAccount = sideDoorOpen()
     if (!testAccount || Deno.env.get('USING_ITEM_KILL') === '1') return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { generation_id?: unknown; item?: unknown; action?: unknown }
@@ -6880,7 +6883,7 @@ async function handle(req: Request): Promise<Response> {
   // source_ref 'asked:mn:…'); a skip is recorded in question_asks
   // (option_id 'mn') and that key is never asked again. Logs: counts and ids.
   if (specMode === 'angle_plan' || specMode === 'angle_answer') {
-    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    const testAccount = sideDoorOpen()
     if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown }
@@ -6921,9 +6924,9 @@ async function handle(req: Request): Promise<Response> {
     ])
     const material: AngleMaterial[] = []
     for (const r of (kRows ?? []) as Array<Record<string, unknown>>) {
-      if (r.sensitive === true) continue
       const it = itemFromCreatorKnowledge(r)
-      if (!it || it.status === 'unconfirmed') continue
+      // Her typed-and-confirmed answers count (angleMaterialUsable); sensitive rows never do.
+      if (!it || !angleMaterialUsable(r, it.status)) continue
       material.push({ id: it.id, slot: it.slot_hint, text: it.text, source: r.product_entity_id ? 'product' : 'her_material' })
     }
     const p = prod as { id?: string; name?: unknown; knowledge?: unknown; offer?: unknown } | null
