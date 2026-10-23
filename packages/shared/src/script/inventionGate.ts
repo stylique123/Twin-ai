@@ -2392,6 +2392,8 @@ export function refillArmOf(v: unknown): RefillArm | null { return v === 'baseli
 export function refillContextFor(o: { trialOn: boolean; arm: RefillArm | null; env: { RELEVANT_REFILL?: string; REFILL_V2?: string }; topic: string; angle: string; niche?: string; product?: string }): RefillContext | null {
   if (!o.trialOn || o.arm === 'baseline_p10') return null
   const v2 = o.env.REFILL_V2 !== 'off' && (o.env.REFILL_V2 === 'true' || o.arm === 'refill_v2')
+  // Single lever: the 'refill_v2' arm with V2 killed is the panel-10 baseline, not #1303.
+  if (o.arm === 'refill_v2' && !v2) return null
   if (o.env.RELEVANT_REFILL === 'false' && !v2) return null
   const base = { topic: o.topic, angle: o.angle }
   return v2 ? { ...base, v2: true, niche: o.niche ?? '', product: o.product ?? '' } : base
@@ -2406,10 +2408,17 @@ export function relevantRefillUnits(ledger: readonly LedgerItem[], targetProduct
     if (it.field === 'note' || it.field?.startsWith('template.')) continue
     if (it.product_id && it.product_id !== targetProductId) continue
     if (isScaffoldText(it.text)) continue
-    spokenUnits(it.text).forEach((u, n) => {
+    // REFILL_V2: a short fact of the target product ("$90 per month") is not dropped by the unit length floor.
+    const units = spokenUnits(it.text)
+    const shortFact = !!ctx.v2 && !units.length && it.origin === 'product_fact' && !!targetProductId && it.product_id === targetProductId
+    if (shortFact) {
+      const t = it.text.trim().replace(/\s+/g, ' ')
+      if (t && wordCount(t) <= UNIT_MAX_WORDS && !/[[\]]/.test(t) && !isNonAnswerText(t)) units.push(t)
+    }
+    units.forEach((u, n) => {
       const own = [...contentSet(u)]
       // REFILL_V2: her stories skip this test; rankRefillV2 judges them (told / near text).
-      if (!own.length || (!(ctx.v2 && it.origin === 'her_story') && own.filter((w) => said.has(w)).length / own.length >= 0.5)) return
+      if ((!own.length && !shortFact) || (!(ctx.v2 && it.origin === 'her_story') && own.filter((w) => said.has(w)).length / own.length >= 0.5)) return
       cands.push({ id: n ? `${it.id}#${n}` : it.id, origin: it.origin, product_id: it.product_id, text: (u.charAt(0).toUpperCase() + u.slice(1)).replace(/([^.!?])$/, '$1.') })
     })
   }

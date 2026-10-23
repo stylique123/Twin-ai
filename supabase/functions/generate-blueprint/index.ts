@@ -7122,7 +7122,7 @@ async function handle(req: Request): Promise<Response> {
     ...(trialOn && Deno.env.get('STORY_DEDUP') !== 'false' ? { story_dedup: true } : {}),
     // Panel-10 (trial; kills RELEVANT_REFILL=false, STORY_HOOK_DEDUP=false).
     ...(relevantRefillCtx() ? { refill_context: relevantRefillCtx() } : {}),
-    ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' && refillArm() !== 'baseline_p10' ? { story_hook_dedup: true } : {}),
+    ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' && !refillArm() ? { story_hook_dedup: true } : {}),
     // Panel-10 advisor (trial; DEFAULT OFF, opt in STORY_RETELL_DEDUP=true): one telling per story.
     // Off until a meaning-level check exists; while off no line is cut or changed.
     ...(trialOn && Deno.env.get('STORY_RETELL_DEDUP') === 'true' ? { story_retell_dedup: true } : {}),
@@ -7133,11 +7133,11 @@ async function handle(req: Request): Promise<Response> {
   // Panel-10 RELEVANCE-AWARE REFILL (trial; kill RELEVANT_REFILL=false): the
   // request's topic (her note, the product's name) and angle; every refill
   // (edge length pass, floor refill, the worker gate) adds only items for it.
-  // PANEL-12 REFILL ARMS (plan v6.1 §27; test accounts only): a panel request may
-  // name `refill_arm`. 'baseline_p10' = the panel-10 configuration (the #1303
-  // relevance filter and story-hook dedupe off for that request); 'refill_v2' =
-  // REFILL_V2 on for that request. REFILL V2 (trial, DEFAULT OFF): REFILL_V2=true
-  // turns it on for the trial, REFILL_V2=off kills it and the arm.
+  // PANEL-12 REFILL ARMS (plan v6.1 §27; test accounts only; single lever): a
+  // panel request may name `refill_arm`. Both arms run the panel-10 refill setup:
+  // story-hook dedupe off and no #1303 relevance filter. 'baseline_p10' = that
+  // setup; 'refill_v2' = that setup + REFILL_V2, the only difference. REFILL V2
+  // (trial, DEFAULT OFF): REFILL_V2=true turns it on for the trial, REFILL_V2=off kills it.
   const refillArm = (): RefillArm | null => (isHeartbeat ? refillArmOf((body as { refill_arm?: unknown } | undefined)?.refill_arm) : null)
   const relevantRefillCtx = (): RefillContext | null => refillContextFor({ trialOn, arm: refillArm(), env: { RELEVANT_REFILL: Deno.env.get('RELEVANT_REFILL'), REFILL_V2: Deno.env.get('REFILL_V2') }, topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => x.trim()).join(' '), angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? ''), niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '), product: String((ownedEntity as { name?: unknown } | null)?.name ?? '') })
 

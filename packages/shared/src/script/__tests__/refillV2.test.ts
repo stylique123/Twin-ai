@@ -49,6 +49,13 @@ describe('REFILL_V2', () => {
     expect(ids(picks)).not.toContain('s-van')
   })
 
+  it('a short fact of the target product is kept under V2 (not under V1)', () => {
+    const PRICE = item('p3', 'product_fact', '$31 per jar', 'ember')
+    const picks = relevantRefillUnits([...LEDGER, PRICE], 'ember', ['Every store candle gave someone I love a headache.'], V2('Ember Jar', { product: 'Ember Jar' }))
+    expect(ids(picks)).toContain('p3')
+    expect(ids(relevantRefillUnits([...LEDGER, PRICE], 'ember', ['Every store candle gave someone I love a headache.'], { topic: 'Ember Jar' }))).not.toContain('p3')
+  })
+
   it('product facts never refill a request that is not about the product', () => {
     const picks = relevantRefillUnits(LEDGER, null, ['Why does your candle tunnel?'], V2('why candles tunnel'))
     expect(picks.some((p) => p.kind === 'product_fact')).toBe(false)
