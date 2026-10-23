@@ -32,4 +32,7 @@ create policy canary_feedback_own_insert on public.canary_feedback for insert to
     where g.id = generation_id and g.user_id = auth.uid() and (g.blueprint ->> 'canary') = 'true'));
 drop policy if exists canary_feedback_own_update on public.canary_feedback;
 create policy canary_feedback_own_update on public.canary_feedback for update to authenticated
-  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid() and exists (
+    select 1 from public.generations g
+    where g.id = generation_id and g.user_id = auth.uid() and (g.blueprint ->> 'canary') = 'true'));
