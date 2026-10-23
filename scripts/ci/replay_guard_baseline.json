@@ -1,0 +1,8 @@
+{
+  "_note": "Plan v6.1 §27 baseline. Metrics are the offline replay of the stored FICTIONAL panel scripts on main at the time this file was committed. panel-current-10 word_reference is the P10 writer median (96). panel-current-11 shipped at 69 (28% below P10) BEFORE this guard existed; its reference is its own stored median so the guard catches further regressions without failing on a stored output the current code cannot change. Lower repeats/blocking_flags here when a PR improves them; never raise them.",
+  "max_word_drop": 0.1,
+  "panels": {
+    "panel-current-10": { "cases": 24, "word_reference": 96, "median_spoken_words": 96, "placeholders": 0, "repeats": 3, "blocking_flags": 6 },
+    "panel-current-11": { "cases": 24, "word_reference": 69, "median_spoken_words": 69, "placeholders": 0, "repeats": 3, "blocking_flags": 14 }
+  }
+}
