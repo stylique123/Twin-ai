@@ -1,6 +1,6 @@
 # Panel queue v2: self-starting panels with no new token (design, for advisor review)
 
-Status: **design only. Do not merge until the advisor has reviewed it.** Nothing here is wired: no workflow, secret, variable, trigger or migration is changed by this PR. Supersedes the `repository_dispatch` idea in `panel-self-start-proposal.md` (kept for the record) because v2 needs **no new token** and so no change in trust.
+Status: **alternative design (see panel-self-start-proposal.md for the recommended scheduled-dispatch option).** **Design only. Do not merge until the advisor has reviewed it.** Nothing here is wired: no workflow, secret, variable, trigger or migration is changed by this PR. Supersedes the `repository_dispatch` idea in `panel-self-start-proposal.md` (kept for the record) because v2 needs **no new token** and so no change in trust.
 
 Source: Fast Path v1, Section 4 ("a queue table, a scheduled workflow every 30 minutes that picks one queued row, checks the budget ledger, runs the same batch code with the same safeguards, writes the package to a private location; no secrets in logs, an allowlist of labels, a kill switch as a flag row").
 

@@ -1,0 +1,87 @@
+name: panel-self-start
+
+# PANEL SELF-START (proposal for advisor review, PR #1312). No new bot identity,
+# no new secret: a daily schedule dispatches the EXISTING script-batch workflow
+# with this run's GITHUB_TOKEN (permissions actions: write only). Every input
+# comes from the fixed preset allowlist below; nothing comes from outside.
+# Off by default: runs only when repo variable PANEL_SELF_START_ENABLED == 'true'.
+# Companion change required in script-batch.yml (see docs/release/panel-self-start-proposal.md):
+# its owner-only guard must also accept github-actions[bot] for labels starting "auto-".
+on:
+  schedule:
+    - cron: '17 6 * * *'
+
+permissions:
+  actions: write
+
+concurrency:
+  group: panel-self-start
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: ${{ vars.PANEL_SELF_START_ENABLED == 'true' }}
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
+    timeout-minutes: 5
+    steps:
+      - name: Guard, cap check and dispatch (fixed preset only)
+        run: |
+          set -euo pipefail
+          if [ "$REF" != "refs/heads/main" ]; then echo "::error::main only"; exit 1; fi
+
+          # Preset allowlist. The only values that can ever reach script-batch.
+          # name|group|limit|panel_answer_mode
+          PRESETS='panel-reference|panel:reference|8|skip
+          panel-idea|panel:idea|8|skip
+          panel-mixed-small|panel|24|fixture'
+          BUDGET_USD=2.5   # per-run cap, fixed; script-batch passes it to panelRun.mjs as PANEL_BUDGET_USD
+
+          # Rotate presets by day of year, so no input is chosen at run time.
+          N=$(printf '%s\n' "$PRESETS" | wc -l)
+          IDX=$(( 10#$(date -u +%j) % N + 1 ))
+          LINE=$(printf '%s\n' "$PRESETS" | sed -n "${IDX}p" | tr -d ' ')
+          IFS='|' read -r PRESET GROUP LIMIT ANSWER <<< "$LINE"
+          TODAY=$(date -u +%Y-%m-%d)
+          LABEL="auto-${PRESET}-${TODAY}"
+
+          # At most one script-batch run per day: skip if ANY run was created
+          # today (any actor, any status) or any run is queued / in progress.
+          TODAY_RUNS=$(gh api "repos/$REPO/actions/workflows/script-batch.yml/runs?created=>=${TODAY}T00:00:00Z&per_page=1" --jq '.total_count')
+          ACTIVE=0
+          for st in queued in_progress waiting pending requested; do
+            c=$(gh api "repos/$REPO/actions/workflows/script-batch.yml/runs?status=$st&per_page=1" --jq '.total_count')
+            ACTIVE=$((ACTIVE + c))
+          done
+          if [ "$TODAY_RUNS" -gt 0 ] || [ "$ACTIVE" -gt 0 ]; then
+            echo "skip: script-batch already ran today ($TODAY_RUNS) or is active ($ACTIVE)"
+            exit 0
+          fi
+
+          # Total cap without a ledger or new secret: a conservative upper bound.
+          # Every self-started run is assumed to spend its full per-run cap.
+          # bound = (self-started runs since PANEL_SPEND_SINCE + 1) * BUDGET_USD <= PANEL_SPEND_CAP
+          if [ -z "$SPEND_CAP" ] || [ -z "$SPEND_SINCE" ]; then
+            echo "::error::PANEL_SPEND_CAP and PANEL_SPEND_SINCE repo variables must be set"; exit 1
+          fi
+          case "$SPEND_SINCE" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) echo "::error::PANEL_SPEND_SINCE must be YYYY-MM-DD"; exit 1 ;; esac
+          PRIOR=$(gh api --paginate "repos/$REPO/actions/workflows/script-batch.yml/runs?event=workflow_dispatch&created=>=${SPEND_SINCE}&per_page=100" \
+            --jq '.workflow_runs[] | select(.triggering_actor.login == "github-actions[bot]") | .id' | wc -l)
+          if ! awk -v n="$PRIOR" -v b="$BUDGET_USD" -v cap="$SPEND_CAP" 'BEGIN { exit !((n + 1) * b <= cap + 0) }'; then
+            echo "::warning::total cap reached: ($PRIOR + 1) x $BUDGET_USD > $SPEND_CAP; not dispatching"
+            exit 0
+          fi
+
+          echo "dispatch: preset=$PRESET label=$LABEL group=$GROUP limit=$LIMIT answer=$ANSWER budget=$BUDGET_USD prior_auto_runs=$PRIOR"
+          gh workflow run script-batch.yml --repo "$REPO" --ref main \
+            -f label="$LABEL" -f limit="$LIMIT" -f group="$GROUP" \
+            -f panel_budget_usd="$BUDGET_USD" -f panel_answer_mode="$ANSWER" \
+            -f panel_file_id="$PANEL_FILE_ID" -f panel_seed=false \
+            -f drafts=1 -f cost_mode=test -f intake=false \
+            -f judge_only= -f judge2_model= -f storyload_file_id=
+        env:
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          SPEND_CAP: ${{ vars.PANEL_SPEND_CAP }}
+          SPEND_SINCE: ${{ vars.PANEL_SPEND_SINCE }}
+          PANEL_FILE_ID: ${{ vars.PANEL_FILE_ID_AUTO }}
