@@ -150,12 +150,25 @@ function actorInput(platform: Platform, handle: string): Record<string, unknown>
   }
 }
 
+/** Per-run Apify cap in dollars (default $0.40), mirrors worker/src/apifyGuard.ts. */
+export function apifyRunMaxUsd(v: string | undefined | null): number {
+  const n = Number(String(v ?? '').trim())
+  return v != null && String(v).trim() !== '' && Number.isFinite(n) && n >= 0 ? n : 0.4
+}
+/** Hard daily / monthly Apify stops (defaults $2 / $10), mirrors apifyLimits. */
+export function apifyBudget(daily: string | undefined | null, monthly: string | undefined | null): { daily: number; monthly: number } {
+  const n = (v: string | undefined | null, d: number) => { const x = Number(String(v ?? '').trim()); return v != null && String(v).trim() !== '' && Number.isFinite(x) && x >= 0 ? x : d }
+  return { daily: n(daily, 2), monthly: n(monthly, 10) }
+}
+
 // Start an Apify actor run (async). Returns the runId to poll later.
 export async function startApifyRun(platform: Platform, handle: string): Promise<string> {
   const token = Deno.env.get('APIFY_TOKEN') ?? Deno.env.get('apify_api')
   if (!token) throw new Error('APIFY_TOKEN not configured')
   const actor = actorFor(platform)
-  const res = await fetch(`https://api.apify.com/v2/acts/${actor}/runs`, {
+  // Apify guardrails: every run carries a per-run cost cap Apify enforces.
+  const cap = apifyRunMaxUsd(Deno.env.get('APIFY_RUN_MAX_USD'))
+  const res = await fetch(`https://api.apify.com/v2/acts/${actor}/runs?maxTotalChargeUsd=${cap.toFixed(2)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(actorInput(platform, handle)),
