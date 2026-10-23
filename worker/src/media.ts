@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { env } from './env.js'
 import { readVerdict } from './profileReadVerdict.js'
+import { liveApifyDeps, prepareApifyRun, guardedApifyFetch } from './apifyGuard.js'
 
 // --- SSRF guard ------------------------------------------------------------
 // The worker downloads user-supplied URLs with yt-dlp, so we ONLY allow the
@@ -252,24 +253,10 @@ export async function scrapeTikTokPosts(handle: string, limit = 12): Promise<Scr
 // still works for some accounts and costs nothing; Apify is the fallback, not
 // the default. An EMPTY result counts as failure here: a profile that parses to
 // zero posts is the exact shape of the silent no-op this exists to end.
-export async function apifyDataset(actor: string, input: unknown, timeoutMs = 300_000): Promise<Record<string, unknown>[]> {
+export async function apifyDataset(actor: string, input: unknown, timeoutMs = 300_000, feature = 'profile_read'): Promise<Record<string, unknown>[]> {
   if (!env.apifyToken) throw new Error('APIFY_TOKEN is not set; cannot scrape profile')
-  const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${env.apifyToken}`
-  const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), timeoutMs)
-  try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(input),
-      signal: ctl.signal,
-    })
-    if (!r.ok) throw new Error(`apify ${actor} returned ${r.status}`)
-    const j = await r.json()
-    return Array.isArray(j) ? (j as Record<string, unknown>[]) : []
-  } finally {
-    clearTimeout(timer)
-  }
+  // Apify guardrails (apifyGuard.ts): test owners, ledger stops, per-run cap.
+  return guardedApifyFetch(await liveApifyDeps(env.apifyToken), feature, actor, input, { timeoutMs })
 }
 
 /** An Apify run that reports a failure IN ITS DATASET rather than by failing.
@@ -670,7 +657,9 @@ async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
   // run-sync-get-dataset-items returns the dataset directly as [{ data: [...] }].
   // (The older /run-sync + key-value-store path returned an empty body here and
   // broke JSON parsing — "Unexpected end of JSON input".)
-  const url = `https://api.apify.com/v2/acts/${env.apifyYoutubeActor}/run-sync-get-dataset-items?token=${env.apifyToken}`
+  const url = await prepareApifyRun(await liveApifyDeps(env.apifyToken), 'youtube_transcript', env.apifyYoutubeActor)
+  // Test mode / test owner: stubbed reader, nothing read.
+  if (url === null) throw new Error('This video has no captions we can read. Try a different reference.')
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -756,7 +745,8 @@ async function instagramTranscriptViaApify(rawUrl: string): Promise<Transcript> 
   if (!env.apifyToken) {
     throw new Error('Instagram analysis is not configured yet. Try a TikTok link, or contact support.')
   }
-  const url = `https://api.apify.com/v2/acts/${env.apifyInstagramActor}/run-sync-get-dataset-items?token=${env.apifyToken}`
+  const url = await prepareApifyRun(await liveApifyDeps(env.apifyToken), 'instagram_transcript', env.apifyInstagramActor)
+  if (url === null) throw new Error("Couldn't read that Instagram video — it may be private or removed. Try another.")
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

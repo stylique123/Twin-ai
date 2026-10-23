@@ -8,7 +8,8 @@
 // Secrets: APIFY_TOKEN, GEMINI_API_KEY (shared with generate-blueprint)
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
-import { cors, json, normalizeHandle, handleShapeError, HANDLE_TOO_LONG, startApifyRun, type Platform } from '../_shared/dna.ts'
+import { cors, json, normalizeHandle, handleShapeError, HANDLE_TOO_LONG, startApifyRun, apifyBudget, apifyRunMaxUsd, type Platform } from '../_shared/dna.ts'
+import { isPanelAccount } from '../_shared/testAccount.ts'
 import { monthlyScanCeiling, scanAllowance } from '../_shared/scanCeiling.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
@@ -394,6 +395,20 @@ Deno.serve(async (req: Request) => {
   // Kick the Apify scrape asynchronously. If Apify isn't configured/healthy,
   // fail the voice cleanly so the UI can fall back to the manual quiz.
   try {
+    // Apify guardrails (owner, 23 Oct): panel/test accounts never start a run,
+    // and every run reserves its cap against the hard daily/monthly stops
+    // (0293 apify_reserve). No ledger answer = no run (fail closed).
+    if (isPanelAccount(user) || String(Deno.env.get('APIFY_TEST_MODE') ?? '').trim().toLowerCase() === 'true') {
+      throw new Error('apify stubbed for test accounts')
+    }
+    const budget = apifyBudget(Deno.env.get('APIFY_DAILY_USD'), Deno.env.get('APIFY_MONTHLY_USD'))
+    const { data: reserved, error: reserveErr } = await admin.rpc('apify_reserve', {
+      p_feature: 'dna_scan', p_actor: platform, p_owner: user.id,
+      p_usd: apifyRunMaxUsd(Deno.env.get('APIFY_RUN_MAX_USD')), p_daily_usd: budget.daily, p_monthly_usd: budget.monthly,
+    })
+    if (reserveErr || !(reserved as { ok?: boolean } | null)?.ok) {
+      throw new Error(`apify refused: ${reserveErr?.message ?? (reserved as { reason?: string } | null)?.reason ?? 'no answer'}`)
+    }
     const runId = await startApifyRun(platform, handle)
     const { data: job } = await admin
       .from('jobs')

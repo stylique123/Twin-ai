@@ -16,7 +16,8 @@ import { REDDIT_SYSTEM, REDDIT_SCHEMA, redditPrompt, cleanRedditItems, threadsFr
 
 type Log = (level: string, msg: string, extra?: Record<string, unknown>) => void
 export const REDDIT_CHECK_MS = 10 * 60 * 1000
-export const REDDIT_TTL_DAYS = 7
+// One read per niche per 30 days (owner, 23 Oct; was 7 — the weekly Monday bursts).
+export const REDDIT_TTL_DAYS = 30
 let lastCheck = 0
 
 /**
@@ -62,7 +63,7 @@ export async function runNicheReddit(log: Log): Promise<void> {
           maxItems: 120, maxPostCount: 40, maxComments: 4, includeNSFW: false, skipComments: false,
         // Second live run: 2 of 3 niches aborted at 240 s. Apify's synchronous
         // run allows 300 s; the scrape is smaller and gets the full window.
-        }, 295_000)
+        }, 295_000, 'niche_reddit')
     const threads = threadsFromDataset(rows).filter((t) => inCommunities(t, subs))
     if (threads.length < 3) {
       await stamp({ items: [], threads: [], failure: `only ${threads.length} threads` })

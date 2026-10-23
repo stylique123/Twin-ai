@@ -25,7 +25,8 @@ import { CAPTION_SHAPE_VERSION as CAPTION_SHAPE_VERSION_N } from './generated/ca
 import { kickBrainSweep } from './nicheBrain/sweep.js'
 import { kickAudienceTests } from './nicheBrain/audience.js'
 import { createIdleBackoff } from './idleBackoff.js'
-import { installUsageTracking, runTallied, ledgerRows, isPanelOwner, type UsageStore } from './aiUsage.js'
+import { installUsageTracking, runTallied, ledgerRows, isPanelOwner, trafficOf, type UsageStore } from './aiUsage.js'
+import { apifyOwnerScope } from './apifyGuard.js'
 
 // Plan 11.1-2: tally every Gemini call per job into ai_usage_ledger.
 installUsageTracking()
@@ -262,7 +263,11 @@ async function tick(): Promise<boolean> {
   // job still records what it spent (written in `finally` below).
   const usage: UsageStore = {}
   try {
-    const tracked = runTallied(usage, () => handler(job))
+    // Apify guardrails: the run knows whose job it is; test and fictional-panel
+    // owners never trigger Apify (apifyGuard.ts returns empty for them).
+    const owner = (job as { owner_id?: string | null }).owner_id ?? null
+    const testOwner = trafficOf(owner) === 'test' || await isPanelOwner(db as never, owner)
+    const tracked = runTallied(usage, () => apifyOwnerScope.run({ ownerId: owner, testOwner }, () => handler(job)))
     const result = await Promise.race([tracked, guard])
     await completeJob(job.id, result, job.attempts)
     log('info', 'done', { job: job.id, type: job.type })

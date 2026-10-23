@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0293_apify_spend_ledger':
+    'Service-role-only Apify spend ledger and apify_reserve hard stops (RLS on, no policies) plus the apify_cost_report view; NOT yet applied (file only, owner applies by hand before the guardrail deploy). The editor never calls Apify. No staging-only surface.',
   '0292_check_line_source':
     "Widens creator_knowledge_source_check to allow 'check_line' (CHECK THIS LINE, trial only); NOT yet applied (file only, owner applies before CHECK_LINE_KILL is lifted for the trial). The editor never reads it. No staging-only surface.",
   '0291_release_flags':
