@@ -2,7 +2,7 @@
 // Pure helpers (CSV, pairs, sampling, scoring, cost cap) have no I/O and are
 // unit-tested in evalLib.selftest.mjs. Only callGemini touches the network, and
 // only when a key is present and the cost guard allows it. Fixture data is fictional.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
@@ -128,6 +128,14 @@ export function costGuard(capUsd) {
     allows(worstCaseUsd) { return spent + worstCaseUsd <= capUsd },
     add(x) { spent += x },
   }
+}
+
+/** --out=<path>: write a JSON of ids, gaps, verdict letters and scores only (never script text,
+ *  prompts or model reasons). Used by .github/workflows/judge-evals.yml as the only artifact. */
+export function writeResultsJson(argv, obj) {
+  const a = argv.find((x) => x.startsWith('--out='))
+  if (!a) return
+  writeFileSync(a.slice(6), JSON.stringify(obj, null, 2) + '\n')
 }
 
 export function capFromEnv(name, def = 0.15) {

@@ -6,13 +6,14 @@
 // Pairs: same panel, craft differs >= 1. Test panel P10 only. The prompt = rubric (P10 example
 // lines removed, since P10 is the test set) + 6 few-shot scripts drawn ONLY from P5-P8.
 // Every pair is asked in both orders (A/B swapped) to cancel position bias; the first order is random.
-// Options: --max-pairs=N (default: as many as the cap affords), --seed=N, --model=ID.
+// Options: --max-pairs=N (default: as many as the cap affords), --seed=N, --model=ID,
+//   --out=FILE (JSON of ids/gaps/verdicts/scores only; the workflow uploads only this file).
 // Prints ids, gaps and scores only; never script text.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   CALIB_DIR, loadCraftSet, buildPairs, sampleByGap, rng, combineOrders, pairAccuracy, scorerPairAccuracy,
-  estTokens, usd, costGuard, capFromEnv, cheapModel, callGemini, loadCraftJudge, fmtPct,
+  estTokens, usd, costGuard, capFromEnv, cheapModel, callGemini, loadCraftJudge, fmtPct, writeResultsJson,
 } from './evalLib.mjs'
 
 const TEST_PANEL = 'P10'
@@ -68,7 +69,9 @@ async function main() {
   }
   show('rule-based craftJudge (raw score)', rule)
   show('rule-based craftJudge (rubric sum)', ruleRub)
-  if (ruleOnly) return
+  const acc = (r) => ({ n: r.n, gap1: r.gap1, n2: r.n2, gap2: r.gap2 })
+  const out = { eval: 'craft-pairs', mode: ruleOnly ? 'rule-only' : dry ? 'dry-run' : 'paid', rule_raw: acc(rule), rule_rubric: acc(ruleRub) }
+  if (ruleOnly) return writeResultsJson(process.argv, out)
 
   const rubric = rubricForPrompt(readFileSync(join(root, CALIB_DIR, 'craft-rubric-v1.md'), 'utf8'))
   const shots = pickShots(scripts)
@@ -82,12 +85,14 @@ async function main() {
   console.log(`model=${model} shots=${shots.map((s) => s.id).join(',')} system~${estTokens(sys)} tok`)
   console.log(`P10 pairs: all=${all.length} (gap>=2: ${all.filter((p) => p.gap >= 2).length}); full set would be ${2 * all.length} calls ~$${(2 * all.length * avg).toFixed(3)}`)
   console.log(`this run: ${pairs.length} pairs x 2 orders = ${2 * pairs.length} calls, est ~$${est.toFixed(4)} (cap $${cap})`)
-  if (dry) return
+  Object.assign(out, { model, cap_usd: cap, shots: shots.map((s) => s.id), planned_pairs: pairs.map((p) => [p.a.id, p.b.id]), est_usd: est })
+  if (dry) return writeResultsJson(process.argv, out)
   if (!process.env.GEMINI_API_KEY) { console.error('refusing: GEMINI_API_KEY not set (use --dry-run or --rule-only)'); process.exit(2) }
 
   const guard = costGuard(cap)
   const rand = rng(seed + 1)
   const results = []
+  const rows = []
   let stopped = false
   for (const p of pairs) {
     const worst = 2 * perCall(p) * 1.25
@@ -102,12 +107,14 @@ async function main() {
     }
     const c = combineOrders(p, v.fwd, v.swap)
     results.push(c)
+    rows.push({ a: p.a.id, b: p.b.id, gap: p.gap, truth: p.better, fwd: v.fwd, swap: v.swap, correct: c.correct })
     console.log(`${p.a.id} vs ${p.b.id} gap=${p.gap} truth=${p.better} fwd=${v.fwd} swap=${v.swap} correct=${c.correct}`)
   }
   const s = pairAccuracy(results)
   if (stopped) console.log(`STOPPED at cost cap after ${results.length} pairs`)
   show(`LLM pairwise (${model})`, s)
   console.log(`order-consistent: ${results.filter((r) => r.consistent).length}/${results.length}  spent ~$${guard.spent.toFixed(4)}`)
+  writeResultsJson(process.argv, { ...out, stopped_at_cap: stopped, pairs: rows, llm: acc(s), order_consistent: results.filter((r) => r.consistent).length, spent_usd: guard.spent })
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(String(e?.message ?? e)); process.exit(1) })

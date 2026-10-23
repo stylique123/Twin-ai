@@ -6,12 +6,12 @@
 // Scope: every script in craft-calibration-set.csv for panels P6, P7, P8, P10 (one call per script;
 // the calibration set has no story item ids, so the whole numbered script stands in for the
 // candidate pairs). Compares to repeat-ground-truth-v0.csv: recall on its ids + extra hits.
-// Prints ids and line numbers only; never script text.
+// Prints ids and line numbers only; never script text. --out=FILE writes the same (ids/line numbers/scores) as JSON.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   CALIB_DIR, loadCraftSet, parseCsv, estTokens, usd, costGuard, capFromEnv, cheapModel, callGemini,
-  parseRepeatPairs, repeatRecall, truthLines, fmtPct,
+  parseRepeatPairs, repeatRecall, truthLines, fmtPct, writeResultsJson,
 } from './evalLib.mjs'
 
 export const PANELS = ['P6', 'P7', 'P8', 'P10']
@@ -38,11 +38,13 @@ async function main() {
   const est = scripts.reduce((a, s) => a + perCall(s), 0)
   console.log(`model=${model} scripts=${scripts.length} (${PANELS.map((p) => `${p}:${scripts.filter((s) => s.panel === p).length}`).join(' ')}) truth ids=${truth.length}`)
   console.log(`calls=${scripts.length}, est ~$${est.toFixed(4)} worst-case (max ${MAX_OUT} output tok each), cap $${cap}`)
-  if (dry) return
+  const out = { eval: 'repeat-shadow', mode: dry ? 'dry-run' : 'paid', model, cap_usd: cap, script_ids: scripts.map((s) => s.id), est_usd: est }
+  if (dry) return writeResultsJson(process.argv, out)
   if (!process.env.GEMINI_API_KEY) { console.error('refusing: GEMINI_API_KEY not set (use --dry-run)'); process.exit(2) }
 
   const guard = costGuard(cap)
   const flagged = []
+  const rows = []
   let done = 0
   for (const s of scripts) {
     if (!guard.allows(perCall(s) * 1.25)) { console.log(`STOPPED at cost cap after ${done} scripts`); break }
@@ -50,7 +52,8 @@ async function main() {
     guard.add(usd(model, r.inTok, r.outTok))
     done++
     const pairs = parseRepeatPairs(r.text, s.lines.length)
-    if (pairs == null) { console.log(`${s.id} parse_error`); continue }
+    if (pairs == null) { console.log(`${s.id} parse_error`); rows.push({ id: s.id, parse_error: true }); continue }
+    rows.push({ id: s.id, repeats: pairs.map(([a, b]) => [a, b]) })
     if (pairs.length) flagged.push(s.id)
     console.log(`${s.id} repeats=${pairs.length ? 'Y' : 'N'}${pairs.length ? ' ' + pairs.map(([a, b]) => `${a}-${b}`).join(',') : ''}`)
   }
@@ -60,6 +63,7 @@ async function main() {
   console.log(`extra hits (not in truth set): ${rr.extra.join(',') || '-'}`)
   console.log(`truth line hints: ${truth.map((t) => `${t.script_id}[${truthLines(t.repeat_note).join(',') || '?'}]`).join(' ')}`)
   console.log(`scripts checked ${done}/${scripts.length}, spent ~$${guard.spent.toFixed(4)}`)
+  writeResultsJson(process.argv, { ...out, results: rows, recall: rr.recall, hit: rr.hit, n_truth: rr.n, missed: rr.missed, extra: rr.extra, checked: done, spent_usd: guard.spent })
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(String(e?.message ?? e)); process.exit(1) })
