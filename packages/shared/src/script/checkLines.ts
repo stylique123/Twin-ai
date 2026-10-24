@@ -437,6 +437,72 @@ export function hookClaimRisk(text: string, items: readonly TargetedItemV2[], pr
   return targetedRiskV2(text, items, products, { hook: true })
 }
 
+// ── HOOK GATE v2 (held; flag HOOK_GATE_V2, default OFF, test accounts only) ──
+// Panel 11: 14 of 117 hooks invented, the v1 claim gate caught 1. v2 adds,
+// on top of hookClaimRisk:
+//   number_promise   a counted promise ("Two rules…", "Three simple movements…")
+//                    unless her items hold that number counting the same noun
+//   invented_scene   a scene detail no item holds: "in my <place>", a worn or
+//                    handled object ("pulled on heat gloves"), a sensory detail
+//                    ("tasted like onions", "the sound inside the kiln")
+//   unsourced_generalisation  + "a lot of brands/companies/products/…"
+// Pure; no model call. Off = hookClaimRisk exactly.
+export type HookReasonV2 = TargetedReasonV2 | 'number_promise' | 'invented_scene'
+export const HOOK_GATE_V2_VERSION = 'hook-gate-v2'
+const NUM_WORD = '\\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred'
+const NUM_PROMISE_RE = new RegExp(`\\b(${NUM_WORD})\\s+((?:[a-z-]+\\s+){0,2}?)([a-z-]+s)\\b`, 'gi')
+const singular = (w: string) => w.replace(/(?:ies)$/, 'y').replace(/(?:ses|xes|ches|shes)$/, (m) => m.slice(0, -2)).replace(/s$/, '')
+/** "Two rules …": each counted noun must be counted the same way in an item of hers. */
+function numberPromise(t: string, items: readonly TargetedItemV2[]): boolean {
+  const all = items.map((it) => lc(it.text))
+  for (const m of lc(t).matchAll(NUM_PROMISE_RE)) {
+    const n = m[1]!, noun = singular(m[3]!)
+    if (/^(?:time|minute|second|hour|day|week|month|year|night|o)$/.test(noun)) continue // timeframes are read elsewhere
+    const re = new RegExp(`\\b${n}\\s+(?:[a-z-]+\\s+){0,3}?${noun}`)
+    if (!all.some((x) => re.test(x))) return true
+  }
+  return false
+}
+const PLACE_RE = /\b(?:in|at|inside) my (?!(?:very|first|own|whole|entire|life|head|mind|experience|opinion)\b)([a-z]+(?: room)?)\b/i
+const HANDLE_RE = /\b(?:pulled on|put on|grabbed|picked up|wore|wearing|slipped on|strapped on)\s+(?:my |the |a |some )?((?:[a-z-]+ ){0,2}[a-z-]+)/i
+const SENSE_RE = /\b(tasted|smelled|smelt|sounded|felt|looked) like ((?:[a-z-]+ ){0,1}[a-z-]+)|\bthe (sound|smell|taste|noise|hiss|crack|ping) (?:of|inside|from|in)\b/i
+/** A scene detail none of her items holds. */
+function inventedScene(t: string, items: readonly TargetedItemV2[]): boolean {
+  const all = items.map((it) => lc(it.text))
+  const has = (re: RegExp) => all.some((x) => re.test(x))
+  const place = t.match(PLACE_RE)
+  if (place && !has(new RegExp(`\\bmy ${lc(place[1]!)}\\b`))) return true
+  const handled = t.match(HANDLE_RE)
+  if (handled) {
+    const nouns = lc(handled[1]!).split(' ').filter((w) => w.length > 2 && !STOP_V2.has(w))
+    if (nouns.length && !nouns.every((w) => has(new RegExp(`\\b${singular(w)}`)))) return true
+  }
+  const sense = t.match(SENSE_RE)
+  if (sense) {
+    if (sense[1]) { if (!has(new RegExp(`\\b${lc(sense[1])} like ${lc(sense[2]!)}\\b`))) return true }
+    else if (!has(new RegExp(`\\b${lc(sense[3]!)}\\b`))) return true
+  }
+  return false
+}
+const STOP_V2 = new Set(['the', 'and', 'my', 'your', 'her', 'his', 'our', 'some', 'new', 'old'])
+const HOOK_GENERAL_V2_RE = /\ba lot of (?:brands|companies|products|shops|makers|sellers|routines|tutorials|videos|people|advice|experts|coaches|creators|guides)\b|\b(?:most|many) (?:brands|companies|products|shops|makers|sellers|routines|tutorials)\b/i
+
+/** HOOK GATE v2 (flag HOOK_GATE_V2; default off): hookClaimRisk plus the panel-11
+ *  invention shapes. A hook verbatim hers is never flagged. */
+export function hookClaimRiskV2(text: string, items: readonly TargetedItemV2[], products: readonly TargetedProduct[] = []): HookReasonV2 | null {
+  const base = hookClaimRisk(text, items, products)
+  if (base) return base
+  const t = String(text ?? '').trim()
+  if (!t || isVerbatimHers(t, items)) return null
+  const gen = t.match(HOOK_GENERAL_V2_RE)
+  if (gen && !anyItemHas(items, new RegExp(`\\b${lc(gen[0])}\\b`))) return 'unsourced_generalisation'
+  if (numberPromise(t, items)) return 'number_promise'
+  if (inventedScene(t, items)) return 'invented_scene'
+  return null
+}
+/** HOOK_GATE_V2: on only when exactly 'true' (held; default off). */
+export function hookGateV2On(flag: unknown): boolean { return String(flag ?? '').trim().toLowerCase() === 'true' }
+
 export interface WrongProductBlock { line_index: number; product_id: string }
 /** BLOCK (kill WRONG_PRODUCT_BLOCK=false): each script sentence naming product A
  *  with a fact only product B holds is DROPPED (an emptied beat is removed).
