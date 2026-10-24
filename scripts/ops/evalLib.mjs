@@ -149,25 +149,66 @@ export function cheapModel(root = process.cwd()) {
   try { return JSON.parse(readFileSync(join(root, 'worker', 'model_routing_v1.json'), 'utf8')).taskClasses.read.model } catch { return 'gemini-3.8-flash' }
 }
 
-/** One Gemini call. Returns { text, inTok, outTok } (usage from the API when given). */
-export async function callGemini({ model, system, user, maxOut = 64, json = false }) {
+/** Text of a generateContent response: concatenates candidates[0] parts, skipping thought parts. */
+export function geminiText(j) {
+  return (j?.candidates?.[0]?.content?.parts ?? []).filter((p) => !p?.thought).map((p) => p?.text ?? '').join('')
+}
+
+/**
+ * One Gemini call. Returns { text, inTok, outTok, finishReason }.
+ * Gemini 3.x models think by default and thinkingBudget:0 is not honoured, so thought tokens
+ * count against maxOutputTokens: a tiny cap (the old 16) leaves finishReason=MAX_TOKENS and no
+ * text. So: no thinkingConfig (as dna.ts / story-classifier.ts), and a floor of 1024 tokens.
+ * Billing still uses the real usageMetadata.
+ */
+export const MIN_MAX_OUT = 1024
+export async function callGemini({ model, system, user, maxOut = MIN_MAX_OUT, json = false, schema = null, fetchImpl = globalThis.fetch }) {
   const key = process.env.GEMINI_API_KEY
   if (!key) throw new Error('GEMINI_API_KEY missing: refusing to call a model')
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: user }] }],
-    generationConfig: { temperature: 0, maxOutputTokens: maxOut, thinkingConfig: { thinkingBudget: 0 }, ...(json ? { responseMimeType: 'application/json' } : {}) },
+    generationConfig: {
+      temperature: 0, maxOutputTokens: Math.max(maxOut, MIN_MAX_OUT),
+      ...(json || schema ? { responseMimeType: 'application/json' } : {}),
+      ...(schema ? { responseSchema: schema } : {}),
+    },
   }
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+  const r = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
   })
   if (!r.ok) throw new Error(`gemini ${r.status}`)
   const j = await r.json()
   const u = j.usageMetadata ?? {}
   return {
-    text: j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '',
+    text: geminiText(j),
+    finishReason: j.candidates?.[0]?.finishReason ?? null,
     inTok: u.promptTokenCount ?? estTokens(system + user),
     outTok: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0),
+  }
+}
+
+/** {"winner":"A"} JSON (optionally fenced) or a lone A/B letter → 'A' | 'B' | null. */
+export function parseVerdict(t) {
+  const s = String(t ?? '').replace(/^\s*```(?:json)?|```\s*$/g, '').trim()
+  if (!s) return null
+  try {
+    const j = JSON.parse(s)
+    const w = String((typeof j === 'string' ? j : j?.winner ?? j?.verdict ?? j?.better) ?? '').trim().toUpperCase()
+    return w === 'A' || w === 'B' ? w : null
+  } catch { /* not JSON */ }
+  const m = /^\W*(?:SCRIPT\s+)?([AB])\W*$/i.exec(s)
+  return m ? m[1].toUpperCase() : null
+}
+export const VERDICT_SCHEMA = { type: 'OBJECT', properties: { winner: { type: 'STRING', enum: ['A', 'B'] } }, required: ['winner'] }
+
+/** Early-stop: after the first `window` calls, abort if more than `maxRate` of them were null. */
+export function nullGuard({ window = 6, maxRate = 0.2 } = {}) {
+  let calls = 0, nulls = 0, early = 0
+  return {
+    add(isNull) { calls++; if (isNull) { nulls++; if (calls <= window) early++ } },
+    get calls() { return calls }, get nulls() { return nulls },
+    shouldStop() { return calls >= window && early / window > maxRate },
   }
 }
 

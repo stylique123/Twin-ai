@@ -14,11 +14,13 @@ import { join } from 'node:path'
 import {
   CALIB_DIR, loadCraftSet, buildPairs, sampleByGap, rng, combineOrders, pairAccuracy, scorerPairAccuracy,
   estTokens, usd, costGuard, capFromEnv, cheapModel, callGemini, loadCraftJudge, fmtPct, writeResultsJson,
+  parseVerdict, VERDICT_SCHEMA, nullGuard, MIN_MAX_OUT,
 } from './evalLib.mjs'
 
 const TEST_PANEL = 'P10'
 const SHOT_PANELS = ['P5', 'P6', 'P7', 'P8']
-const MAX_OUT = 16
+const MAX_OUT = MIN_MAX_OUT // thinking tokens count here; see callGemini
+const EST_OUT = 300 // typical thoughts + answer, for planning; the cost guard charges real usage
 
 /** Rubric text with every line that cites a P10 script removed (P10 is the test set). */
 export function rubricForPrompt(md) {
@@ -39,13 +41,13 @@ export function pickShots(scripts) {
 
 export function systemPrompt(rubric, shots) {
   const ex = shots.map((s) => `### Example ${s.id} (craft ${s.craft} of 7)\n${s.lines.map((l, i) => `${i + 1}. ${l}`).join('\n')}`).join('\n\n')
-  return `You judge short-form video scripts by craft, using this rubric.\n\n${rubric}\n\n## Rated examples\n\n${ex}\n\nYou will see two scripts, A and B. Reply with exactly one letter: A or B, whichever has better craft by the rubric. No other text.`
+  return `You judge short-form video scripts by craft, using this rubric.\n\n${rubric}\n\n## Rated examples\n\n${ex}\n\nYou will see two scripts, A and B. Reply with JSON {"winner":"A"} or {"winner":"B"}, whichever has better craft by the rubric. No other text.`
 }
 export function userPrompt(x, y) {
   const f = (s) => s.lines.map((l, i) => `${i + 1}. ${l}`).join('\n')
   return `Script A:\n${f(x)}\n\nScript B:\n${f(y)}\n\nWhich has better craft, A or B?`
 }
-export function parseVerdict(t) { const m = /\b([AB])\b/.exec(String(t).trim().toUpperCase()); return m ? m[1] : null }
+export { parseVerdict }
 
 function arg(name, def) { const a = process.argv.find((x) => x.startsWith(`--${name}=`)); return a ? a.split('=')[1] : def }
 
@@ -76,7 +78,7 @@ async function main() {
   const rubric = rubricForPrompt(readFileSync(join(root, CALIB_DIR, 'craft-rubric-v1.md'), 'utf8'))
   const shots = pickShots(scripts)
   const sys = systemPrompt(rubric, shots)
-  const perCall = (p) => usd(model, estTokens(sys + userPrompt(p.a, p.b)) + 8, MAX_OUT)
+  const perCall = (p) => usd(model, estTokens(sys + userPrompt(p.a, p.b)) + 8, EST_OUT)
   const avg = all.reduce((s, p) => s + perCall(p), 0) / all.length
   const affordable = Math.floor(cap / avg / 2)
   const maxPairs = Number(arg('max-pairs', String(affordable)))
@@ -93,7 +95,8 @@ async function main() {
   const rand = rng(seed + 1)
   const results = []
   const rows = []
-  let stopped = false
+  let stopped = false, errors = 0, abortedNull = false
+  const ng = nullGuard()
   for (const p of pairs) {
     const worst = 2 * perCall(p) * 1.25
     if (!guard.allows(worst)) { stopped = true; break }
@@ -101,20 +104,30 @@ async function main() {
     const orders = swapFirst ? [[p.b, p.a, 'swap'], [p.a, p.b, 'fwd']] : [[p.a, p.b, 'fwd'], [p.b, p.a, 'swap']]
     const v = {}
     for (const [x, y, tag] of orders) {
-      const r = await callGemini({ model, system: sys, user: userPrompt(x, y), maxOut: MAX_OUT })
+      const r = await callGemini({ model, system: sys, user: userPrompt(x, y), maxOut: MAX_OUT, schema: VERDICT_SCHEMA })
       guard.add(usd(model, r.inTok, r.outTok))
       v[tag] = parseVerdict(r.text)
+      ng.add(v[tag] == null)
+      if (v[tag] == null) { errors++; console.log(`  null verdict (${tag}) finishReason=${r.finishReason} text=${JSON.stringify(r.text.slice(0, 80))}`) }
+      if (ng.shouldStop()) break
     }
+    if (ng.shouldStop()) { abortedNull = true; break }
     const c = combineOrders(p, v.fwd, v.swap)
     results.push(c)
     rows.push({ a: p.a.id, b: p.b.id, gap: p.gap, truth: p.better, fwd: v.fwd, swap: v.swap, correct: c.correct })
     console.log(`${p.a.id} vs ${p.b.id} gap=${p.gap} truth=${p.better} fwd=${v.fwd} swap=${v.swap} correct=${c.correct}`)
   }
+  if (abortedNull) {
+    console.error(`ABORTED: ${ng.nulls}/${ng.calls} null verdicts in the first calls; spent ~$${guard.spent.toFixed(4)}. Accuracy not reported.`)
+    writeResultsJson(process.argv, { ...out, aborted_null_verdicts: true, null_verdicts: ng.nulls, calls: ng.calls, pairs: rows, spent_usd: guard.spent })
+    process.exit(3)
+  }
   const s = pairAccuracy(results)
   if (stopped) console.log(`STOPPED at cost cap after ${results.length} pairs`)
   show(`LLM pairwise (${model})`, s)
   console.log(`order-consistent: ${results.filter((r) => r.consistent).length}/${results.length}  spent ~$${guard.spent.toFixed(4)}`)
-  writeResultsJson(process.argv, { ...out, stopped_at_cap: stopped, pairs: rows, llm: acc(s), order_consistent: results.filter((r) => r.consistent).length, spent_usd: guard.spent })
+  writeResultsJson(process.argv, { ...out, stopped_at_cap: stopped, pairs: rows, llm: acc(s), order_consistent: results.filter((r) => r.consistent).length, null_verdicts: errors, spent_usd: guard.spent })
+  if (errors) { console.error(`ERROR: ${errors} null verdicts; accuracy is not trustworthy`); process.exit(3) }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(String(e?.message ?? e)); process.exit(1) })
