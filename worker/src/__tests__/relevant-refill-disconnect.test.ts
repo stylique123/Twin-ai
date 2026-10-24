@@ -68,3 +68,13 @@ describe('refill_context through the worker gate', () => {
     expect(scriptOf(on.saved.at(-1)!)).not.toContain(VAN)
   })
 })
+
+describe('REFILL_V2 context through the worker gate', () => {
+  const lines = ['Why does an unscented candle sell?', STORY, 'A shopper sniffed a jar and asked why it smelled of nothing.', 'Tell me below.']
+  it('v2 in refill_context reaches the gate: no unrelated second story', async () => {
+    const { runInventionRecheck } = await import('../jobs/inventionRecheck.js')
+    const on = deps(lines)
+    await runInventionRecheck(job({ spoken_dedup: true, story_dedup: true, word_budget: 140, refill_context: { topic: 'why unscented candles sell', angle: '', v2: true, niche: 'candles', product: '' } }), on.d)
+    expect(scriptOf(on.saved.at(-1)!)).not.toContain(VAN)
+  })
+})
