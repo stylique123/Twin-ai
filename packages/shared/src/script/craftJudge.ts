@@ -1,9 +1,6 @@
-<<<<<<< HEAD
-=======
 import { blockWrongProductLines, buildTargetedCheckLinesV2, type TargetedItemV2, type TargetedProduct } from './checkLines.js'
 import type { GateBlueprint } from './inventionGate.js'
 
->>>>>>> origin/main
 /**
  * THE CRAFT JUDGE — a deterministic, unpaid scorer for craft rubric v1.
  *
@@ -228,8 +225,6 @@ export function pickByCraft(texts: [string, string]): { scores: [number, number]
   const scores: [number, number] = [candidateScore(blueprintLines(texts[0])), candidateScore(blueprintLines(texts[1]))]
   return { scores, chosen: scores[1] > scores[0] ? 1 : 0 }
 }
-<<<<<<< HEAD
-=======
 
 // ⚖️ BEST-OF-N ELIGIBILITY (owner rule, 22 Oct). Before any comparison, every
 // candidate runs targeted flags v2 (TARGETED_FLAGS_V2) and the wrong-product
@@ -300,4 +295,3 @@ export function graceMs(leftMs: number, grace: number = BEST_OF_N_GRACE_MS): num
   if (!(leftMs > 0) || leftMs < grace) return 0
   return Math.max(0, Math.min(grace, leftMs))
 }
->>>>>>> origin/main

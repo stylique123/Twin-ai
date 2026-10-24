@@ -182,13 +182,6 @@ export interface HedgeResult {
   lastErr: unknown
   /** Best-of-N (BEST_OF_N_JUDGE, trial): set only when `pick` was given AND both
    *  drafts had already finished when the first valid one was taken. */
-<<<<<<< HEAD
-  bestOfN?: { scores: [number, number]; chosen: 0 | 1 }
-}
-
-/** Best-of-N chooser: given the two finished valid drafts, which one ships. */
-export type HedgePick = (texts: [string, string]) => { scores: [number, number]; chosen: 0 | 1 }
-=======
   bestOfN?: HedgePickResult & { graceMs?: number }
 }
 
@@ -196,7 +189,6 @@ export type HedgePickResult = { scores: [number, number]; chosen: 0 | 1; compare
 /** Best-of-N chooser: given the two finished valid drafts and the draft today's
  *  code would ship (`fallback`), which one ships. */
 export type HedgePick = (texts: [string, string], fallback: 0 | 1) => HedgePickResult
->>>>>>> origin/main
 
 type Settled = { i: 0 | 1; text?: string; err?: unknown }
 
@@ -211,13 +203,10 @@ export async function runHedged(attempts: [HedgeAttempt, HedgeAttempt], valid: (
   /** Best-of-N (default absent = today's behaviour, byte for byte). Never waits:
    *  it only compares a draft that had ALREADY finished when the winner was taken. */
   pick?: HedgePick
-<<<<<<< HEAD
-=======
   /** Best-of-N grace (only with `pick`): when the first valid draft lands and the
    *  other is still running, let it run up to this long, and only when that still
    *  ends inside ASYNC_WRITER_END_MS; otherwise it is cancelled as today. */
   graceMs?: number
->>>>>>> origin/main
 }, hooks: HedgeHooks = {}): Promise<HedgeResult> {
   const now = opts.now ?? (() => Date.now())
   const hedgeAt = opts.hedgeAtMs ?? WRITER_HEDGE_AT_MS
@@ -283,16 +272,6 @@ export async function runHedged(attempts: [HedgeAttempt, HedgeAttempt], valid: (
   const other = a.i === 0 ? p1 : p0
   if (await take(a)) {
     const o = a.i === 0 ? 1 : 0
-<<<<<<< HEAD
-    // Already finished before the loser is aborted — no added wait, ever.
-    const ready = opts.pick && done[o] !== undefined && valid(done[o]!) ? done[o]! : null
-    const first = res.text!
-    await finishOther(other, o)
-    if (opts.pick && ready != null) {
-      const texts: [string, string] = a.i === 0 ? [first, ready] : [ready, first]
-      const p = opts.pick(texts)
-      res.text = texts[p.chosen]; res.winner = p.chosen; res.bestOfN = p
-=======
     // Already finished before the loser is aborted — no added wait.
     let ready = opts.pick && done[o] !== undefined && valid(done[o]!) ? done[o]! : null
     const first = res.text!
@@ -316,7 +295,6 @@ export async function runHedged(attempts: [HedgeAttempt, HedgeAttempt], valid: (
       const texts: [string, string] = a.i === 0 ? [first, ready] : [ready, first]
       const p = opts.pick(texts, fallback)
       res.text = texts[p.chosen]; res.winner = p.chosen; res.bestOfN = graced !== undefined ? { ...p, graceMs: graced } : p
->>>>>>> origin/main
     }
     return res
   }

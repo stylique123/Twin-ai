@@ -86,11 +86,7 @@ import { sanitizeNeverUse, neverUseEntryOf, addNeverUse, filterLedgerByNeverUse,
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
 import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerHedgeOn, ASYNC_WRITER_END_MS } from '../_shared/asyncPolish.ts'
-<<<<<<< HEAD
-import { bestOfNOn, pickByCraft, candidateScore, blueprintLines } from '../_shared/craftJudge.ts'
-=======
 import { bestOfNOn, pickEligible, checkCandidate, keepWriterOverPlanB, blueprintLines, BEST_OF_N_GRACE_MS, type BestOfNFlagCtx, type CandidateCheck } from '../_shared/craftJudge.ts'
->>>>>>> origin/main
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
@@ -6392,14 +6388,10 @@ interface WriterLadder { retryPrompt?: string; usedAttempt?: number
    *  hedge drafts with the craft judge when BOTH had already finished. */
   bestOfN?: boolean
   /** What best-of-N saw and chose (scores only). */
-<<<<<<< HEAD
-  bestOfNRecord?: { scores: Record<string, number>; chosen: string }
-=======
   bestOfNRecord?: { scores: Record<string, number>; chosen: string; compared?: Record<string, boolean>
     candidates?: Record<string, { eligible: boolean; flags: string[] }>; grace_ms?: number }
   /** Flags v2 + wrong-product context: every candidate is checked before judging. */
   bestOfNCtx?: BestOfNFlagCtx
->>>>>>> origin/main
   /** Counts for the failure record (codes and counts only). */
   failed?: number; skipped?: number; lastCode?: string | null }
 
@@ -6464,11 +6456,7 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       run: (t: number, signal: AbortSignal) => callOnce(apiKey, system, i >= 1 && ladder.retryPrompt ? ladder.retryPrompt : prompt, attempts[i].model, attempts[i].thinkBudget, t, schema, signal),
     })
     const valid = (text: string) => { try { return blueprintComplete(JSON.parse(text)) } catch { return false } }
-<<<<<<< HEAD
-    const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt, ...(ladder.bestOfN === true ? { pick: pickByCraft } : {}) }, {
-=======
     const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt, ...(ladder.bestOfN === true && ladder.bestOfNCtx ? { pick: (t: [string, string], fb: 0 | 1) => pickEligible(t, ladder.bestOfNCtx!, fb), graceMs: BEST_OF_N_GRACE_MS } : {}) }, {
->>>>>>> origin/main
       onStart: async (i) => { rows[i] = await record?.started(i, attempts[i].model) ?? null },
       onSettle: async (i, outcome, err) => {
         if (outcome === 'succeeded') await record?.settled(rows[i], 'succeeded')
@@ -6483,13 +6471,9 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
     })
     ladder.hedgeCalls = h.calls; ladder.hedged = h.hedged; ladder.hedgeAborted = h.aborted
     if (h.bestOfN) {
-<<<<<<< HEAD
-      ladder.bestOfNRecord = { scores: { attempt_0: h.bestOfN.scores[0], attempt_1: h.bestOfN.scores[1] }, chosen: `attempt_${h.bestOfN.chosen}` }
-=======
       const ck = h.bestOfN.checks as [CandidateCheck, CandidateCheck]
       ladder.bestOfNRecord = { scores: { attempt_0: h.bestOfN.scores[0], attempt_1: h.bestOfN.scores[1] }, chosen: `attempt_${h.bestOfN.chosen}`, compared: { hedge: h.bestOfN.compared === true },
         candidates: { attempt_0: { eligible: ck[0].eligible, flags: ck[0].flags }, attempt_1: { eligible: ck[1].eligible, flags: ck[1].flags } }, ...(h.bestOfN.graceMs != null ? { grace_ms: h.bestOfN.graceMs } : {}) }
->>>>>>> origin/main
       console.log(JSON.stringify({ event: 'best_of_n', ...ladder.bestOfNRecord }))
     }
     console.log(JSON.stringify({ event: 'writer_hedge', calls: h.calls, hedged: h.hedged, aborted: h.aborted, winner: h.winner, elapsed_ms: Date.now() - ladder.startedAt }))
@@ -12822,13 +12806,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
     asyncPolish = asyncPolishOn(trialOn, Deno.env.get('ASYNC_POLISH'))
     const deadlineFields = asyncPolish
-<<<<<<< HEAD
-      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...(bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE')) ? { bestOfN: true } : {}) }
-=======
       ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...(bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE')) ? { bestOfN: true, bestOfNCtx: {
           items: templateLedger, products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
           v2: Deno.env.get('TARGETED_FLAGS_V2') !== 'false', wrongProduct: Deno.env.get('WRONG_PRODUCT_BLOCK') !== 'false' } } : {}) }
->>>>>>> origin/main
       : writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
       ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...deadlineFields }
@@ -17499,14 +17479,6 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const out = planBScript(pol.lines, storyItem?.text ?? null)
           // Best-of-N (BEST_OF_N_JUDGE, default off): Plan B is the third candidate.
           // A panel arm request keeps its arm; nothing here waits on a model.
-<<<<<<< HEAD
-          const bonB = writerLadderForFailure?.bestOfN === true && panelArmReq == null
-            ? { writer: candidateScore(blueprintLines(bpb2)), plan_b: candidateScore(out.script.map((x) => String(x.line ?? ''))) } : null
-          const keepWriter = bonB != null && bonB.writer > bonB.plan_b
-          if (bonB) {
-            const prev = writerLadderForFailure!.bestOfNRecord
-            writerLadderForFailure!.bestOfNRecord = { scores: { ...(prev?.scores ?? {}), writer_final: bonB.writer, plan_b: bonB.plan_b }, chosen: keepWriter ? (prev?.chosen ?? 'writer') : 'plan_b' }
-=======
           // Owner rule: Plan B is swapped out ONLY when the writer's script wins by
           // the judge AND has zero blocking flags (flags v2 + wrong product).
           const bonCtx = writerLadderForFailure?.bestOfNCtx
@@ -17518,7 +17490,6 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             writerLadderForFailure!.bestOfNRecord = { ...(prev ?? {}), scores: { ...(prev?.scores ?? {}), writer_final: bonB.writer.score, plan_b: bonB.plan_b.score }, chosen: keepWriter ? (prev?.chosen ?? 'writer') : 'plan_b',
               compared: { ...(prev?.compared ?? {}), plan_b: bonB.writer.eligible && bonB.plan_b.eligible },
               candidates: { ...(prev?.candidates ?? {}), writer_final: { eligible: bonB.writer.eligible, flags: bonB.writer.flags }, plan_b: { eligible: bonB.plan_b.eligible, flags: bonB.plan_b.flags } } }
->>>>>>> origin/main
             console.log(JSON.stringify({ event: 'best_of_n', ...writerLadderForFailure!.bestOfNRecord }))
           }
           if (!keepWriter) {

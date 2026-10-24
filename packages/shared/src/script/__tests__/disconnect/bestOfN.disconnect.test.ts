@@ -3,11 +3,7 @@
 // model calls; nothing is paid.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { runHedged, ASYNC_WRITER_END_MS, WRITER_HEDGE_AT_MS, type HedgeResult } from '../../asyncPolish'
-<<<<<<< HEAD
-import { bestOfNOn, pickByCraft } from '../../craftJudge'
-=======
 import { bestOfNOn, pickByCraft, pickEligible, checkCandidate, keepWriterOverPlanB, graceMs, BEST_OF_N_GRACE_MS, type BestOfNFlagCtx } from '../../craftJudge'
->>>>>>> origin/main
 import { EDGE } from './edge'
 
 afterEach(() => { vi.useRealTimers() })
@@ -69,11 +65,7 @@ describe('BEST_OF_N_JUDGE disconnect', () => {
     expect(on.r.bestOfN!.scores[0]).toBeGreaterThan(on.r.bestOfN!.scores[1])
     expect(on.elapsed).toBe(off.elapsed) // no added latency
   })
-<<<<<<< HEAD
-  it('on: never waits for an unfinished draft (result and timing equal to off)', async () => {
-=======
   it('on, no grace given: never waits for an unfinished draft (result and timing equal to off)', async () => {
->>>>>>> origin/main
     const off = await hedge({}, 40_000, 60_000); vi.useRealTimers()
     const on = await hedge({ BEST_OF_N_JUDGE: 'on' }, 40_000, 60_000); vi.useRealTimers()
     expect(on.r.bestOfN).toBeUndefined()
@@ -82,21 +74,14 @@ describe('BEST_OF_N_JUDGE disconnect', () => {
   })
   it('the edge reads BEST_OF_N_JUDGE, passes the picker to runHedged, scores Plan B and records best_of_n', () => {
     expect(EDGE).toContain("bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE'))")
-<<<<<<< HEAD
-    expect(EDGE).toContain('...(ladder.bestOfN === true ? { pick: pickByCraft } : {})')
-    expect(EDGE).toContain("writerLadderForFailure?.bestOfN === true && panelArmReq == null")
-=======
     expect(EDGE).toContain('pick: (t: [string, string], fb: 0 | 1) => pickEligible(t, ladder.bestOfNCtx!, fb), graceMs: BEST_OF_N_GRACE_MS')
     expect(EDGE).toContain("v2: Deno.env.get('TARGETED_FLAGS_V2') !== 'false', wrongProduct: Deno.env.get('WRONG_PRODUCT_BLOCK') !== 'false'")
     expect(EDGE).toContain("writerLadderForFailure?.bestOfN === true && panelArmReq == null && bonCtx")
     expect(EDGE).toContain('keepWriterOverPlanB(bonB.writer, bonB.plan_b)')
->>>>>>> origin/main
     expect(EDGE).toContain('if (!keepWriter) {')
     expect(EDGE).toContain('bpg.best_of_n = writerLadderForFailure.bestOfNRecord')
   })
 })
-<<<<<<< HEAD
-=======
 
 // Owner rule (22 Oct): flags v2 + wrong product on every candidate first; only
 // zero-flag candidates are eligible; Plan B kept unless the writer wins AND is clean;
@@ -201,4 +186,3 @@ describe('BEST_OF_N_JUDGE eligibility rule', () => {
     expect(late.elapsed).toBeLessThanOrEqual(ASYNC_WRITER_END_MS)
   })
 })
->>>>>>> origin/main
