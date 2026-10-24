@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0293_canary_feedback':
+    'canary feedback table for the owner\'s canary account (scripts and Result screen only); staging is the editor test bed and runs no canary',
   '0292_check_line_source':
     "Widens creator_knowledge_source_check to allow 'check_line' (CHECK THIS LINE, trial only); NOT yet applied (file only, owner applies before CHECK_LINE_KILL is lifted for the trial). The editor never reads it. No staging-only surface.",
   '0291_release_flags':

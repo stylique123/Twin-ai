@@ -125,6 +125,7 @@ export const RESIDUAL_TABLES = [
   { table: 'brain_notes', col: 'owner_id', cleanup: 'cascade' },
   { table: 'creator_ideas', col: 'owner_id', cleanup: 'cascade' },
   { table: 'script_ratings', col: 'owner_id', cleanup: 'cascade' },
+  { table: 'canary_feedback', col: 'owner_id', cleanup: 'cascade' },
   { table: 'audience_tests', col: 'owner_id', cleanup: 'cascade' },
   { table: 'audience_panels', col: 'owner_id', cleanup: 'cascade' },
   { table: 'post_questions', col: 'owner_id', cleanup: 'cascade' },
