@@ -142,5 +142,8 @@ await import('./panelModes.selftest.mjs')
   assert.deepEqual(armBody({ accounts: [], refill_arm: 'baseline_p10', ab_split: 'alternate' }, 1, noEnv), { plan_b: true, panel_arm: 'plan_b', refill_arm: 'baseline_p10' })
   assert.deepEqual(armBody({ accounts: [], refill_arm: 'other' }, 3, noEnv), {})
   assert.deepEqual(armBody({ accounts: [] }, 3, { PANEL_REFILL_ARM: 'baseline_p10' }), { refill_arm: 'baseline_p10' })
+  const rAlt = { accounts: [], refill_arm: 'alternate' }
+  for (let n = 1; n <= 24; n++) assert.deepEqual(armBody(rAlt, n, noEnv), { refill_arm: n % 2 === 1 ? 'baseline_p10' : 'refill_v2' })
+  assert.deepEqual(armBody({ accounts: [] }, 4, { PANEL_REFILL_ARM: 'alternate' }), { refill_arm: 'refill_v2' })
   console.log('panel selftest (refill arms): ok')
 }

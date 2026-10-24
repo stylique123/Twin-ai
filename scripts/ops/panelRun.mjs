@@ -153,19 +153,22 @@ export function panelArmsOn(accountsDoc, env = process.env) {
   return panelPlanB(env) || Array.isArray(accountsDoc?.arms?.plan_b) || accountsDoc?.ab_split === 'alternate'
 }
 
-/** PANEL-12 REFILL ARMS (plan v6.1 §27): one refill arm for every request of a
- * batch, from the private row's `refill_arm` or env PANEL_REFILL_ARM (env wins).
- * 'baseline_p10' = the panel-10 refill (relevance filter and story-hook dedupe
- * off); 'refill_v2' = REFILL_V2 on. Two batches with the two arms run the same
- * requests. Anything else = no field (the edge env decides). */
-export function refillArm(accountsDoc, env = process.env) {
+/** PANEL-12 REFILL ARMS (plan v6.1 §27): the refill arm per request, from the
+ * private row's `refill_arm` or env PANEL_REFILL_ARM (env wins).
+ * 'baseline_p10' (arm A) = the panel-10 refill (relevance filter and story-hook
+ * dedupe off); 'refill_v2' (arm B) = arm A + REFILL_V2, the only difference.
+ * 'alternate' = per-request A/B split on the SAME batch of requests: odd n →
+ * 'baseline_p10', even n → 'refill_v2' (like ab_split alternate; it does NOT
+ * touch the plan_b arm). Anything else = no field (the edge env decides). */
+export function refillArm(accountsDoc, env = process.env, n = null) {
   const a = env.PANEL_REFILL_ARM || accountsDoc?.refill_arm
+  if (a === 'alternate') return n == null ? 'alternate' : Number(n) % 2 === 1 ? 'baseline_p10' : 'refill_v2'
   return a === 'baseline_p10' || a === 'refill_v2' ? a : null
 }
 
 /** The body fields for an arm: plan_b:true only on the plan_b arm; panel_arm recorded when arms are on; refill_arm when set. */
 export function armBody(accountsDoc, n, env = process.env) {
-  const ra = refillArm(accountsDoc, env)
+  const ra = refillArm(accountsDoc, env, n)
   const refill = ra ? { refill_arm: ra } : {}
   if (!panelArmsOn(accountsDoc, env)) return refill
   const arm = panelArm(accountsDoc, n, env)
@@ -275,7 +278,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   const records = []
   const { data: doneRows } = await admin.from('script_batch_results').select('n').eq('batch', batch).eq('status', 200)
   const done = new Set((doneRows ?? []).map((x) => x.n))
-  if (refillArm(accounts)) console.log(`panel ${batch}: refill arm ${refillArm(accounts)} on every request`)
+  if (refillArm(accounts)) console.log(`panel ${batch}: refill arm ${refillArm(accounts)}${refillArm(accounts) === 'alternate' ? ' (odd n baseline_p10, even n refill_v2)' : ' on every request'}`)
   if (panelArmsOn(accounts)) console.log(`panel ${batch}: arms plan_b=${list.filter((x) => panelArm(accounts, x.n) === 'plan_b').length} writer=${list.filter((x) => panelArm(accounts, x.n) === 'writer').length}`)
   console.log(`panel ${batch}: ${list.length} scenarios, ${done.size} already done, budget $${budget}`)
   const clients = new Map()
