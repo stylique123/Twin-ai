@@ -32,6 +32,7 @@ import {
   polishEditorPrompt, applyPolishRewrites, polishComparePrompt, editedWins, POLISH_VOICE_MAX_REWRITES, type PolishBeat,
 } from '../generated/asyncPolish.js'
 import { voicePolishBrief, voicePolishVerdict, polishFactChecks, type VoiceCard } from '../generated/voiceCard.js'
+import { reorderEnding, reorderCheck } from '../generated/spineComplete.js'
 
 /** The fast judge and the rewrite (task class of model_routing_v1.json). */
 export const INVENTION_RECHECK_TASK = INVENTION_JUDGE_CASCADE.fast
@@ -239,6 +240,22 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     delete bp.polish_pending
     bp.polish = polish
     if (Array.isArray(bp.script) && polish.verdict === 'edited') resyncShotListToScript(bp)
+    // ⚖️ ENDING + ONE MEMORABLE LINE (craft rubric v1 item F; DEFAULT OFF: the
+    // edge sets polish.reorder only with POLISH_REORDER=on, trial, test accounts).
+    // Reorder or trim her lines only: her most specific line right before the
+    // CTA, the CTA last. reorderCheck and polishFactChecks refuse any new line,
+    // number, name or claim; on refusal the script stands.
+    if (polishOpts.reorder === true && Array.isArray(bp.script)) {
+      const before = bp.script as PolishBeat[]
+      const ro = reorderEnding(before)
+      const said = (b: PolishBeat[]) => b.map((x) => (typeof x.line === 'string' ? x.line : '')).filter((l) => l.trim())
+      const rc = reorderCheck(before, ro.next)
+      const fc = polishFactChecks(said(before), said(ro.next as PolishBeat[]), material)
+      const changed = JSON.stringify(said(before)) !== JSON.stringify(said(ro.next as PolishBeat[]))
+      if (rc.ok && fc.ok && changed) { bp.script = ro.next; resyncShotListToScript(bp) }
+      bp.polish_reorder = { ...ro.record, applied: rc.ok && fc.ok && changed, reason: rc.reason ?? (fc.ok ? null : fc.reasons.join(',')) }
+      console.log(JSON.stringify({ event: 'polish_reorder', generation_id: generationId, applied: rc.ok && fc.ok && changed, moved_specific: ro.record.moved_specific, trimmed: ro.record.trimmed, reason: rc.reason }))
+    }
     console.log(JSON.stringify({ event: 'async_polish', generation_id: generationId, kept: polish.kept, rejected: polish.rejected.length, verdict: polish.verdict, voice_before: polish.voice?.before ?? null, voice_after: polish.voice?.after ?? null, voice_reason: polish.voice?.reason ?? null, ms: polish.ms, attempt: job.attempts }))
     await chain
     if (deps.saveProgress) await deps.saveProgress(generationId, { ...bp }).catch(() => {})
