@@ -8,13 +8,15 @@ This is the advisor's preferred design. It needs **no new bot identity, token or
 
 - **Trigger:** `schedule` (daily, `17 6 * * *` UTC). A scheduled run always runs the default branch (main); the step also checks `refs/heads/main`.
 - **What it does:** it dispatches the **existing** `script-batch.yml` with `gh workflow run`, authenticated by this run's own `GITHUB_TOKEN`. The workflow's permissions are `actions: write` only (no `contents`, no secrets). Runs dispatched with `GITHUB_TOKEN` do trigger `workflow_dispatch` (GitHub's "no recursive runs" rule exempts `workflow_dispatch` and `repository_dispatch`).
-- **Fixed presets only:** the allowlist lives in the workflow file. The preset is picked by day of year, so nothing is chosen at run time and there is no input at all:
+- **Fixed presets only:** the allowlist lives in the workflow file. The preset is picked by **UTC weekday** (no day-of-year rotation), so nothing is chosen at run time and there is no input at all:
 
-| preset | group | limit | panel_answer_mode |
-| --- | --- | --- | --- |
-| `panel-reference` | `panel:reference` | 8 | skip |
-| `panel-idea` | `panel:idea` | 8 | skip |
-| `panel-mixed-small` | `panel` | 24 | fixture |
+| day (UTC) | preset | group | limit | panel_answer_mode |
+| --- | --- | --- | --- | --- |
+| Mon-Fri | `panel-mixed-small`: **two-arm mixed panel** on the A/B split row (`PANEL_FILE_ID_AUTO`) | `panel` | 24 | fixture |
+| Saturday | `panel-reference` | `panel:reference` | 8 | skip |
+| Sunday | `panel-idea` | `panel:idea` | 8 | skip |
+
+  The run refuses if `PANEL_FILE_ID_AUTO` is unset.
 
   Every other input is pinned: `cost_mode=test`, `drafts=1`, `intake=false`, `panel_seed=false`, `judge_only`, `judge2_model`, `storyload_file_id` empty, `panel_file_id` from repo variable `PANEL_FILE_ID_AUTO`. Label = `auto-<preset>-<YYYY-MM-DD>`.
 - **At most one run per day:** before dispatching it queries the `script-batch` runs API and skips if **any** run was created today (UTC, any actor) or any run is `queued`/`in_progress`/`waiting`/`pending`/`requested`. The workflow also has its own concurrency group.
@@ -22,7 +24,9 @@ This is the advisor's preferred design. It needs **no new bot identity, token or
 - **Per-run cap:** `panel_budget_usd=2.5` is fixed in the file. `panelRun.mjs` already enforces it as `PANEL_BUDGET_USD`, per label.
 - **Total cap, without a ledger or new secret:** this workflow only has `GITHUB_TOKEN`. It cannot read `ai_cost_by_stage_script`, because that would put a Supabase key in it. Instead it uses a conservative **upper bound**: it counts `script-batch` runs triggered by `github-actions[bot]` since repo variable `PANEL_SPEND_SINCE` (YYYY-MM-DD) and dispatches only if `(count + 1) x 2.5 <= PANEL_SPEND_CAP`. It refuses if either variable is unset. Because each run is counted at its full cap, this over-counts real spend and never under-counts it. Until a real ledger exists, the runner-side `PANEL_BUDGET_USD` stop and the owner's manual cumulative check against `ai_cost_by_stage_script` stay in place. To allow more runs, the owner raises `PANEL_SPEND_CAP` or moves `PANEL_SPEND_SINCE` forward.
 
-### Required companion change in script-batch.yml (not in this PR)
+### Required companion change in script-batch.yml (not in this PR; now draft PR #1324)
+
+PR #1324 implements a stricter version than the sketch below: exact label regex `^auto-(panel-reference|panel-idea|panel-mixed-small)-YYYY-MM-DD$`, group must match the preset, `cost_mode=test`, `intake=false`, `panel_seed=false`, `drafts=1`, budget <= 2.5, main only, fail closed. Original sketch:
 
 The existing guard rejects any actor except the owner. A `GITHUB_TOKEN` dispatch arrives as `github-actions[bot]`, so until this change is merged the dispatched run will **fail at the guard and spend nothing**. Proposed diff:
 
@@ -46,8 +50,11 @@ Trust note: any workflow on **any branch** that has `actions: write` can dispatc
 
 ### Owner steps after merge
 1. Merge the companion script-batch guard change.
-2. Set variables `PANEL_FILE_ID_AUTO`, `PANEL_SPEND_SINCE` and `PANEL_SPEND_CAP` (for example 18).
-3. Optionally dispatch one `panel-reference` run manually first, then set `PANEL_SELF_START_ENABLED=true`.
+2. Set variables. Starting values:
+   - `PANEL_SPEND_CAP=5` (with the fixed $2.5 per-run bound this allows at most 2 self-started runs before the owner raises it)
+   - `PANEL_SPEND_SINCE=2026-10-23`
+   - `PANEL_FILE_ID_AUTO` = the A/B split row id (two-arm mixed panel)
+3. **Turn on only after one manual end-to-end test**: the owner dispatches one run by hand with the weekday preset's exact inputs (label `auto-panel-mixed-small-<date>`, group `panel`, limit 24, the A/B split row) and checks results, spend and the blind-label export. Only then set `PANEL_SELF_START_ENABLED=true`.
 
 ## Alternative A: queue table + schedule
 

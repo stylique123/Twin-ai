@@ -6,7 +6,10 @@ name: panel-self-start
 # comes from the fixed preset allowlist below; nothing comes from outside.
 # Off by default: runs only when repo variable PANEL_SELF_START_ENABLED == 'true'.
 # Companion change required in script-batch.yml (see docs/release/panel-self-start-proposal.md):
-# its owner-only guard must also accept github-actions[bot] for labels starting "auto-".
+# its owner-only guard must also accept github-actions[bot] for auto-* preset labels (PR #1324).
+# Schedule: weekdays = two-arm mixed panel (24, A/B split row PANEL_FILE_ID_AUTO);
+# Saturday = Reference; Sunday = Idea. Starting vars: PANEL_SPEND_CAP=5,
+# PANEL_SPEND_SINCE=2026-10-23. Turn on only after one manual end-to-end test.
 on:
   schedule:
     - cron: '17 6 * * *'
@@ -30,17 +33,20 @@ jobs:
           if [ "$REF" != "refs/heads/main" ]; then echo "::error::main only"; exit 1; fi
 
           # Preset allowlist. The only values that can ever reach script-batch.
-          # name|group|limit|panel_answer_mode
-          PRESETS='panel-reference|panel:reference|8|skip
-          panel-idea|panel:idea|8|skip
-          panel-mixed-small|panel|24|fixture'
+          # Picked by UTC weekday (no input, nothing chosen at run time):
+          #   Mon-Fri: panel-mixed-small = TWO-ARM MIXED PANEL, 24 requests, on the
+          #            A/B split row in repo variable PANEL_FILE_ID_AUTO
+          #   Sat:     panel-reference (8)
+          #   Sun:     panel-idea (8)
           BUDGET_USD=2.5   # per-run cap, fixed; script-batch passes it to panelRun.mjs as PANEL_BUDGET_USD
-
-          # Rotate presets by day of year, so no input is chosen at run time.
-          N=$(printf '%s\n' "$PRESETS" | wc -l)
-          IDX=$(( 10#$(date -u +%j) % N + 1 ))
-          LINE=$(printf '%s\n' "$PRESETS" | sed -n "${IDX}p" | tr -d ' ')
-          IFS='|' read -r PRESET GROUP LIMIT ANSWER <<< "$LINE"
+          DOW=$(date -u +%u)   # 1=Mon .. 7=Sun
+          case "$DOW" in
+            1|2|3|4|5) PRESET=panel-mixed-small; GROUP=panel;           LIMIT=24; ANSWER=fixture ;;
+            6)         PRESET=panel-reference;   GROUP=panel:reference; LIMIT=8;  ANSWER=skip ;;
+            7)         PRESET=panel-idea;        GROUP=panel:idea;      LIMIT=8;  ANSWER=skip ;;
+            *) echo "::error::bad weekday"; exit 1 ;;
+          esac
+          if [ -z "$PANEL_FILE_ID" ]; then echo "::error::PANEL_FILE_ID_AUTO (A/B split row) must be set"; exit 1; fi
           TODAY=$(date -u +%Y-%m-%d)
           LABEL="auto-${PRESET}-${TODAY}"
 
