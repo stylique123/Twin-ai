@@ -72,14 +72,50 @@ jobs:
       # Owner conditions (fictional panel): manual dispatch only, from main only,
       # by the repository owner only. No pull_request trigger, so no untrusted
       # code is ever checked out with these secrets.
-      - name: Guard — main branch and owner only
+      # Self-start exception: github-actions[bot] is accepted ONLY for a label
+      # auto-(panel-reference|panel-idea|panel-mixed-small)-YYYY-MM-DD, and then
+      # every cost-bearing input is re-checked against that preset. Anything
+      # else fails closed. Inputs reach the shell via env only.
+      - name: Guard — main branch and owner only (or the self-start bot for auto-* presets)
         run: |
+          if [ "$EVENT" != "workflow_dispatch" ]; then echo "::error::script-batch runs only on manual dispatch"; exit 1; fi
           if [ "$REF" != "refs/heads/main" ]; then echo "::error::script-batch runs only from main"; exit 1; fi
-          if [ "$ACTOR" != "$OWNER" ]; then echo "::error::script-batch runs only for the repository owner"; exit 1; fi
+          if [ "$ACTOR" = "$OWNER" ]; then exit 0; fi
+          if [ "$ACTOR" != "github-actions[bot]" ]; then echo "::error::script-batch runs only for the repository owner"; exit 1; fi
+          re='^auto-(panel-reference|panel-idea|panel-mixed-small)-[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          if ! [[ "$LABEL" =~ $re ]]; then echo "::error::bot runs need an auto-* preset label"; exit 1; fi
+          preset="${BASH_REMATCH[1]}"
+          case "$preset" in
+            panel-reference) want_group='panel:reference' ;;
+            panel-idea) want_group='panel:idea' ;;
+            panel-mixed-small) want_group='panel' ;;
+            *) echo "::error::unknown preset"; exit 1 ;;
+          esac
+          fail() { echo "::error::bot run: $1"; exit 1; }
+          [ "$GROUP" = "$want_group" ] || fail "group must be $want_group for $preset"
+          [ "$COST_MODE" = "test" ] || fail "cost_mode must be test"
+          [ "$INTAKE" = "false" ] || fail "intake must be false"
+          [ "$PANEL_SEED" = "false" ] || fail "panel_seed must be false"
+          [ "$DRAFTS" = "1" ] || fail "drafts must be 1"
+          [ -z "$JUDGE_ONLY" ] || fail "judge_only must be empty"
+          [ -z "$JUDGE2_MODEL" ] || fail "judge2_model must be empty"
+          [[ "$BUDGET" =~ ^([0-9]+(\.[0-9]+)?|\.[0-9]+)$ ]] || fail "panel_budget_usd must be a plain number"
+          awk -v b="$BUDGET" 'BEGIN { exit !(b + 0 <= 2.5) }' || fail "panel_budget_usd must be at most 2.5"
+          echo "bot self-start accepted: $preset"
         env:
+          EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           ACTOR: ${{ github.actor }}
           OWNER: ${{ github.repository_owner }}
+          LABEL: ${{ inputs.label }}
+          GROUP: ${{ inputs.group }}
+          COST_MODE: ${{ inputs.cost_mode }}
+          INTAKE: ${{ inputs.intake }}
+          PANEL_SEED: ${{ inputs.panel_seed }}
+          DRAFTS: ${{ inputs.drafts }}
+          JUDGE_ONLY: ${{ inputs.judge_only }}
+          JUDGE2_MODEL: ${{ inputs.judge2_model }}
+          BUDGET: ${{ inputs.panel_budget_usd }}
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
