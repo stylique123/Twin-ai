@@ -1,0 +1,88 @@
+name: judge-evals
+
+# SMALL PAID JUDGE EVALS (proposal for advisor review, PR #1313). Manual only,
+# owner only, main only. Fictional calibration fixtures only; no database, no
+# real creators. The only secret is GEMINI_API_KEY, passed via env to the eval
+# step alone. Inputs are fixed choices and reach the shell via env, never
+# interpolated into run: lines. The only artifact is a JSON of ids, gaps,
+# verdict letters and scores (scripts' --out); script text never leaves the run.
+on:
+  workflow_dispatch:
+    inputs:
+      eval:
+        description: 'Which eval'
+        type: choice
+        options: [craft-pairs, repeat-shadow]
+        default: craft-pairs
+      dry_run:
+        description: 'Dry run: count calls and estimate cost, no network, no key used'
+        type: boolean
+        default: true
+      cap_usd:
+        description: 'Hard spend cap in USD (at most 0.15)'
+        type: choice
+        options: ['0.05', '0.10', '0.15']
+        default: '0.15'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: judge-evals
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
+    timeout-minutes: 20
+    steps:
+      - name: Guard - main branch, owner only, fixed inputs
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then echo "::error::judge-evals runs only from main"; exit 1; fi
+          if [ "$ACTOR" != "$OWNER" ]; then echo "::error::judge-evals runs only for the repository owner"; exit 1; fi
+          case "$EVAL" in craft-pairs|repeat-shadow) ;; *) echo "::error::unknown eval"; exit 1 ;; esac
+          case "$DRY_RUN" in true|false) ;; *) echo "::error::bad dry_run"; exit 1 ;; esac
+          case "$CAP_USD" in 0.05|0.10|0.15) ;; *) echo "::error::cap_usd must be 0.05, 0.10 or 0.15"; exit 1 ;; esac
+        env:
+          REF: ${{ github.ref }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          EVAL: ${{ inputs.eval }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          CAP_USD: ${{ inputs.cap_usd }}
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run the eval (prints ids and scores only)
+        run: |
+          OUT="$RUNNER_TEMP/judge-evals/result.json"
+          mkdir -p "$(dirname "$OUT")"
+          FLAGS="--out=$OUT"
+          if [ "$DRY_RUN" = "true" ]; then
+            FLAGS="$FLAGS --dry-run"
+            unset GEMINI_API_KEY
+          fi
+          if [ "$EVAL" = "craft-pairs" ]; then
+            node scripts/ops/evalCraftJudgePairs.mjs $FLAGS
+          else
+            node scripts/ops/shadowRepeatCheck.mjs $FLAGS
+          fi
+        env:
+          EVAL: ${{ inputs.eval }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          EVAL_CRAFT_CAP_USD: ${{ inputs.cap_usd }}
+          EVAL_REPEAT_CAP_USD: ${{ inputs.cap_usd }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Upload ids and scores only
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: judge-evals-${{ inputs.eval }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/judge-evals/result.json
+          if-no-files-found: warn
+          retention-days: 3
