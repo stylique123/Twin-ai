@@ -96,6 +96,7 @@ const START_ERROR_TEXT: Record<string, string> = {
 const GEN_CACHE: Record<string, Generation> = {}
 import { useAuth } from '../context/AuthContext'
 import { RateThisScript } from '../components/RateThisScript'
+import { CanaryFeedback } from '../components/CanaryFeedback'
 import { TestViewers, useAudienceTest, hookVerdicts, HOOKS_SHOWN } from '../components/TestViewers'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -1066,7 +1067,15 @@ export default function Result() {
               outcome row (every generation older than 0191) or when it is too
               soon, so no condition is duplicated here where it could drift. */}
           {/* One-tap rating a few seconds after the script appears; feeds the niche brain. */}
-          <RateThisScript generationId={gen.id} ownerId={profile?.id ?? null} />
+          {/* 🐤 Canary scripts (server-set blueprint.canary) get the full verdict panel
+              instead of the stars pop-up: one prompt, never two. */}
+          {(gen.blueprint as { canary?: unknown } | null)?.canary === true ? (
+            <CanaryFeedback generationId={gen.id} ownerId={profile?.id ?? null}
+              shippedScript={(((gen.blueprint as { script?: unknown }).script ?? []) as Array<{ line?: unknown }>)
+                .map((b) => (typeof b?.line === 'string' ? b.line : '')).filter(Boolean).join('\n')} />
+          ) : (
+            <RateThisScript generationId={gen.id} ownerId={profile?.id ?? null} />
+          )}
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}
