@@ -1420,7 +1420,7 @@ export default function ProductLibrary() {
           />
           {fieldNote(e.id, 'offer')}
 
-          {/* ⚖️ WHAT THIS PRODUCT'S SCRIPTS MUST NEVER SAY (Sunflower #6). Added
+          {/* ⚖️ WHAT THIS PRODUCT'S SCRIPTS MUST NEVER SAY (Maya #6). Added
               to her standing list and her brand's, never replacing them. */}
           <ClaimBans
             key={`bans-${e.id}`}
@@ -3017,7 +3017,7 @@ function StartFromLink({ onCancel, onClaim, busy, initialUrl, initialName, initi
 
   return (
     <div className="mt-3 space-y-3 rounded-lg bg-white/[0.03] p-3">
-      {/* ⚠️ RELATIONSHIP FIRST (Sunflower #10). Three add buttons led to near-
+      {/* ⚠️ RELATIONSHIP FIRST (Maya #10). Three add buttons led to near-
           identical forms; now one "Add a product" asks this before anything
           else, and the rest of the form adapts to the answer. */}
       <Choices

@@ -59,7 +59,7 @@ export async function visualProfileForUrl(url: string): Promise<unknown> {
 }
 
 /**
- * ⚠️ SUNFLOWER #27: THE SHOTS WERE ANALYSED, JUST AFTER THE SCRIPT WAS WRITTEN.
+ * ⚠️ MAYA #27: THE SHOTS WERE ANALYSED, JUST AFTER THE SCRIPT WAS WRITTEN.
  * The frames pass is its own job, queued once the transcript is in; the build
  * called the writer immediately, so the writer used her brand defaults and the
  * panel said "we did not analyse the video". This waits a bounded while for it.

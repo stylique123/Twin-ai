@@ -1219,7 +1219,7 @@ export function ConfirmStep({
 }) {
   const [vp, setVp] = useState<VoiceProfile | null>(draft.profile)
   // ⚠️⚠️ EIGHT FIELDS RENDERED BLANK WHILE THEIR VALUES WERE PRINTED ONE LINE
-  // ABOVE THEM. Reported live on @carlaangelfit: `WHO YOU'RE TALKING TO`,
+  // ABOVE THEM. Reported live on a creator's account: `WHO YOU'RE TALKING TO`,
   // `WHAT IS YOUR OFFER CALLED`, `NICHE`, `TONE`, `PACING`, `HOOK STYLE` and
   // `WHAT YOU PUSH AGAINST` were all empty, while the summary directly above
   // read "Fitness · Empathetic · 7 signature phrases · 4 recurring CTAs".

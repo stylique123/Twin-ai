@@ -5,7 +5,7 @@
  * Two hard rules the writer is told and the final script is held to.
  *
  * ⚠️ AUDIT 2026-09-30 (THE COFFEE-CART IDEA RUN). An Idea-mode script with no
- * product picked said "while brewing Sunflower Coffee Roasters Colombia washed
+ * product picked said "while brewing Maya Coffee Co Colombia washed
  * medium roast coffee beans". Nothing checked the finished script against what
  * she picked: every library name counted as "grounded". And the niche research
  * offered "Follow for Part 2" as a close that works, against the standing rule

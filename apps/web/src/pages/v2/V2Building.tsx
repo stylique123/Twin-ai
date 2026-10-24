@@ -1671,7 +1671,7 @@ export default function V2Building() {
                     unread = null
                   } else if (read.cls === 'usable'
                     || (read.cls === 'too_long' && !tooLongMatters(answersRef.current.reference_use))) {
-                    // ⚖️ SUNFLOWER #11–#12: length is judged against the option
+                    // ⚖️ MAYA #11–#12: length is judged against the option
                     // she chose. Opening-only builds take any length; pacing and
                     // stay-close warn (with an override) when far off her target.
                     const fit = referenceLengthFit(job.result.duration_sec ?? null,
@@ -1809,7 +1809,7 @@ export default function V2Building() {
         const ideaFocusLine = ideaCardLines(state.idea_mode, state.idea_hook) + (chosenFocus === '' || chosenFocus === IDEA_FOCUS_ALL
           ? ''
           : `This video is about: ${chosenFocus}.\n\n`)
-        // ⚠️ SUNFLOWER #27: give the shot analysis (a separate job) a bounded
+        // ⚠️ MAYA #27: give the shot analysis (a separate job) a bounded
         // moment to land, so the writer reads the reference's real framing and
         // camera work instead of her brand defaults. Never blocks for long.
         if (refUrl && transcript_id) await waitForVisualProfile(refUrl).catch(() => null)

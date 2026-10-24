@@ -2,6 +2,12 @@
 // Run: node scripts/ci/generate_shared_pilot_core.mjs
 // Edit the source instead. CI regenerates this file and fails on a diff.
 // @ts-nocheck
+<<<<<<< HEAD
+=======
+import { blockWrongProductLines, buildTargetedCheckLinesV2, type TargetedItemV2, type TargetedProduct } from './checkLines.ts'
+import type { GateBlueprint } from './inventionGate.ts'
+
+>>>>>>> origin/main
 /**
  * THE CRAFT JUDGE — a deterministic, unpaid scorer for craft rubric v1.
  *
@@ -226,3 +232,76 @@ export function pickByCraft(texts: [string, string]): { scores: [number, number]
   const scores: [number, number] = [candidateScore(blueprintLines(texts[0])), candidateScore(blueprintLines(texts[1]))]
   return { scores, chosen: scores[1] > scores[0] ? 1 : 0 }
 }
+<<<<<<< HEAD
+=======
+
+// ⚖️ BEST-OF-N ELIGIBILITY (owner rule, 22 Oct). Before any comparison, every
+// candidate runs targeted flags v2 (TARGETED_FLAGS_V2) and the wrong-product
+// check (WRONG_PRODUCT_BLOCK). Only a candidate with ZERO blocking flags is
+// eligible; with fewer than two eligible there is no comparison and today's
+// choice ships. A higher craft score never buys a flagged line.
+
+/** The flag context the edge holds at writer time (ledger items + product names). */
+export interface BestOfNFlagCtx {
+  items: readonly TargetedItemV2[]
+  products: readonly TargetedProduct[]
+  /** TARGETED_FLAGS_V2 on (default on unless 'false'). */
+  v2: boolean
+  /** WRONG_PRODUCT_BLOCK on (default on unless 'false'). */
+  wrongProduct: boolean
+}
+
+/** One candidate's eligibility: reason ids only (never text). */
+export interface CandidateCheck { score: number; eligible: boolean; flags: string[] }
+
+/** Blocking flags of one script (its spoken lines): wrong-product blocks and every v2 targeted flag. */
+export function blockingFlags(lines: string[], ctx: BestOfNFlagCtx): string[] {
+  const bp = { script: lines.map((line) => ({ line })) } as unknown as GateBlueprint
+  const out: string[] = []
+  if (ctx.wrongProduct) for (const b of blockWrongProductLines(bp, ctx.items, ctx.products).blocked) out.push(`wrong_product@${b.line_index}`)
+  if (ctx.v2) for (const c of buildTargetedCheckLinesV2(bp, ctx.items, ctx.products)) out.push(`${c.reason}@${c.line_index}`)
+  return [...new Set(out)]
+}
+
+/** Score + flags + eligibility of one candidate. An empty script is never eligible. */
+export function checkCandidate(lines: string[], ctx: BestOfNFlagCtx): CandidateCheck {
+  const flags = blockingFlags(lines, ctx)
+  return { score: candidateScore(lines), eligible: lines.length > 0 && flags.length === 0, flags }
+}
+
+export interface FlagAwarePick {
+  scores: [number, number]
+  /** The draft that ships: the judge's pick when compared, else today's (`fallback`). */
+  chosen: 0 | 1
+  /** Both drafts eligible, so the judge decided. */
+  compared: boolean
+  checks: [CandidateCheck, CandidateCheck]
+}
+
+/** Best-of-N over the two hedge drafts under the eligibility rule. `fallback`
+ *  is the draft today's code ships; it stays unless BOTH are eligible. */
+export function pickEligible(texts: [string, string], ctx: BestOfNFlagCtx, fallback: 0 | 1): FlagAwarePick {
+  const checks: [CandidateCheck, CandidateCheck] = [checkCandidate(blueprintLines(texts[0]), ctx), checkCandidate(blueprintLines(texts[1]), ctx)]
+  const scores: [number, number] = [checks[0].score, checks[1].score]
+  const compared = checks[0].eligible && checks[1].eligible
+  const chosen: 0 | 1 = compared ? (scores[1] > scores[0] ? 1 : scores[0] > scores[1] ? 0 : fallback) : fallback
+  return { scores, chosen, compared, checks }
+}
+
+/** Plan B vs the writer's script: Plan B is replaced ONLY when the writer's
+ *  script has zero blocking flags AND wins by the judge (Plan B must be eligible
+ *  too, or there is no comparison and Plan B stays). */
+export function keepWriterOverPlanB(writer: CandidateCheck, planB: CandidateCheck): boolean {
+  return writer.eligible && planB.eligible && writer.score > planB.score
+}
+
+/** Grace for the second hedge draft (rule 3): the longest it may keep running
+ *  after the first valid draft, and only if it still ends inside the writer deadline. */
+export const BEST_OF_N_GRACE_MS = 5_000
+/** How long to let the other draft finish: min(grace, time left before the
+ *  deadline); 0 (cancel as today) when elapsed + grace would pass the deadline. */
+export function graceMs(leftMs: number, grace: number = BEST_OF_N_GRACE_MS): number {
+  if (!(leftMs > 0) || leftMs < grace) return 0
+  return Math.max(0, Math.min(grace, leftMs))
+}
+>>>>>>> origin/main

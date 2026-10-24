@@ -689,7 +689,7 @@ function namedWords(s: string): Set<string> {
 }
 
 /** What a rewrite introduced that neither its original beat nor the facts contain. */
-// ⚠️ SCRIPT BATCH 2026-10-02: "Farmington, NM" was her fact; a lengthened line
+// ⚠️ SCRIPT BATCH 2026-10-02: "Riverton, WY" was her fact; a lengthened line
 // saying "New Mexico" was rejected as an invented name. A state she wrote as
 // its postal code may be said in full.
 const US_STATES: Record<string, string> = {
@@ -826,7 +826,7 @@ function acceptExtensionAll(
   return { accepted: true, reason: 'accepted', beats: again.beats, report: r, wordsBefore: before, wordsAfter: r.words, invented: [] }
 }
 
-// ── FIGURES NOTHING SHE GAVE TWIN CONTAINS (Sunflower #23) ─────────────────
+// ── FIGURES NOTHING SHE GAVE TWIN CONTAINS (Maya #23) ─────────────────
 //
 // ⚠️ THE VIEWER PANEL ONLY TESTS THE FIRST THREE SECONDS. An invented cupping
 // score ("above 80", then "82" on a rerun) and "batches of exactly two pounds"

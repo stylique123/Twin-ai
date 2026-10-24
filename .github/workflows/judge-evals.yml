@@ -85,4 +85,4 @@ jobs:
           name: judge-evals-${{ inputs.eval }}-${{ github.run_id }}
           path: ${{ runner.temp }}/judge-evals/result.json
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 3

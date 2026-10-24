@@ -86,7 +86,11 @@ import { sanitizeNeverUse, neverUseEntryOf, addNeverUse, filterLedgerByNeverUse,
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
 import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerHedgeOn, ASYNC_WRITER_END_MS } from '../_shared/asyncPolish.ts'
+<<<<<<< HEAD
 import { bestOfNOn, pickByCraft, candidateScore, blueprintLines } from '../_shared/craftJudge.ts'
+=======
+import { bestOfNOn, pickEligible, checkCandidate, keepWriterOverPlanB, blueprintLines, BEST_OF_N_GRACE_MS, type BestOfNFlagCtx, type CandidateCheck } from '../_shared/craftJudge.ts'
+>>>>>>> origin/main
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
@@ -113,6 +117,7 @@ import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
+import { completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY } from '../_shared/spineComplete.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -6387,7 +6392,14 @@ interface WriterLadder { retryPrompt?: string; usedAttempt?: number
    *  hedge drafts with the craft judge when BOTH had already finished. */
   bestOfN?: boolean
   /** What best-of-N saw and chose (scores only). */
+<<<<<<< HEAD
   bestOfNRecord?: { scores: Record<string, number>; chosen: string }
+=======
+  bestOfNRecord?: { scores: Record<string, number>; chosen: string; compared?: Record<string, boolean>
+    candidates?: Record<string, { eligible: boolean; flags: string[] }>; grace_ms?: number }
+  /** Flags v2 + wrong-product context: every candidate is checked before judging. */
+  bestOfNCtx?: BestOfNFlagCtx
+>>>>>>> origin/main
   /** Counts for the failure record (codes and counts only). */
   failed?: number; skipped?: number; lastCode?: string | null }
 
@@ -6452,7 +6464,11 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       run: (t: number, signal: AbortSignal) => callOnce(apiKey, system, i >= 1 && ladder.retryPrompt ? ladder.retryPrompt : prompt, attempts[i].model, attempts[i].thinkBudget, t, schema, signal),
     })
     const valid = (text: string) => { try { return blueprintComplete(JSON.parse(text)) } catch { return false } }
+<<<<<<< HEAD
     const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt, ...(ladder.bestOfN === true ? { pick: pickByCraft } : {}) }, {
+=======
+    const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt, ...(ladder.bestOfN === true && ladder.bestOfNCtx ? { pick: (t: [string, string], fb: 0 | 1) => pickEligible(t, ladder.bestOfNCtx!, fb), graceMs: BEST_OF_N_GRACE_MS } : {}) }, {
+>>>>>>> origin/main
       onStart: async (i) => { rows[i] = await record?.started(i, attempts[i].model) ?? null },
       onSettle: async (i, outcome, err) => {
         if (outcome === 'succeeded') await record?.settled(rows[i], 'succeeded')
@@ -6467,7 +6483,13 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
     })
     ladder.hedgeCalls = h.calls; ladder.hedged = h.hedged; ladder.hedgeAborted = h.aborted
     if (h.bestOfN) {
+<<<<<<< HEAD
       ladder.bestOfNRecord = { scores: { attempt_0: h.bestOfN.scores[0], attempt_1: h.bestOfN.scores[1] }, chosen: `attempt_${h.bestOfN.chosen}` }
+=======
+      const ck = h.bestOfN.checks as [CandidateCheck, CandidateCheck]
+      ladder.bestOfNRecord = { scores: { attempt_0: h.bestOfN.scores[0], attempt_1: h.bestOfN.scores[1] }, chosen: `attempt_${h.bestOfN.chosen}`, compared: { hedge: h.bestOfN.compared === true },
+        candidates: { attempt_0: { eligible: ck[0].eligible, flags: ck[0].flags }, attempt_1: { eligible: ck[1].eligible, flags: ck[1].flags } }, ...(h.bestOfN.graceMs != null ? { grace_ms: h.bestOfN.graceMs } : {}) }
+>>>>>>> origin/main
       console.log(JSON.stringify({ event: 'best_of_n', ...ladder.bestOfNRecord }))
     }
     console.log(JSON.stringify({ event: 'writer_hedge', calls: h.calls, hedged: h.hedged, aborted: h.aborted, winner: h.winner, elapsed_ms: Date.now() - ladder.startedAt }))
@@ -8470,7 +8492,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // rule the plan screen uses) is removed before the writer sees the profile:
   // a list entry is dropped, a sentence in a text field is cut.
   // ⚠️ AND OF WHAT SHE REJECTED (batch audit 2026-10-03): a hook sample that
-  // opens "Hello, I'm Savannah" after she said never to is dropped the same way,
+  // opens "Hello, I'm Maya" after she said never to is dropped the same way,
   // and the account-level offer line loses another product's price or size.
   const vp = (() => {
     // Blind set 3 T5: a hook pattern retelling her private relocation story had
@@ -9426,7 +9448,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // invention gate of a RESCUED script too (panel-current-2 #8 had no gate record).
   let gateBoard: Array<{ id?: unknown; kind?: unknown; text?: unknown }> = []
   let outsideSelected: { offered: number; kept: number; min_score: number } | null = null
-  // Everything the writer was given, kept for the figure audit (Sunflower #23).
+  // Everything the writer was given, kept for the figure audit (Maya #23).
   let writerMaterial = ''
   let refunded = false
   // A panel account spent nothing (see spend above), so every refund path is a
@@ -12800,7 +12822,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
     asyncPolish = asyncPolishOn(trialOn, Deno.env.get('ASYNC_POLISH'))
     const deadlineFields = asyncPolish
+<<<<<<< HEAD
       ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...(bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE')) ? { bestOfN: true } : {}) }
+=======
+      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...(bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE')) ? { bestOfN: true, bestOfNCtx: {
+          items: templateLedger, products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
+          v2: Deno.env.get('TARGETED_FLAGS_V2') !== 'false', wrongProduct: Deno.env.get('WRONG_PRODUCT_BLOCK') !== 'false' } } : {}) }
+>>>>>>> origin/main
       : writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
       ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...deadlineFields }
@@ -15594,7 +15622,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           if (typeof b?.line === 'string') b.line = collapseDoubledNumbers(b.line)
         }
       }
-      // ⚠️ SUNFLOWER #23: figures in the final script that nothing she gave
+      // ⚠️ MAYA #23: figures in the final script that nothing she gave
       // Twin contains — shown on the result as "check before you record".
       if (Array.isArray(script) && writerMaterial) {
         ;(blueprint as { unsourced_figures?: unknown }).unsourced_figures = unsourcedFigures(
@@ -15952,7 +15980,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       ((blueprint as { reference_read: Record<string, unknown> }).reference_read.reference_duration_sec =
         ref?.duration_sec ?? null)
 
-    // ⚠️ SUNFLOWER #15: A REFERENCE WITH NO PERSONAL STORY IN IT. Listicles and
+    // ⚠️ MAYA #15: A REFERENCE WITH NO PERSONAL STORY IN IT. Listicles and
     // advice round-ups carry no "I"/"my" narrative, so any story in the adapted
     // script cannot have come from the reference. Measured, not asked: the share
     // of first-person words in its transcript. The client says so plainly.
@@ -17471,12 +17499,26 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const out = planBScript(pol.lines, storyItem?.text ?? null)
           // Best-of-N (BEST_OF_N_JUDGE, default off): Plan B is the third candidate.
           // A panel arm request keeps its arm; nothing here waits on a model.
+<<<<<<< HEAD
           const bonB = writerLadderForFailure?.bestOfN === true && panelArmReq == null
             ? { writer: candidateScore(blueprintLines(bpb2)), plan_b: candidateScore(out.script.map((x) => String(x.line ?? ''))) } : null
           const keepWriter = bonB != null && bonB.writer > bonB.plan_b
           if (bonB) {
             const prev = writerLadderForFailure!.bestOfNRecord
             writerLadderForFailure!.bestOfNRecord = { scores: { ...(prev?.scores ?? {}), writer_final: bonB.writer, plan_b: bonB.plan_b }, chosen: keepWriter ? (prev?.chosen ?? 'writer') : 'plan_b' }
+=======
+          // Owner rule: Plan B is swapped out ONLY when the writer's script wins by
+          // the judge AND has zero blocking flags (flags v2 + wrong product).
+          const bonCtx = writerLadderForFailure?.bestOfNCtx
+          const bonB = writerLadderForFailure?.bestOfN === true && panelArmReq == null && bonCtx
+            ? { writer: checkCandidate(blueprintLines(bpb2), bonCtx), plan_b: checkCandidate(out.script.map((x) => String(x.line ?? '')), bonCtx) } : null
+          const keepWriter = bonB != null && keepWriterOverPlanB(bonB.writer, bonB.plan_b)
+          if (bonB) {
+            const prev = writerLadderForFailure!.bestOfNRecord
+            writerLadderForFailure!.bestOfNRecord = { ...(prev ?? {}), scores: { ...(prev?.scores ?? {}), writer_final: bonB.writer.score, plan_b: bonB.plan_b.score }, chosen: keepWriter ? (prev?.chosen ?? 'writer') : 'plan_b',
+              compared: { ...(prev?.compared ?? {}), plan_b: bonB.writer.eligible && bonB.plan_b.eligible },
+              candidates: { ...(prev?.candidates ?? {}), writer_final: { eligible: bonB.writer.eligible, flags: bonB.writer.flags }, plan_b: { eligible: bonB.plan_b.eligible, flags: bonB.plan_b.flags } } }
+>>>>>>> origin/main
             console.log(JSON.stringify({ event: 'best_of_n', ...writerLadderForFailure!.bestOfNRecord }))
           }
           if (!keepWriter) {
@@ -17490,6 +17532,62 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           console.log(JSON.stringify({ event: 'plan_b_skipped', reason: 'no_material' }))
         }
       } catch { /* Plan B never fails a build: the writer's script stays */ }
+    }
+    // ⚖️ SPINE COMPLETENESS (craft rubric v1 item C; trial, test accounts only,
+    // DEFAULT OFF: SPINE_COMPLETE=on turns it on). Deterministic: when no
+    // problem/reality line is there, her on-topic problem item is placed after
+    // the hook VERBATIM (never an invented line); exactly one CTA ends the
+    // script (extras dropped, her offer appended when none). Never adds a claim.
+    if (spineCompleteOn(trialOn, isHeartbeat, Deno.env.get('SPINE_COMPLETE')) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bps = blueprint as Record<string, unknown>
+        const tgtS = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+        const ledgerS = templateLedger.length ? templateLedger : nuL(buildInventionLedger({
+          knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: tgtS, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+        }))
+        const offerS = ledgerS.find((it) => it.origin === 'offer' && it.text.trim())
+        // MISSING PROBLEM → ASK HER (owner decision): her answer to the
+        // 'missing_problem' question comes back keyed by its writes_to, passes
+        // the same answer gate as every asked answer (filler / a direction is
+        // neither stored nor used), is stored as her fact through the same
+        // row the angle questions use (answerFactRow, source 'asked'), and is
+        // placed after the hook word for word. Never an invented problem line.
+        const rawProblem = (body.readiness_answers as Record<string, unknown> | undefined)?.[SPINE_PROBLEM_KEY]
+        let problemAnswer = problemAnswerItem(rawProblem)
+        if (problemAnswer) {
+          const g = gateAnswer(problemAnswer.text, {}, { known: await knownForGate(admin, ownerId) })
+          if (g.outcome === 'filler' || g.outcome === 'direction') problemAnswer = null
+          else {
+            const row = answerFactRow({ ownerId, voiceId: (voice as { id?: string } | null)?.id ?? null, productId: tgtS, key: 'spine:problem', piece: 'problem', answer: problemAnswer.text, now: new Date().toISOString() })
+            if (row) {
+              const { error: pErr } = await admin.from('creator_knowledge').insert({ ...row, sensitive: g.sensitive === true })
+              console.log(JSON.stringify({ event: 'spine_problem_answer_stored', ok: !pErr || pErr.code === '23505' }))
+            }
+          }
+        }
+        const spineInput = {
+          material: ledgerS.filter((it) => it.first_party && it.origin !== 'offer' && it.id !== 'note' && it.id !== `answer:${SPINE_PROBLEM_KEY}` && it.text.trim()).map((it) => ({ id: it.id, text: it.text })),
+          offer: offerS ? { id: offerS.id, text: offerS.text } : null,
+          topic: `${String(reference_note ?? '')} ${String((ownedEntity as { name?: unknown } | null)?.name ?? '')}`,
+          problemAnswer,
+        }
+        const askProblem = missingProblemQuestion(bps.script as Array<Record<string, unknown>>, spineInput)
+        const sc = completeSpine(bps.script as Array<Record<string, unknown>>, spineInput)
+        bps.spine_complete = sc.record
+        if (askProblem) {
+          // The existing ask flow: blueprint.gate_questions (NeedsAnswerGate), answered into readiness_answers.
+          const prior = Array.isArray(bps.gate_questions) ? (bps.gate_questions as Array<{ text?: unknown; writes_to?: unknown }>) : []
+          bps.gate_questions = mergeQuestions(prior, [askProblem])
+          ;(bps.spine_complete as Record<string, unknown>).problem_asked = 'missing_problem'
+        }
+        if (sc.record.problem_added || sc.record.ctas_removed || sc.record.cta_moved || sc.record.cta_appended) {
+          bps.script = sc.script
+          if (Array.isArray(bps.shot_list)) bps.shot_list = syncShotListSpokenText(bps.shot_list as Array<{ spoken_text?: unknown }>, bps.script as unknown[]).shots
+        }
+        console.log(JSON.stringify({ event: 'spine_complete', problem_added: !!sc.record.problem_added, problem_from_answer: !!sc.record.problem_from_answer, problem_asked: !!askProblem, ctas_removed: sc.record.ctas_removed, cta_moved: sc.record.cta_moved, cta_appended: !!sc.record.cta_appended }))
+      } catch { /* the spine step never fails a build */ }
     }
     // ⚖️ PACKAGING KEEPS THE PROMISE (plan v5.1 item G, trial only; kill:
     // PACKAGING_PROMISE=false). Every title and publish caption must inherit the
@@ -17538,7 +17636,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
-        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}) }
+        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }
         // The hedge's extra cost, visible on the row (counts only).
         if (writerLadderForFailure?.bestOfNRecord) bpg.best_of_n = writerLadderForFailure.bestOfNRecord
         if (writerLadderForFailure?.hedgeCalls != null) bpg.writer_hedge = { calls: writerLadderForFailure.hedgeCalls, hedged: writerLadderForFailure.hedged === true, aborted: writerLadderForFailure.hedgeAborted ?? 0 }

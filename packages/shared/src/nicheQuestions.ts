@@ -749,7 +749,7 @@ const GROUP_PLACEHOLDER = /\bin your (?:corner of the internet|corner|niche|indu
  *
  * ⚖️ THE ID IS UNTOUCHED, as everywhere in this file: same question, her words.
  */
-/** ⚠️ SUNFLOWER #1: "in micro coffee roasting business" reads as a typo. A
+/** ⚠️ MAYA #1: "in micro coffee roasting business" reads as a typo. A
  *  trailing word that names the WRAPPER, not the craft, is dropped when at least
  *  two words remain — "in micro coffee roasting". */
 const WRAPPER_TAIL = /\s+(?:business(?:es)?|journey|vlogs?|content|tips|niche|industry|space|community|brand)$/i
