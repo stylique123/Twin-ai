@@ -86,13 +86,14 @@ import { sanitizeNeverUse, neverUseEntryOf, addNeverUse, filterLedgerByNeverUse,
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
 import { deadlineTimeout, optionalPassAllowed, failureReason } from '../_shared/writerDeadline.ts'
 import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerHedgeOn, ASYNC_WRITER_END_MS } from '../_shared/asyncPolish.ts'
+import { bestOfNOn, pickEligible, checkCandidate, keepWriterOverPlanB, blueprintLines, BEST_OF_N_GRACE_MS, type BestOfNFlagCtx, type CandidateCheck } from '../_shared/craftJudge.ts'
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { isCanaryAccount } from '../_shared/canary.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
-import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, resolveTargetProduct as resolveInventionTarget, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
+import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, resolveTargetProduct as resolveInventionTarget, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, refillContextFor, refillArmOf, type RefillArm, type RefillContext, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
@@ -113,6 +114,7 @@ import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
+import { completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY } from '../_shared/spineComplete.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -6383,6 +6385,14 @@ interface WriterLadder { retryPrompt?: string; usedAttempt?: number
   hedge?: boolean
   /** Hedge counts (calls started, hedged, loser aborted) — counts only. */
   hedgeCalls?: number; hedged?: boolean; hedgeAborted?: number
+  /** Best-of-N (BEST_OF_N_JUDGE, test accounts, default off): compare the two
+   *  hedge drafts with the craft judge when BOTH had already finished. */
+  bestOfN?: boolean
+  /** What best-of-N saw and chose (scores only). */
+  bestOfNRecord?: { scores: Record<string, number>; chosen: string; compared?: Record<string, boolean>
+    candidates?: Record<string, { eligible: boolean; flags: string[] }>; grace_ms?: number }
+  /** Flags v2 + wrong-product context: every candidate is checked before judging. */
+  bestOfNCtx?: BestOfNFlagCtx
   /** Counts for the failure record (codes and counts only). */
   failed?: number; skipped?: number; lastCode?: string | null }
 
@@ -6447,7 +6457,7 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       run: (t: number, signal: AbortSignal) => callOnce(apiKey, system, i >= 1 && ladder.retryPrompt ? ladder.retryPrompt : prompt, attempts[i].model, attempts[i].thinkBudget, t, schema, signal),
     })
     const valid = (text: string) => { try { return blueprintComplete(JSON.parse(text)) } catch { return false } }
-    const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt }, {
+    const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt, ...(ladder.bestOfN === true && ladder.bestOfNCtx ? { pick: (t: [string, string], fb: 0 | 1) => pickEligible(t, ladder.bestOfNCtx!, fb), graceMs: BEST_OF_N_GRACE_MS } : {}) }, {
       onStart: async (i) => { rows[i] = await record?.started(i, attempts[i].model) ?? null },
       onSettle: async (i, outcome, err) => {
         if (outcome === 'succeeded') await record?.settled(rows[i], 'succeeded')
@@ -6461,6 +6471,12 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       },
     })
     ladder.hedgeCalls = h.calls; ladder.hedged = h.hedged; ladder.hedgeAborted = h.aborted
+    if (h.bestOfN) {
+      const ck = h.bestOfN.checks as [CandidateCheck, CandidateCheck]
+      ladder.bestOfNRecord = { scores: { attempt_0: h.bestOfN.scores[0], attempt_1: h.bestOfN.scores[1] }, chosen: `attempt_${h.bestOfN.chosen}`, compared: { hedge: h.bestOfN.compared === true },
+        candidates: { attempt_0: { eligible: ck[0].eligible, flags: ck[0].flags }, attempt_1: { eligible: ck[1].eligible, flags: ck[1].flags } }, ...(h.bestOfN.graceMs != null ? { grace_ms: h.bestOfN.graceMs } : {}) }
+      console.log(JSON.stringify({ event: 'best_of_n', ...ladder.bestOfNRecord }))
+    }
     console.log(JSON.stringify({ event: 'writer_hedge', calls: h.calls, hedged: h.hedged, aborted: h.aborted, winner: h.winner, elapsed_ms: Date.now() - ladder.startedAt }))
     if (h.text != null) { ladder.usedAttempt = h.winner ?? 0; return h.text }
     if (h.partial != null) { ladder.usedAttempt = h.partialAt ?? 0; return h.partial }
@@ -7128,7 +7144,7 @@ async function handle(req: Request): Promise<Response> {
     ...(trialOn && Deno.env.get('STORY_DEDUP') !== 'false' ? { story_dedup: true } : {}),
     // Panel-10 (trial; kills RELEVANT_REFILL=false, STORY_HOOK_DEDUP=false).
     ...(relevantRefillCtx() ? { refill_context: relevantRefillCtx() } : {}),
-    ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' ? { story_hook_dedup: true } : {}),
+    ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' && !refillArm() ? { story_hook_dedup: true } : {}),
     // Panel-10 advisor (trial; DEFAULT OFF, opt in STORY_RETELL_DEDUP=true): one telling per story.
     // Off until a meaning-level check exists; while off no line is cut or changed.
     ...(trialOn && Deno.env.get('STORY_RETELL_DEDUP') === 'true' ? { story_retell_dedup: true } : {}),
@@ -7139,9 +7155,14 @@ async function handle(req: Request): Promise<Response> {
   // Panel-10 RELEVANCE-AWARE REFILL (trial; kill RELEVANT_REFILL=false): the
   // request's topic (her note, the product's name) and angle; every refill
   // (edge length pass, floor refill, the worker gate) adds only items for it.
-  const relevantRefillCtx = (): { topic: string; angle: string } | null => (trialOn && Deno.env.get('RELEVANT_REFILL') !== 'false'
-    ? { topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => x.trim()).join(' '), angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? '') }
-    : null)
+  // PANEL-12 REFILL ARMS (plan v6.1 §27; test accounts only; single lever): a
+  // panel request may name `refill_arm`. Both arms run the panel-10 refill setup:
+  // story-hook dedupe off and no #1303 relevance filter. 'baseline_p10' = that
+  // setup; 'refill_v2' = that setup + REFILL_V2, the only difference. REFILL V2
+  // (trial, DEFAULT OFF): REFILL_V2=true turns it on for the trial, REFILL_V2=off kills it.
+  const refillArm = (): RefillArm | null => (isHeartbeat ? refillArmOf((body as { refill_arm?: unknown } | undefined)?.refill_arm) : null)
+  const relevantRefillCtx = (): RefillContext | null => refillContextFor({ trialOn, arm: refillArm(), env: { RELEVANT_REFILL: Deno.env.get('RELEVANT_REFILL'), REFILL_V2: Deno.env.get('REFILL_V2') }, topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => x.trim()).join(' '), angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? ''), niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '), product: String((ownedEntity as { name?: unknown } | null)?.name ?? '') })
+
   // ⚖️ ASYNC POLISH (owner decision 2, trial; ASYNC_POLISH=off kills it): the
   // quality-only passes never run on the request path; the worker's
   // invention_recheck job runs the polish before the gate and sets check_status.
@@ -12796,7 +12817,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
     asyncPolish = asyncPolishOn(trialOn, Deno.env.get('ASYNC_POLISH'))
     const deadlineFields = asyncPolish
-      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')) }
+      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...(bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE')) ? { bestOfN: true, bestOfNCtx: {
+          items: templateLedger, products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
+          v2: Deno.env.get('TARGETED_FLAGS_V2') !== 'false', wrongProduct: Deno.env.get('WRONG_PRODUCT_BLOCK') !== 'false' } } : {}) }
       : writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
     const writerLadder: WriterLadder | undefined = trialOn && templatePlan
       ? { retryPrompt: buildWriterBrief(familyHookRuleRetry), ...deadlineFields }
@@ -17437,6 +17460,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // need not be set for `plan_b: true` to work (an unset env is not 'off').
     const panelArmReq = (body as { panel_arm?: unknown }).panel_arm
     if (isHeartbeat && (panelArmReq === 'writer' || panelArmReq === 'plan_b') && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).panel_arm = panelArmReq
+    if (refillArm() && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).refill_arm = refillArm()
     const planBTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
     if (planBOn && planBTarget && blueprint && typeof blueprint === 'object') {
       try {
@@ -17465,15 +17489,88 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             if (!vv.keep) pol = { lines: [...asm.lines], polished: 0, fell_back: pol.fell_back + pol.polished }
           }
           const out = planBScript(pol.lines, storyItem?.text ?? null)
+          // Best-of-N (BEST_OF_N_JUDGE, default off): Plan B is the third candidate.
+          // A panel arm request keeps its arm; nothing here waits on a model.
+          // Owner rule: Plan B is swapped out ONLY when the writer's script wins by
+          // the judge AND has zero blocking flags (flags v2 + wrong product).
+          const bonCtx = writerLadderForFailure?.bestOfNCtx
+          const bonB = writerLadderForFailure?.bestOfN === true && panelArmReq == null && bonCtx
+            ? { writer: checkCandidate(blueprintLines(bpb2), bonCtx), plan_b: checkCandidate(out.script.map((x) => String(x.line ?? '')), bonCtx) } : null
+          const keepWriter = bonB != null && keepWriterOverPlanB(bonB.writer, bonB.plan_b)
+          if (bonB) {
+            const prev = writerLadderForFailure!.bestOfNRecord
+            writerLadderForFailure!.bestOfNRecord = { ...(prev ?? {}), scores: { ...(prev?.scores ?? {}), writer_final: bonB.writer.score, plan_b: bonB.plan_b.score }, chosen: keepWriter ? (prev?.chosen ?? 'writer') : 'plan_b',
+              compared: { ...(prev?.compared ?? {}), plan_b: bonB.writer.eligible && bonB.plan_b.eligible },
+              candidates: { ...(prev?.candidates ?? {}), writer_final: { eligible: bonB.writer.eligible, flags: bonB.writer.flags }, plan_b: { eligible: bonB.plan_b.eligible, flags: bonB.plan_b.flags } } }
+            console.log(JSON.stringify({ event: 'best_of_n', ...writerLadderForFailure!.bestOfNRecord }))
+          }
+          if (!keepWriter) {
           bpb2.script = out.script
           if (out.script[0]?.line) bpb2.hook_options = [out.script[0].line]
           if (Array.isArray(bpb2.shot_list)) bpb2.shot_list = syncShotListSpokenText(bpb2.shot_list as Array<{ spoken_text?: unknown }>, bpb2.script as unknown[]).shots
+          }
           bpb2.plan_b = planBRecord(out.script, asm.sources, pol.fell_back)
           console.log(JSON.stringify({ event: 'plan_b_assembled', ...(bpb2.plan_b as Record<string, unknown>), profile: profileB, sections: asm.sections, asked_items: askedB.length, facts_used: asm.facts_used, story: !!storyItem, dedup_removed: out.removed }))
         } else {
           console.log(JSON.stringify({ event: 'plan_b_skipped', reason: 'no_material' }))
         }
       } catch { /* Plan B never fails a build: the writer's script stays */ }
+    }
+    // ⚖️ SPINE COMPLETENESS (craft rubric v1 item C; trial, test accounts only,
+    // DEFAULT OFF: SPINE_COMPLETE=on turns it on). Deterministic: when no
+    // problem/reality line is there, her on-topic problem item is placed after
+    // the hook VERBATIM (never an invented line); exactly one CTA ends the
+    // script (extras dropped, her offer appended when none). Never adds a claim.
+    if (spineCompleteOn(trialOn, isHeartbeat, Deno.env.get('SPINE_COMPLETE')) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bps = blueprint as Record<string, unknown>
+        const tgtS = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+        const ledgerS = templateLedger.length ? templateLedger : nuL(buildInventionLedger({
+          knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: tgtS, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+        }))
+        const offerS = ledgerS.find((it) => it.origin === 'offer' && it.text.trim())
+        // MISSING PROBLEM → ASK HER (owner decision): her answer to the
+        // 'missing_problem' question comes back keyed by its writes_to, passes
+        // the same answer gate as every asked answer (filler / a direction is
+        // neither stored nor used), is stored as her fact through the same
+        // row the angle questions use (answerFactRow, source 'asked'), and is
+        // placed after the hook word for word. Never an invented problem line.
+        const rawProblem = (body.readiness_answers as Record<string, unknown> | undefined)?.[SPINE_PROBLEM_KEY]
+        let problemAnswer = problemAnswerItem(rawProblem)
+        if (problemAnswer) {
+          const g = gateAnswer(problemAnswer.text, {}, { known: await knownForGate(admin, ownerId) })
+          if (g.outcome === 'filler' || g.outcome === 'direction') problemAnswer = null
+          else {
+            const row = answerFactRow({ ownerId, voiceId: (voice as { id?: string } | null)?.id ?? null, productId: tgtS, key: 'spine:problem', piece: 'problem', answer: problemAnswer.text, now: new Date().toISOString() })
+            if (row) {
+              const { error: pErr } = await admin.from('creator_knowledge').insert({ ...row, sensitive: g.sensitive === true })
+              console.log(JSON.stringify({ event: 'spine_problem_answer_stored', ok: !pErr || pErr.code === '23505' }))
+            }
+          }
+        }
+        const spineInput = {
+          material: ledgerS.filter((it) => it.first_party && it.origin !== 'offer' && it.id !== 'note' && it.id !== `answer:${SPINE_PROBLEM_KEY}` && it.text.trim()).map((it) => ({ id: it.id, text: it.text })),
+          offer: offerS ? { id: offerS.id, text: offerS.text } : null,
+          topic: `${String(reference_note ?? '')} ${String((ownedEntity as { name?: unknown } | null)?.name ?? '')}`,
+          problemAnswer,
+        }
+        const askProblem = missingProblemQuestion(bps.script as Array<Record<string, unknown>>, spineInput)
+        const sc = completeSpine(bps.script as Array<Record<string, unknown>>, spineInput)
+        bps.spine_complete = sc.record
+        if (askProblem) {
+          // The existing ask flow: blueprint.gate_questions (NeedsAnswerGate), answered into readiness_answers.
+          const prior = Array.isArray(bps.gate_questions) ? (bps.gate_questions as Array<{ text?: unknown; writes_to?: unknown }>) : []
+          bps.gate_questions = mergeQuestions(prior, [askProblem])
+          ;(bps.spine_complete as Record<string, unknown>).problem_asked = 'missing_problem'
+        }
+        if (sc.record.problem_added || sc.record.ctas_removed || sc.record.cta_moved || sc.record.cta_appended) {
+          bps.script = sc.script
+          if (Array.isArray(bps.shot_list)) bps.shot_list = syncShotListSpokenText(bps.shot_list as Array<{ spoken_text?: unknown }>, bps.script as unknown[]).shots
+        }
+        console.log(JSON.stringify({ event: 'spine_complete', problem_added: !!sc.record.problem_added, problem_from_answer: !!sc.record.problem_from_answer, problem_asked: !!askProblem, ctas_removed: sc.record.ctas_removed, cta_moved: sc.record.cta_moved, cta_appended: !!sc.record.cta_appended }))
+      } catch { /* the spine step never fails a build */ }
     }
     // ⚖️ PACKAGING KEEPS THE PROMISE (plan v5.1 item G, trial only; kill:
     // PACKAGING_PROMISE=false). Every title and publish caption must inherit the
@@ -17522,8 +17619,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
-        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}) }
+        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }
         // The hedge's extra cost, visible on the row (counts only).
+        if (writerLadderForFailure?.bestOfNRecord) bpg.best_of_n = writerLadderForFailure.bestOfNRecord
         if (writerLadderForFailure?.hedgeCalls != null) bpg.writer_hedge = { calls: writerLadderForFailure.hedgeCalls, hedged: writerLadderForFailure.hedged === true, aborted: writerLadderForFailure.hedgeAborted ?? 0 }
         bpg.polish_pending = { steps: polishDeferred.length ? [...polishDeferred] : ['self_review'], at: new Date().toISOString() }
         console.log(JSON.stringify({ event: 'async_polish_queued', deferred: polishDeferred.length, elapsed_ms: Date.now() - reqStartedAt }))

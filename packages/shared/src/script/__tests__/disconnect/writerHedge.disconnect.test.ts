@@ -65,6 +65,6 @@ describe('WRITER_HEDGE disconnect', () => {
   it('the edge still sets the hedge from WRITER_HEDGE and calls runHedged only when it is on', () => {
     expect(EDGE).toContain("hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE'))")
     expect(EDGE).toContain('if (ladder?.hedge === true && ladder.async === true && ladder.startedAt != null')
-    expect(EDGE).toContain('const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt }, {')
+    expect(EDGE).toContain('const h = await runHedged([mk(0), mk(1)], valid, { startedAt: ladder.startedAt, ...(ladder.bestOfN === true && ladder.bestOfNCtx ? { pick: (t: [string, string], fb: 0 | 1) => pickEligible(t, ladder.bestOfNCtx!, fb), graceMs: BEST_OF_N_GRACE_MS } : {}) }, {')
   })
 })
