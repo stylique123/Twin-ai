@@ -35,6 +35,15 @@ describe('polishCheckV2', () => {
   it('accepts a voice-only rewrite', () => {
     expect(polishCheckV2('$9 for a box of six.', "Honestly, $9 for a box of six.", scope).ok).toBe(true)
   })
+  it('accepts a rewording her items cover (stem match), first person included', () => {
+    expect(polishCheckV2('', 'Every single tray of rolls burned once because I forgot the oven timers.', scope).ok).toBe(true)
+    expect(polishCheckV2('', 'Each box is baked fresh on Friday mornings and delivered that same day.', scope).ok).toBe(true)
+  })
+  it('accepts a coach-style imperative restatement of her own method', () => {
+    const coachScope = { items: [{ text: 'Use a broomstick to learn the hip hinge before adding weight, so your lower back stays safe.', first_party: true, live: false, origin: 'her_story' as const, product_id: null }], voiceText: "High-energy, 'you've got this'." }
+    expect(polishCheckV2('', 'Start with a broomstick! Learn that hip hinge. Protect your back before you add weight!', coachScope).ok).toBe(true)
+    expect(polishCheckV2('', 'Start with a broomstick! Brace your core against the kitchen counter and squeeze your glutes.', coachScope).reason).toBe('new_detail')
+  })
   it('flags default off', () => {
     expect(polishCheckV2On(undefined)).toBe(false); expect(polishCheckV2On('on')).toBe(true)
     expect(voiceBareLinesOn('')).toBe(false); expect(voiceBareLinesOn('on')).toBe(true)
@@ -64,15 +73,26 @@ describe('voiceBareLine', () => {
   })
   const cases: Array<[string, string, string, string]> = [
     [coach, 'cta', 'Share this with a friend who wants to start.', "Share this with a friend who wants to start! You've got this!"],
-    [calm, 'hook', 'Stop buying soap for the smell.', 'If it helps, gently, stop buying soap for the smell.'],
-    [calm, 'fact', '$14 for a 100 ml bottle.', '$14 for a 100 ml bottle, if that helps.'],
-    [clipped, 'fact', '$5 per month, two seats.', 'Look. $5 per month, two seats.'],
-    [slow, 'cta', 'Tell me your story in the comments.', 'Mind you, tell me your story in the comments.'],
+    [coach, 'cta', 'What did your first rep feel like?', "What did your first rep feel like? You've got this!"],
+    [calm, 'cta', 'Grab a bottle for your next patch test.', "If you'd like to try it, grab a bottle for your next patch test."],
+    [calm + ' No contractions.', 'cta', 'Grab a bottle for your next patch test.', 'If you would like to try it, grab a bottle for your next patch test.'],
+    [clipped, 'cta', 'Start your free week.', 'Start your free week. Link in bio.'],
+    [clipped, 'cta', 'Free week, link in bio.', 'Free week, link in bio.'],
   ]
-  it.each(cases)('voices a bare line and keeps every fact (%#)', (note, section, line, want) => {
+  it.each(cases)('voices a CTA in her own CTA style and keeps every fact (%#)', (note, section, line, want) => {
     const got = voiceBareLine(line, section, note)
     expect(got).toBe(want)
     expect(polishCheck(line, got).ok).toBe(true)
+  })
+  it('uses a contraction only when her samples do', () => {
+    expect(voiceBareLine('Grab a bottle today.', 'cta', 'Calm, hedged.', ["I'd patch test first."])).toBe("If you'd like to try it, grab a bottle today.")
+  })
+  it('never bolts a hedge or a discourse marker onto a price/spec line, a hook or a non-buy CTA', () => {
+    expect(voiceBareLine('$14 for a 100 ml bottle.', 'fact', calm)).toBe('$14 for a 100 ml bottle.')
+    expect(voiceBareLine('$5 per month, two seats.', 'fact', clipped)).toBe('$5 per month, two seats.')
+    expect(voiceBareLine('Stop buying soap for the smell.', 'hook', calm)).toBe('Stop buying soap for the smell.')
+    expect(voiceBareLine('Tell me your story in the comments.', 'cta', slow)).toBe('Tell me your story in the comments.')
+    expect(voiceBareLine('Tell me your story in the comments.', 'cta', calm)).toBe('Tell me your story in the comments.')
   })
   it('leaves a full middle line alone', () => {
     expect(voiceBareLine('I once burned a whole tray of rolls because I forgot the timer.', 'story', coach)).toBe('I once burned a whole tray of rolls because I forgot the timer.')

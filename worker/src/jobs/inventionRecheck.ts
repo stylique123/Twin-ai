@@ -279,16 +279,19 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   } else if (bp.polish_pending) {
     delete bp.polish_pending
   }
-  // VOICE_BARE_LINES (test accounts, default off): bare price/spec lines and the
-  // CTA in her register (her style note). Words, numbers and names never change.
+  // VOICE_BARE_LINES (test accounts, default off): the CTA in her own CTA style
+  // (her style note and samples). Price/spec lines and hooks stay bare. Words,
+  // numbers and names never change.
   if (extra.voice_bare_lines === true && Array.isArray(bp.script)) {
     const note = String(rec(polishOpts.voice).style_note ?? '')
+    const rawSamples = rec(polishOpts.voice).samples
+    const samples = Array.isArray(rawSamples) ? rawSamples.filter((x): x is string => typeof x === 'string') : []
     if (note) {
       let changed = 0
       bp.script = (bp.script as Array<Record<string, unknown>>).map((b) => {
         const line = typeof b?.line === 'string' ? b.line : ''
-        const next = line ? voiceBareLine(line, String(b.section ?? ''), note) : line
-        if (!line || next === line || !polishCheckV2(line, next, { items: ledger, products, productId: target, voiceText: note }).ok) return b
+        const next = line ? voiceBareLine(line, String(b.section ?? ''), note, samples) : line
+        if (!line || next === line || !polishCheckV2(line, next, { items: ledger, products, productId: target, voiceText: [note, ...samples].join('\n') }).ok) return b
         changed++
         return { ...b, line: next }
       })
