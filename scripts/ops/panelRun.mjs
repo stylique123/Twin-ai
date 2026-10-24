@@ -153,11 +153,26 @@ export function panelArmsOn(accountsDoc, env = process.env) {
   return panelPlanB(env) || Array.isArray(accountsDoc?.arms?.plan_b) || accountsDoc?.ab_split === 'alternate'
 }
 
-/** The body fields for an arm: plan_b:true only on the plan_b arm; panel_arm recorded when arms are on. */
+/** PANEL-12 REFILL ARMS (plan v6.1 §27): the refill arm per request, from the
+ * private row's `refill_arm` or env PANEL_REFILL_ARM (env wins).
+ * 'baseline_p10' (arm A) = the panel-10 refill (relevance filter and story-hook
+ * dedupe off); 'refill_v2' (arm B) = arm A + REFILL_V2, the only difference.
+ * 'alternate' = per-request A/B split on the SAME batch of requests: odd n →
+ * 'baseline_p10', even n → 'refill_v2' (like ab_split alternate; it does NOT
+ * touch the plan_b arm). Anything else = no field (the edge env decides). */
+export function refillArm(accountsDoc, env = process.env, n = null) {
+  const a = env.PANEL_REFILL_ARM || accountsDoc?.refill_arm
+  if (a === 'alternate') return n == null ? 'alternate' : Number(n) % 2 === 1 ? 'baseline_p10' : 'refill_v2'
+  return a === 'baseline_p10' || a === 'refill_v2' ? a : null
+}
+
+/** The body fields for an arm: plan_b:true only on the plan_b arm; panel_arm recorded when arms are on; refill_arm when set. */
 export function armBody(accountsDoc, n, env = process.env) {
-  if (!panelArmsOn(accountsDoc, env)) return {}
+  const ra = refillArm(accountsDoc, env, n)
+  const refill = ra ? { refill_arm: ra } : {}
+  if (!panelArmsOn(accountsDoc, env)) return refill
   const arm = panelArm(accountsDoc, n, env)
-  return arm === 'plan_b' ? { plan_b: true, panel_arm: 'plan_b' } : { panel_arm: 'writer' }
+  return arm === 'plan_b' ? { plan_b: true, panel_arm: 'plan_b', ...refill } : { panel_arm: 'writer', ...refill }
 }
 
 export function panelAnswerMode(env = process.env) {
@@ -263,6 +278,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   const records = []
   const { data: doneRows } = await admin.from('script_batch_results').select('n').eq('batch', batch).eq('status', 200)
   const done = new Set((doneRows ?? []).map((x) => x.n))
+  if (refillArm(accounts)) console.log(`panel ${batch}: refill arm ${refillArm(accounts)}${refillArm(accounts) === 'alternate' ? ' (odd n baseline_p10, even n refill_v2)' : ' on every request'}`)
   if (panelArmsOn(accounts)) console.log(`panel ${batch}: arms plan_b=${list.filter((x) => panelArm(accounts, x.n) === 'plan_b').length} writer=${list.filter((x) => panelArm(accounts, x.n) === 'writer').length}`)
   console.log(`panel ${batch}: ${list.length} scenarios, ${done.size} already done, budget $${budget}`)
   const clients = new Map()
@@ -324,7 +340,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     await admin.from('script_batch_results').insert({
       batch, n: sc.n,
-      scenario: { group: 'panel', mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.n).panel_arm ?? null), word_budget: bp?.word_budget ?? null, body },
+      scenario: { group: 'panel', mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.n).refill_arm ?? null), word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [

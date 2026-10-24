@@ -457,7 +457,11 @@ export function lengthenCandidates(script: readonly ScriptBeat[], ledger: readon
     // scaffolding is never added at all.
     if (isScaffoldText(it.text) || QUOTED_FIELD_RE.test(it.field ?? '')) return false
     const n = words(it.text)
-    if (n < 5 || n > 45 || /\n/.test(it.text)) return false
+    // REFILL_V2 (trial, default off): a short fact of the target product is not too short.
+    const shortFactOk = !!opts.relevance?.v2 && it.origin === 'product_fact' && !!targetProductId && it.product_id === targetProductId && n >= 1
+    if ((n < 5 && !shortFactOk) || n > 45 || /\n/.test(it.text)) return false
+    // REFILL_V2 (trial, default off): her stories are judged by rankRefillV2 (told / near text).
+    if (opts.relevance?.v2 && it.origin === 'her_story') return true
     return !alreadySaid(it.text, lines)
   })
   if (!opts.relevance) return cands
