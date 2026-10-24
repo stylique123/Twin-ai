@@ -111,7 +111,11 @@
         { "kind": "experience", "text": "Look. Week one, our first customer's bug was a duplicate email. Same message, two cards. Fixed it live. She signed up for a year that afternoon.", "fictional": true },
         { "kind": "experience", "text": "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.", "fictional": true },
         { "kind": "framework", "text": "Stop answering twice. Tag every email for a week. Find the top five repeats. Write one reply each. Save them. Ship it.", "fictional": true },
-        { "kind": "opinion", "text": "Look. Most small shops do not need a help desk. They need fewer repeat emails.", "fictional": true }
+        { "kind": "opinion", "text": "Look. Most small shops do not need a help desk. They need fewer repeat emails.", "fictional": true },
+        { "kind": "experience", "text": "So yeah, um, FlowDesk started because me and my partner kept, like, answering the same customer email twice, and it was one winter, well, most of a winter, and I just built the thing.", "fictional": true, "messy": true },
+        { "kind": "experience", "text": "Our first paying customer, um, she found a bug in like the first hour, no wait, first forty minutes, and I fixed it on a call with her just, like, watching me type, which was terrifying.", "fictional": true, "messy": true },
+        { "kind": "experience", "text": "I lost a whole Saturday to this ticket, um, and it turned out it was like a typo, in our own help page, our own, so yeah, I fix the help page first now before anything else.", "fictional": true, "messy": true },
+        { "kind": "opinion", "text": "I think, um, most small shops don't actually need a help desk, it's more like, they need fewer repeat emails, so yeah, I mean that's kind of the whole point of FlowDesk honestly.", "fictional": true, "messy": true }
       ],
       "products": [
         { "key": "flowdesk", "name": "FlowDesk", "type": "SAAS", "relationship": "OWN_PRODUCT", "offer": "FlowDesk free 14-day trial, link in bio",
@@ -147,7 +151,11 @@
         { "kind": "experience", "text": "After my deadlift went wrong I spent a whole month with just a broomstick and a mirror, and legit, my form has never been better!", "fictional": true },
         { "kind": "experience", "text": "A client learned the hip hinge touching her hips to a wall every morning while the kettle boiled, and three weeks later she deadlifted her first kettlebell!", "fictional": true },
         { "kind": "framework", "text": "Hip hinge at home: stand a foot from a wall, soft knees, push your hips back until they tap it, keep the broomstick on your head, back and tailbone, then stand tall. One more rep!", "fictional": true },
-        { "kind": "opinion", "text": "Legit, I think a five-minute warm-up does more for beginners than any fancy workout plan!", "fictional": true }
+        { "kind": "opinion", "text": "Legit, I think a five-minute warm-up does more for beginners than any fancy workout plan!", "fictional": true },
+        { "kind": "experience", "text": "So yeah, um, the deadlift thing, I basically just copied some video and like, my lower back was done for a week, no wait, more like ten days, and that's honestly why the broomstick comes out first now.", "fictional": true, "messy": true },
+        { "kind": "experience", "text": "Okay so this client, she had, um, a hallway, like literally just a hallway and two dumbbells, and we, I mean she did all the work, but we built the whole plan around that hallway and it worked.", "fictional": true, "messy": true },
+        { "kind": "opinion", "text": "I think, um, people don't quit because they're lazy, it's like, the plan is just way too big, so yeah, start smaller, like smaller than you think, no, even smaller than that.", "fictional": true, "messy": true },
+        { "kind": "framework", "text": "So the warm-up, um, it's like five minutes, march in place, some hip circles, a few hinges with the broomstick, oh and arm swings, I always forget the arm swings, so yeah, then you start.", "fictional": true, "messy": true }
       ],
       "products": [
         { "key": "starter", "name": "Home Strength Starter", "type": "SERVICE", "relationship": "OWN_SERVICE", "offer": "Book a free 15-minute intro call, link in bio",
