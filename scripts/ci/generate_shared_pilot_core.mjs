@@ -263,6 +263,9 @@ const SOURCES = [
   ['packages/shared/src/script/planner/packagingPromise.ts', 'supabase/functions/_shared/packagingPromise.ts'],
   // Plan B (owner decision 5, trial only): the code-assembled, line-sourced script body.
   ['packages/shared/src/script/planner/planBAssembly.ts', 'supabase/functions/_shared/planBAssembly.ts'],
+  // Spine completeness + ending (craft rubric v1 C/F; trial, test accounts, DEFAULT OFF): SPINE_COMPLETE at the edge, POLISH_REORDER in the worker.
+  ['packages/shared/src/script/planner/spineComplete.ts', 'supabase/functions/_shared/spineComplete.ts'],
+  ['packages/shared/src/script/planner/spineComplete.ts', 'worker/src/generated/spineComplete.ts'],
   // Hook shape library as data (hook-and-spine plan, hook engine step 1). Not wired yet.
   ['packages/shared/src/script/hooks/hookShapes.ts', 'supabase/functions/_shared/hookShapes.ts'],
   ['packages/shared/src/script/hooks/hookEngine.ts', 'supabase/functions/_shared/hookEngine.ts'],
@@ -271,6 +274,9 @@ const SOURCES = [
   // CHECK THIS LINE (backlog d, trial only): the worker builds check_lines, the edge applies a decision.
   ['packages/shared/src/script/checkLines.ts', 'supabase/functions/_shared/checkLines.ts'],
   ['packages/shared/src/script/checkLines.ts', 'worker/src/generated/checkLines.ts'],
+  // Craft + hook judges (craft rubric v1): deterministic, unpaid; best-of-N on the hedge drafts (BEST_OF_N_JUDGE, default off).
+  ['packages/shared/src/script/hookJudge.ts', 'supabase/functions/_shared/hookJudge.ts'],
+  ['packages/shared/src/script/craftJudge.ts', 'supabase/functions/_shared/craftJudge.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

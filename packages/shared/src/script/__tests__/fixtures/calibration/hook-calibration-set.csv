@@ -1,0 +1,604 @@
+panel,script_id,hook,scroll_1_5,invented
+P5,S01,Why is the bottom of a handmade mug not glazed?,4,N
+P5,S01,Ever turn a pottery mug over and wonder about the bottom?,3,N
+P5,S01,Why do potters leave the bottom rim completely unglazed?,3,N
+P5,S02,How do you learn the hip hinge at home without hurting?,3,N
+P5,S02,Stop squatting your deadlifts if you want a proper hip hinge.,3,N
+P5,S02,Can you master the hip hinge using only your living room?,2,N
+P5,S03,Look closely at your coffee beans before you grind them today.,3,N
+P5,S03,What are those weird hollow shells inside your roasted coffee beans?,4,N
+P5,S03,Stop tossing out beans with hollow centers before checking this detail.,4,N
+P5,S03,Have you ever noticed hollow shell beans inside your coffee bag?,3,N
+P5,S03,Those strange lightweight beans in your roast are not always broken.,4,N
+P5,S04,Why does raw clay feel completely different in your kitchen?,2,N
+P5,S04,"If you love handmade kitchen pottery, stop buying factory ceramic.",3,N
+P5,S04,What makes raw stoneware clay last on a kitchen counter?,2,N
+P5,S05,My very first home coffee roast was an absolute disaster.,4,N
+P5,S05,How messy does learning to roast your own coffee get?,2,N
+P5,S05,Do not expect your first home coffee roast to go smoothly.,3,N
+P5,S05,"If you brew coffee daily, have you ever tried roasting beans?",2,N
+P5,S05,Here is the reality of trying to roast coffee at home.,2,N
+P5,S06,Why does your gentle moisturizer still sting your skin?,4,N
+P5,S06,"If your face burns after applying cream, watch this.",4,N
+P5,S06,Stop assuming natural skincare means it will not burn.,3,N
+P5,S06,What fragrance actually does to a damaged skin barrier.,3,N
+P5,S06,The ingredient check every sensitive skin routine needs today.,3,N
+P5,S07,"If you brew coffee at home, check our Harbor Blend label.",2,N
+P5,S07,Why our Harbor Blend never sits waiting on a warehouse shelf.,3,Y
+P5,S08,Test our shared inbox for fourteen days with no credit card.,3,N
+P5,S08,"If customer emails overwhelm your shop, test our board completely cardless.",2,N
+P5,S08,Set up our shared email board without entering a credit card.,2,N
+P5,S08,We built a shared inbox trial that requires zero payment details.,2,N
+P5,S09,Stop testing every new AI tool during your workday.,4,N
+P5,S09,Are you losing work hours testing random software launches?,3,N
+P5,S09,"If you need useful AI tools without the noise, watch.",3,N
+P5,S10,What actually happens when you unlock a fresh kiln load?,3,N
+P5,S10,Here is every strange sound a cooling kiln makes before opening.,3,Y
+P5,S11,Stop letting AI answer your questions without showing its sources.,4,N
+P5,S11,Why do so many people ignore AI source citations?,3,N
+P5,S11,Never trust an AI answer until it shows the source.,4,N
+P5,S12,Stop hiding software bugs from your earliest customers.,4,N
+P5,S12,What should you do when a buyer spots a live glitch?,3,N
+P5,S12,Do not panic when your very first user breaks your software.,3,N
+P5,S13,What actually makes new lifters stop training at home?,3,N
+P5,S13,You quit your workout because the plan is too big.,4,N
+P5,S13,"You are not lazy, your starting workout is simply huge.",4,N
+P5,S14,Why does your morning coffee suddenly taste completely flat?,4,N
+P5,S14,Stop putting your roasted coffee beans inside the fridge.,5,N
+P5,S14,Are your coffee beans going stale after one week?,3,N
+P5,S14,What roasters know about coffee beans going completely flat.,3,N
+P5,S14,Why your fresh coffee beans lose flavor so quickly.,3,N
+P5,S15,Stop buying moisturizers that make your sensitive skin burn.,3,N
+P5,S15,Why does your sensitive skin sting every time you moisturize?,3,N
+P5,S16,Stop buying skincare that puts fragrance ahead of your barrier.,3,N
+P5,S16,Why does gentle skincare still put fragrance before your skin?,3,N
+P5,S17,I threw out forty jars before getting this right.,5,N
+P5,S17,My very first batch separated in the jar overnight.,4,N
+P5,S18,Look at how cleanly this AI synthesized a completely fake quote.,3,Y
+P5,S18,Watch what happens when an AI cites text that never existed.,4,N
+P5,S18,Can you trust an AI summary when it fabricates direct quotes?,3,N
+P5,S18,Two major AI models just cited sources that said the opposite.,4,Y
+P5,S18,Why do generative search tools invent quotes and cite real links?,3,N
+P5,S19,Never trust an AI summary until it cites the exact source.,4,N
+P5,S19,Why do you accept AI summaries without checking their real sources?,3,N
+P5,S19,Stop using AI summaries without demanding the exact source link.,3,N
+P5,S19,An AI tool quoted my writing with words I never wrote.,5,N
+P5,S19,Can you trust an AI summary that provides no source citations?,2,N
+P5,S20,Are you trying to start strength training at home with minimal gear?,2,N
+P5,S20,Stop buying new workout gear before building a consistent home routine.,4,N
+P5,S20,What does starting home strength training actually take as a beginner?,2,N
+P5,S20,"If you want to lift weights at home, start right here.",2,N
+P5,S20,You do not need expensive gym machines to build strength safely.,3,N
+P5,S21,Running an online store and answering every support email yourself?,3,N
+P5,S21,Should founders answer their own customer support tickets?,3,N
+P5,S21,When should a small store stop handling their own support?,3,N
+P5,S22,Watch why this thirty-eight dollar stoneware mug gets thrown by hand.,3,N
+P5,S22,"If you want daily handmade stoneware, look at this thirty-eight dollar mug.",2,N
+P5,S22,"If you love handmade kitchen pottery, here is our thirty-eight dollar mug.",2,N
+P5,S23,Why small teams send two replies to one email.,3,N
+P5,S23,Are two people replying to your customer emails right now?,3,N
+P6,P6-01,"She paid us, found a bug, and watched us fix it.",4,N
+P6,P6-16,Zero fancy gym gear required for this deadlift cue.,3,N
+P6,P6-02,Stop trusting AI summaries if they lack primary sources.,4,N
+P6,P6-12,I made my own moisturizer because store creams always caused burning.,4,N
+P6,P6-15,14 days of FlowDesk access with zero billing info.,3,N
+P6,P6-20,Why fragrance-free matters for sensitive skin.,2,N
+P6,P6-10,Here is how my home coffee roasting actually started.,3,N
+P6,P6-03,Stop checking your code before you re-read your help page.,3,N
+P6,P6-21,The first time I tried a deadlift my back hurt.,4,N
+P6,P6-19,Stop copying AI summaries if they lack original citations.,3,N
+P6,P6-05,Two practical reasons dense clay tableware outlasts thin factory ceramics.,3,Y
+P6,P6-12,50 ml glass jar.,1,N
+P6,P6-18,Would you notice if an AI misquoted a real article?,4,N
+P6,P6-02,Most people ignore the single most useful AI feature today.,4,N
+P6,P6-11,Do you quit workouts because the routine is too complicated?,3,N
+P6,P6-10,Stop thinking you need fancy gear to roast coffee.,3,N
+P6,P6-14,If you want handmade stoneware for your daily coffee.,2,N
+P6,P6-04,Did you put your coffee beans next to the groceries?,3,N
+P6,P6-07,"Fragrance in skincare is made for the shopper, not the skin.",4,N
+P6,P6-05,"If you collect handmade pottery, stop hiding it behind glass cabinets.",3,N
+P6,P6-20,"If your skin feels reactive, check your ingredients for fragrance.",3,N
+P6,P6-16,My first deadlift went wrong.,4,N
+P6,P6-13,I threw out forty jars before I got the emulsion right.,5,N
+P6,P6-04,Fresh roasted beans kept cold. Here is what happens.,3,N
+P6,P6-21,How to learn the hip hinge at home.,2,N
+P6,P6-02,Stop copying AI generated text if sources are missing.,3,N
+P6,P6-08,Do your knees feel weird during squats?,3,N
+P6,P6-15,Test our shared inbox for fourteen days with no card needed.,3,N
+P6,P6-12,"If your face burns from regular cream, I made this for you.",4,N
+P6,P6-12,"If your skin stings from everyday creams, here is the answer.",3,N
+P6,P6-15,A 14-day free trial with no card needed.,2,N
+P6,P6-19,Are you letting software draft work without checking sources?,3,N
+P6,P6-05,"If you hate clattering dishes, check how dense your bowls are.",2,Y
+P6,P6-21,How to fix your deadlift at home.,3,N
+P6,P6-17,What stops two people from answering one customer email?,3,N
+P6,P6-19,Stop using generated data if no sources are visible.,3,N
+P6,P6-13,I had to throw out forty jars before getting this right.,5,N
+P6,P6-19,"If your AI sounds confident, ask where it looked.",4,N
+P6,P6-21,Stop deadlifting with weights if your back takes the load.,3,N
+P6,P6-15,We ship it with a fourteen day trial and no billing info.,2,N
+P6,P6-22,A regular told me her beans tasted flat after a week.,4,N
+P6,P6-03,Have you ever wasted a full day debugging someone else typo?,3,N
+P6,P6-01,She watched me fix her software bug on a live call.,4,N
+P6,P6-07,"I think fragrance is in most skincare for the shopper, not for the skin.",4,N
+P6,P6-22,How to tell if your coffee beans are stale.,3,N
+P6,P6-12,"If your everyday moisturizer makes your cheeks sting, look at this.",3,N
+P6,P6-17,Duplicate emails happen until you establish an explicit ownership protocol.,2,N
+P6,P6-13,My very first skincare batch separated completely overnight.,4,N
+P6,P6-16,Have you ever tried deadlifting at home and felt awkward?,3,N
+P6,P6-10,Have you ever thought about roasting coffee at home?,2,N
+P6,P6-22,Here is the thing about coffee beans stored inside your fridge.,3,N
+P6,P6-21,Stop deadlifting until you try a broomstick.,5,N
+P6,P6-20,Why does your gentle skincare still make your skin sting?,4,N
+P6,P6-08,Are you doing your home workout right?,2,N
+P6,P6-09,Stop wondering if unglazed pottery bases are a maker mistake.,4,N
+P6,P6-09,Here is what happens when glaze touches a kiln shelf.,4,N
+P6,P6-03,"If a customer ticket makes zero sense, check your help page first.",4,N
+P6,P6-11,I get one video check-in call every two weeks.,1,Y
+P6,P6-06,An AI tool quoted a sentence I never wrote in my newsletter.,5,N
+P6,P6-06,I ran my newsletter through AI and it quoted words I never wrote.,5,N
+P6,P6-03,Ever spend your entire Saturday chasing one customer support ticket?,4,N
+P6,P6-05,Stop hiding handmade pottery on top shelves where nobody touches it.,3,N
+P6,P6-18,What happens when an AI invents a quote with real confidence?,3,N
+P6,P6-08,Stop your workout if your knees ache.,2,N
+P6,P6-22,Most people who hate light roast only ever had it stale.,4,N
+P6,P6-23,Brewing at home?,1,N
+P6,P6-17,How do you stop answering the same customer email twice?,3,N
+P6,P6-08,A lot of advice says go heavy. Here is the part that gets skipped.,3,Y
+P6,P6-23,Looking for fresh beans?,1,N
+P6,P6-22,Why does your morning coffee suddenly taste completely flat?,4,N
+P6,P6-13,My first batch separated overnight completely.,3,N
+P6,P6-11,Stop buying heavy gym gear before building a weekly habit.,3,N
+P6,P6-09,Why do potters leave the bottom of mugs unglazed?,3,N
+P6,P6-03,Which support ticket cost your team the most wasted hours?,3,N
+P6,P6-19,"If your tool writes confidently, check the primary references.",3,N
+P6,P6-08,"If your squats feel off, check where your toes point.",3,N
+P6,P6-04,"If your coffee tastes flat, check where you store your beans.",4,N
+P6,P6-01,What do you do when a customer finds a bug?,3,N
+P6,P6-22,Stop putting your roasted coffee beans anywhere near the refrigerator.,4,N
+P6,P6-16,Stop squatting your deadlifts before your back complains.,3,N
+P6,P6-08,Do you second guess your home workout?,2,N
+P6,P6-01,Would you fix a bug while your customer watches?,4,N
+P6,P6-11,A weekly plan built around the equipment you already have.,2,N
+P6,P6-13,I woke up to forty separated jars.,4,Y
+P6,P6-02,Stop trusting AI answers that do not cite real sources.,3,N
+P6,P6-03,I once lost a whole Saturday to a support ticket.,5,N
+P6,P6-17,How to stop answering the same customer email twice.,3,N
+P6,P6-02,Stop accepting synthetic answers without checking the original source first.,3,N
+P6,P6-10,Do you brew coffee at home every single morning?,2,N
+P6,P6-09,Why the bottom of a handmade mug is not glazed.,3,N
+P6,P6-21,Most beginners hurt their back copying gym videos.,4,Y
+P6,P6-04,Here is the thing about keeping coffee beans in your fridge.,3,N
+P6,P6-10,I started roasting in my garage with a secondhand popper.,4,N
+P6,P6-21,Grab a broomstick before you touch any weight.,5,N
+P6,P6-11,Two coaching check-ins per month that keep you consistent.,3,N
+P6,P6-10,Garage roasting gear. Here is what you get.,1,Y
+P6,P6-20,Stop letting fragrance into your routine if your barrier stings.,3,N
+P6,P6-14,Holds about 12 oz.,1,N
+P6,P6-08,Can you check your form right now?,2,N
+P6,P6-12,Why everyday store moisturizers left my cheeks red by lunchtime.,4,N
+P6,P6-10,A secondhand popcorn popper. Here is what you get.,1,Y
+P6,P6-07,"If sensitive skin reacts to your cream, check the fragrance label.",3,N
+P6,P6-19,Stop trusting AI summaries if they never show proof.,3,N
+P6,P6-06,What happens when an AI invents citations with complete confidence?,3,N
+P6,P6-16,Did your first home deadlift feel completely off?,3,N
+P6,P6-14,"Hand-thrown, trimmed and fired twice.",1,N
+P6,P6-17,Why do small teams constantly double reply to customer emails?,3,N
+P6,P6-21,Does your lower back hurt after deadlifts?,3,N
+P6,P6-03,"Small shop owners, what is your most frustrating customer support mistake?",2,N
+P6,P6-13,Throwing out forty jars as proof.,2,N
+P6,P6-13,My first batch separated in the jar overnight.,4,N
+P6,P6-22,Stop keeping coffee beans anywhere near onions or garlic.,4,N
+P6,P6-14,Why you pay thirty-eight dollars for this mug.,3,N
+P6,P6-07,Most fragrance in skincare does nothing for your actual barrier.,3,N
+P6,P6-08,Stop rushing your squats if your knees drift inward.,3,N
+P6,P6-20,"If your skincare makes your face sting, check for added fragrance.",3,N
+P6,P6-01,Do you hide when a customer finds a bug?,3,N
+P6,P6-06,Do you let AI tools summarize text without checking real sources?,3,N
+P6,P6-14,"Dishwasher safe, with an unglazed foot.",2,N
+P6,P6-04,"Honestly, where are you storing your roasted coffee beans right now?",3,N
+P6,P6-19,Why fluent AI answers often hide the real catch.,3,N
+P6,P6-16,My first deadlift went completely wrong at home.,4,N
+P6,P6-11,Are you struggling to stay consistent with home strength training?,2,N
+P6,P6-19,Do you double-check what your AI tools tell you?,2,N
+P6,P6-12,I made the first jar of this moisturizer in my kitchen.,4,N
+P6,P6-04,Do you store your fresh roast right beside the food?,3,N
+P6,P6-07,I think fragrance in skincare is purely for the shopper.,4,N
+P6,P6-07,Stop buying skincare based on how pleasant the jar smells.,3,N
+P6,P6-16,Zero heavy weights needed to learn this movement correctly.,3,N
+P6,P6-01,Our first paying customer found a bug.,4,N
+P6,P6-15,Want to answer customer emails without paying up front?,2,N
+P6,P6-15,Every small support team gets fourteen days free with no card.,3,N
+P6,P6-02,Do you ask your AI tool to show its sources?,3,N
+P6,P6-06,Why should you always force AI tools to show real sources?,2,N
+P6,P6-15,A shared inbox that turns each email into a card on a board.,2,N
+P6,P6-06,I asked an AI to summarize my newsletter and it fabricated text.,5,N
+P6,P6-18,Can you spot the catch when an AI quotes you?,3,N
+P6,P6-04,Stop putting roasted coffee beans in your refrigerator door.,3,N
+P6,P6-10,"Honestly, starting to roast your own coffee feels ridiculous.",3,Y
+P6,P6-02,"If your AI gives a confident summary, check the sources.",3,N
+P6,P6-17,My partner and I built FlowDesk after doubling up on customer tickets.,4,N
+P6,P6-23,Here is the thing about getting coffee within days of roasting.,3,N
+P6,P6-09,A craft fair buyer turned a mug over and asked.,4,N
+P6,P6-17,Ever sent two replies to the exact same customer ticket?,3,N
+P6,P6-12,$28 for a 50 ml jar.,1,N
+P7,P7-17,Never hide a broken workflow from your first customer.,4,N
+P7,P7-07,Why confident AI answers are often completely fabricated.,3,N
+P7,P7-16,"Honestly, where do you store your coffee beans after opening them?",3,N
+P7,P7-09,An AI tool confidently cited a line I never wrote.,5,N
+P7,P7-07,"Are you verifying your AI answers, or just accepting them?",3,N
+P7,P7-08,"A buyer at a craft fair asked why the bottom wasn't glazed, so now I explain it on every label.",4,N
+P7,P7-07,What happens when you force your AI to cite sources?,3,N
+P7,P7-12,$12 per month for up to three teammates.,2,N
+P7,P7-10,How do you stop answering the same customer email twice?,3,N
+P7,P7-09,Have you ever caught an AI citing text that never existed?,3,N
+P7,P7-03,"If you brew coffee every morning, hear this.",2,N
+P7,P7-16,Have you ever wondered why your fresh morning brew tastes off?,3,N
+P7,P7-08,Your handmade mug bottom has no glaze for one reason.,4,N
+P7,P7-14,Do you spend weekends answering tickets that clear docs would prevent?,3,N
+P7,P7-17,How do you handle a live bug during onboarding?,3,N
+P7,P7-03,Honestly my first coffee roast was completely chaotic.,3,N
+P7,P7-18,Stop writing massive workout routines if you keep stopping.,3,N
+P7,P7-12,A 14-day free trial with no card needed.,2,N
+P7,P7-14,Stop rewriting software code when customer tickets start piling up.,3,N
+P7,P7-05,Why our Tide Mug costs thirty-eight dollars.,4,N
+P7,P7-06,"If your moisturizer stings, check if fragrance is listed.",4,N
+P7,P7-03,Have you ever tried roasting coffee at home?,2,N
+P7,P7-18,Why starting your home strength training feels so heavy.,3,N
+P7,P7-06,Why fragrance free formulas protect your sensitive skin barrier.,3,N
+P7,P7-06,Have you noticed your gentle moisturizer still stings sometimes?,3,N
+P7,P7-01,$28 for a 50 ml jar.,1,N
+P7,P7-10,My partner and I kept answering the same customer email twice.,4,N
+P7,P7-05,Do you actually need a thirty-eight dollar mug?,4,N
+P7,P7-11,"The first time I tried a deadlift, I copied a video and my lower back felt it for a week.",5,N
+P7,P7-17,Here is what happens when you fix software live with a customer.,3,N
+P7,P7-15,Stop testing multiple new skincare bottles in the same week.,3,N
+P7,P7-03,My first coffee roast went wrong in seconds.,4,N
+P7,P7-01,Stop using daily creams that leave your skin irritated.,3,N
+P7,P7-03,A thrifted popcorn popper coffee roast. Here is what you get.,2,Y
+P7,P7-19,Real talk on who actually needs a daily AI breakdown.,2,N
+P7,P7-16,A regular told me her beans tasted flat after a week.,4,N
+P7,P7-18,Do you quit home workouts because the plan is too big?,3,N
+P7,P7-05,Is a thirty-eight dollar handmade mug actually worth it?,4,N
+P7,P7-09,I ran my newsletter through AI and found an invented sentence.,5,N
+P7,P7-01,"If your daily face cream causes redness, watch this.",3,N
+P7,P7-06,Stop choosing your daily skincare for how it smells.,4,N
+P7,P7-15,I speak about sensitive skin and gentle routines.,1,N
+P7,P7-14,One documentation typo can cost an entire working Saturday.,4,N
+P7,P7-04,Opening my first kiln load broke my heart.,4,Y
+P7,P7-13,"If you love handmade pottery, you know the clay decides the form.",3,N
+P7,P7-02,"If you brew coffee at home, look at this roast date.",3,N
+P7,P7-15,Why does gentle skincare still cause your face to burn?,3,N
+P7,P7-10,I built the first version of FlowDesk over a winter because my partner and I kept answering the same customer email twice.,4,N
+P7,P7-16,Here is the thing about keeping coffee beans near your groceries.,3,N
+P7,P7-17,I fixed a critical bug live while our customer watched.,4,N
+P7,P7-10,How to stop answering the same customer email twice.,3,N
+P7,P7-12,Small teams waste hours sending double support replies.,3,N
+P7,P7-08,That unglazed ring on your handmade mug is intentional.,4,N
+P7,P7-04,Every mug in my first kiln load came out glued to the shelf because I glazed the bottoms.,5,N
+P7,P7-02,Watch what happens when coffee is roasted fresh on Tuesdays.,3,N
+P7,P7-15,Most advice says buy gentle. Here is the step that gets skipped.,3,Y
+P7,P7-19,An AI quoted a sentence I never wrote in my newsletter.,5,N
+P7,P7-06,Stop choosing face creams based on retail department smells.,3,N
+P7,P7-10,Stop sharing an open inbox without naming who answers each ticket.,4,N
+P7,P7-01,Do standard moisturizers make your cheeks sting every single day?,3,N
+P7,P7-10,Stop answering the same customer email twice with your partner.,3,N
+P7,P7-18,Does your home workout plan ask for way too much?,3,N
+P7,P7-03,Here is the thing about garage coffee roasting.,2,N
+P7,P7-16,Stop storing open coffee bags next to fresh produce.,5,N
+P7,P7-17,Our first paying customer found a bug in the first hour.,4,N
+P7,P7-08,Here is the exact reason pottery bottoms stay unglazed.,4,N
+P7,P7-01,Made in small batches of sixty jars.,2,N
+P7,P7-01,I made the first jar of this in my kitchen.,4,N
+P7,P7-18,"If you dread your home workout, check how many exercises you wrote down.",3,N
+P7,P7-12,Stop letting your team answer customer emails twice.,3,N
+P7,P7-05,Twelve ounces of hand-thrown stoneware built for mornings.,2,N
+P7,P7-18,Starting strength at home should not feel this complicated.,3,N
+P7,P7-08,Ever wonder why raw pottery bottoms never have glaze?,3,N
+P7,P7-05,"Hand-thrown, trimmed and fired twice.",1,N
+P7,P7-19,"Here is who my newsletter is for, and who should skip it.",3,Y
+P7,P7-17,"If you answer customer emails alone, this moment will happen.",3,N
+P7,P7-09,"Real talk, an AI just made up a quote about me.",4,N
+P7,P7-03,A secondhand popcorn popper for roasting. Here is what happened.,4,N
+P7,P7-14,I lost a whole Saturday to a single support ticket.,5,N
+P7,P7-16,"If your brewed coffee tastes flat, check where you store your beans.",4,N
+P7,P7-12,Answering the same customer twice forced us to build FlowDesk.,4,N
+P7,P7-06,Stop buying your daily skincare for how it smells.,3,N
+P7,P7-04,My very first kiln firing was a complete disaster.,4,N
+P7,P7-15,Two quiet ingredient checks for skin that stings easily.,3,N
+P7,P7-12,Running support with a partner gets messy fast.,3,N
+P7,P7-15,"If your cheeks turn red, check how quickly you introduced it.",3,N
+P7,P7-07,Why should you ask AI tools to show their sources?,3,N
+P7,P7-17,What do you do when your first paying user finds a bug?,3,N
+P7,P7-08,Look at the base of this handmade ceramic piece.,3,N
+P7,P7-13,I spend hours at the wheel letting clay find its shape.,3,N
+P7,P7-09,I caught an AI tool fabricating quotes from my own writing.,5,N
+P7,P7-18,A lot of advice pushes massive routines. Here is why small sets build real habits.,3,N
+P7,P7-06,Marketing says scent feels luxurious. Sensitive skin feels irritation.,4,N
+P7,P7-08,A craft fair buyer asked about unglazed mug bottoms.,3,N
+P7,P7-14,What if your hardest support ticket was just a documentation typo?,4,N
+P7,P7-18,Zero extra gym equipment needed. Here is what actually builds your consistency.,3,N
+P7,P7-08,Why is the bottom of handmade ceramics unglazed?,3,N
+P7,P7-14,Are you spending every Saturday answering preventable support tickets?,3,N
+P7,P7-03,I plugged in a secondhand popcorn popper in the garage.,3,N
+P7,P7-12,Are two people answering the same customer email?,3,N
+P7,P7-15,"If your skin stings from simple creams, start reading labels calmly.",2,N
+P8,P8-18,What is the single most overlooked feature in modern AI tools?,4,N
+P8,P8-06,Why does the thirty-eight dollar Tide Mug skip glaze on the bottom?,4,N
+P8,P8-09,Fix your hip hinge before picking up heavy weights.,3,N
+P8,P8-18,"If you rely on AI answers, check the sources first.",3,N
+P8,P8-09,Stop copying random workout videos before learning the basic hip hinge.,4,N
+P8,P8-14,Stop answering support emails until you establish thread ownership.,3,N
+P8,P8-06,Twelve ounce capacity built for your daily kitchen ritual.,2,N
+P8,P8-17,I caught an automated tool making up my own words.,3,N
+P8,P8-12,What if your worst support ticket was just a typo?,4,N
+P8,P8-20,Which AI answer actually gives you a real source link?,3,N
+P8,P8-05,Stop buying scented moisturizers if your skin gets easily irritated.,3,N
+P8,P8-12,Stop blaming your customer when support tickets repeat all day.,3,N
+P8,P8-01,Stop keeping your coffee beans anywhere near the kitchen fridge.,5,N
+P8,P8-14,I built the first version of FlowDesk over a winter.,4,N
+P8,P8-04,How my garage coffee roasting started with two smoke alarms.,4,N
+P8,P8-08,A lot of routines push long sessions. Here is the part that gets skipped.,3,N
+P8,P8-10,"If your skincare stings, you are not the problem.",4,N
+P8,P8-11,What do you actually get inside my Home Strength Starter?,3,N
+P8,P8-07,Is the unglazed bottom of your mug a defect?,4,N
+P8,P8-19,$28 for a 50 ml jar.,1,N
+P8,P8-14,Stop replying to customer tickets if your partner is already typing.,3,N
+P8,P8-07,Why potters never glaze the base of a ceramic cup.,3,N
+P8,P8-17,AI tools sound certain even when completely inventing lines.,3,N
+P8,P8-16,An AI quoted a sentence I never wrote in my own newsletter.,5,N
+P8,P8-19,Made in small batches of sixty jars.,2,N
+P8,P8-17,Generative tools will fabricate quotes without blinking.,3,N
+P8,P8-12,Do customer emails constantly drag you away on weekends?,3,N
+P8,P8-09,My first home deadlift left my lower back hurting for days.,4,N
+P8,P8-16,Stop relying on AI tools that refuse to display their sources.,4,N
+P8,P8-12,I lost a whole Saturday to one single support ticket.,5,N
+P8,P8-02,Stop buying grocery store beans if you want real morning flavor.,3,N
+P8,P8-10,Sensitive skin does not need to feel like a mystery.,3,N
+P8,P8-05,Why fragrance in skincare is actually designed for the shopper.,3,N
+P8,P8-16,Confident AI output will still fabricate direct quotes.,3,N
+P8,P8-19,I made the first jar of this moisturizer in my kitchen.,4,N
+P8,P8-04,"If you brew coffee at home, listen to this story.",3,N
+P8,P8-15,Do two people manage your support inbox right now?,3,N
+P8,P8-05,Stop choosing your daily skincare products just for their scent.,3,N
+P8,P8-01,"If your coffee tastes flat after a week, check your fridge.",4,N
+P8,P8-05,"If your skin stings easily, check your daily moisturizer for added fragrance.",3,N
+P8,P8-03,"If you love handmade kitchen bowls, check how the clay was centered.",3,N
+P8,P8-12,One typo in your documentation creates dozens of customer questions.,3,Y
+P8,P8-03,Stop rushing wheel work if the clay is still cold.,2,N
+P8,P8-11,"If you want to build strength, check how complex your routine is.",3,N
+P8,P8-04,My first batch of coffee set off two smoke alarms.,4,N
+P8,P8-09,Here is how to learn the hip hinge at home.,3,N
+P8,P8-13,Most people hide when early software breaks in front of users.,3,Y
+P8,P8-19,This glass jar was made for cheeks that sting easily.,3,N
+P8,P8-10,"Fragrance in skincare is made for the shopper, not your skin.",4,N
+P8,P8-08,The real reason beginner home workouts stall out.,3,N
+P8,P8-01,A regular told me her beans tasted flat after a week.,4,N
+P8,P8-20,Have you ever checked the link an AI gave you?,3,N
+P8,P8-14,Why shared inboxes fail small support teams every single time.,2,Y
+P8,P8-01,Have you ever stored your fresh coffee beans in the fridge?,3,N
+P8,P8-13,I was on a live call when our first customer hit a bug.,4,N
+P8,P8-18,Never accept an AI output until you demand the source citations.,4,N
+P8,P8-11,A lot of advice says buy heavy weights. Here is the skipped part.,3,N
+P8,P8-05,Why truly fragrance-free formulas matter so much for sensitive skin.,3,N
+P8,P8-03,Two signs of handmade pottery shaped slowly on a manual wheel.,2,N
+P8,P8-16,"If you rely on AI summaries, check this first.",3,N
+P8,P8-08,Stop adding extra sets before you master the first two movements.,3,N
+P8,P8-05,"Most daily skincare contains fragrance for the shopper, not your skin.",3,N
+P8,P8-18,Stop copying AI drafts if you skipped checking citations.,3,N
+P8,P8-02,The exact roast that cleared my first market table by ten.,4,N
+P8,P8-13,Our first paying customer found a bug in the first hour.,4,N
+P8,P8-12,Running an online shop and drowning in customer emails?,3,N
+P8,P8-13,Would you fix a critical bug live while your customer watches?,3,N
+P8,P8-17,Can you trust a summary that sounds totally confident?,3,N
+P8,P8-15,Test this support board for 14 days without a card.,3,N
+P8,P8-08,Are you struggling to finish your home workouts?,2,N
+P8,P8-19,Tired of moisturizers that leave your cheeks red by lunchtime?,4,N
+P8,P8-18,Stop using AI output if sources are missing entirely.,3,N
+P8,P8-15,A 14-day free trial with no card needed.,2,N
+P8,P8-11,Stop buying expensive gym gear if you are just starting strength training.,3,N
+P8,P8-07,Here is why the bottom of your ceramic mug stays bare.,3,N
+P8,P8-17,An AI quoted a sentence I never actually wrote.,5,N
+P8,P8-08,Why your home workouts feel impossible to finish.,3,N
+P8,P8-01,The biggest mistake people make with fresh coffee bean storage.,3,N
+P8,P8-10,Stop tolerating face creams that make your cheeks burn.,3,N
+P8,P8-10,Stop blaming your skin barrier when a scented product starts burning.,4,N
+P8,P8-09,Why your lower back aches after home deadlifts.,3,N
+P8,P8-03,"Why does shaping kitchen pottery demand such slow, quiet wheel work?",3,N
+P8,P8-08,Your workout routine might just be too big.,3,N
+P8,P8-06,Why I leave the raw foot unglazed on every Tide Mug.,4,N
+P8,P8-13,What do you do when a customer sees your software break?,3,N
+P8,P8-04,I plugged a secondhand popcorn popper into my garage wall.,3,N
+P8,P8-16,Most people treat confident AI text as verified fact.,3,N
+P8,P8-12,"Small shop owners, what eats your customer inbox time?",3,N
+P8,P8-17,Has an AI tool ever quoted words you never said?,4,N
+P8,P8-01,Stop putting fresh roasted coffee beans in the refrigerator door.,5,N
+P8,P8-16,Why you should stop copying AI summaries blindly.,3,N
+P8,P8-15,My partner and I kept answering the same customer twice.,4,N
+P8,P8-07,Look closely at the foot ring on your pottery.,3,N
+P8,P8-04,I started roasting in my garage with a secondhand popper.,3,N
+P8,P8-09,How do you practice a safe hip hinge at home?,3,N
+P8,P8-13,Fixing a live bug in front of a customer is terrifying.,3,N
+P8,P8-06,"Hand-thrown, trimmed and fired twice.",1,N
+P8,P8-14,How to stop answering the same customer email twice.,3,N
+P8,P8-16,"If you read AI summaries daily, check the source text first.",3,N
+P8,P8-08,"If you dread your routine, check how many exercises you planned.",3,N
+P8,P8-08,Stop building massive workout plans as a beginner.,3,N
+P8,P8-04,Do not try roasting coffee at home without hearing this.,3,N
+P8,P8-06,Have you ever noticed the unglazed base on my Tide Mug?,3,N
+P8,P8-04,Ever wondered how roasting coffee at home actually starts?,3,N
+P8,P8-13,The real cost of a software bug in your first hour.,3,N
+P8,P8-11,Do not buy new gym weights before you audit what you own.,3,N
+P8,P8-02,"This is Harbor Blend, and it is not for grocery shelf shoppers.",3,N
+P8,P8-10,A plain moisturizer without added fragrance makes all the difference.,2,N
+P8,P8-01,A regular told me her coffee tasted flat after a week.,4,N
+P8,P8-07,What potters know about that unglazed ring under your mug.,4,N
+P8,P8-10,Skincare brands focus on how jars smell. Here is what sensitive skin needs.,4,N
+P8,P8-09,Stop copying online deadlift videos if your back hurts.,4,N
+P8,P8-07,That unglazed ring under your mug is there on purpose.,4,N
+P8,P8-07,Ever wonder why the bottom of your handmade mug is unglazed?,3,N
+P8,P8-11,"If you want to train at home, start with your existing gear.",3,N
+P8,P8-07,A craft fair buyer asked why my mugs had unglazed bottoms.,3,N
+P8,P8-16,The biggest mistake with generative tools is simple trust.,3,N
+P8,P8-17,I caught an AI tool fabricating quotes from my newsletter.,5,N
+P8,P8-02,I spent hours handing out samples from an empty market table.,3,N
+P8,P8-14,Why do two people always reply to the same customer email?,3,N
+P8,P8-09,"If your lower back hurts on deadlifts, check your hip hinge.",3,N
+P8,P8-02,Roasted on Tuesdays and shipped within two days of roasting.,2,N
+P8,P8-15,Are you answering the same customer emails twice?,3,N
+P8,P8-10,Why does your gentle moisturizer keep stinging your face?,3,N
+P8,P8-13,Here is what happens when early software breaks on day one.,3,N
+P8,P8-03,Do you ever wonder why shaping raw clay takes so much patience?,3,N
+P8,P8-02,"If you brew fresh coffee every morning, watch this.",2,N
+P8,P8-05,Stop testing scented skincare products when your skin barrier feels irritated.,3,N
+P8,P8-02,Two days from roasting to your door changes morning coffee.,3,N
+P8,P8-15,Why your shared customer inbox creates duplicate replies every day.,3,N
+P8,P8-20,What happens when you demand primary links from your AI?,3,N
+P10,P10-04,Stop turning your home deadlift into a squat.,4,N
+P10,P10-20,I never expected my first coffee roast to involve smoke alarms.,4,N
+P10,P10-20,Here is what happened when I tried roasting in my garage.,3,N
+P10,P10-12,Did your fresh coffee beans mysteriously lose all their taste?,3,N
+P10,P10-21,Why our Tide Mug is thirty-eight dollars.,4,N
+P10,P10-24,One prompt habit prevents automated tools from misleading your team.,3,N
+P10,P10-12,Stop storing your fresh coffee bag next to pungent food.,4,N
+P10,P10-14,Never judge a sensitive skin cream until you see how it holds.,3,N
+P10,P10-08,Why do most beginner home workouts fail in week two?,3,Y
+P10,P10-10,Stop replying to customer emails before assigning who owns the thread.,4,N
+P10,P10-10,Stop treating your support inbox like an open chat room.,4,N
+P10,P10-13,Why your checkout tickets might just be unclear text.,3,Y
+P10,P10-06,Stop buying daily skincare based on how it smells on shelves.,4,N
+P10,P10-20,Have you ever tried roasting coffee beans in your garage?,3,N
+P10,P10-18,Opening my first kiln load was pure comedy.,3,N
+P10,P10-09,Why small support teams keep sending duplicate customer replies every week.,3,Y
+P10,P10-19,Why do most beginner home workouts stall by week two?,3,Y
+P10,P10-23,"If you buy handmade pottery, check the clay texture.",3,N
+P10,P10-05,The fastest way to build trust is debugging on live video.,3,Y
+P10,P10-09,Have you ever replied to an email your partner already answered?,4,N
+P10,P10-23,Why some handmade pottery leaves the raw clay marks completely exposed.,3,N
+P10,P10-16,"If standard moisturizers leave your cheeks red, try this gentle formula.",3,N
+P10,P10-14,"If standard moisturizers make your cheeks sting, you need to hear this.",3,N
+P10,P10-04,"If your lower back hurts on deadlifts, check this.",4,N
+P10,P10-16,"Here is Calm Cream, our fragrance-free moisturizer for sensitive skin.",2,N
+P10,P10-13,I spent a whole Saturday debugging an issue that was a typo.,4,N
+P10,P10-11,One detail on this coffee bag changes everything.,3,N
+P10,P10-22,Why does your sensitive skin cream keep stinging your cheeks?,3,N
+P10,P10-12,"If your coffee tastes flat after a week, check the fridge.",4,N
+P10,P10-15,My newsletter summary generated a quote that does not exist.,4,N
+P10,P10-04,Stop turning your home deadlift into an awkward squat.,4,N
+P10,P10-15,I ran into the strangest AI hallucination in my newsletter.,4,N
+P10,P10-16,My cheeks were red by lunchtime from store creams.,4,N
+P10,P10-13,One help doc error created an entire support backlog.,3,Y
+P10,P10-11,Ten in the morning was all it took.,3,N
+P10,P10-03,What is the single most useful AI feature people keep ignoring?,4,N
+P10,P10-01,Stop putting your coffee beans in the fridge to keep them fresh.,5,N
+P10,P10-02,What the raw ring under your coffee mug actually does.,4,N
+P10,P10-22,Wondering why gentle moisturizers still make your face burn?,3,N
+P10,P10-13,What if your biggest support issue is not software?,4,N
+P10,P10-14,I threw out forty jars of cream before getting it right.,5,N
+P10,P10-16,Why I stopped using store moisturizers and formulated my own.,4,N
+P10,P10-10,Why small teams send duplicate customer replies every single week.,3,Y
+P10,P10-15,My own newsletter got misquoted by an AI summary tool.,5,N
+P10,P10-16,I made the first jar in my kitchen.,3,N
+P10,P10-20,The unglamorous truth about learning to roast your own coffee.,3,N
+P10,P10-24,"If an AI generates quotes, verify the exact sentence.",3,N
+P10,P10-14,"Why do so many simple, fragrance free formulas separate right away?",3,Y
+P10,P10-18,The very first firing I ever ran was a complete loss.,4,N
+P10,P10-16,Does your daily moisturizer leave your cheeks red by lunchtime?,4,N
+P10,P10-22,"If your sensitive face burns after moisturizing, look at this.",3,N
+P10,P10-17,What happens when you force an AI model to prove its claims?,3,N
+P10,P10-06,Skincare brands focus on scent. Here is why your skin reacts.,4,N
+P10,P10-07,I copied an online video for my first deadlift attempt.,4,N
+P10,P10-04,Why does your lower back hurt during home deadlifts?,3,N
+P10,P10-10,We kept answering the exact same customer email twice.,4,N
+P10,P10-13,Stop rewriting code whenever customers ask the same question.,2,Y
+P10,P10-09,I built FlowDesk over a winter to fix duplicates.,4,N
+P10,P10-21,Do you know why this stoneware mug costs thirty-eight dollars?,4,N
+P10,P10-07,My very first deadlift attempt went completely wrong.,4,N
+P10,P10-22,I stopped buying sensitive skin creams that smell nice.,3,Y
+P10,P10-12,"Someone told me her beans tasted flat, and then I asked.",3,N
+P10,P10-09,Our inbox was a mess until we used cards.,3,N
+P10,P10-20,Here is what happens when you roast coffee at home.,2,N
+P10,P10-13,Stop checking code when a customer question makes no sense.,3,Y
+P10,P10-11,Notice the handwritten note on this bag of beans?,4,N
+P10,P10-19,"If your home strength routine feels overwhelming, check the size.",3,N
+P10,P10-10,Are you and your partner answering the same customer email twice?,4,N
+P10,P10-01,Are your fresh coffee beans losing their flavor after seven days?,3,N
+P10,P10-12,A regular came to me asking why her beans went flat.,4,N
+P10,P10-19,"If your home strength routine feels overwhelming, check your workout size.",3,N
+P10,P10-18,My first kiln load came out glued to the shelf.,5,N
+P10,P10-04,What nobody tells you about learning to deadlift at home.,3,N
+P10,P10-01,Why do your coffee beans suddenly taste flat after one week?,3,N
+P10,P10-11,I spent half my first market with nothing.,3,N
+P10,P10-14,Two reasons clean emulsions collapse when you remove common synthetic fillers.,2,Y
+P10,P10-20,My very first home coffee roast was an absolute disaster.,4,N
+P10,P10-24,Most automated summaries sound polished until you check their claims.,3,N
+P10,P10-08,"If your home workout feels overwhelming, check how many exercises you picked.",3,N
+P10,P10-15,I ran into a bizarre quote made by an AI.,3,N
+P10,P10-11,My first market table emptied out by ten.,4,N
+P10,P10-03,"If you paste text from an AI tool, check the sources.",3,N
+P10,P10-23,Two ways handmade wheel pieces feel in your kitchen.,2,N
+P10,P10-05,"Store owners, would you debug your tool in front of customers?",3,N
+P10,P10-19,Stop starting with giant workout plans when training at home.,3,N
+P10,P10-07,I copied a workout video and ruined my first deadlift.,4,N
+P10,P10-03,Stop trusting AI text before demanding the tool cite its sources.,4,N
+P10,P10-11,"If you brew coffee every morning, look at this label.",3,N
+P10,P10-20,Roasting your own coffee beans starts with a lot of smoke.,3,N
+P10,P10-09,We kept answering the exact same customer email twice.,4,N
+P10,P10-16,The first moisturizer that has not made my cheeks sting.,2,N
+P10,P10-22,A lot of advice blames damaged skin barriers. Here is the part that gets skipped.,3,Y
+P10,P10-24,"If you use AI summaries daily, test this habit today.",3,N
+P10,P10-06,"If your cheeks sting from daily creams, check for added perfume.",3,N
+P10,P10-10,"If you share an inbox with your partner, check who owns new emails.",3,N
+P10,P10-14,My first batch separated in the jar overnight.,4,N
+P10,P10-15,A summary tool fabricated a sentence in my own newsletter.,4,N
+P10,P10-05,"Online shop owners, have you ever resolved a software flaw live?",3,N
+P10,P10-13,Is that new support ticket really a software bug?,3,N
+P10,P10-02,Why makers leave the base of your ceramic cup bare.,4,N
+P10,P10-04,The simple way to learn the hip hinge at home.,3,N
+P10,P10-08,Beginners quit workouts when the plan gets way too big.,4,N
+P10,P10-02,A craft fair buyer asked why my mugs had unglazed bottoms.,3,N
+P10,P10-24,Never paste AI summaries into your work without this check.,3,N
+P10,P10-10,Here is how to stop sending double replies to customers.,3,N
+P10,P10-10,What happens when two people share one customer support inbox?,3,N
+P10,P10-14,The moment forty jars separated on my counter overnight.,4,Y
+P10,P10-03,Stop pasting generated text if the tool cannot name sources.,3,N
+P10,P10-13,Could your worst support ticket be a single typo?,4,N
+P10,P10-07,I thought copying a workout video would teach me how to deadlift.,4,N
+P10,P10-04,The first time I deadlifted my back hurt bad.,4,N
+P10,P10-08,Stop starting with giant workout plans that wear you out immediately.,3,N
+P10,P10-05,Nothing tests your confidence like live debugging for a buyer.,3,N
+P10,P10-16,Every store cream I tried left my cheeks red.,4,N
+P10,P10-11,This one coffee bag cleared my entire market table.,4,N
+P10,P10-17,Why do AI models collapse the moment you ask for proof?,3,N
+P10,P10-05,Running solo support means fixing code while the customer watches.,3,Y
+P10,P10-06,Does your moisturizer smell amazing but leave your face burning?,4,N
+P10,P10-22,Stop using creams on sensitive skin if they leave your cheeks stinging.,3,N
+P10,P10-23,"If you love handmade kitchen pottery, check how it actually feels.",2,N
+P10,P10-14,Getting a gentle formula stable took more failure than anyone talks about.,3,N
+P10,P10-21,What actually goes into a thirty-eight dollar handmade mug?,4,N
+P10,P10-02,Ever wonder why the bottom of your mug is raw clay?,3,N
+P10,P10-19,A lot of advice says work out every day. Here is why that fails.,2,Y
+P10,P10-05,What happens when your first buyer spots a bug immediately?,4,N
+P10,P10-05,Fixing code while your only buyer watches is wild.,3,N
+P10,P10-18,My very first kiln firing was a disaster.,4,N
+P10,P10-12,Have your coffee beans ever tasted completely flat after a week?,3,N
+P10,P10-23,Do you prefer smooth mugs or feeling the raw clay ridges?,3,N
+P10,P10-03,Stop trusting polished AI paragraphs if the sources are missing.,4,N
+P10,P10-03,Do you ever force your AI tool to prove its statements?,3,N
+P10,P10-02,"If your mug bottom is unglazed, check this reason.",3,N
+P10,P10-01,The fastest way to ruin a bag of fresh coffee beans.,4,N
+P10,P10-05,A live call saved our relationship with our first customer.,3,Y
+P10,P10-18,I ruined an entire kiln firing in five seconds.,3,Y
+P10,P10-08,"If you train at home, keep your workout remarkably small.",3,N
+P10,P10-02,Why is the bottom of a handmade mug not glazed?,3,N
+P10,P10-08,"People blame lack of willpower, but the oversized plan caused the failure.",4,N
+P10,P10-22,"If your daily cream stings your face, check the ingredient list for fragrance.",3,N
+P10,P10-06,"Why fragrance in skincare is made for shoppers, not your skin.",4,N
+P10,P10-06,Stop buying skincare for how it smells if your skin stings.,4,N
+P10,P10-12,Here is why your coffee suddenly tastes completely lifeless.,3,N
+P10,P10-24,Stop pasting AI summaries before checking where quotes originated.,4,N
+P10,P10-24,I stopped trusting AI summaries after this happened.,4,N
+P10,P10-23,Stop ignoring how raw clay feels in your hands.,2,N
+P10,P10-01,Here is why your coffee beans taste completely flat this morning.,3,N
+P10,P10-04,Two common deadlift mistakes beginners make at home.,3,N
+P10,P10-22,Stop trusting moisturizers just because the bottle claims they calm skin.,3,N
