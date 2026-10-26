@@ -7,6 +7,7 @@
 // Behind CREATOR_TYPE_RULES, default OFF: with the flag off `rulesForCreator`
 // returns null and callers keep today's one-size behaviour. Nothing reads it yet.
 import raw from './creatorTypeRules.json'
+import { normalizeCreatorType } from './writerGuidance'
 
 export const CREATOR_TYPES = ['coach', 'maker', 'local_business', 'educator', 'community', 'entertainer'] as const
 export type CreatorType = (typeof CREATOR_TYPES)[number]
@@ -73,13 +74,14 @@ export function creatorTypeRulesEnabled(env: Record<string, string | undefined> 
 
 /**
  * The rules for a creator's stored type, or null when the flag is off, the type
- * is absent or unknown. Null means "keep today's behaviour".
+ * is absent or unknown. Legacy names (physical_product, coach_consultant, ...) are mapped. Null means "keep today's behaviour".
  */
 export function rulesForCreator(
   creatorType: unknown,
   env: Record<string, string | undefined> | undefined,
   rules: CreatorTypeRuleSet = loadCreatorTypeRules(),
 ): CreatorTypeRule | null {
-  if (!creatorTypeRulesEnabled(env) || !isCreatorType(creatorType)) return null
-  return rules.types[creatorType]
+  const t = normalizeCreatorType(creatorType)
+  if (!creatorTypeRulesEnabled(env) || !t) return null
+  return rules.types[t]
 }
