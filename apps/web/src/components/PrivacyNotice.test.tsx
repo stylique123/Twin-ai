@@ -95,8 +95,8 @@ describe('Settings mounts it (disconnect test)', () => {
   })
 })
 
-describe('migration 0294 is safe as written', () => {
-  const sql = readFileSync(resolve(__dirname, '../../../../supabase/migrations/0294_consent_records_and_data_deletion.sql'), 'utf8')
+describe('migration 0296 is safe as written', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../supabase/migrations/0296_consent_records_and_data_deletion.sql'), 'utf8')
   it('RLS on both tables', () => {
     expect(sql).toMatch(/alter table public\.consent_records enable row level security/)
     expect(sql).toMatch(/alter table public\.data_deletion_requests enable row level security/)

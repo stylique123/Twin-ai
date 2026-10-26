@@ -80,7 +80,7 @@ export const EXCLUDED = {
     'canary feedback table for the owner\'s canary account (scripts and Result screen only); staging is the editor test bed and runs no canary',
   '0292_check_line_source':
     "Widens creator_knowledge_source_check to allow 'check_line' (CHECK THIS LINE, trial only); NOT yet applied (file only, owner applies before CHECK_LINE_KILL is lifted for the trial). The editor never reads it. No staging-only surface.",
-  '0294_consent_records_and_data_deletion':
+  '0296_consent_records_and_data_deletion':
     'Consent record, user data deletion request and service-role processor; NOT yet applied (file only, owner applies by hand after counsel signs off on the notice). Web side behind VITE_PRIVACY_NOTICE, default OFF. No staging-only surface.',
   '0291_release_flags':
     'Service-role-only release registry and kill switch (RLS on, no policies), seeded S0 everywhere, plus the `shadow` traffic tag on ai_usage_ledger; NOT yet applied (file only, owner applies by hand with 0290 before any component reaches S1). Read by the edge only when RELEASE_REGISTRY_SOURCE=table. No staging-only surface.',

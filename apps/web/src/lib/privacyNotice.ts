@@ -2,7 +2,7 @@
  * PRIVACY NOTICE, CONSENT RECORD AND DATA DELETION (Task D item 8).
  *
  * ⚖️ BEHIND A FLAG THAT DEFAULTS OFF: only `VITE_PRIVACY_NOTICE=1` shows it.
- * The tables and the RPC it calls are in migration 0294, which is a FILE ONLY
+ * The tables and the RPC it calls are in migration 0296, which is a FILE ONLY
  * (not applied) until counsel signs off on the wording below. With the flag
  * off nothing renders and nothing is called.
  *
