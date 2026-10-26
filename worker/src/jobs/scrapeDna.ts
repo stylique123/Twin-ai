@@ -1,6 +1,9 @@
 import { db, type Job } from '../db.js'
 import { scrapeProfile, UnsupportedPlatformError, ProfileReadFailedError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
+import { scanFailureCause, type ScanStage } from '../scanFailureCause.js'
+import { withQuotaRetry, SYNTH_QUOTA_DELAYS_MS } from '../synthRetry.js'
+import { keepScan, usableKeptScan, type KeptScan } from '../keptScan.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
 import { classifyTranscriptFailure, retryWorthScanFailure } from '../transcriptFailure.js'
 import { voiceHasOwnMaterial } from '../voiceOwnMaterial.js'
@@ -9,6 +12,8 @@ import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import { byReachDesc, averagePlays, reachOf } from '../reach.js'
 import { scrapedPostRows } from '../scrapedPostRows.js'
+import { planCreatorRead, mergeByVideoId, CREATOR_CACHE_DAYS, type CachedPostRow } from '../creatorReadCache.js'
+import { creatorReadLimit } from '../apifyGuard.js'
 import type { InlineImage } from '../gemini.js'
 import { env } from '../env.js'
 import { ProxyAgent } from 'undici'
@@ -90,6 +95,28 @@ function topCovers(posts: ScrapedPost[], max = 4): string[] {
     .slice(0, max)
 }
 
+/** The most recent kept scan for this voice + handle + platform (this job's own
+ *  row first, since a queue retry re-claims it), or null. Best-effort: any read
+ *  error means a fresh read, never a failed scan. */
+async function findKeptScan(job: Job, voiceId: string, handle: string, platform: string, ownerId: string): Promise<KeptScan | null> {
+  try {
+    const own = (job as { result?: unknown }).result as { kept_scan?: unknown } | null | undefined
+    const mine = usableKeptScan(own?.kept_scan, handle, platform)
+    if (mine) return mine
+    let q = db.from('jobs').select('result')
+      .eq('type', 'scrape_dna')
+      .contains('payload', { brand_voice_id: voiceId, handle, platform })
+      .not('result->kept_scan', 'is', null)
+    if (ownerId) q = q.eq('owner_id', ownerId)
+    const { data, error } = await q.order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (error || !data) return null
+    return usableKeptScan((data.result as { kept_scan?: unknown } | null)?.kept_scan, handle, platform)
+  } catch (err) {
+    console.warn('scrape_dna: kept scan lookup failed', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 // Handles `scrape_dna` jobs — the FREE TikTok DNA build (yt-dlp scrape + caption
 // synth), replacing a paid Apify run for TikTok. The worker updates the brand_voice
 // row directly; the frontend's dna-poll just reports that row's status.
@@ -123,10 +150,21 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // voices in production reached that state: a cached profile, a failed scan,
   // `kept_existing: true`, and an empty knowledge table underneath. See
   // `voiceHasOwnMaterial` for what the row has to hold to count as built.
-  const fail = async (msg: string, cause?: unknown) => {
-    const diag = cause === undefined ? {} : {
+  // Which step a failure happened at; `fail` reads it unless a code is given.
+  let failAt: ScanStage = 'read'
+  // The posts already read, kept on the failure result so a retry skips Apify.
+  let kept: KeptScan | null = null
+  const fail = async (msg: string, cause?: unknown, code?: string) => {
+    const why = cause === undefined ? {} : {
       failure_class: classifyTranscriptFailure(cause),
       failure_sample: (cause instanceof Error ? cause.message : String(cause)).slice(0, 200),
+    }
+    // ⚖️ `scan_cause` is what `dna-poll` hands the screen. Without it every
+    // failure read "we are not sure why yet" even when we knew (2026-10-26).
+    const diag = {
+      scan_cause: code ?? scanFailureCause(failAt, cause),
+      ...why,
+      ...(kept ? { kept_scan: kept } : {}),
     }
     const { data: cur } = await db.from('brand_voices').select('profile').eq('id', voiceId).maybeSingle()
     const vp = cur?.profile as { niche?: unknown; tone?: unknown; summary?: unknown } | null
@@ -139,7 +177,10 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       await db.from('brand_voices').update({ status: 'ready', error: null }).eq('id', voiceId)
       return { ok: false, reason: msg, kept_existing: true, ...diag }
     }
-    await db.from('brand_voices').update({ status: 'failed', error: msg }).eq('id', voiceId)
+    const { error: markErr } = await db.from('brand_voices').update({ status: 'failed', error: msg }).eq('id', voiceId)
+    // ⚠️ IF EVEN THIS WRITE FAILS the row stays `building` and the screen waits
+    // out its cap. Logged so it is countable; the job result still names it.
+    if (markErr) console.error(JSON.stringify({ event: 'scrape_dna_mark_failed_failed', voice: voiceId, detail: markErr.message }))
     // ⚠️⚠️ AND A VOICE WITH NOTHING GETS THE RETRIES IT WAS ALREADY BUDGETED.
     // Measured 2026-09-21: this voice's scan failed at the synth step, settled
     // `done`, and left 2 of its 3 attempts unspent. Re-queued by hand with the
@@ -195,9 +236,18 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     stages.push(detail ? { stage: name, outcome, detail: detail.slice(0, 300) } : { stage: name, outcome })
   }
 
-  let posts
-  let profileFacts
-  try {
+  let posts: ScrapedPost[] = []
+  let profileFacts: Awaited<ReturnType<typeof scrapeProfile>>['facts'] | undefined
+  // ⚖️ A SCAN WE ALREADY READ IS NOT READ AGAIN. If an earlier scrape_dna for
+  // this voice, handle and platform kept its posts (it failed AFTER the read,
+  // e.g. on a model quota), rebuild the voice from those — no Apify run.
+  const reused = await findKeptScan(job, voiceId, handle, platform, ownerId)
+  if (reused) {
+    posts = reused.posts
+    profileFacts = (reused.facts ?? undefined) as typeof profileFacts
+    kept = reused
+    stage('scrape_profile', 'skipped', `reused ${reused.posts.length} posts kept at ${reused.read_at}`)
+  } else try {
     // ⚠️ THE PLATFORM WAS THROWN AWAY HERE. This read `scrapeTikTokProfile(handle)`
     // for every voice, so a YouTube creator's scan asked tiktok.com for a handle
     // that does not exist there, read nothing, and reported `done`.
@@ -208,10 +258,31 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // decide 10 → 15 was reading a default argument in media.ts. The pool is now
     // derived from the same place as the budget, so the two cannot drift apart
     // again.
-    const scraped = await scrapeProfile(handle, platform, scrapePoolFor(platform))
-    posts = scraped.posts
+    // v6.4 (plan §30): a creator read is never capped for money, so it is made
+    // cheap: ≤ 20 results, and a channel read in the last 30 days asks only
+    // for its newest videos, merged with the cache and deduped by video id.
+    let cached: CachedPostRow[] = []
+    if (ownerId) {
+      try {
+        const { data } = await db.from('scraped_posts')
+          .select('url, caption, hashtags, cover_url, plays, likes, observed_at')
+          .eq('owner_id', ownerId).eq('platform', platform).eq('handle', handle)
+          .gte('observed_at', new Date(Date.now() - CREATOR_CACHE_DAYS * 86_400_000).toISOString())
+          .order('observed_at', { ascending: false }).limit(50)
+        cached = (data ?? []) as CachedPostRow[]
+      } catch { cached = [] } // the cache is an optimisation, never a gate
+    }
+    const plan = planCreatorRead(cached, creatorReadLimit(scrapePoolFor(platform)))
+    const scraped = await scrapeProfile(handle, platform, plan.limit)
+    const merged = plan.mode === 'incremental'
+      ? mergeByVideoId(scraped.posts, cached.map((r) => ({
+          text: r.caption, likes: r.likes, plays: r.plays, hashtags: r.hashtags ?? [], url: r.url,
+          ...(r.cover_url ? { cover: r.cover_url } : {}),
+        })))
+      : { posts: scraped.posts, newCount: scraped.posts.length }
+    posts = merged.posts
     profileFacts = scraped.facts
-    stage('scrape_profile', 'ok', `${scraped.posts.length} posts`)
+    stage('scrape_profile', 'ok', `${posts.length} posts (${plan.mode}, ${merged.newCount} new, limit ${plan.limit})`)
   } catch (err) {
     // ⚠️ THIS BLAMED THE CREATOR FOR OUR OWN MISSING DEPENDENCY. The old
     // message said "If that account is private or empty, try a public account"
@@ -233,6 +304,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       return await fail(
         `We can't scan ${platform} accounts yet. Connect a TikTok or YouTube account, or set up your voice manually.`,
         err,
+        'UNSUPPORTED_PLATFORM',
       )
     }
     // ⚠️ THE READER SAID IT COULD NOT READ, AND THAT IS OURS TO OWN. An Apify
@@ -300,7 +372,24 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
           `up your voice manually.`
         : `We couldn't read any public posts from @${handle}. If that account is private or empty, make it public ` +
           `for a moment, try a different public account, or set up your voice manually.`,
+      undefined,
+      read > 0 ? 'NO_USABLE_TEXT' : 'NO_RECENT_CONTENT',
     )
+  }
+
+  // Read the real brand palette from the creator's actual post covers (Gemini
+  // vision) instead of guessing from captions. Best-effort — a fetch failure just
+  // falls back to caption-only color inference.
+  // ⚖️ KEEP THE READ BEFORE THE MODEL CALL. Written onto this job's own row now
+  // (best-effort), so a queue retry of THIS job — `fail_job` keeps `result` —
+  // and a creator's retry both rebuild from it instead of paying Apify again.
+  if (!kept) {
+    kept = keepScan(handle, platform, posts, profileFacts)
+    try {
+      await db.from('jobs').update({ result: { kept_scan: kept } }).eq('id', job.id).eq('status', 'running')
+    } catch (err) {
+      console.warn('scrape_dna: could not keep the scan', err instanceof Error ? err.message : err)
+    }
   }
 
   // Read the real brand palette from the creator's actual post covers (Gemini
@@ -308,9 +397,20 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // falls back to caption-only color inference.
   const inlineImages = await fetchInlineImages(topCovers(posts))
 
+  failAt = 'synth'
   let profile: Record<string, unknown>
   try {
-    profile = await synthesizeVoiceFromPosts(handle, platform, posts, '', inlineImages)
+    // ⚖️ A QUOTA REFUSAL GETS TWO PATIENT RETRIES (20 s, 40 s), NEVER A LOOP.
+    profile = await withQuotaRetry(
+      () => synthesizeVoiceFromPosts(handle, platform, posts, '', inlineImages),
+      {
+        delays: SYNTH_QUOTA_DELAYS_MS,
+        onRetry: (n, e, ms) => console.warn(JSON.stringify({
+          event: 'scrape_dna_synth_quota_retry', voice: voiceId, attempt: n, wait_ms: ms,
+          detail: (e instanceof Error ? e.message : String(e)).slice(0, 200),
+        })),
+      },
+    )
     stage('synthesize_voice', 'ok')
   } catch (err) {
     stage('synthesize_voice', 'failed', err instanceof Error ? err.message : String(err))
@@ -319,6 +419,18 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // passes its error, so this path — the one that produced the report that
     // started this — stored the vague creator sentence and no class at all.
     return await fail('We could not finish building your voice. Please try again or set it up manually.', err)
+  }
+  // ⚠️ A MODEL THAT ANSWERS WITH NOTHING IS NOT A VOICE. Saving it would mark
+  // the row `ready` with an empty profile and the screen would say "finished
+  // without a voice profile" with no reason.
+  const pv = profile as { niche?: unknown; tone?: unknown; summary?: unknown } | null
+  if (!pv || typeof pv !== 'object' || !(pv.niche || pv.tone || pv.summary)) {
+    stage('synthesize_voice', 'failed', 'no niche, tone or summary')
+    return await fail(
+      'We read your posts, but the voice we built came back empty. Please try again or set it up manually.',
+      new Error('voice synth returned no niche, tone or summary'),
+      'VOICE_INCOMPLETE',
+    )
   }
   // Capture platform stats for the dashboard ("understand your brand"). The TikTok
   // path previously wrote none, so every TikTok creator's dashboard showed blank
@@ -415,7 +527,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     console.log(JSON.stringify({ event: 'packaging_measured', voice: voiceId, ...packaging }))
   }
 
-  await db.from('brand_voices').update({
+  const { error: saveErr } = await db.from('brand_voices').update({
     status: 'ready',
     // ⚖️ MERGED, NOT REPLACED. `profile` is the synthesised DNA blob; packaging is
     // a measurement beside it. Overwriting the blob to add a field would lose the
@@ -428,6 +540,17 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     error: null,
     ...brandKitPatch,
   }).eq('id', voiceId)
+  // ⚠️ THIS WRITE'S ERROR WAS NEVER READ. A refused update (a constraint, a
+  // policy, a dropped connection) left the row `building`, the job `done`, and
+  // the screen waiting out its 15-minute cap to say "not sure why".
+  if (saveErr) {
+    stage('voice_saved', 'failed', saveErr.message)
+    return await fail(
+      'We built your voice but could not save it. Please try again or set it up manually.',
+      new Error(`brand voice update failed: ${saveErr.message}`),
+      'VOICE_SAVE_FAILED',
+    )
+  }
 
   // Data layer: a voice was built (activation funnel).
   if (ownerId) {

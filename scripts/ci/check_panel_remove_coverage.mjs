@@ -118,6 +118,7 @@ export const NOT_TARGET_OWNED = {
   // Admin audit/grant columns record the ACTING admin; a fictional panel
   // account is never an admin, so these never hold a target id. If one ever
   // did, the auth delete would fail on the no-action key and the run stops.
+  'apify_spend_ledger.owner_id': 'spend ledger (dollars only); panel accounts never reserve Apify runs, so never hold a panel id',
   'platform_admins.granted_by': 'admin grantor, never a panel account',
   'admin_audit_log.admin_id': 'acting admin, never a panel account',
   'admin_audit_log.target_user': 'audit history of admin actions, kept by policy',
