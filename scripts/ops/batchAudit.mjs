@@ -16,6 +16,7 @@
 // Flags: --owner=<uuid> (default: test account), --json-only, --md-only
 
 import { readFileSync } from 'node:fs'
+import { loadLeakPattern } from './batchAuditLeakPattern.mjs'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/)
@@ -86,10 +87,14 @@ function loadDump(file) {
 // ---------------------------------------------------------------- helpers
 // Same list as packages/shared/src/script/storyRotation.ts SENSITIVE (privacyGuard PRIVATE).
 const PRIVATE = /\b(postpartum|post-partum|depress\w*|anxiety|panic attacks?|mental health|therap(y|ist)|miscarr\w*|pregnan\w*|infertil\w*|cancer|diagnos\w*|illness|surgery|hospital\w*|disorder|addict\w*|rehab|suicid\w*|divorc\w*|custody|funeral|passed away|died|death|grief|abus\w*|police|arrest\w*|lawsuit|sued|lawyer|attorney|code enforcement|evict\w*|shut (us|me|it) down|fined|citation|violation|illegal\w*|bankrupt\w*|foreclos\w*|laid off|lost my job|got fired|unemploy\w*|in debt|my debt|debts|ivf|fertility|my ex|ex-?husband|ex-?wife|ex-?boyfriend|ex-?girlfriend|break-?up|sober|sobriety|relapse\w*|jail|prison|immigra\w*|deport\w*|visa status|home address|my address|salary|neighbou?r complain\w*|(my|our) (son|daughter|kid|kids|child|children)'?s? school)\b/i
-// Paraphrases of the account's sensitive stories that the regex above does not catch
-// (the police / code-enforcement / neighbour-complaint / postpartum stories).
-const PRIVATE_PARAPHRASE = /\b(animal control|neighbou?rs?\b.*\b(complain|call|smell)|complain\w*.*\bneighbou?r|nuisance|knock(ed)? on (my|our) door|court date|face fines|mayor'?s office|carbon filter|80,000|eighty thousand|financial hardship|eleven dollars)|\$11\b/i
-// Adjacent: the officer / inspector visit. Not flagged sensitive on the account (fact cbd27272 and her own sample hook), but it is the same police story.
+// Paraphrases of private stories that the regex above does not catch. The pattern names
+// real story details, so it is NOT in this public repo: it is read at run time from env
+// BATCH_AUDIT_LEAK_PATTERN or scripts/ops/.private/leak-pattern.txt (gitignored).
+// Missing: that part of the check is reported "not run", never clean.
+const LEAK = loadLeakPattern()
+const PRIVATE_PARAPHRASE = LEAK.regex
+if (LEAK.status !== 'run') console.error(`WARNING: private leak check NOT RUN (${LEAK.reason}). Paraphrase leaks are not checked; results below are incomplete.`)
+// Adjacent: an official-visit story. Not flagged sensitive on the account, but part of the same private story.
 const PRIVATE_ADJACENT = /\b(officer|inspectors?|inspection)\b/i
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/[’']/g, "'").replace(/[^a-z0-9$%' ]+/g, ' ').replace(/\s+/g, ' ').trim()
@@ -199,7 +204,7 @@ function audit(d) {
     const hits = []
     for (const [where, arr] of surfaces) for (const s of arr) {
       const t = String(s ?? '')
-      const m = t.match(PRIVATE) || t.match(PRIVATE_PARAPHRASE)
+      const m = t.match(PRIVATE) || (PRIVATE_PARAPHRASE && t.match(PRIVATE_PARAPHRASE))
       const a = !m && t.match(PRIVATE_ADJACENT)
       if (m || a) hits.push({ where, term: (m || a)[0], text: t.slice(0, 160), regex_caught: PRIVATE.test(t), strict: !!m })
     }
@@ -210,6 +215,7 @@ function audit(d) {
   }
   const nonConsented = priv.filter((p) => !p.she_typed_private_term)
   out.p2_private = {
+    private_leak_check: LEAK.status,
     sensitive_facts_on_account: sensitive.length,
     scripts_with_private_content: priv.length,
     not_typed_by_her: nonConsented.length,
@@ -436,7 +442,7 @@ function md(o) {
   L.push(`One-off unbacked figures: ${p1.one_off_unbacked_figures.count}; one-off judge claims: ${p1.judge.one_off_claims.count}.`, '')
   t(['recurring unsourced 5-gram', 'scripts'], p1.recurring_unsourced_5grams.slice(0, 12).map((g) => [g.phrase, g.scripts]))
   const p2 = o.p2_private
-  L.push('## 2. Private content', `**${p2.strict_private_not_typed_by_her}** scripts carry private content (sensitive-story terms) she did not type; ${p2.adjacent_only_officer_inspector} more carry only the officer/inspector visit. ${p2.regex_missed_paraphrase_only} of all ${p2.not_typed_by_her} slip past the guard regex.`, '')
+  L.push('## 2. Private content', ...(p2.private_leak_check === 'run' ? [] : ['**Private leak check: NOT RUN** (set BATCH_AUDIT_LEAK_PATTERN or scripts/ops/.private/leak-pattern.txt); paraphrase leaks were not checked.', '']), `**${p2.strict_private_not_typed_by_her}** scripts carry private content (sensitive-story terms) she did not type; ${p2.adjacent_only_officer_inspector} more carry only the officer/inspector visit. ${p2.regex_missed_paraphrase_only} of all ${p2.not_typed_by_her} slip past the guard regex.`, '')
   t(['script', 'generation', 'kind', 'she typed it', 'content'], p2.scripts.map((s) => [s.ref, s.generation_id, s.strict ? 'private' : 'adjacent', s.she_typed_private_term ? 'yes' : 'no', s.hits.map((h) => `[${h.where}] ${h.text}`).join(' // ')]))
   const p3 = o.p3_exclusion
   L.push('## 3. Exclusion', `${p3.scripts_with_excluded_content}/${p3.scripts} scripts (${p3.rate_pct}%) contain a deliberately excluded fact (${p3.excluded_terms.join(', ')}). Facts she says she excluded but are not flagged: two-pound batches in ${p3.she_says_excluded_but_not_flagged.two_pound_batches_scripts} scripts, cup scores in ${p3.she_says_excluded_but_not_flagged.cup_score_scripts}.`, '')

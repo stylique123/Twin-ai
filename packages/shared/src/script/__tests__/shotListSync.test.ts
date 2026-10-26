@@ -131,8 +131,8 @@ describe('Maya #17–#18', () => {
       [{ section: 'Origin', line: 'I started roasting in my garage.' }])
     expect(r.shots[0]!.shot).toBe('Origin')
   })
-  it('collapses "26 six" and leaves real counts alone', () => {
-    expect(collapseDoubledNumbers('I have 26 six days to move.')).toBe('I have 26 days to move.')
+  it('collapses "23 three" and leaves real counts alone', () => {
+    expect(collapseDoubledNumbers('I have 23 three days to move.')).toBe('I have 23 days to move.')
     expect(collapseDoubledNumbers('5 two-pound bags')).toBe('5 two-pound bags')
     expect(collapseDoubledNumbers('I roast 12 two times')).toBe('I roast 12 two times')
   })

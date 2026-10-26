@@ -49,7 +49,7 @@ describe('gateStories', () => {
 })
 
 describe('coffee report 1.1: sensitive, back-to-back, off-topic', () => {
-  const move = { id: 'm', kind: 'experience', text: 'Code enforcement told us to stop roasting coffee at home, 26 days to move' }
+  const move = { id: 'm', kind: 'experience', text: 'Code enforcement told us to stop roasting coffee at home, 19 days to move' }
   const batch = { id: 'b', kind: 'experience', text: 'A scorched coffee batch taught me to cup every roast' }
   const claim = { id: 'c', kind: 'claim', text: 'I had postpartum depression while starting the roastery' }
   it('withholds a sensitive item of any kind unless her words for this script raise it', () => {

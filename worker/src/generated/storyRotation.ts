@@ -119,7 +119,7 @@ export interface StoryGateResult<T> {
 
 /** Private matters that never reach a script unless she raises them there.
  *
- *  ⚠️ AUDIT 2026-10-03 (part 2): "face fines and a court date", "$11 in my bank
+ *  ⚠️ AUDIT 2026-10-03 (part 2): "face a penalty notice and a hearing date", "$9 in my bank
  *  account" and "the officer joked" all passed, because the list named police
  *  but not the officer, court records but not a court date, debt but not a bank
  *  balance. Added: court and summons, fines someone faces or pays (not coffee

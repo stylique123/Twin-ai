@@ -92,7 +92,9 @@ import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } fro
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
-import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, resolveTargetProduct as resolveInventionTarget, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
+// WRITER RAW (record only, test accounts; kill WRITER_RAW_RECORD=off) — see _shared/writerRaw.ts.
+import { captureWriterRaw, writerRawRecordOn } from '../_shared/writerRaw.ts'
+import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, resolveTargetProduct as resolveInventionTarget, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, refillContextFor, refillArmOf, type RefillArm, type RefillContext, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
@@ -7138,7 +7140,7 @@ async function handle(req: Request): Promise<Response> {
     ...(trialOn && Deno.env.get('STORY_DEDUP') !== 'false' ? { story_dedup: true } : {}),
     // Panel-10 (trial; kills RELEVANT_REFILL=false, STORY_HOOK_DEDUP=false).
     ...(relevantRefillCtx() ? { refill_context: relevantRefillCtx() } : {}),
-    ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' ? { story_hook_dedup: true } : {}),
+    ...(trialOn && Deno.env.get('STORY_HOOK_DEDUP') !== 'false' && !refillArm() ? { story_hook_dedup: true } : {}),
     // Panel-10 advisor (trial; DEFAULT OFF, opt in STORY_RETELL_DEDUP=true): one telling per story.
     // Off until a meaning-level check exists; while off no line is cut or changed.
     ...(trialOn && Deno.env.get('STORY_RETELL_DEDUP') === 'true' ? { story_retell_dedup: true } : {}),
@@ -7149,9 +7151,14 @@ async function handle(req: Request): Promise<Response> {
   // Panel-10 RELEVANCE-AWARE REFILL (trial; kill RELEVANT_REFILL=false): the
   // request's topic (her note, the product's name) and angle; every refill
   // (edge length pass, floor refill, the worker gate) adds only items for it.
-  const relevantRefillCtx = (): { topic: string; angle: string } | null => (trialOn && Deno.env.get('RELEVANT_REFILL') !== 'false'
-    ? { topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => x.trim()).join(' '), angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? '') }
-    : null)
+  // PANEL-12 REFILL ARMS (plan v6.1 §27; test accounts only; single lever): a
+  // panel request may name `refill_arm`. Both arms run the panel-10 refill setup:
+  // story-hook dedupe off and no #1303 relevance filter. 'baseline_p10' = that
+  // setup; 'refill_v2' = that setup + REFILL_V2, the only difference. REFILL V2
+  // (trial, DEFAULT OFF): REFILL_V2=true turns it on for the trial, REFILL_V2=off kills it.
+  const refillArm = (): RefillArm | null => (isHeartbeat ? refillArmOf((body as { refill_arm?: unknown } | undefined)?.refill_arm) : null)
+  const relevantRefillCtx = (): RefillContext | null => refillContextFor({ trialOn, arm: refillArm(), env: { RELEVANT_REFILL: Deno.env.get('RELEVANT_REFILL'), REFILL_V2: Deno.env.get('REFILL_V2') }, topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => x.trim()).join(' '), angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? ''), niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '), product: String((ownedEntity as { name?: unknown } | null)?.name ?? '') })
+
   // ⚖️ ASYNC POLISH (owner decision 2, trial; ASYNC_POLISH=off kills it): the
   // quality-only passes never run on the request path; the worker's
   // invention_recheck job runs the polish before the gate and sets check_status.
@@ -12905,6 +12912,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       templateFallback = (writerLadder?.usedAttempt ?? 0) >= 1
     }
     writerReturned = true
+    // RECORD ONLY: a capped copy of the writer's draft for the offline replay
+    // guard. Built from the raw text; nothing downstream reads it.
+    const writerRaw = writerRawRecordOn(isHeartbeat, Deno.env.get('WRITER_RAW_RECORD')) ? captureWriterRaw(raw, new Date().toISOString()) : null
     if (templateFallback && templatePlan) {
       console.log(JSON.stringify({ event: 'script_template_retry_fallback', template: templatePlan.template.id, attempt: writerLadder?.usedAttempt ?? null }))
     }
@@ -15596,7 +15606,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     try {
       const shots = (blueprint as { shot_list?: unknown })?.shot_list
       const script = (blueprint as { script?: unknown })?.script
-      // Before the shot list copies them: "26 six days" → "26 days".
+      // Before the shot list copies them: "23 three days" → "19 days".
       if (Array.isArray(script)) {
         for (const b of script as Array<{ line?: unknown }>) {
           if (typeof b?.line === 'string') b.line = collapseDoubledNumbers(b.line)
@@ -17451,6 +17461,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // need not be set for `plan_b: true` to work (an unset env is not 'off').
     const panelArmReq = (body as { panel_arm?: unknown }).panel_arm
     if (isHeartbeat && (panelArmReq === 'writer' || panelArmReq === 'plan_b') && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).panel_arm = panelArmReq
+    if (refillArm() && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).refill_arm = refillArm()
     const planBTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
     if (planBOn && planBTarget && blueprint && typeof blueprint === 'object') {
       try {
@@ -17686,6 +17697,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         blueprint: {
           ...(blueprint as Record<string, unknown>),
           ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
+          ...(writerRaw ? { writer_raw: writerRaw } : {}),
           // The voice card this script was written and cleaned against, and how
           // well the shipped lines match it (0-100, deterministic).
           ...(voiceCard ? (() => {

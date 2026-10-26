@@ -22,3 +22,6 @@ __pycache__/
 .twinai-d1/
 *.tsbuildinfo
 scripts/ops/.*.bundle.mjs
+
+# batchAudit private leak pattern (real creator details; never commit)
+scripts/ops/.private/

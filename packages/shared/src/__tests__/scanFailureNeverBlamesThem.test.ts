@@ -81,6 +81,18 @@ describe('a scan failure is never a dead end', () => {
     expect(scanFailure('ACCOUNT_PRIVATE').worthRetrying).toBe(false)
   })
 
+  it('every cause keeps "describe your voice yourself" on offer', () => {
+    for (const c of SCAN_FAILURE_CAUSES) expect(scanFailure(c).offerManual, c).toBe(true)
+    expect(readScanFailure('garbage').offerManual).toBe(true)
+  })
+
+  it('post-scan failures each have their own plain-words message', () => {
+    const post = ['SERVICE_QUOTA', 'NO_USABLE_TEXT', 'VOICE_INCOMPLETE', 'VOICE_SAVE_FAILED', 'SCAN_TIMED_OUT'] as ScanFailureCause[]
+    const msgs = post.map((c) => scanFailure(c).message)
+    expect(new Set(msgs).size).toBe(post.length)
+    for (const m of msgs) expect(m).not.toMatch(/\b(429|quota|RESOURCE|RLS|Gemini|Apify)\b/)
+  })
+
   it('offers the two platforms not already tried', () => {
     expect(otherPlatforms('instagram')).toEqual(['youtube', 'tiktok'])
     expect(otherPlatforms('YouTube')).toEqual(['tiktok', 'instagram'])
