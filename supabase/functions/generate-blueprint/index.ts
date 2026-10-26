@@ -66,7 +66,7 @@ import { verbatimBudget, referenceShapeDigest, renderShapeDigest, REFERENCE_EXPO
 import { ctaEntityViolations } from '../_shared/ctaEntity.ts'
 import { demoteUnsupportedHooks } from '../_shared/hookEntity.ts'
 import { syncShotListSpokenText, collapseDoubledNumbers, carryBeatActions, resyncShotListToScript } from '../_shared/shotListSync.ts'
-import { applyCheckLineDecision, checkLineOn, CHECK_LINE_SOURCE } from '../_shared/checkLines.ts'
+import { applyCheckLineDecision, checkLineOn, CHECK_LINE_SOURCE, polishCheckV2, polishCheckV2On, voiceBareLinesOn } from '../_shared/checkLines.ts'
 import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
@@ -17479,7 +17479,11 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const asm = assemblePlanB(inB)
           const polishOn = Deno.env.get('PLAN_B_POLISH') !== 'off' && optionalPassTime('plan_b_polish')
           const raw = polishOn ? await polishPlanBLines(apiKey, planBPolishPrompt(asm.lines, { card: voiceCard ? voiceCardBrief(voiceCard) : null, styleNote: voicePolish?.styleNote ?? null, rhythm: voicePolish ? voicePolishBrief(voicePolish) : null })) : null
-          let pol = applyPolish(asm.lines, parsePolish(raw, asm.lines.length), asm.sources)
+          // POLISH_CHECK_V2 (test accounts, default off): scoped to the line's source product.
+          const v2Check = isHeartbeat && polishCheckV2On(Deno.env.get('POLISH_CHECK_V2'))
+            ? (l: { line: string; source_ids: readonly string[] }, c: string) => polishCheckV2(l.line, c, { items: ledgerB, products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id && p.name), productId: ledgerB.find((it) => it.id === l.source_ids[0])?.product_id ?? planBTarget, voiceText: voicePolish?.styleNote ?? null }).ok
+            : undefined
+          let pol = applyPolish(asm.lines, parsePolish(raw, asm.lines.length), asm.sources, v2Check)
           // ⚖️ VOICE CHECK (panel-10): keep the polish only when her voice score
           // improves; polishCheck already held every line's claims/numbers/names.
           if (voicePolish && pol.polished > 0) {
@@ -17616,6 +17620,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // Test accounts: repair trial (16 Oct); GATE_REPAIR_TRIAL='false' = measure.
       const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
+      // POLISH_CHECK_V2 / VOICE_BARE_LINES (test accounts, default off; panel 11).
+      Object.assign(inventionRecheck.ledger as Record<string, unknown>, isHeartbeat && polishCheckV2On(Deno.env.get('POLISH_CHECK_V2')) ? { polish_check_v2: true } : {}, isHeartbeat && voiceBareLinesOn(Deno.env.get('VOICE_BARE_LINES')) ? { voice_bare_lines: true } : {})
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
         ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }
@@ -17899,6 +17905,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
             rbp.gate_mode = gateModeLabel(gateMeasure)
             rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
+            // POLISH_CHECK_V2 / VOICE_BARE_LINES (test accounts, default off; panel 11).
+            Object.assign(rescueRecheck.ledger as Record<string, unknown>, isHeartbeat && polishCheckV2On(Deno.env.get('POLISH_CHECK_V2')) ? { polish_check_v2: true } : {}, isHeartbeat && voiceBareLinesOn(Deno.env.get('VOICE_BARE_LINES')) ? { voice_bare_lines: true } : {})
             console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
           } catch { /* the gate bookkeeping never loses a rescued script */ }
         }

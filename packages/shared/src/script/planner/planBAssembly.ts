@@ -151,12 +151,14 @@ export function polishCheck(original: string, polished: string): { ok: boolean; 
 }
 
 /** Keep each in-bounds polish; any other line falls back to its unpolished text. Hook and story are never polished. */
-export function applyPolish(lines: readonly PlanBLine[], candidates: ReadonlyArray<string | null | undefined>, sources: ReadonlyMap<string, PlanBSource>): { lines: PlanBLine[]; polished: number; fell_back: number } {
+export function applyPolish(lines: readonly PlanBLine[], candidates: ReadonlyArray<string | null | undefined>, sources: ReadonlyMap<string, PlanBSource>, extraCheck?: (line: PlanBLine, candidate: string) => boolean): { lines: PlanBLine[]; polished: number; fell_back: number } {
   let polished = 0, fell = 0
   const out = lines.map((l, i) => {
     const c = candidates[i]
     if (l.section === 'hook' || l.section === 'story' || typeof c !== 'string' || c.trim() === '' || c.trim() === l.line) return l
     if (!polishCheck(l.line, c).ok) { fell++; return l }
+    // POLISH_CHECK_V2 (test accounts): items in scope, first-person claims, wrong product.
+    if (extraCheck && !extraCheck(l, c)) { fell++; return l }
     try { const n = sourcedLine(sources, l.section, c, l.source_ids[0], true); polished++; return n } catch { fell++; return l }
   })
   return { lines: out, polished, fell_back: fell }
