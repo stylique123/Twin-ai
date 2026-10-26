@@ -92,6 +92,8 @@ import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } fro
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
+// WRITER RAW (record only, test accounts; kill WRITER_RAW_RECORD=off) — see _shared/writerRaw.ts.
+import { captureWriterRaw, writerRawRecordOn } from '../_shared/writerRaw.ts'
 import { buildLedger as buildInventionLedger, uncheckedRecord as inventionUncheckedRecord, compactLedger as compactInventionLedger, resolveTargetProduct as resolveInventionTarget, writerSupply as buildWriterSupply, blockSpokenPlaceholders, reconcileHookPick, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, refillToFloor, refillContextFor, refillArmOf, type RefillArm, type RefillContext, type UncheckedReason, type LedgerItem as InventionLedgerItem } from '../_shared/inventionGate.ts'
 import { chooseTemplates, pickProfile as pickTemplateProfile, renderTemplateBlock, finishTemplate, enforceWordBudget, profileForSeconds, templateIdOf, type TemplatePlan } from '../_shared/scriptTemplates.ts'
 import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templateSkeleton.ts'
@@ -12910,6 +12912,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       templateFallback = (writerLadder?.usedAttempt ?? 0) >= 1
     }
     writerReturned = true
+    // RECORD ONLY: a capped copy of the writer's draft for the offline replay
+    // guard. Built from the raw text; nothing downstream reads it.
+    const writerRaw = writerRawRecordOn(isHeartbeat, Deno.env.get('WRITER_RAW_RECORD')) ? captureWriterRaw(raw, new Date().toISOString()) : null
     if (templateFallback && templatePlan) {
       console.log(JSON.stringify({ event: 'script_template_retry_fallback', template: templatePlan.template.id, attempt: writerLadder?.usedAttempt ?? null }))
     }
@@ -17690,6 +17695,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         blueprint: {
           ...(blueprint as Record<string, unknown>),
           ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
+          ...(writerRaw ? { writer_raw: writerRaw } : {}),
           // The voice card this script was written and cleaned against, and how
           // well the shipped lines match it (0-100, deterministic).
           ...(voiceCard ? (() => {
