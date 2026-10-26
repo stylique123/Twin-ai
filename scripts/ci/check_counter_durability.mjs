@@ -54,6 +54,8 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // mechanism: it converts "nobody noticed" into "someone wrote down why", which
 // is the only difference between an omission and a decision.
 const EVENTS = {
+  apify_record_failed: { kind: 'incident', why: 'A creator Apify read could not be written to apify_spend_ledger (v6.4: record-only, the read still runs). Per occurrence, because unrecorded spend makes the cost report lie.' },
+  apify_spend_anomaly: { kind: 'incident', why: 'Today\'s Apify spend passed 3x the trailing 7-day daily average (plan v6.4 §30 alert). The ledger rows themselves are the durable record; this is the ops alert.' },
   // ── COUNTERS WITH A HOME ────────────────────────────────────────────────
   substance_route_shadow: {
     kind: 'counter',

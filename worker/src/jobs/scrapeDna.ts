@@ -12,6 +12,8 @@ import { EXTRACTOR_VERSION } from '../extractorVersion.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import { byReachDesc, averagePlays, reachOf } from '../reach.js'
 import { scrapedPostRows } from '../scrapedPostRows.js'
+import { planCreatorRead, mergeByVideoId, CREATOR_CACHE_DAYS, type CachedPostRow } from '../creatorReadCache.js'
+import { creatorReadLimit } from '../apifyGuard.js'
 import type { InlineImage } from '../gemini.js'
 import { env } from '../env.js'
 import { ProxyAgent } from 'undici'
@@ -256,10 +258,31 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // decide 10 → 15 was reading a default argument in media.ts. The pool is now
     // derived from the same place as the budget, so the two cannot drift apart
     // again.
-    const scraped = await scrapeProfile(handle, platform, scrapePoolFor(platform))
-    posts = scraped.posts
+    // v6.4 (plan §30): a creator read is never capped for money, so it is made
+    // cheap: ≤ 20 results, and a channel read in the last 30 days asks only
+    // for its newest videos, merged with the cache and deduped by video id.
+    let cached: CachedPostRow[] = []
+    if (ownerId) {
+      try {
+        const { data } = await db.from('scraped_posts')
+          .select('url, caption, hashtags, cover_url, plays, likes, observed_at')
+          .eq('owner_id', ownerId).eq('platform', platform).eq('handle', handle)
+          .gte('observed_at', new Date(Date.now() - CREATOR_CACHE_DAYS * 86_400_000).toISOString())
+          .order('observed_at', { ascending: false }).limit(50)
+        cached = (data ?? []) as CachedPostRow[]
+      } catch { cached = [] } // the cache is an optimisation, never a gate
+    }
+    const plan = planCreatorRead(cached, creatorReadLimit(scrapePoolFor(platform)))
+    const scraped = await scrapeProfile(handle, platform, plan.limit)
+    const merged = plan.mode === 'incremental'
+      ? mergeByVideoId(scraped.posts, cached.map((r) => ({
+          text: r.caption, likes: r.likes, plays: r.plays, hashtags: r.hashtags ?? [], url: r.url,
+          ...(r.cover_url ? { cover: r.cover_url } : {}),
+        })))
+      : { posts: scraped.posts, newCount: scraped.posts.length }
+    posts = merged.posts
     profileFacts = scraped.facts
-    stage('scrape_profile', 'ok', `${scraped.posts.length} posts`)
+    stage('scrape_profile', 'ok', `${posts.length} posts (${plan.mode}, ${merged.newCount} new, limit ${plan.limit})`)
   } catch (err) {
     // ⚠️ THIS BLAMED THE CREATOR FOR OUR OWN MISSING DEPENDENCY. The old
     // message said "If that account is private or empty, try a public account"
