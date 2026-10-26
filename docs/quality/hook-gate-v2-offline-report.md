@@ -1,57 +1,68 @@
 # Hook gate v2: offline report (HELD, PR #1325)
 
-Offline only (plan v6.6 §32). No model or scraper calls and no DB writes. This file holds ids and counts only.
+This report was made offline only, per plan v6.6 §32: no model or scraper calls and no DB writes. It contains ids and counts only.
 
-Reproduce: `node scripts/eval/offline-gate-report.mjs [--labels=/private/labels.csv]`
+## How to reproduce
 
-- Input: the stored fictional panel 10/11 blueprints (`scripts/ci/fixtures/replay_panel_10_11.json`, 48 scripts) and the fictional creators' items (`scripts/ops/fixtures/fictional-panel.json`).
-- Ids: `P<panel>-<n> H<k>`, where `n` is the case `n` and `k` is the 1-based position in `hook_options`.
-- The run is deterministic: two runs give byte-identical output.
+Run `scripts/eval/offline-gate-report.mjs` (deterministic: a re-run gives byte-identical output).
 
-## Labels status
+- **Against advisor labels:** `node scripts/eval/offline-gate-report.mjs --labeled=<private csv>`. The CSV holds the advisor's hook ratings for panels 6, 7, 8, 10 and 11, normalised to `id,panel,creator,request_n,kind,pos,last,text,label`:
+  - `INVENTED` = the advisor's `invented_YN` is Y
+  - `TRUE` = `invented_YN` is N
+  - The CSV is private and is never committed.
+- **Flags only:** `node scripts/eval/offline-gate-report.mjs`. This uses the stored panel 10/11 blueprints in `scripts/ci/fixtures/replay_panel_10_11.json` and needs no labels.
 
-The task asked for a measurement against the advisor's labels for panels 5–11. **No advisor labels for panels 5–11 exist in the repo or in the project database.**
+Inputs and ids:
+- **Creator items:** the fictional creators' stories, answers and product facts, from `scripts/ops/fixtures/fictional-panel.json`.
+- **Item ids:** `P<panel>-<blind#> H<k>`. `blind#` is the advisor sheet's blind id, and `k` is the hook's row within that blind id in the sheet.
 
-- The only stored advisor label files cover panels 2 and 3 (`test_run_files` ids 14 and 21).
-- The panel 5–11 exports (`test_run_files` ids 24–30) contain no labels.
+Label coverage:
+- **No hook labels:** panels 5 and 9 have no advisor hook ratings anywhere I could find.
+- **Not in the repo:** the labels exist only as private files, outside the repo and outside the project DB.
 
-Recall and false-block rate therefore can't be computed against the advisor's labels yet. To get them, run the script with `--labels` pointing at a private CSV (`id,label`, with labels `INVENTED` / `TRUE`). It prints recall and false-block rate, together with the item ids.
+## Results against the advisor's labels
 
-## What the gate flags (no labels needed)
+| panel | invented | v1 caught | v2 caught | true | v1 false blocks | v2 false blocks |
+|---|---|---|---|---|---|---|
+| 6 | 9 | 2 | 3 | 136 | 2 | 5 |
+| 7 | 4 | 0 | 0 | 97 | 3 | 6 |
+| 8 | 3 | 3 | 3 | 128 | 4 | 10 |
+| 10 | 18 | 6 | 7 | 130 | 1 | 5 |
+| 11 | 14 | 1 | **10** | 103 | 1 | **1** |
+| **total** | **48** | **12 (0.25)** | **23 (0.479)** | **594** | **11 (0.019)** | **27 (0.045)** |
 
-| scope | hooks | v1 flagged | v2 flagged |
-|---|---|---|---|
-| panel 10 | 148 | 7 | 12 |
-| panel 11 | 117 | 2 | 11 |
-| total | 265 | 9 | 23 |
+**v2 false blocks (27):**
+- P6: P6-03 H2, P6-11 H5, P6-12 H1, P6-14 H4, P6-17 H7
+- P7: P7-01 H4, P7-05 H1, P7-05 H4, P7-14 H6, P7-15 H5, P7-18 H7
+- P8: P8-03 H3, P8-04 H1, P8-04 H3, P8-08 H1, P8-08 H3, P8-11 H1, P8-11 H3, P8-13 H8, P8-14 H6, P8-15 H6
+- P10: P10-04 H8, P10-11 H1, P10-21 H1, P10-21 H2, P10-23 H3
+- P11: P11-18 H4
 
-- v2 reasons (both panels): number_promise 8, invented_scene 5, unsourced_generalisation 4, unbacked_timeframe 4, absolute_efficacy 1, invented_inner_state 1.
-- v1 ids: P10-1 H4, P10-6 H5, P10-7 H2, P10-13 H2, P10-13 H4, P10-15 H4, P10-18 H4, P11-14 H4, P11-15 H4.
-- v2 ids: P10-1 H4, P10-6 H5, P10-6 H8, P10-7 H2, P10-12 H3, P10-13 H2, P10-13 H4, P10-15 H4, P10-17 H2, P10-17 H3, P10-18 H4, P10-19 H2, P11-3 H5, P11-4 H2, P11-6 H3, P11-14 H2, P11-14 H4, P11-15 H3, P11-15 H4, P11-15 H6, P11-18 H1, P11-18 H2, P11-19 H2.
-- v2 flags a superset of v1: every v1 id is also flagged by v2.
+**v2 missed (25):**
+- P6: P6-05 H3, P6-10 H6, P6-10 H7, P6-10 H8, P6-11 H2, P6-13 H5
+- P7: P7-03 H5, P7-04 H1, P7-15 H4, P7-19 H3
+- P10: P10-05 H1, P10-05 H5, P10-05 H8, P10-09 H1, P10-10 H3, P10-13 H1, P10-13 H3, P10-13 H5, P10-13 H6, P10-14 H7, P10-22 H4
+- P11: P11-22 H2, P11-22 H7, P11-24 H3, P11-24 H4
 
-## Earlier number, reconciled
+## Reading
 
-The PR originally reported that on panel 11, v2 caught 10 of 14 invented hooks with 1 false flag, against v1's 1 of 14 with 1 false flag. Those labels were the earlier session's own, not the advisor's.
+**The earlier number reproduces exactly.** On panel 11, v2 catches 10 of 14 invented hooks with 1 false block (P11-18 H4, the existing v1 inner-state flag). v1 catches 1 of 14.
 
-The flag counts reproduce exactly:
+**Panel 11 is where v2 was tuned. On panels 6, 7, 8 and 10 it does much less:**
+- It catches 13 of 34 invented hooks, against v1's 11.
+- Its false blocks rise from 10 to 26 out of 491 true hooks.
+- Panel 8 takes 6 of the 16 extra false blocks.
 
-| gate | flags on panel 11 | equals |
-|---|---|---|
-| v2 | 11 | 10 caught + 1 false |
-| v1 | 2 | 1 caught + 1 false |
+**Most of the remaining misses are on panels 10 and 6** (11 and 6 of the 25). I haven't classified them.
 
-The recall itself (10/14) can't be re-verified until labels are supplied.
+**Verdict: keep the flag OFF.** v2 roughly doubles recall overall (0.25 → 0.48), but it also more than doubles the false-block rate (1.9% → 4.5%), and the recall gain is concentrated on the panel it was tuned on.
 
-On panel 10, v2 adds 5 flags with no labels behind them yet:
-- P10-6 H8
-- P10-12 H3
-- P10-17 H2
-- P10-17 H3
-- P10-19 H2
+## Flags without labels (stored panel 10/11 blueprints, 265 hooks)
 
-Each of these is a possible false block until it is labelled.
+The stored blueprints use a different id space: `P<panel>-<n> H<k>`, where `n` is the request number. In those 265 hooks:
+- v1 flags 9 and v2 flags 23. v2 flags every hook that v1 flags.
+- v2 reasons: number_promise 8, invented_scene 5, unsourced_generalisation 4, unbacked_timeframe 4, absolute_efficacy 1, invented_inner_state 1.
 
 ## Flag
 
-`HOOK_GATE_V2` stays OFF. It is on only when the value is exactly `true`, and only for test accounts with trial on.
+`HOOK_GATE_V2` stays OFF. It turns on only when the value is exactly `true`, and only for test accounts with trial on.
