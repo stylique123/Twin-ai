@@ -1,0 +1,49 @@
+{
+  "_note": "FICTIONAL PAIN MAP (plan v6.8 §34.2). MADE UP for the fictional test creators so the pain-map code path runs now. No real thread, post, community, person or count. Links point at example.com and lead nowhere. Topics, counts, links and dates only. NEVER import this file into audience_pain_map: that table is shared by niche with real creators (importPainMap.mjs refuses any file marked FICTIONAL).",
+  "fictional": true,
+  "version": 1,
+  "maps": [
+    {
+      "fictional": true,
+      "niche": "coffee",
+      "entries": [
+        { "topic": "beans taste flat a week after opening the bag", "thread_count": 9, "community_count": 3, "links": ["https://example.com/fictional/coffee/1", "https://example.com/fictional/coffee/2"], "first_seen": "2026-08-01", "last_checked": "2026-10-20" },
+        { "topic": "not knowing which roast level to buy", "thread_count": 7, "community_count": 2, "links": ["https://example.com/fictional/coffee/3"], "first_seen": "2026-08-10", "last_checked": "2026-10-20" },
+        { "topic": "grinder setting drifts from one morning to the next", "thread_count": 6, "community_count": 2, "links": ["https://example.com/fictional/coffee/4"], "first_seen": "2026-09-01", "last_checked": "2026-10-20" },
+        { "topic": "cold brew turning bitter overnight", "thread_count": 3, "community_count": 1, "links": ["https://example.com/fictional/coffee/5"], "first_seen": "2026-09-05", "last_checked": "2026-10-20" }
+      ]
+    },
+    {
+      "fictional": true,
+      "niche": "skincare",
+      "entries": [
+        { "topic": "too many steps in a morning routine", "thread_count": 8, "community_count": 3, "links": ["https://example.com/fictional/skin/1"], "first_seen": "2026-08-01", "last_checked": "2026-10-18" },
+        { "topic": "not sure which product caused a breakout", "thread_count": 6, "community_count": 2, "links": ["https://example.com/fictional/skin/2"], "first_seen": "2026-08-15", "last_checked": "2026-10-18" }
+      ]
+    },
+    {
+      "fictional": true,
+      "niche": "fitness",
+      "entries": [
+        { "topic": "losing motivation after the second week", "thread_count": 11, "community_count": 4, "links": ["https://example.com/fictional/fit/1"], "first_seen": "2026-07-20", "last_checked": "2026-10-19" },
+        { "topic": "no time to train on workdays", "thread_count": 5, "community_count": 2, "links": ["https://example.com/fictional/fit/2"], "first_seen": "2026-08-20", "last_checked": "2026-10-19" }
+      ]
+    },
+    {
+      "fictional": true,
+      "niche": "software",
+      "entries": [
+        { "topic": "too many tools to keep tasks in one place", "thread_count": 7, "community_count": 2, "links": ["https://example.com/fictional/soft/1"], "first_seen": "2026-08-03", "last_checked": "2026-10-17" },
+        { "topic": "setting up a new tool takes a whole afternoon", "thread_count": 5, "community_count": 3, "links": ["https://example.com/fictional/soft/2"], "first_seen": "2026-09-03", "last_checked": "2026-10-17" }
+      ]
+    },
+    {
+      "fictional": true,
+      "niche": "crafts",
+      "entries": [
+        { "topic": "pricing handmade pieces without underselling", "thread_count": 10, "community_count": 3, "links": ["https://example.com/fictional/craft/1"], "first_seen": "2026-08-08", "last_checked": "2026-10-16" },
+        { "topic": "glaze results that never match the test tile", "thread_count": 6, "community_count": 2, "links": ["https://example.com/fictional/craft/2"], "first_seen": "2026-09-08", "last_checked": "2026-10-16" }
+      ]
+    }
+  ]
+}

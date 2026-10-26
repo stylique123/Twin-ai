@@ -89,6 +89,7 @@ import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerH
 import { bestOfNOn, pickEligible, checkCandidate, keepWriterOverPlanB, blueprintLines, BEST_OF_N_GRACE_MS, type BestOfNFlagCtx, type CandidateCheck } from '../_shared/craftJudge.ts'
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
+import { resolveCostMode, usablePainMap, painItemsForQuestions } from '../_shared/realisticPanel.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
@@ -6900,7 +6901,7 @@ async function handle(req: Request): Promise<Response> {
     const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
     if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
     const sb = createClient(supabaseUrl, serviceKey)
-    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown }
+    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown; cost_mode?: unknown; panel_pain_map?: unknown }
     const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
     if (specMode === 'angle_answer') {
       const key = String(b.key ?? '').slice(0, 160)
@@ -6955,7 +6956,12 @@ async function handle(req: Request): Promise<Response> {
       .map((m) => ({ id: String(m.id ?? m.text).slice(0, 40), text: m.text.replace(/^Viewers (asks?|requests?)\s*(?:about|for|:)?\s*/i, ''), origin: 'her_material' }))
     const painNiche = String(prof?.niche ?? '').trim()
     const painRes = painNiche ? await sb.from('audience_pain_map').select('id,niche,pain_sentence,status,origin,expiry').eq('status', 'active').limit(50).then((r) => r, () => ({ data: null })) : { data: null }
-    const painItems = painItemsFromMap((painRes as { data?: unknown[] | null }).data ?? [], painNiche, new Date().toISOString().slice(0, 10))
+    // ⚖️ REALISTIC PANEL MODE (plan v6.8 §34.2): this route is test-account only (above).
+    // With cost_mode 'full' a panel run may pass its own pain map (the FICTIONAL one for the
+    // test creators): validated here (topics/counts/links/dates; ≥5 threads, ≥2 communities,
+    // ≤90 days), used only as question seeds, never as proof or her experience.
+    const panelPain = usablePainMap(b.panel_pain_map, { decision: resolveCostMode({ account: 'test', requested: b.cost_mode }), today: new Date().toISOString().slice(0, 10), niche: painNiche })
+    const painItems = panelPain.entries.length ? painItemsForQuestions(panelPain) : painItemsFromMap((painRes as { data?: unknown[] | null }).data ?? [], painNiche, new Date().toISOString().slice(0, 10))
     const cards = pickAngles({ objective: b.objective, goal: b.goal, hasProduct: !!p, hasOffer: p ? !!offerText : undefined, material })
     const picked = typeof b.angle === 'string' && cards.some((c) => c.angle === b.angle) ? b.angle as keyof typeof ANGLE_SPECS : null
     let questions: Array<{ ask_id: string | null; key: string; piece: string; kind: string; source: string; text: string; skippable: true }> = []

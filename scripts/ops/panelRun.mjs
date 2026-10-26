@@ -30,6 +30,7 @@ import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 import { templateOf } from './templateOf.mjs'
 import { awaitChecked, backgroundPending, blueprintLoader } from './awaitChecked.mjs'
+import { realisticPlan, planSummary, realisticBody, realisticCostReport } from './realisticPanelPlan.mjs'
 
 export const PANEL_SKIP_ANSWER = 'Nothing specific, keep it general.'
 // A request's duration profile (templateData.ts DURATION_PROFILES) sets its target length.
@@ -281,6 +282,14 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   if (refillArm(accounts)) console.log(`panel ${batch}: refill arm ${refillArm(accounts)}${refillArm(accounts) === 'alternate' ? ' (odd n baseline_p10, even n refill_v2)' : ' on every request'}`)
   if (panelArmsOn(accounts)) console.log(`panel ${batch}: arms plan_b=${list.filter((x) => panelArm(accounts, x.n) === 'plan_b').length} writer=${list.filter((x) => panelArm(accounts, x.n) === 'writer').length}`)
   console.log(`panel ${batch}: ${list.length} scenarios, ${done.size} already done, budget $${budget}`)
+  // ⚖️ REALISTIC MODE (plan v6.8 §34): COST_MODE=full turns the secondary stack on for these
+  // TEST accounts. The per-panel Apify + AI budget is printed first; over the cap, nothing runs.
+  const startedAt = new Date().toISOString()
+  const real = realisticPlan({ fixture, list })
+  if (real.decision.mode === 'full') {
+    console.log(`::notice title=panel-realistic-budget::${JSON.stringify(planSummary(real))}`)
+    if (!real.gate.ok) throw new Error(`panel: realistic budget refused (${real.gate.reason}): est $${real.budget.total_usd} vs PANEL_BUDGET_USD`)
+  }
   const clients = new Map()
   const spent = async () => {
     const { data: rs } = await admin.from('script_batch_results').select('generation_id').eq('batch', batch).gte('n', 0).not('generation_id', 'is', null)
@@ -302,7 +311,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     // Reference mode: the made-up reference is stored as this creator's transcripts row
     // (subject 'reference'); the edge reads it by transcript_id and never fetches the url.
     const refBody = sc.reference ? { transcript_id: await storeFictionalReference(admin, sc.owner_id, sc.reference) } : {}
-    let body = { ...sc.body, ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.n), idempotency_key: `${batch}-${sc.n}` }
+    let body = { ...sc.body, ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.n), ...realisticBody(real, sc), idempotency_key: `${batch}-${sc.n}` }
     const post = async () => {
       const t0 = Date.now()
       const res = await fetch(`${url}/functions/v1/generate-blueprint`, {
@@ -357,4 +366,8 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   console.log(`::notice title=panel-questions::${JSON.stringify(questionSummary(records))}`)
   const end = await spent()
   console.log(`::notice title=panel-cost::est $${end.usd.toFixed(3)} for ${end.scripts} scripts, $${(end.usd / Math.max(1, end.scripts)).toFixed(4)}/script (UNCONFIRMED prices)`)
+  if (real.decision.mode === 'full') {
+    const { data: rs } = await admin.from('script_batch_results').select('generation_id').eq('batch', batch).gte('n', 0).not('generation_id', 'is', null)
+    console.log(`::notice title=panel-realistic-cost::${JSON.stringify({ by_caller_model: await realisticCostReport(admin, (rs ?? []).map((r) => r.generation_id), startedAt), extras_use: real.ledger.report() })}`)
+  }
 }
