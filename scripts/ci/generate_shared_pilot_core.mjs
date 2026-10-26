@@ -279,6 +279,9 @@ const SOURCES = [
   // Craft + hook judges (craft rubric v1): deterministic, unpaid; best-of-N on the hedge drafts (BEST_OF_N_JUDGE, default off).
   ['packages/shared/src/script/hookJudge.ts', 'supabase/functions/_shared/hookJudge.ts'],
   ['packages/shared/src/script/craftJudge.ts', 'supabase/functions/_shared/craftJudge.ts'],
+  // Gemini backend (developer | vertex): one URL/auth/body builder for every Gemini call.
+  ['packages/shared/src/geminiBackend.ts', 'supabase/functions/_shared/geminiBackend.ts'],
+  ['packages/shared/src/geminiBackend.ts', 'worker/src/generated/geminiBackend.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

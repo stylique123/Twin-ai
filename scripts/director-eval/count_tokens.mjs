@@ -18,6 +18,7 @@
 //   node scripts/director-eval/count_tokens.mjs --selftest # offline: port parity + conservative bound only
 
 // ---- frozen constants (must equal packages/shared/src/editor/director.ts) ----
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563809 // re-frozen when componentDigests gained `alignment`
 const DIRECTOR_INPUT_MAX_BYTES = 819200
 const PROVIDER_TOKEN_CEILING = 838860 // floor(1048576 * 0.8)
@@ -162,17 +163,17 @@ console.log(`conservative bound (tokens <= bytes): ${bytes} <= cap ${DIRECTOR_IN
 
 if (process.argv.includes('--selftest')) process.exit(0)
 
-const key = process.env.GEMINI_API_KEY
+const key = geminiApiKey()
 if (!key) {
   // MANDATORY real evidence: a live-run without credentials FAILS CLOSED.
   console.error('::error::GEMINI_API_KEY is required for the mandatory Gate-0 real countTokens evidence — failing closed.')
   process.exit(1)
 }
-const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:countTokens`
+const url = geminiUrl(processEnv, MODEL, 'countTokens')
 const resp = await fetch(url, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-  body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: serialized }] }] }),
+  body: geminiBody({ contents: [{ role: 'user', parts: [{ text: serialized }] }] }),
 })
 if (!resp.ok) {
   console.error(`::error::countTokens HTTP ${resp.status}`)

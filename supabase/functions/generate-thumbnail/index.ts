@@ -9,6 +9,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { edgeGeminiKey, geminiPost } from '../_shared/geminiEndpoint.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -25,8 +26,8 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  const apiKey = Deno.env.get('GEMINI_API_KEY')
-  if (!apiKey) return json({ error: 'Server missing GEMINI_API_KEY' }, 500)
+  // The key for the active GEMINI_BACKEND (see _shared/geminiBackend.ts).
+  if (!edgeGeminiKey()) return json({ error: 'Server missing GEMINI_API_KEY' }, 500)
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceKey = serviceKeyFrom(Deno.env)
   const authHeader = req.headers.get('Authorization') ?? ''
@@ -114,12 +115,9 @@ No borders, no watermark, no UI chrome, no fake play button.`
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 40_000)
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } }),
-      })
+      const res = await fetch(...geminiPost(model,
+        { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } },
+        ctrl.signal))
       if (!res.ok) throw new Error(`Image model ${res.status}: ${(await res.text()).slice(0, 300)}`)
       const data = await res.json()
       const parts = data?.candidates?.[0]?.content?.parts ?? []

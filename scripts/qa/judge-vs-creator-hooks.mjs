@@ -20,9 +20,10 @@
 // own hooks — option 0 is the recommendation — and creators take it most of the
 // time. A judge that scores below "always guess the recommendation" has negative
 // value however good its accuracy sounds in isolation.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 const cases = JSON.parse(readFileSync(process.argv[2], 'utf8'))
   .filter((c) => Number.isInteger(c.picked_index) && Array.isArray(c.hooks) && c.hooks.length > 1)
@@ -40,9 +41,9 @@ this particular person, with this particular voice and audience, chooses to say 
 Reply as JSON only: {"pick": <number>, "why": "<one short sentence>"}`
 
 async function predict(dna, hooks) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
+  const r = await fetch(geminiUrl(processEnv, 'gemini-2.5-flash'), {
+    method: 'POST', headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+    body: geminiBody({
       contents: [{ parts: [{ text: PROMPT(dna, hooks) }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 40000, responseMimeType: 'application/json' },
     }),

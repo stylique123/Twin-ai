@@ -19,9 +19,10 @@
 // stronger than a metric that has already been shown blind. It is given ONLY the
 // supplied items and the script, never which arm produced it, so it cannot infer
 // the answer from the condition.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 const rows = JSON.parse(readFileSync(process.argv[2], 'utf8'))
 
@@ -48,10 +49,10 @@ specific item comes from the facts listed.
 Reply as JSON only: {"items":[{"n":1,"verdict":"BACKED","why":"..."}],"backed":N,"filler":N}`
 
 async function judge(supplied, script) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
+  const r = await fetch(geminiUrl(processEnv, 'gemini-2.5-flash'), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
+    headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+    body: geminiBody({
       contents: [{ parts: [{ text: PROMPT(supplied, script) }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 40000, responseMimeType: 'application/json' },
     }),

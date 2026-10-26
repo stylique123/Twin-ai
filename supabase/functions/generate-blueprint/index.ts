@@ -51,6 +51,7 @@ import {
   evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
+import { edgeGeminiKey, geminiEmbedPost, geminiPost, readEmbedding } from '../_shared/geminiEndpoint.ts'
 import { inStage, currentStageUsage, stageOfCall } from '../_shared/aiUsage.ts'
 import { buildProvenance } from '../_shared/provenance.ts'
 import { dropInventedCauses, isSubjectOnlyTopic, subjectsLine } from '../_shared/inventedCause.ts'
@@ -6043,7 +6044,6 @@ async function callOnce(
   // Async-polish hedge: the losing writer attempt is aborted from outside.
   outerSignal?: AbortSignal,
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   if (outerSignal) {
@@ -6051,12 +6051,9 @@ async function callOnce(
     else outerSignal.addEventListener('abort', () => ctrl.abort(), { once: true })
   }
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: ctrl.signal,
-      // Key in a header, not the URL (keeps it out of request logs/proxies).
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({
+    // Key in a header, not the URL (keeps it out of request logs/proxies).
+    // URL, key and body shape per GEMINI_BACKEND (_shared/geminiBackend.ts).
+    const res = await fetch(...geminiPost(model, {
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
@@ -6071,8 +6068,7 @@ async function callOnce(
           // the wall-clock. 0 = unbounded/dynamic.
           ...(thinkBudget > 0 ? { thinkingConfig: { thinkingBudget: thinkBudget } } : {}),
         },
-      }),
-    })
+      }, ctrl.signal))
     if (!res.ok) {
       const detail = await res.text()
       throw new Error(`Gemini ${res.status}: ${detail.slice(0, 300)}`)
@@ -6166,11 +6162,9 @@ async function polishPlanBLines(apiKey: string, prompt: string): Promise<string 
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), COMPOSER_TIMEOUT_MS)
   try {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent', {
-      method: 'POST', signal: ctrl.signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 1200 } }),
-    })
+    const res = await fetch(...geminiPost('gemini-3.7-flash',
+      { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 1200 } },
+      ctrl.signal))
     if (!res.ok) return null
     const b = await res.json()
     const t = b?.candidates?.[0]?.content?.parts?.[0]?.text
@@ -6182,22 +6176,18 @@ async function composePosition(apiKey: string, facts: string): Promise<string | 
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), COMPOSER_TIMEOUT_MS)
   try {
-    const res = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent',
+    const res = await fetch(...geminiPost(
+      'gemini-3.7-flash',
       {
-        method: 'POST',
-        signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({
           systemInstruction: { parts: [{ text: COMPOSER_SYSTEM }] },
           contents: [{ role: 'user', parts: [{ text: facts }] }],
           // Low temperature on purpose: this is a statement of what the facts
           // already say, not a creative act. Creativity belongs downstream,
           // where it has a subject to be creative ABOUT.
           generationConfig: { temperature: 0.3, maxOutputTokens: 400 },
-        }),
       },
-    )
+      ctrl.signal,
+    ))
     if (!res.ok) return null
     const body = await res.json()
     const text = body?.candidates?.[0]?.content?.parts?.[0]?.text
@@ -6603,12 +6593,9 @@ async function ideaQuestionsMode(apiKey: string, paragraph: string, audience: re
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 8_000)
   try {
-    const res = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent',
+    const res = await fetch(...geminiPost(
+      'gemini-3.7-flash',
       {
-        method: 'POST', signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({
           // ⚖️ THE ANGLES RIDE THIS SAME CALL (owner brief 2026-10-01): her niche's
           // measured winners and her own hook patterns order them, so it costs
           // what the purpose guess already cost.
@@ -6618,9 +6605,9 @@ async function ideaQuestionsMode(apiKey: string, paragraph: string, audience: re
           ].slice(0, 12))}${audienceAngleBlock(audience)}` }] },
           contents: [{ role: 'user', parts: [{ text: `HER PARAGRAPH:\n<<<UNTRUSTED_DATA idea\n${text}\nEND_UNTRUSTED_DATA>>>` }] }],
           generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: 'application/json', responseSchema: IDEA_Q_SCHEMA },
-        }),
       },
-    )
+      ctrl.signal,
+    ))
     if (!res.ok) return json({ questions: [], purpose: null })
     const out = await res.json()
     const raw = out?.candidates?.[0]?.content?.parts?.[0]?.text
@@ -6641,7 +6628,8 @@ async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  const apiKey = Deno.env.get('GEMINI_API_KEY')
+  // The key for the active GEMINI_BACKEND (VERTEX_API_KEY, else GEMINI_API_KEY, on vertex).
+  const apiKey = edgeGeminiKey()
   if (!apiKey) return json({ error: 'Server missing GEMINI_API_KEY' }, 500)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -9843,20 +9831,12 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       // timeout in one only drops that one section.
       const notesP = (async (): Promise<BrainNoteInline[]> => {
         if (!apiKey || !brainQuery) return []
-        const embRes = await fetch(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent',
-          {
-            method: 'POST', signal: ctrl.signal,
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-            body: JSON.stringify({
-              content: { parts: [{ text: brainQuery }] },
-              taskType: 'SEMANTIC_SIMILARITY', outputDimensionality: 768,
-            }),
-          },
-        )
-        const emb = embRes.ok
-          ? ((await embRes.json()) as { embedding?: { values?: number[] } })?.embedding?.values
-          : null
+        const embRes = await fetch(...geminiEmbedPost({
+          model: 'gemini-embedding-001', text: brainQuery,
+          taskType: 'SEMANTIC_SIMILARITY', outputDimensionality: 768,
+        }, ctrl.signal))
+        // Developer `embedding.values` or Vertex `predictions[0].embeddings.values`.
+        const emb = embRes.ok ? readEmbedding(await embRes.json()) : null
         if (!Array.isArray(emb) || emb.length !== 768) return []
         const { data } = await admin.rpc('brain_brief_scoped', { p_embedding: `[${emb.join(',')}]`, p_owner: ownerId, p_k: 48 })
           .abortSignal(ctrl.signal)

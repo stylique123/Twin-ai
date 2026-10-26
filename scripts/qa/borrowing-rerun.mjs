@@ -36,6 +36,7 @@
 //
 // USAGE:  GEMINI_API_KEY=... node scripts/qa/borrowing-rerun.mjs [--samples 3] [--runs a,d]
 
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync, mkdtempSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -56,7 +57,7 @@ await build({
 })
 const { measureVerbatimOverlap, HIGH_OVERLAP_RUN_WORDS } = await import(pathToFileURL(out).href)
 const DRY = process.argv.includes('--dry-run')
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 // ⚖️ `--dry-run` EXERCISES EVERYTHING EXCEPT THE MODEL CALL, so the wiring can
 // be proved without a key and the only untested step is the one that needs one.
 // It also re-derives the frozen numbers with the bundled measure: if those do
@@ -127,11 +128,11 @@ function assertArmSymmetry(run) {
 
 async function generate(prompt) {
   const r = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY,
+    geminiUrl(processEnv, 'gemini-2.5-flash'),
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+      headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+      body: geminiBody({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json', temperature: 1 },
       }),

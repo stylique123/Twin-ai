@@ -78,6 +78,7 @@
 // would use, and calls nothing. --dump reads the joined rows from a JSON file
 // ([{batch,n,blueprint,knowledge,products,note,answers,target_product_id}])
 // instead of the database.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 import {
   buildLedger, extractSentences, resolveTargetProduct, pendingForJudge, errorClass, chunk, chunkLedger, buildJudgePrompt, runInventionGate,
@@ -289,7 +290,7 @@ const pctl = (xs, q) => { if (!xs.length) return 0; const a = [...xs].sort((x, y
 
 // ── model call (same settings as the worker: temperature 0, judge thinking 0) ──
 async function callModel(model, system, schema, prompt, thinkingBudget, used) {
-  const key = process.env.GEMINI_API_KEY
+  const key = geminiApiKey()
   if (!key) throw new Error('GEMINI_API_KEY is required')
   // v4: one deadline PER ATTEMPT. A single controller shared by the retries
   // aborted the retry after a 429 back-off (the live 'abort' failures).
@@ -299,10 +300,10 @@ async function callModel(model, system, schema, prompt, thinkingBudget, used) {
     try { return await sendOnce(budget, ctrl) } finally { clearTimeout(timer) }
   }
   const sendOnce = async (budget, ctrl) => {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    const res = await fetch(geminiUrl(processEnv, model), {
       method: 'POST', signal: ctrl.signal,
       headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
+      body: geminiBody({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0, ...(budget === undefined ? {} : { thinkingConfig: { thinkingBudget: budget } }) },

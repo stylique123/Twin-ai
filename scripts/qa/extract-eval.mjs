@@ -18,9 +18,10 @@
 // invented positions in a creator's mouth wearing a `stated` basis.
 //
 //   GEMINI_API_KEY=... node scripts/qa/extract-eval.mjs
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 
 const SRC = readFileSync('worker/src/voice.ts', 'utf8')
@@ -103,11 +104,11 @@ const REAL = JSON.parse(readFileSync(process.env.REAL_CAPTIONS ?? '/dev/null', '
 async function extract(label, transcripts, system) {
   const corpus = transcripts.map((t, i) => `--- VIDEO ${i + 1} (spoken) ---\n${t}`).join('\n\n')
   const r = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    geminiUrl(processEnv, 'gemini-2.5-flash'),
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY },
-      body: JSON.stringify({
+      body: geminiBody({
         systemInstruction: { parts: [{ text: system ?? KNOWLEDGE_SYSTEM }] },
         contents: [{ parts: [{ text: `CREATOR: @tester on youtube\nSPOKEN TRANSCRIPTS:\n${corpus}\n\nRecord what this creator knows, believes, has done, and has already covered.` }] }],
         generationConfig: {

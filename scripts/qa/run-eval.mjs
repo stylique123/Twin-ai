@@ -38,6 +38,7 @@
 // product, and must never be reported as a refusal or a defect. Until the
 // harness reproduces the real prompt's ORDER, only cases that return a full
 // blueprint carry any signal at all.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 // ⚠️ THE PACKET SHAPE IS LIFTED, NOT REDEFINED. The whole point of testing it
 // here is to measure the object production would send; a harness-local copy
@@ -48,7 +49,7 @@ import { PACKET_SYSTEM, packetPrompt, packetPromptLine, packetShape } from '../.
  *  case ONLY for the experiment that varies it. */
 const KNOWLEDGE_CAP = Number(process.env.KNOWLEDGE_CAP ?? 10)
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 
 const EDGE = readFileSync('supabase/functions/generate-blueprint/index.ts', 'utf8')
@@ -567,10 +568,10 @@ Return JSON only, with EVERY key below present and populated:
  "script":[{"section":"","line":"","location":"","broll_request":"","wardrobe":"","action_posing":"","substance":"","substance_evidence":""}],
  "cta":""}`
 
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
+  const r = await fetch(geminiUrl(processEnv, 'gemini-2.5-flash'), {
     method: 'POST',
     headers: { 'x-goog-api-key': KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    body: geminiBody({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, maxOutputTokens: 20000, temperature: 0.9, thinkingConfig: { thinkingBudget: 0 } },
     }),
@@ -591,10 +592,10 @@ Return JSON only, with EVERY key below present and populated:
  *  ⚖️ SEPARATE FROM `gen` ON PURPOSE: this decides the argument, that writes the
  *  prose, and collapsing them is the thing being tested against. */
 async function buildPacket(system, prompt) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
+  const r = await fetch(geminiUrl(processEnv, 'gemini-2.5-flash'), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
+    headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+    body: geminiBody({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 40000, temperature: 0.4 },

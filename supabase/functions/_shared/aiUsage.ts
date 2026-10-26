@@ -9,6 +9,7 @@
 // the call. Tokens only; the price per model lives in one SQL view, where a
 // price change is one row, not a deploy.
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { geminiModelOfUrl } from './geminiBackend.ts'
 
 export interface ModelUsage { calls: number; input: number; output: number; thinking: number; cached: number }
 export type UsageStore = Record<string, ModelUsage>
@@ -17,11 +18,11 @@ const store = new AsyncLocalStorage<UsageStore>()
 // Plan 11.1-1: the same tally keyed by stage (writer, editor, repair, ...).
 const stageOf = new AsyncLocalStorage<string>()
 const byStage = new AsyncLocalStorage<UsageStore>()
-const GEMINI = /^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/models\/([^:/?]+):(generateContent|embedContent)/
 
 /** The model a Gemini URL calls, or null for any other URL. */
 export function geminiModelOf(url: string): string | null {
-  return GEMINI.exec(url)?.[1] ?? null
+  // Developer API and Vertex AI URLs alike (see geminiBackend.ts).
+  return geminiModelOfUrl(url)
 }
 
 /** Adds one response's usage to the store. Embeddings bill on input only. */

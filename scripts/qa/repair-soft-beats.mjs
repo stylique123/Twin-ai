@@ -23,9 +23,10 @@
 //
 // Three candidates are requested and one is chosen, because the first completion
 // for a vague line is frequently another vague line.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 const rows = JSON.parse(readFileSync(process.argv[2], 'utf8'))
 const soft = JSON.parse(readFileSync(process.argv[3], 'utf8'))
@@ -64,9 +65,9 @@ Rules:
 Reply as JSON only: {"candidates":["...","...","..."],"best":0,"why_best":"<few words>"}`
 
 async function repairLine(ctx) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
+  const r = await fetch(geminiUrl(processEnv, 'gemini-2.5-flash'), {
+    method: 'POST', headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+    body: geminiBody({
       contents: [{ parts: [{ text: PROMPT(...ctx) }] }],
       generationConfig: { temperature: 0.6, maxOutputTokens: 40000, responseMimeType: 'application/json' },
     }),
