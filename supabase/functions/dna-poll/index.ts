@@ -154,7 +154,23 @@ Deno.serve(async (req: Request) => {
       await admin.from('brand_voices').update({ status: 'ready', error: null }).eq('id', voiceId)
       return json({ status: 'ready', profile: voice.profile })
     }
-    return json({ status: 'failed', error: voice.error })
+    // ⚠️ THE CAUSE WAS NEVER SENT. The worker records a classified
+    // `scan_cause` on the job result, but this returned only `error`, so the
+    // screen's `readScanFailure` fell back to UNKNOWN ("we are not sure why
+    // yet") for every failure — including a 2026-10-26 YouTube scan whose read
+    // succeeded and whose voice synthesis hit a Gemini quota. A code only; the
+    // screen owns the wording and coerces anything unrecognised to UNKNOWN.
+    const { data: lastJob } = await admin
+      .from('jobs')
+      .select('result')
+      .in('type', ['build_dna', 'scrape_dna'])
+      .eq('owner_id', user.id)
+      .contains('payload', { brand_voice_id: voiceId })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const cause = (lastJob?.result as { scan_cause?: unknown } | null)?.scan_cause
+    return json({ status: 'failed', error: voice.error, ...(typeof cause === 'string' ? { cause } : {}) })
   }
 
   // One lookup for whichever DNA job exists: Apify `build_dna` (Instagram/YouTube)

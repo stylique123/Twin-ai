@@ -1,6 +1,7 @@
 import { db, type Job } from '../db.js'
 import { scrapeProfile, UnsupportedPlatformError, ProfileReadFailedError, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
+import { scanFailureCause, type ScanStage } from '../scanFailureCause.js'
 import { selectVideosToTranscribe, transcriptBudgetFor, scrapePoolFor } from '../transcriptSelection.js'
 import { classifyTranscriptFailure, retryWorthScanFailure } from '../transcriptFailure.js'
 import { voiceHasOwnMaterial } from '../voiceOwnMaterial.js'
@@ -123,8 +124,11 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // voices in production reached that state: a cached profile, a failed scan,
   // `kept_existing: true`, and an empty knowledge table underneath. See
   // `voiceHasOwnMaterial` for what the row has to hold to count as built.
-  const fail = async (msg: string, cause?: unknown) => {
-    const diag = cause === undefined ? {} : {
+  const fail = async (msg: string, cause?: unknown, at: ScanStage = 'read') => {
+    // ⚖️ `scan_cause` is what `dna-poll` hands the screen. Without it every
+    // failure read "we are not sure why yet" even when we knew (2026-10-26).
+    const diag = cause === undefined ? { scan_cause: scanFailureCause(at) } : {
+      scan_cause: scanFailureCause(at, cause),
       failure_class: classifyTranscriptFailure(cause),
       failure_sample: (cause instanceof Error ? cause.message : String(cause)).slice(0, 200),
     }
@@ -233,6 +237,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       return await fail(
         `We can't scan ${platform} accounts yet. Connect a TikTok or YouTube account, or set up your voice manually.`,
         err,
+        'unsupported',
       )
     }
     // ⚠️ THE READER SAID IT COULD NOT READ, AND THAT IS OURS TO OWN. An Apify
@@ -300,6 +305,8 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
           `up your voice manually.`
         : `We couldn't read any public posts from @${handle}. If that account is private or empty, make it public ` +
           `for a moment, try a different public account, or set up your voice manually.`,
+      undefined,
+      'empty',
     )
   }
 
@@ -318,7 +325,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // ⚠️ THE CAUSE WAS DROPPED HERE AND ONLY HERE. Every other `fail()` call
     // passes its error, so this path — the one that produced the report that
     // started this — stored the vague creator sentence and no class at all.
-    return await fail('We could not finish building your voice. Please try again or set it up manually.', err)
+    return await fail('We could not finish building your voice. Please try again or set it up manually.', err, 'synth')
   }
   // Capture platform stats for the dashboard ("understand your brand"). The TikTok
   // path previously wrote none, so every TikTok creator's dashboard showed blank

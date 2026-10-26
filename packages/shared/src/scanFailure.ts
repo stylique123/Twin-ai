@@ -38,6 +38,10 @@ export const SCAN_FAILURE_CAUSES = [
   'RATE_LIMITED',
   /** Our retriever ran and broke. OUR side, and the creator cannot fix it. */
   'SCRAPER_FAILED',
+  /** We READ the account, then a paid service we build the voice with refused
+   *  us for quota (Gemini 429 RESOURCE_EXHAUSTED, measured 2026-10-26). OURS,
+   *  and it does not pass in a minute, so the message must not promise that. */
+  'SERVICE_QUOTA',
   /** Not a platform Twin reads. */
   'UNSUPPORTED_PLATFORM',
   /** ⚠️ THE HONEST DEFAULT. Anything unrecognised lands here, and its message
@@ -105,6 +109,10 @@ const FAILURES: Record<ScanFailureCause, Omit<ScanFailure, 'cause'>> = {
   },
   SCRAPER_FAILED: {
     message: 'Something went wrong on our end while reading this account. It is not your account, and it is not you.',
+    creatorCanFix: false, worthRetrying: true, tryAnotherPlatform: true,
+  },
+  SERVICE_QUOTA: {
+    message: 'We read your account fine, but a service we use to build your voice has hit its usage limit for now. This is on our side, not your account. Try again a little later.',
     creatorCanFix: false, worthRetrying: true, tryAnotherPlatform: true,
   },
   UNKNOWN: {
