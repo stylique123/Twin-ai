@@ -17320,6 +17320,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             noBareFactGen: trialOn && Deno.env.get('HOOK_BARE_FACT_GEN') !== 'false',
             // Targeted flags v2 (trial; kill HOOK_CLAIM_GATE=false): candidates the targeted-flag patterns catch are dropped before the pick.
             claimGate: trialOn && Deno.env.get('HOOK_CLAIM_GATE') !== 'false',
+            // HELD (hook gate v2; default off, test accounts only): flag HOOK_GATE_V2=true.
+            claimGateV2: isHeartbeat && trialOn && Deno.env.get('HOOK_GATE_V2') === 'true',
             request: [String(videoGoal ?? body.goal ?? ''), typeof reference_note === 'string' ? reference_note : ''].filter(Boolean).join(' '),
             products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
             targetProductId: engineTarget,
