@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { env } from './env.js'
 import { readVerdict } from './profileReadVerdict.js'
 import { liveApifyDeps, prepareApifyRun, guardedApifyFetch, creatorReadLimit, type ApifyTier } from './apifyGuard.js'
+import { youtubeVideoId, transcriptActorChoice, STARVIBE_ACTOR, starvibeInput, starvibeToCaptionItems } from './youtubeTranscriptActor.js'
 
 // --- SSRF guard ------------------------------------------------------------
 // The worker downloads user-supplied URLs with yt-dlp, so we ONLY allow the
@@ -666,13 +667,18 @@ async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
   // run-sync-get-dataset-items returns the dataset directly as [{ data: [...] }].
   // (The older /run-sync + key-value-store path returned an empty body here and
   // broke JSON parsing — "Unexpected end of JSON input".)
-  const url = await prepareApifyRun(await liveApifyDeps(env.apifyToken), 'youtube_transcript', env.apifyYoutubeActor, 'creator')
+  // APIFY_TRANSCRIPT_ACTOR=starvibe opts in to the cheaper actor (default OFF:
+  // pintostudio). ⚠️ starvibe's input/output schema is UNVERIFIED; see
+  // youtubeTranscriptActor.ts.
+  const useStarvibe = transcriptActorChoice() === 'starvibe'
+  const actor = useStarvibe ? STARVIBE_ACTOR : env.apifyYoutubeActor
+  const url = await prepareApifyRun(await liveApifyDeps(env.apifyToken), 'youtube_transcript', actor, 'creator')
   // Test mode / test owner: stubbed reader, nothing read.
   if (url === null) throw new Error('This video has no captions we can read. Try a different reference.')
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ videoUrl: rawUrl, targetLanguage: 'en' }),
+    body: JSON.stringify(useStarvibe ? starvibeInput(rawUrl) : { videoUrl: rawUrl, targetLanguage: 'en' }),
     // Bound the synchronous Apify run so a stuck connection can't hold the worker
     // indefinitely (Apify's own sync cap is ~5 min; 330s lets its error surface first).
     signal: AbortSignal.timeout(330_000),
@@ -680,7 +686,8 @@ async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
   if (!res.ok) {
     throw new Error(`YouTube transcript service error ${res.status}: ${(await res.text()).slice(0, 200)}`)
   }
-  const items = (await res.json()) as { data?: { start?: string | number; dur?: string | number; text?: string }[] }[]
+  const rawItems: unknown = await res.json()
+  const items = (useStarvibe ? starvibeToCaptionItems(rawItems) : rawItems) as { data?: { start?: string | number; dur?: string | number; text?: string }[] }[]
   const rows = (Array.isArray(items) ? items[0]?.data : null) ?? []
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('This video has no captions we can read. Try a different reference.')
@@ -1028,6 +1035,13 @@ export async function transcribeFromUrl(
   // often fail — but "often fails" and "cannot be attempted" are different
   // numbers, and only one of them is currently zero.
   if (isYouTube(u)) {
+    // 30-day cache keyed by video id, shared by every caller of this function.
+    const videoId = youtubeVideoId(rawUrl)
+    if (videoId) {
+      const { readYoutubeTranscriptCache } = await import('./transcriptCache.js')
+      const hit = await readYoutubeTranscriptCache(videoId)
+      if (hit) return hit
+    }
     // Free first (YouTube doesn't block us), Apify only as a paid fallback.
     try {
       return { ...(await youtubeTranscriptFree(rawUrl)), source: 'youtube_captions_free' }
@@ -1040,11 +1054,13 @@ export async function transcribeFromUrl(
       const paidBecause: PaidBecause = /NO_CAPTIONS/.test(why) ? 'no_captions' : 'free_path_failed'
       console.error(`free YT transcript failed (${paidBecause}), falling back to Apify:`, why)
       try {
-        return {
+        const paid: Transcript = {
           ...(await withOneRetry('youtube_apify', () => youtubeTranscriptViaApify(rawUrl))),
           source: 'youtube_captions_paid',
           paidBecause,
         }
+        if (videoId) await (await import('./transcriptCache.js')).writeYoutubeTranscriptCache(videoId, paid)
+        return paid
       } catch (apifyErr) {
         const kind = classifyTranscriptFailure(apifyErr)
         // A fact about THIS video is settled; do not spend a download on it.
