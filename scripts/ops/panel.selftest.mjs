@@ -13,6 +13,14 @@ const fixture = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json
 // The first six creators keep their original four requests (educate, sell/leads, story, thin).
 assert.equal(fixture.creators.length, 8)
 assert.ok(fixture.requests.length >= 40)
+// Wrong-product check stays meaningful: Harbor Blend and Night Owl share size and label facts,
+// but each keeps facts the other must not carry.
+{
+  const maya = fixture.creators.find((c) => c.key === 'mayas-coffee')
+  const facts = (k) => maya.products.find((p) => p.key === k).facts.map((f) => f.value).join(' | ')
+  assert.match(facts('harbor'), /Tuesdays/); assert.doesNotMatch(facts('nightowl'), /Tuesdays|\$17/)
+  assert.match(facts('nightowl'), /second crack/); assert.doesNotMatch(facts('harbor'), /second crack|\$19/)
+}
 for (const c of fixture.creators) {
   const kinds = fixture.requests.slice(0, 24).filter((r) => r.creator === c.key).map((r) => r.kind).sort()
   if (kinds.length) {
@@ -20,7 +28,13 @@ for (const c of fixture.creators) {
     assert.equal(kinds.length, 4, c.key)
   }
   if (c.key === 'quiet-loom') assert.equal(c.stories.length, 0, 'quiet-loom has no creator truth on purpose')
-  else assert.ok(c.stories.length >= 3 && c.stories.length <= 5, `${c.key}: 3-5 stories`)
+  // Richer fixtures: originals (3-4), up to five appended on-topic items, plus up to four
+  // "messy" spoken-style items (coach-ana, flowdesk only). Every appended item is marked fictional.
+  else assert.ok(c.stories.length >= 3 && c.stories.length <= 13, `${c.key}: 3-13 stories`)
+  for (const s of c.stories.slice(5)) assert.equal(s.fictional, true, `${c.key}: appended story marked fictional`)
+  const messy = c.stories.filter((s) => s.messy)
+  if (messy.length) assert.ok(['coach-ana', 'flowdesk'].includes(c.key) && messy.length <= 4, `${c.key}: messy set is small and scoped`)
+  for (const s of messy) assert.equal(s.fictional, true, `${c.key}: messy story marked fictional`)
   assert.ok(c.products.length >= 1 && c.products.length <= 3, `${c.key}: 1-3 products`)
   for (const s of c.stories) assert.ok(s.text.length <= 240, `${c.key}: story fits creator_knowledge`)
   for (const p of c.products) for (const f of p.facts) if (f.field === 'testimonial') {
@@ -134,3 +148,16 @@ console.log('panel arms selftest ok')
 
 // The modes harness self-test rides this one so the existing CI step runs it.
 await import('./panelModes.selftest.mjs')
+
+// PANEL-12 REFILL ARMS (plan v6.1 §27): one refill arm per batch, from the row or env.
+{
+  const noEnv = {}
+  assert.deepEqual(armBody({ accounts: [], refill_arm: 'refill_v2' }, 3, noEnv), { refill_arm: 'refill_v2' })
+  assert.deepEqual(armBody({ accounts: [], refill_arm: 'baseline_p10', ab_split: 'alternate' }, 1, noEnv), { plan_b: true, panel_arm: 'plan_b', refill_arm: 'baseline_p10' })
+  assert.deepEqual(armBody({ accounts: [], refill_arm: 'other' }, 3, noEnv), {})
+  assert.deepEqual(armBody({ accounts: [] }, 3, { PANEL_REFILL_ARM: 'baseline_p10' }), { refill_arm: 'baseline_p10' })
+  const rAlt = { accounts: [], refill_arm: 'alternate' }
+  for (let n = 1; n <= 24; n++) assert.deepEqual(armBody(rAlt, n, noEnv), { refill_arm: n % 2 === 1 ? 'baseline_p10' : 'refill_v2' })
+  assert.deepEqual(armBody({ accounts: [] }, 4, { PANEL_REFILL_ARM: 'alternate' }), { refill_arm: 'refill_v2' })
+  console.log('panel selftest (refill arms): ok')
+}
