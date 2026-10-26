@@ -6,12 +6,17 @@
 //   - repeats or blocking flags get worse than the committed baseline.
 // No model, no network, no database: pure functions over a committed snapshot.
 //
-// ⚠️ LIMITATION: the writer's raw draft (before gate/refill/dedupe) is not
-// stored on the blueprint, so the replay starts from the SHIPPED script. It
-// re-runs only the stages that are deterministic and need no ledger text:
-// blockSpokenPlaceholders and dedupeSpokenLines. Gate classification, refill
-// and top-up need the judge or ledger text and are not replayed.
-import { blockSpokenPlaceholders, dedupeSpokenLines, nearDuplicate } from './inventionGate'
+// START POINT. When a case carries `writer_raw` (the writer's draft, recorded
+// on test-account blueprints since WRITER_RAW_RECORD, see writerRaw.ts), the
+// replay starts from that draft and runs every deterministic stage:
+// blockSpokenPlaceholders, dedupeSpokenLines and, when the case also carries
+// its `ledger`, dedupByStoryItem + holdSpokenFloor + refillToFloor. Stages that
+// need a model (gate judge, polish, spine fill) are not replayed.
+// Cases without `writer_raw` (the committed panel 10/11 fixture predates it)
+// still start from the SHIPPED script and re-run only the placeholder block and
+// spoken de-dup, exactly as before.
+import { blockSpokenPlaceholders, dedupeSpokenLines, dedupByStoryItem, holdSpokenFloor, nearDuplicate, refillToFloor, type LedgerItem } from './inventionGate'
+import type { WriterRaw } from './writerRaw'
 import { spokenWords } from './lateGuards'
 import { placeholderTokens } from '../spokenPlaceholders'
 
@@ -22,6 +27,11 @@ export interface ReplayCase {
   target_seconds?: number | null
   script: Array<{ line?: unknown; section?: unknown }>
   hook_options?: string[]
+  /** The writer's recorded draft (blueprint.writer_raw). When present the replay starts here. */
+  writer_raw?: Pick<WriterRaw, 'lines' | 'hook_options'> | null
+  /** The request's invention ledger; with writer_raw it enables story de-dup and refill. */
+  ledger?: LedgerItem[]
+  target_product_id?: string | null
 }
 
 export interface ReplayMetrics {
@@ -70,9 +80,17 @@ export function blockingFlags(c: ReplayCase, script: ReadonlyArray<{ line?: unkn
 }
 
 export function replayCase(c: ReplayCase) {
-  const p = blockSpokenPlaceholders({ script: c.script, hook_options: c.hook_options ?? [] })
+  const raw = c.writer_raw && Array.isArray(c.writer_raw.lines) && c.writer_raw.lines.length ? c.writer_raw : null
+  const p = blockSpokenPlaceholders(raw
+    ? { script: raw.lines.map((l) => ({ section: l.section, line: l.line })), hook_options: raw.hook_options ?? [] }
+    : { script: c.script, hook_options: c.hook_options ?? [] })
   const d = dedupeSpokenLines((p.bp.script as ReplayCase['script']) ?? [])
-  const script = d.script
+  let script = d.script
+  if (raw && c.ledger?.length) {
+    const sd = dedupByStoryItem(script, c.ledger)
+    script = holdSpokenFloor(script, sd.script).script
+    script = refillToFloor(script, c.ledger, c.target_product_id ?? null).script as ReplayCase['script']
+  }
   const hooks = ((p.bp.hook_options as unknown[]) ?? []).filter((h): h is string => typeof h === 'string')
   const placeholders = [...script.map((b) => b.line), ...hooks].reduce<number>((a, t) => a + placeholderTokens(t).length, 0)
   return { words: spokenWords(script), placeholders, repeats: repeatCount(script), flags: blockingFlags(c, script, hooks) }
