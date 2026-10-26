@@ -71,6 +71,21 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // WOULD CHANGE IT. An unregistered unreached symbol fails the build; a
 // registered one is a debt that was named. "Later" is not a reason.
 export const REGISTRY = {
+  'creator/creatorTypeRules.ts': {
+    symbols: ['rulesForCreator'],
+    why: 'W12.2 creator type rules as data, behind CREATOR_TYPE_RULES (default off). Only its vitest reads it. '
+      + 'Changes when the writer HOOKS section reads the per-type rules (separate, flagged PR).',
+  },
+  'creator/nichePack.ts': {
+    symbols: ['validateNichePack', 'loadNichePack', 'bannedClaimsIn', 'nichePacksEnabled'],
+    why: 'Niche pack format and validator over a FICTIONAL example pack, behind NICHE_PACKS (default off). '
+      + 'Only its vitest reads it. Changes when a pack loader is wired into the writer.',
+  },
+  'creator/auditSetV2.ts': {
+    symbols: ['extractPageFacts', 'deidentificationProblems', 'validateAuditSetV2Manifest', 'loadAuditSetV2'],
+    why: 'Audit Set v2 offline fixture format and loader over FICTIONAL HTML. Test tooling by design. '
+      + 'Changes when an offline page-read audit runner consumes the set.',
+  },
   'script/templates/templateCoverage.ts': {
     symbols: ['shortTemplateId', 'fixtureLedger', 'isVerifiedDated', 'chooseForRequest', 'templateCoverage'],
     why: 'Plan v5.1 item I: the deterministic template coverage harness over the FICTIONAL panel fixture. '

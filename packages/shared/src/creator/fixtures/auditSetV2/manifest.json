@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "entries": [
+    {
+      "id": "fictional-coach-landing",
+      "file": "fictional-coach-landing.html",
+      "creator_type": "coach",
+      "fictional": true,
+      "expected": {
+        "title": "Steady Start Coaching (fictional)",
+        "h1": "Five habits for a calmer & steadier week",
+        "cta_texts": ["Book a free call"]
+      }
+    },
+    {
+      "id": "fictional-bakery-local",
+      "file": "fictional-bakery-local.html",
+      "creator_type": "local_business",
+      "fictional": true,
+      "expected": {
+        "h1": "Fresh loaves every morning on Example Street",
+        "meta_description": "Invented neighbourhood bakery page for audit tests.",
+        "cta_texts": ["Order for pickup", "Plan your visit"]
+      }
+    }
+  ]
+}

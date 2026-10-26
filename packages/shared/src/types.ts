@@ -36,6 +36,9 @@ export interface VoiceProfile {
   summary: string
   niche: string
   sub_niche?: string
+  // W12.2 — the creator's type (see creator/creatorTypeRules.ts). Optional and
+  // absent on every existing profile; only read behind CREATOR_TYPE_RULES (off).
+  creator_type?: 'coach' | 'maker' | 'local_business' | 'educator' | 'community' | 'entertainer' | null
   // The scan infers these from the posts/bio/niche; they were produced by the DNA
   // synthesis all along but weren't typed, so onboarding couldn't prefill them.
   audience?: string
