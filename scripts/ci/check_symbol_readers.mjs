@@ -82,7 +82,7 @@ export const REGISTRY = {
       + 'Only its vitest reads it. Changes when a pack loader is wired into the writer.',
   },
   'creator/auditSetV2.ts': {
-    symbols: ['extractPageFacts', 'deidentificationProblems', 'validateAuditSetV2Manifest', 'loadAuditSetV2'],
+    symbols: ['loadAuditSetV2'],
     why: 'Audit Set v2 offline fixture format and loader over FICTIONAL HTML. Test tooling by design. '
       + 'Changes when an offline page-read audit runner consumes the set.',
   },

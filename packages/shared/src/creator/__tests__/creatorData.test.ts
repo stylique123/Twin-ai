@@ -5,7 +5,7 @@ import {
   CREATOR_TYPES, loadCreatorTypeRules, validateCreatorTypeRules, rulesForCreator, creatorTypeRulesEnabled,
 } from '../creatorTypeRules'
 import { loadNichePack, validateNichePack, bannedClaimsIn, nichePacksEnabled } from '../nichePack'
-import { loadAuditSetV2, extractPageFacts, deidentificationProblems, validateAuditSetV2Manifest } from '../auditSetV2'
+import { loadAuditSetV2, fieldFillByKind, PRODUCT_KINDS, extractPageFacts, deidentificationProblems, validateAuditSetV2Manifest } from '../auditSetV2'
 
 const fx = join(__dirname, '..', 'fixtures')
 const json = (p: string) => JSON.parse(readFileSync(join(fx, p), 'utf8'))
@@ -77,8 +77,16 @@ describe('audit set v2', () => {
 
   it('loads every fictional page and its facts match the manifest', () => {
     const pages = loadAuditSetV2(manifest, read)
-    expect(pages.map((p) => p.entry.id)).toEqual(['fictional-coach-landing', 'fictional-bakery-local'])
+    expect(pages).toHaveLength(10)
+    expect(pages.map((p) => p.entry.id).slice(0, 2)).toEqual(['fictional-coach-landing', 'fictional-bakery-local'])
     expect(pages[0].facts.links).toContain('https://steady-start.example/book')
+  })
+  it('covers every product kind at least twice, and reports fill by kind', () => {
+    const pages = loadAuditSetV2(manifest, read)
+    for (const k of PRODUCT_KINDS) expect(pages.filter((p) => p.entry.kind === k).length).toBeGreaterThanOrEqual(2)
+    const r = fieldFillByKind(pages.map((p) => ({ kind: p.entry.kind, facts: p.facts })))
+    expect(r.course).toEqual({ pages: 2, fill: { title: 1, h1: 1, meta_description: 1, cta_texts: 1, price: 1 } })
+    expect(r.service?.fill.price).toBe(0.5)
   })
   it('every fixture file is listed and de-identified', () => {
     const files = readdirSync(dir).filter((f: string) => f.endsWith('.html')).sort()

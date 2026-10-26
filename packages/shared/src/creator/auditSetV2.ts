@@ -10,11 +10,17 @@ export interface AuditPageFacts {
   meta_description: string
   links: string[]
   cta_texts: string[]
+  price: string
 }
+
+export const PRODUCT_KINDS = ['physical', 'digital', 'software', 'service', 'course'] as const
+export type ProductKind = (typeof PRODUCT_KINDS)[number]
+export const FACT_FIELDS = ['title', 'h1', 'meta_description', 'cta_texts', 'price'] as const
 
 export interface AuditSetV2Entry {
   id: string
   file: string
+  kind: ProductKind
   creator_type: CreatorType
   fictional: true
   expected: Partial<AuditPageFacts>
@@ -39,6 +45,8 @@ export function extractPageFacts(html: string): AuditPageFacts {
     meta_description: meta ? decode(meta[1]) : '',
     links,
     cta_texts,
+    price: (/<[^>]*data-price[^>]*>([\s\S]*?)</i.exec(body)?.[1]?.trim())
+      ?? (/[$\u20ac\u00a3]\s?\d+(?:[.,]\d{2})?/.exec(text(body))?.[0] ?? ''),
   }
 }
 
@@ -73,6 +81,7 @@ export function validateAuditSetV2Manifest(input: unknown): string[] {
     else if (ids.has(x.id)) e.push(`entries[${i}].id: duplicate`)
     else ids.add(x.id)
     if (typeof x?.file !== 'string' || !/^[a-z0-9-]+\.html$/.test(x.file)) e.push(`entries[${i}].file: slug .html required`)
+    if (!(PRODUCT_KINDS as readonly unknown[]).includes(x?.kind)) e.push(`entries[${i}].kind: invalid`)
     if (!isCreatorType(x?.creator_type)) e.push(`entries[${i}].creator_type: invalid`)
     if (x?.fictional !== true) e.push(`entries[${i}].fictional: must be true`)
     if (!x?.expected || typeof x.expected !== 'object') e.push(`entries[${i}].expected: required`)
@@ -102,4 +111,16 @@ export function loadAuditSetV2(manifest: unknown, readFile: (name: string) => st
     }
     return { entry, facts }
   })
+}
+
+/** Share of pages per kind on which each fact field came back non-empty. */
+export function fieldFillByKind(pages: Array<{ kind: ProductKind; facts: AuditPageFacts }>) {
+  const out: Partial<Record<ProductKind, { pages: number; fill: Record<string, number> }>> = {}
+  for (const { kind, facts } of pages) {
+    const row = out[kind] ?? (out[kind] = { pages: 0, fill: Object.fromEntries(FACT_FIELDS.map((f) => [f, 0])) })
+    row.pages++
+    for (const f of FACT_FIELDS) { const v = facts[f]; if (Array.isArray(v) ? v.length : v) row.fill[f]++ }
+  }
+  for (const r of Object.values(out)) for (const f of FACT_FIELDS) r!.fill[f] = r!.fill[f] / r!.pages
+  return out
 }
