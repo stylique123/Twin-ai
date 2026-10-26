@@ -51,7 +51,7 @@ import {
   evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
-import { inStage, currentStageUsage, stageOfCall } from '../_shared/aiUsage.ts'
+import { inStage, currentStageUsage, stageOfCall, setLedgerContext, withScriptLedger } from '../_shared/aiUsage.ts'
 import { buildProvenance } from '../_shared/provenance.ts'
 import { dropInventedCauses, isSubjectOnlyTopic, subjectsLine } from '../_shared/inventedCause.ts'
 import { checkSupport } from '../_shared/supportCheck.ts'
@@ -6635,7 +6635,13 @@ async function ideaQuestionsMode(apiKey: string, paragraph: string, audience: re
 }
 
 installUsageTracking()
-Deno.serve((req: Request) => trackUsage(() => handle(req)))
+// Ops audit: every request's model calls also go to ai_usage_ledger (fail-open).
+Deno.serve((req: Request) => trackUsage(() => withScriptLedger(() => handle(req), () => {
+  const url = Deno.env.get('SUPABASE_URL'); const key = serviceKeyFrom(Deno.env)
+  if (!url || !key) return null
+  const db = createClient(url, key)
+  return (rows) => db.from('ai_usage_ledger').insert(rows)
+})))
 
 async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -6675,6 +6681,10 @@ async function handle(req: Request): Promise<Response> {
     })()
     : (await userClient.auth.getUser()).data.user
   if (!user) return json({ error: 'Not authenticated' }, 401)
+  if (!isShadowRun) {
+    const testTraffic = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    setLedgerContext({ ownerId: user.id, traffic: testTraffic ? 'test' : 'real' })
+  }
 
   // Idea Mode questions: no credit, no build, its own light rate limit.
   const peek = await req.clone().json().catch(() => null) as { mode?: unknown; paragraph?: unknown } | null
