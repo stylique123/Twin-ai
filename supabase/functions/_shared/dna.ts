@@ -83,7 +83,12 @@ function actorFor(platform: Platform): string {
   }
 }
 
-const RESULTS = Number(Deno.env.get('DNA_POST_COUNT') ?? '20')
+// v6.4 (plan §30): a creator read asks for ~10–20 results, never more.
+export function creatorReadCount(v: string | undefined | null): number {
+  const n = Math.trunc(Number(String(v ?? '').trim()))
+  return v != null && String(v).trim() !== '' && Number.isFinite(n) && n >= 1 ? Math.min(n, 20) : 20
+}
+const RESULTS = creatorReadCount(Deno.env.get('DNA_POST_COUNT'))
 
 function actorInput(platform: Platform, handle: string): Record<string, unknown> {
   switch (platform) {
@@ -150,12 +155,21 @@ function actorInput(platform: Platform, handle: string): Record<string, unknown>
   }
 }
 
+/** Per-run Apify cap (maxTotalChargeUsd) for a creator read, default $0.25.
+ *  Mirrors apifyLimits().creatorRunMaxUsd in worker/src/apifyGuard.ts. */
+export function apifyRunMaxUsd(v: string | undefined | null): number {
+  const n = Number(String(v ?? '').trim())
+  return v != null && String(v).trim() !== '' && Number.isFinite(n) && n >= 0 ? n : 0.25
+}
+
 // Start an Apify actor run (async). Returns the runId to poll later.
 export async function startApifyRun(platform: Platform, handle: string): Promise<string> {
   const token = Deno.env.get('APIFY_TOKEN') ?? Deno.env.get('apify_api')
   if (!token) throw new Error('APIFY_TOKEN not configured')
   const actor = actorFor(platform)
-  const res = await fetch(`https://api.apify.com/v2/acts/${actor}/runs`, {
+  // Apify guardrails: every run carries a per-run cost cap Apify enforces.
+  const cap = apifyRunMaxUsd(Deno.env.get('APIFY_CREATOR_RUN_MAX_USD'))
+  const res = await fetch(`https://api.apify.com/v2/acts/${actor}/runs?maxTotalChargeUsd=${cap.toFixed(2)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(actorInput(platform, handle)),
