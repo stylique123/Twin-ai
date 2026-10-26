@@ -65,7 +65,7 @@ export function scrubPrivate<T>(v: T): T {
 
 /**
  * BLIND SET 3 T5 (owner 2026-10-06): her voice profile kept "move from a
- * home roastery to a commercial space" and "I have 26 days to move … to a
+ * home roastery to a shared kitchen unit" and "I have 19 days to move … to a
  * commercial space" — her private relocation story — because neither line
  * has a word on the list. The writer turned it into "signing a commercial
  * lease". A profile string that shares two distinctive words with any private

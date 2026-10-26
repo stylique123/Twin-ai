@@ -143,7 +143,7 @@ export function syncShotListSpokenText<T extends SyncedShotRow>(
   return { shots: out, resynced: resynced + appended, orphaned }
 }
 
-// ⚠️ "I HAVE 26 SIX DAYS" (Maya #18). A repair pass merged two spellings of
+// ⚠️ "I HAVE 23 THREE DAYS" (Maya #18). A repair pass merged two spellings of
 // one figure — the digits and the trailing spelled unit digit — and the script
 // line shipped that way while the hook option still read "twenty six days".
 // Deterministic, and deliberately narrow: only a number of 20+ followed by the
