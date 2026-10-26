@@ -85,22 +85,26 @@ export function run(cl, fixture, panel, labels) {
     if (labels) { out.hook_gate.v1_score = score(v1, labels); out.hook_gate.v2_score = score(v2, labels) }
   }
   if (typeof cl.polishCheckV2 === 'function') {
-    const rejected = [], reasons = {}
+    const rejected = [], reasons = {}, byId = {}
     let total = 0
     for (const c of fixture.cases) {
       const cr = byKey.get(c.creator); const items = itemsFor(cr)
       const products = (cr.products ?? []).map((p) => ({ id: p.key, name: p.name }))
-      const scope = { items, products, scopePid: null, styleNote: cr.voice?.style_note ?? '', samples: cr.voice?.samples ?? [] }
+      // The stored fixture keeps no source product per line: the scope falls back to
+      // the video's product (request n of the fictional panel, when it is hers).
+      const req = panel.requests?.[c.n]
+      const productId = req && req.creator === c.creator ? (req.product ?? null) : null
+      const scope = { items, products, productId, voiceText: [cr.voice?.style_note ?? '', ...(cr.voice?.samples ?? [])].join(' ') }
       ;(c.script ?? []).forEach((b, i) => {
         if (!isMiddle(b.section) || typeof b.line !== 'string' || !b.line.trim()) return
         const id = `P${panelOf(c.batch)}-${c.n} L${i + 1}`; total++
         // The pre-polish text is not stored: the line is checked against her items
         // and voice only (original = ''), so this is an upper bound on rejections.
         const r = cl.polishCheckV2('', b.line, scope)
-        if (!r.ok) { rejected.push(id); reasons[r.reason] = (reasons[r.reason] ?? 0) + 1 }
+        if (!r.ok) { rejected.push(id); byId[id] = r.reason; reasons[r.reason] = (reasons[r.reason] ?? 0) + 1 }
       })
     }
-    out.polish_check = { middle_lines: total, v2_rejected: rejected.length, v2_reasons: reasons, v2_ids: rejected }
+    out.polish_check = { middle_lines: total, v2_rejected: rejected.length, v2_reasons: reasons, v2_ids: rejected, v2_reason_by_id: byId }
     if (labels) out.polish_check.v2_score = score(rejected, labels)
   }
   return out
