@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "fictional-hand-poured-candles",
+  "niche": "hand-poured candles (fictional example pack)",
+  "creator_types": ["maker", "local_business"],
+  "fictional": true,
+  "angles": [
+    { "id": "pour-day", "title": "Pour day from start to finish", "why": "Watching the wax set gives viewers something to watch." },
+    { "id": "scent-test", "title": "Scent test with a friend", "why": "A reaction is proof the viewer can see." },
+    { "id": "wick-mistake", "title": "The wick mistake I made for a year", "why": "A confession opens a gap the body closes." }
+  ],
+  "question_bank": [
+    { "id": "q-burn-time", "question": "How long does one of your candles burn, in hours you have measured yourself?", "angle_id": "pour-day" },
+    { "id": "q-wax", "question": "Which wax do you pour, and why did you choose it?" },
+    { "id": "q-first-sale", "question": "Where did your first candle sale happen?", "angle_id": "wick-mistake" }
+  ],
+  "vocabulary": {
+    "use": ["pour", "cure time", "wick", "throw", "small batch"],
+    "avoid": ["toxin-free", "chemical-free"]
+  },
+  "banned_claims": [
+    { "pattern": "\\b(cures?|heals?|treats?)\\b", "reason": "health claim" },
+    { "pattern": "\\b(non-?toxic|toxin-?free|chemical-?free)\\b", "reason": "unverifiable safety claim" },
+    { "pattern": "\\bbest in the (world|country)\\b", "reason": "unprovable superlative" }
+  ],
+  "example_hooks": [
+    { "text": "Watch what happens when this candle hits hour forty.", "hook_family": "visual_reveal_verdict", "fictional": true },
+    { "text": "My neighbour smelled this one and asked to buy three.", "hook_family": "social_proof_result", "fictional": true },
+    { "text": "If your candles tunnel after one burn, look at the wick first.", "hook_family": "buyer_callout", "fictional": true }
+  ]
+}

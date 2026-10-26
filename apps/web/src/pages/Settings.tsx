@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import CreatorTypePicker from '../components/CreatorTypePicker'
 import { useNavigate } from 'react-router-dom'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus, Users, Copy, Link2, Info } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -9,7 +10,7 @@ import {
   setupAreas, setupSummary, panelAreas, type SetupArea, type SetupState, type SetupAction,
   readStoredBrief, savePreScriptBrief, suggestedCta, whatTwinLearned, heardCount, BASIS_LABEL, editTargetOf,
   SELLS_ANSWER_TO_TIES, sellsAnswerWithLibrary, paletteStanding, type LibraryProductView,
-  scannedAudienceFacts, audienceFactConfirmed,
+  scannedAudienceFacts, audienceFactConfirmed, saveVoiceProfile,
 } from '@twinai/shared'
 import { readProfileAnswers } from '../lib/profileAnswersRead'
 import { CreatorQuestionCard } from '../components/CreatorQuestionCard'
@@ -798,6 +799,19 @@ export default function Settings() {
               One question at a time. Only you can answer these — your videos cannot.
             </p>
             <CreatorQuestionCard voiceId={defaultVoiceId} />
+            {/* W12.2 creator type, behind VITE_CREATOR_TYPE_RULES (default off). */}
+            {activeVoice?.id && voiceProfile && (
+              <div className="mt-4">
+                <CreatorTypePicker
+                  value={voiceProfile.creator_type}
+                  onChange={(t) => {
+                    const next = { ...voiceProfile, creator_type: t }
+                    setVoiceProfile(next)
+                    void saveVoiceProfile(activeVoice.id, next).catch(() => setVoiceProfile(voiceProfile))
+                  }}
+                />
+              </div>
+            )}
             {/* THIS IS HOW YOU SOUND (plan v5.1 item L): trial user only; null for every other account. */}
             <VoiceCardPanel userId={profile?.id} />
           </section>

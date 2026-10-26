@@ -279,6 +279,11 @@ const SOURCES = [
   // Craft + hook judges (craft rubric v1): deterministic, unpaid; best-of-N on the hedge drafts (BEST_OF_N_JUDGE, default off).
   ['packages/shared/src/script/hookJudge.ts', 'supabase/functions/_shared/hookJudge.ts'],
   ['packages/shared/src/script/craftJudge.ts', 'supabase/functions/_shared/craftJudge.ts'],
+  // W12.2 creator type rules and niche packs (CREATOR_TYPE_RULES, NICHE_PACKS; both default off).
+  // The rules JSON is rendered as a TS default export so the edge needs no JSON import.
+  ['packages/shared/src/creator/creatorTypeRules.json', 'supabase/functions/_shared/creatorTypeRulesData.ts'],
+  ['packages/shared/src/creator/writerGuidance.ts', 'supabase/functions/_shared/writerGuidance.ts'],
+  ['packages/shared/src/creator/nichePackRegistry.ts', 'supabase/functions/_shared/nichePackRegistry.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
@@ -292,7 +297,8 @@ const isWorkerDest = (to) => to.startsWith('worker/')
 const stripShebang = (src) => src.replace(/^#![^\n]*\n/, '')
 
 const render = (from, src0, to = '') => {
-  const src = stripShebang(src0)
+  // A JSON data source becomes a TS module whose default export is the data.
+  const src = from.endsWith('.json') ? `export default ${src0.trim()}\n` : stripShebang(src0)
   // ⚠️⚠️ THE WORKER IS NODE, NOT DENO, AND THE DEFAULT REWRITE IS BACKWARDS FOR
   // IT. Every rule below turns a relative specifier INTO `.ts`, which Node's ESM
   // resolver rejects outright. A worker copy therefore takes the opposite
