@@ -807,8 +807,8 @@ function BuildingStep({
         } else if (Date.now() - startedAt > MAX_WAIT_MS) {
           if (timer.current) clearInterval(timer.current)
           // A timeout tells us nothing about their account, so it must not
-          // imply one. UNKNOWN says we are unsure and it is worth another try.
-          const f = scanFailure('UNKNOWN')
+          // imply one. SCAN_TIMED_OUT names it as ours and worth another try.
+          const f = scanFailure('SCAN_TIMED_OUT')
           setFailure(f)
           setErr(f.message)
           onScanDead()

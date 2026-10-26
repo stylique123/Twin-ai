@@ -19,6 +19,8 @@ export function scanFailureCause(stage: ScanStage, err?: unknown): string {
   if (stage === 'empty') return 'UNKNOWN'
   const m = err instanceof Error ? err.message : String(err ?? '')
   if (/RESOURCE_EXHAUSTED|\bquota\b/i.test(m)) return 'SERVICE_QUOTA'
+  // A model call that ran out of time is not a broken scraper.
+  if (stage === 'synth' && /timed? ?out|timeout|aborted|deadline/i.test(m)) return 'SCAN_TIMED_OUT'
   const cls = classifyTranscriptFailure(err)
   if (cls === 'rate_limited') return 'RATE_LIMITED'
   if (cls === 'billing' || cls === 'credentials') return 'SERVICE_QUOTA'
