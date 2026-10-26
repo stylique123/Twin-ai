@@ -5,7 +5,7 @@
 // this fails. Orphan rows are counted and may only shrink (ceiling below).
 import { readFileSync } from 'node:fs'
 
-const ORPHAN_CEILING = 3
+const ORPHAN_CEILING = 2
 
 export function checkRow(row, src) {
   const errs = []

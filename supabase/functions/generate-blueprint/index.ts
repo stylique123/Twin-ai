@@ -71,7 +71,7 @@ import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
 import { pickAngleCards, angleCardsRecord, ANGLE_SPECS, pickAngles, anglePickRecord, type AngleMaterial } from '../_shared/angleFit.ts'
-import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, type OutsideItem } from '../_shared/questionUsefulness.ts'
+import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, PROBLEM_QUESTION_KEY, type OutsideItem } from '../_shared/questionUsefulness.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -115,7 +115,7 @@ import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
-import { completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY } from '../_shared/spineComplete.ts'
+import { completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY, isProblemLine } from '../_shared/spineComplete.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -6933,7 +6933,7 @@ async function handle(req: Request): Promise<Response> {
         return q
       })(),
       pid ? sb.from('product_entities').select('id,name,offer').eq('id', pid).eq('owner_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
-      sb.from('question_asks').select('slot_id, outcome').eq('owner_id', user.id).eq('option_id', 'mn').limit(500),
+      sb.from('question_asks').select('slot_id, outcome, wording').eq('owner_id', user.id).eq('option_id', 'mn').limit(500),
       sb.from('brand_voices').select('profile').eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     const material: AngleMaterial[] = []
@@ -6961,6 +6961,8 @@ async function handle(req: Request): Promise<Response> {
     let questions: Array<{ ask_id: string | null; key: string; piece: string; kind: string; source: string; text: string; skippable: true }> = []
     if (picked) {
       const rows = (hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown }>
+      const ladderOn = Deno.env.get('ANGLE_LADDER_ON') === '1'
+      const problemQOn = Deno.env.get('ANGLE_PROBLEM_Q_ON') === '1'
       const plan = planQuestionsForAngle({
         angle: picked, angleNeeds: ANGLE_SPECS[picked].needs, onFile: [...new Set(material.map((m) => m.slot))],
         hasProduct: !!p, entityKey: p ? `product:${p.id}` : 'none',
@@ -6968,6 +6970,19 @@ async function handle(req: Request): Promise<Response> {
         skippedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler').map((r) => String(r.slot_id)),
         profileAskedEver: rows.some((r) => r.slot_id === 'mn:profile'),
         profileMissing: !String(prof?.audience ?? '').trim(),
+        // Story ladder (#1148) and the pre-writing problem question: both OFF
+        // unless ANGLE_LADDER_ON / ANGLE_PROBLEM_Q_ON is '1'. Off = unchanged.
+        ...(ladderOn ? (() => {
+          const st = material.find((m) => m.slot === 'story' && (m.source ?? 'her_material') === 'her_material')
+          const sid = String(st?.id ?? 'story').toLowerCase().replace(/[^a-z0-9_-]+/g, '_').slice(0, 40) || 'x'
+          const have = rows.filter((r) => r.outcome === 'answered' && String(r.slot_id).startsWith(`mn:ladder:${sid}:`))
+            .map((r) => Number(String(r.slot_id).split(':').pop())).filter((n) => n >= 1 && n <= 6) as Array<1 | 2 | 3 | 4 | 5 | 6>
+          return {
+            ladder: { on: true, storyId: st?.id ?? 'story', anchor: st?.text ?? '', have, topic: String(p?.name ?? '').trim().slice(0, 60), herWords: material.filter((m) => (m.source ?? 'her_material') === 'her_material').map((m) => m.text).join('\n').slice(0, 4000) },
+            askedTexts: rows.map((r) => String((r as { wording?: unknown }).wording ?? '')).filter((w) => w && w !== '-').slice(-50),
+          }
+        })() : {}),
+        ...(problemQOn ? { problem: { on: true, onFile: rows.some((r) => r.slot_id === PROBLEM_QUESTION_KEY && r.outcome === 'answered') || material.some((m) => isProblemLine(m.text)) } } : {}),
       })
       for (const q of plan) {
         const { data: ins } = await sb.from('question_asks').insert({ owner_id: user.id, entity_key: p ? `product:${p.id}` : 'none', option_id: 'mn', slot_id: q.key, angle: 'first', wording: q.text })
@@ -17536,7 +17551,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // neither stored nor used), is stored as her fact through the same
         // row the angle questions use (answerFactRow, source 'asked'), and is
         // placed after the hook word for word. Never an invented problem line.
-        const rawProblem = (body.readiness_answers as Record<string, unknown> | undefined)?.[SPINE_PROBLEM_KEY]
+        // With ANGLE_PROBLEM_Q_ON, her pre-writing answer (mn_answers['mn:problem']) counts too.
+        const mnProblem = Deno.env.get('ANGLE_PROBLEM_Q_ON') === '1' ? ((body as { mn_answers?: Record<string, unknown> }).mn_answers ?? {})[PROBLEM_QUESTION_KEY] : undefined
+        const rawProblem = (body.readiness_answers as Record<string, unknown> | undefined)?.[SPINE_PROBLEM_KEY] ?? mnProblem
         let problemAnswer = problemAnswerItem(rawProblem)
         if (problemAnswer) {
           const g = gateAnswer(problemAnswer.text, {}, { known: await knownForGate(admin, ownerId) })

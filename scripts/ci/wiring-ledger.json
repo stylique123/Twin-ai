@@ -117,9 +117,10 @@
     },
     {
       "id": "4.3a",
-      "feature": "Question ladder",
-      "status": "orphan",
-      "symbol": "questionLadder"
+      "feature": "Question ladder (angle questions, ANGLE_LADDER_ON, default off)",
+      "consumer": "packages/shared/src/script/questionUsefulness.ts",
+      "symbol": "validateLadderQuestion",
+      "mustContain": ["nextBeat(", "ladderTemplate("]
     },
     {
       "id": "4.3b",
