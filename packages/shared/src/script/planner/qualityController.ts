@@ -60,10 +60,25 @@ export const QC_BLOCKING_CHECKS = ['hook_payoff'] as const
 export const QC_STORY_KEY = 'qc.story'
 export const QC_PRODUCT_KEY = 'qc.product_fact'
 export const QC_QUESTIONS = {
-  story: { scope: 'script' as const, kind: 'detail' as const, text: 'What happened to you, or to a customer, that shows this? One real moment, in your words.', writes_to: QC_STORY_KEY },
-  product_fact: { scope: 'script' as const, kind: 'detail' as const, text: 'What is one plain fact about this product a viewer should know (what it is, what is in it, or the price)?', writes_to: QC_PRODUCT_KEY },
+  story: { scope: 'script' as const, kind: 'detail' as const, text: 'What happened to you, or to a customer, that shows this? One real moment, in your words.', writes_to: QC_STORY_KEY, key: 'mn:qc:story', piece: 'story' },
+  product_fact: { scope: 'script' as const, kind: 'detail' as const, text: 'What is one plain fact about this product a viewer should know (what it is, what is in it, or the price)?', writes_to: QC_PRODUCT_KEY, key: 'mn:qc:product_fact', piece: 'product_slot' },
 }
 export type QcQuestion = typeof QC_QUESTIONS['story'] | typeof QC_QUESTIONS['product_fact']
+
+/** Her answers to the QC's thin-material question in this request's
+ *  readiness_answers, as angle_answer requests (key 'mn:qc:*', piece). The edge
+ *  saves each through the EXISTING angle_answer store (answer gate,
+ *  answerFactRow, source 'asked'), so the next request's ledger carries it as
+ *  her fact and the QC neither asks again nor pads. Blank answers are dropped. */
+export function qcAnswersToStore(answers: Record<string, unknown> | null | undefined): Array<{ key: string; piece: string; answer: string; product: boolean }> {
+  const out: Array<{ key: string; piece: string; answer: string; product: boolean }> = []
+  for (const q of [QC_QUESTIONS.story, QC_QUESTIONS.product_fact]) {
+    const a = answers?.[q.writes_to]
+    if (typeof a !== 'string' || !a.trim()) continue
+    out.push({ key: q.key, piece: q.piece, answer: a.trim().slice(0, 2000), product: q.writes_to === QC_PRODUCT_KEY })
+  }
+  return out
+}
 
 export interface QcLine { section?: unknown; line?: unknown; [k: string]: unknown }
 
