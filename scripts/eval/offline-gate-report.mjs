@@ -8,6 +8,7 @@
 // fixtures + same labels → same output.
 //
 //   node scripts/eval/offline-gate-report.mjs [--labels=/private/labels.csv] [--json]
+//   node scripts/eval/offline-gate-report.mjs --labeled=/private/labeled.csv [--json]
 //
 // Item ids:  hooks  P<panel>-<n> H<k>   (k = 1-based position in hook_options)
 //            lines  P<panel>-<n> L<i>   (i = 1-based position in the stored script)
@@ -15,6 +16,12 @@
 // INVENTED or TRUE (other labels are ignored). With labels it prints recall
 // (INVENTED caught / INVENTED) and the false-block rate (TRUE blocked / TRUE),
 // with the ids. Without labels it prints what each gate flags, by id.
+//
+// --labeled: a PRIVATE CSV (never committed) of advisor-labelled items with header
+// `id,panel,creator,request_n,kind,pos,last,text,label` (kind hook|line, label
+// INVENTED|TRUE). The gates run on each row's text with that fictional creator's
+// items; lines run only when they are middle lines (pos > 1 and last != 1). It
+// prints, per panel and in total, recall and false-block rate with ids (no text).
 //
 // Each gate is run only when the checked-out branch has it: hookClaimRiskV2 is on
 // claude/hook-gate-v2, polishCheckV2 is on claude/polish-voice-v2.
@@ -110,6 +117,54 @@ export function run(cl, fixture, panel, labels) {
   return out
 }
 
+export function parseCsv(text) {
+  const rows = []
+  let r = [], c = '', q = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { c += '"'; i++ } else q = false } else c += ch }
+    else if (ch === '"') q = true
+    else if (ch === ',') { r.push(c); c = '' }
+    else if (ch === '\n') { r.push(c); rows.push(r); r = []; c = '' }
+    else if (ch !== '\r') c += ch
+  }
+  if (c || r.length) { r.push(c); rows.push(r) }
+  const head = rows.shift() ?? []
+  return rows.filter((x) => x.length >= head.length).map((x) => Object.fromEntries(head.map((k, i) => [k, x[i]])))
+}
+
+export function runLabeled(cl, rows, panel) {
+  const byKey = new Map(panel.creators.map((c) => [c.key, c]))
+  const groups = {}
+  const add = (gate, p, id, label, flagged) => {
+    for (const g of [p, 'total']) {
+      const x = (groups[gate] ??= {})[g] ??= { labels: new Map(), flagged: [] }
+      x.labels.set(id, label); if (flagged) x.flagged.push(id)
+    }
+  }
+  for (const r of rows) {
+    const cr = byKey.get(r.creator); if (!cr) continue
+    const items = itemsFor(cr)
+    const products = (cr.products ?? []).map((p) => ({ id: p.key, name: p.name }))
+    const p = `P${r.panel}`
+    if (r.kind === 'hook') {
+      if (typeof cl.hookClaimRisk === 'function') add('hook_gate_v1', p, r.id, r.label, !!cl.hookClaimRisk(r.text, items, products))
+      if (typeof cl.hookClaimRiskV2 === 'function') add('hook_gate_v2', p, r.id, r.label, !!cl.hookClaimRiskV2(r.text, items, products))
+    } else if (r.kind === 'line' && typeof cl.polishCheckV2 === 'function' && +r.pos > 1 && String(r.last) !== '1') {
+      const req = panel.requests?.[+r.request_n]
+      const productId = req && req.creator === r.creator ? (req.product ?? null) : null
+      const scope = { items, products, productId, voiceText: [cr.voice?.style_note ?? '', ...(cr.voice?.samples ?? [])].join(' ') }
+      add('polish_check_v2', p, r.id, r.label, !cl.polishCheckV2('', r.text, scope).ok)
+    }
+  }
+  const out = {}
+  for (const [gate, gs] of Object.entries(groups)) {
+    out[gate] = {}
+    for (const g of Object.keys(gs).sort((a, b) => (a === 'total') - (b === 'total') || a.localeCompare(b, 'en', { numeric: true }))) out[gate][g] = score(gs[g].flagged, gs[g].labels)
+  }
+  return out
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const dir = mkdtempSync(join(tmpdir(), 'offline-gate-'))
   try {
@@ -118,8 +173,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     const cl = await import(pathToFileURL(outFile).href)
     const fixture = JSON.parse(readFileSync(join(root, 'scripts/ci/fixtures/replay_panel_10_11.json'), 'utf8'))
     const panel = JSON.parse(readFileSync(join(root, 'scripts/ops/fixtures/fictional-panel.json'), 'utf8'))
-    const lp = arg('labels')
-    const res = run(cl, fixture, panel, lp ? readLabels(lp) : null)
+    const lp = arg('labels'), ld = arg('labeled')
+    const res = ld ? runLabeled(cl, parseCsv(readFileSync(ld, 'utf8')), panel) : run(cl, fixture, panel, lp ? readLabels(lp) : null)
     console.log(JSON.stringify(res, null, process.argv.includes('--json') ? 0 : 1))
   } finally { rmSync(dir, { recursive: true, force: true }) }
 }
