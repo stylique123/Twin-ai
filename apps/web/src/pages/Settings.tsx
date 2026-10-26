@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus, Users, Copy, Link2, Info } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { PrivacyNotice } from '../components/PrivacyNotice'
 import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import {
@@ -1280,6 +1281,9 @@ export default function Settings() {
         </Reveal>
 
         )}
+
+        {/* Privacy notice, consent and deletion request: renders nothing unless VITE_PRIVACY_NOTICE=1. */}
+        {tab === 'account' && <PrivacyNotice ownerId={profile?.id} />}
 
         {/* Sign out */}
         {tab === 'account' && (
