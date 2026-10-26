@@ -5,6 +5,7 @@ import {
   usablePainMap, painEntryProblems, painUseAllowed, painItemsForQuestions, painMapPromptBlock, redditScanV2Allowed,
   pearson, spearman, personaMayInfluence, selectWithPersonas, personaMetadata, PERSONA_MIN_CORRELATION,
   ExtrasLedger, estimatePanelBudget, budgetGate, costByCallerAndModel, EXTRAS, type AccountKind,
+  buildRealisticContext, withRealisticContext, readFictionalSnapshot,
 } from '../realisticPanel.ts'
 import { readExtractedFact, usableFacts } from '../../productExtraction.ts'
 
@@ -214,5 +215,67 @@ describe('extras ledger and guardrails', () => {
     expect(r[0]).toEqual({ provider: 'gemini', caller: 'writer', model: 'gemini-2.5-flash', usd: 0.03, rows: 2 })
     expect(r.find((x) => x.provider === 'apify')?.model).toBe('cheapactor')
     expect(r.find((x) => x.caller.startsWith('judge'))).toMatchObject({ caller: 'judgebx/b', model: 'unknown', usd: 0 })
+  })
+})
+
+describe('writer context in full mode (pain map + extras)', () => {
+  const pain = usablePainMap(fictionalPain.maps[0], { decision: full, today: TODAY })
+  const extras = {
+    outside_knowledge: ['A made-up general fact', 'Another made-up fact', 'see https://example.com/x', 'ask @someone'],
+    audience_comments: { niche: ['a niche question', 'shared question'], own: ['her own audience question', 'shared question'] },
+    niche_notes: ['A made-up niche note'],
+  }
+  const BRIEF = 'WRITER BRIEF\nline two'
+  it('the prompt is BYTE-IDENTICAL for a real account, in test/checkpoint mode, and with every extra off', () => {
+    const offAll = resolveCostMode({ account: 'panel', requested: 'full', flags: Object.fromEntries(EXTRAS.map((e) => [e, 'off'])) })
+    for (const decision of [resolveCostMode({ account: 'real', requested: 'full' }), resolveCostMode({ account: 'panel', requested: 'test' }), resolveCostMode({ account: 'panel', requested: 'checkpoint' }), offAll]) {
+      const ctx = buildRealisticContext({ decision, pain, extras })
+      expect(ctx.block).toBe('')
+      expect(Object.values(ctx.used).every((n) => n === 0)).toBe(true)
+      expect(withRealisticContext(BRIEF, ctx)).toBe(BRIEF)
+    }
+    expect(withRealisticContext(BRIEF, buildRealisticContext({ decision: full, pain: null, extras: null }))).toBe(BRIEF)
+  })
+  it('full mode: the pain map (hooks, reality check) and each extra reach the writer under their use rules', () => {
+    const ctx = buildRealisticContext({ decision: full, pain, extras })
+    expect(withRealisticContext(BRIEF, ctx).startsWith(`${BRIEF}\n\n`)).toBe(true)
+    expect(ctx.block).toMatch(/AUDIENCE PAIN TOPICS/)
+    expect(ctx.block).toMatch(/reality check/)
+    expect(ctx.block).toMatch(/NOT her experience/)
+    expect(ctx.block).toMatch(/never proof/)
+    expect(ctx.used).toEqual({ pain_map: 3, outside_knowledge: 2, audience_comments: 3, niche_notes: 1 })
+    expect(ctx.block).not.toMatch(/https?:|@someone/)
+  })
+  it('her own audience comes first; the niche fills only what is left, without repeats', () => {
+    const lines = buildRealisticContext({ decision: full, extras }).block.split('\n').filter((l) => l.includes('audience]'))
+    expect(lines).toEqual(['- [her audience] her own audience question', '- [her audience] shared question', '- [niche audience] a niche question'])
+  })
+  it('each extra is off by its own flag, and the ledger records counts only', () => {
+    const noOutside = resolveCostMode({ account: 'test', requested: 'full', flags: { outside_knowledge: 'off' } })
+    const ledger = new ExtrasLedger(noOutside)
+    const ctx = buildRealisticContext({ decision: noOutside, pain, extras, ledger })
+    expect(ctx.used.outside_knowledge).toBe(0)
+    expect(ctx.block).not.toMatch(/OUTSIDE AND NICHE/)
+    expect(ledger.report().niche_notes.uses).toBe(1)
+    expect(ledger.report().outside_knowledge.uses).toBe(0)
+  })
+  it('the edge builds the writer brief through withRealisticContext, with the account kind from identity', () => {
+    const edge = readFileSync(new URL('supabase/functions/generate-blueprint/index.ts', ROOT), 'utf8')
+    // Both the first brief and the retry brief go through buildWriterBrief, which wraps the whole brief.
+    expect(edge).toContain('const buildWriterBrief = (hookRule: string) => withRealisticContext(`')
+    expect(edge).toMatch(/what to point the camera at\.`\n    , realisticCtx\)\n/)
+    expect(edge).toContain('const userPrompt = buildWriterBrief(familyHookRule)')
+    expect(edge).toContain("resolveCostMode({ account: isHeartbeat ? 'test' : 'real', requested: realisticReq.cost_mode })")
+  })
+})
+
+describe('offline product path: saved FICTIONAL snapshots only', () => {
+  const page = '<!doctype html><html lang="en" data-fictional="true"><head><title>Made-up Mug Shop (fictional)</title><meta name="description" content="Invented page for tests."></head><body><h1>A hand-thrown mug, loved by 5,000 people</h1><p data-price>$34</p><a href="https://x.example/" data-cta>Add to basket</a></body></html>'
+  it('reads only pages marked fictional', () => {
+    expect(readFictionalSnapshot(page.replace(' data-fictional="true"', ''))).toEqual({ ok: false, reason: 'not_marked_fictional', facts: [] })
+  })
+  it('a price, any figure, praise or a comparison is never speakable', () => {
+    const by = Object.fromEntries(readFictionalSnapshot(page).facts.map((f) => [f.field, f.speakable]))
+    expect(by).toEqual({ name: true, description: true, headline: false, price: false, cta: true })
   })
 })

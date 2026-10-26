@@ -161,6 +161,37 @@ export function afterFailedPageRead(): { nameSearch: false; useExtracted: false 
  */
 export const NEVER_SPOKEN_UNCONFIRMED: readonly string[] = ['proof_number', 'testimonial', 'comparison']
 
+/**
+ * The offline read of a SAVED snapshot (Audit Set v2 pages). Only pages marked
+ * FICTIONAL (`data-fictional="true"` on <html>) are read; anything else is
+ * refused, so a real third-party page can never enter this path. Extraction is
+ * deterministic (title, meta description, h1, price, call-to-action text), and
+ * every field carries whether it may be spoken unconfirmed: a price, any
+ * figure, a testimonial or a comparison never may.
+ */
+export interface SnapshotFact { field: 'name' | 'description' | 'headline' | 'price' | 'cta'; value: string; speakable: boolean }
+const FIGURE = /[$£€¥]\s?\d|\d+(?:[.,]\d+)?\s?(?:%|x\b|percent|users|customers|people|reviews|stars)|\b\d{3,}\b/i
+const PRAISE_OR_RIVAL = /\b(best|better than|#1|number one|loved by|rated|review|testimonial|vs\.?|versus|cheaper than)\b/i
+function strip(s: string): string {
+  return s.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim()
+}
+export function readFictionalSnapshot(html: string): { ok: boolean; reason: 'read' | 'not_marked_fictional'; facts: SnapshotFact[] } {
+  if (!/<html[^>]*\bdata-fictional=["']true["']/i.test(html)) return { ok: false, reason: 'not_marked_fictional', facts: [] }
+  const facts: SnapshotFact[] = []
+  const add = (field: SnapshotFact['field'], raw: string | undefined) => {
+    const value = strip(raw ?? '')
+    if (!value || value.length > 200) return
+    const risky = field === 'price' || FIGURE.test(value) || PRAISE_OR_RIVAL.test(value)
+    facts.push({ field, value, speakable: !risky })
+  }
+  add('name', /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1])
+  add('description', /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i.exec(html)?.[1])
+  add('headline', /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1])
+  add('price', /<[^>]+data-price[^>]*>([\s\S]*?)<\//i.exec(html)?.[1])
+  for (const m of html.matchAll(/<a[^>]+data-cta[^>]*>([\s\S]*?)<\/a>/gi)) add('cta', m[1])
+  return { ok: true, reason: 'read', facts }
+}
+
 // ─── 2. THE REDDIT PAIN MAP ────────────────────────────────────────────────
 
 export const PAIN_MIN_THREADS = 5

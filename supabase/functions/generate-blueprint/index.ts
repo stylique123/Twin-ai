@@ -89,7 +89,7 @@ import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerH
 import { bestOfNOn, pickEligible, checkCandidate, keepWriterOverPlanB, blueprintLines, BEST_OF_N_GRACE_MS, type BestOfNFlagCtx, type CandidateCheck } from '../_shared/craftJudge.ts'
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
-import { resolveCostMode, usablePainMap, painItemsForQuestions } from '../_shared/realisticPanel.ts'
+import { resolveCostMode, usablePainMap, painItemsForQuestions, buildRealisticContext, withRealisticContext, type PanelExtras, type RealisticContext } from '../_shared/realisticPanel.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
@@ -7130,6 +7130,8 @@ async function handle(req: Request): Promise<Response> {
   // for one request (`trial_off: true`) so enforced and plain scripts are
   // compared from the same facts. Real creators never have the trial.
   let trialOn = isHeartbeat
+  // Realistic panel mode use report (counts only), recorded on the blueprint when set.
+  let realisticUse: RealisticContext | null = null
   // SOFTWARE (trial 2026-10-08): the ~25s target for app/software/course/community videos, set once the product is known.
   let softwareTargetSec: number | null = null
   const reqStartedAt = Date.now()
@@ -12787,7 +12789,18 @@ This is the video's position. Every field below must serve it. If the reference'
     // template skeleton (the slow part); the candidate block is a few lines.
     const familyHookRuleRetry = familyHookRulePlain + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
     const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
-    const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
+    // ⚖️ REALISTIC PANEL MODE (plan v6.8 §34): test/panel accounts only (isHeartbeat covers both,
+    // by identity). Real creators: the decision never applies, the block is empty and the brief
+    // is the same string, byte for byte (the retry brief too). Hooks and the reality check read the pain block.
+    const realisticReq = body as { cost_mode?: unknown; panel_pain_map?: unknown; panel_extras?: unknown }
+    const realisticDecision = resolveCostMode({ account: isHeartbeat ? 'test' : 'real', requested: realisticReq.cost_mode })
+    const realisticCtx = buildRealisticContext({
+      decision: realisticDecision,
+      pain: usablePainMap(realisticReq.panel_pain_map, { decision: realisticDecision, today: new Date().toISOString().slice(0, 10) }),
+      extras: realisticReq.panel_extras as PanelExtras | null,
+    })
+    realisticUse = realisticCtx
+    const buildWriterBrief = (hookRule: string) => withRealisticContext(`${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
 
@@ -12812,6 +12825,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.
 - shot_list "shot" is the shot's NAME and it is what the creator reads as the heading on the card they are holding their phone against. Write what the shot IS, in three to six plain words — "Opening line, straight to camera", "The still for the thumbnail", "Close on your hands". NEVER write its position in the list: "1", "2", "Shot 3" are not names, and a card headed with a number tells the creator nothing about what to point the camera at.`
+    , realisticCtx)
     const userPrompt = buildWriterBrief(familyHookRule)
     // ⚖️ TEMPLATE RETRY FALLBACK: trial only, and only when a template block
     // was added. The retry gets today's brief, byte for byte without the block.
@@ -17466,6 +17480,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     const panelArmReq = (body as { panel_arm?: unknown }).panel_arm
     if (isHeartbeat && (panelArmReq === 'writer' || panelArmReq === 'plan_b') && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).panel_arm = panelArmReq
     if (refillArm() && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).refill_arm = refillArm()
+    if (isHeartbeat && realisticUse?.block && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).realistic_use = realisticUse.used
     const planBTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
     if (planBOn && planBTarget && blueprint && typeof blueprint === 'object') {
       try {

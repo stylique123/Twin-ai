@@ -118,7 +118,7 @@
         { "kind": "opinion", "text": "I think, um, most small shops don't actually need a help desk, it's more like, they need fewer repeat emails, so yeah, I mean that's kind of the whole point of FlowDesk honestly.", "fictional": true, "messy": true }
       ],
       "products": [
-        { "key": "flowdesk", "name": "FlowDesk", "type": "SAAS", "relationship": "OWN_PRODUCT", "offer": "FlowDesk free 14-day trial, link in bio",
+        { "key": "flowdesk", "name": "FlowDesk", "product_url": "https://example.com/fictional/audit-set-v2/fictional-invoice-app", "audit_snapshot": "fictional-invoice-app", "type": "SAAS", "relationship": "OWN_PRODUCT", "offer": "FlowDesk free 14-day trial, link in bio",
           "facts": [
             { "field": "price", "value": "$12 per month for up to three teammates" },
             { "field": "includes", "value": "A shared inbox that turns each email into a card on a board" },
@@ -158,7 +158,7 @@
         { "kind": "framework", "text": "So the warm-up, um, it's like five minutes, march in place, some hip circles, a few hinges with the broomstick, oh and arm swings, I always forget the arm swings, so yeah, then you start.", "fictional": true, "messy": true }
       ],
       "products": [
-        { "key": "starter", "name": "Home Strength Starter", "type": "SERVICE", "relationship": "OWN_SERVICE", "offer": "Book a free 15-minute intro call, link in bio",
+        { "key": "starter", "name": "Home Strength Starter", "product_url": "https://example.com/fictional/audit-set-v2/fictional-coach-landing", "audit_snapshot": "fictional-coach-landing", "type": "SERVICE", "relationship": "OWN_SERVICE", "offer": "Book a free 15-minute intro call, link in bio",
           "facts": [
             { "field": "price", "value": "$90 per month" },
             { "field": "includes", "value": "A weekly plan built around the equipment you already have" },
@@ -193,7 +193,7 @@
         { "kind": "opinion", "text": "I think a bare clay foot is honest, mind you, it shows what the mug is made of.", "fictional": true }
       ],
       "products": [
-        { "key": "mug", "name": "Tide Mug", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Tide Mug, next batch drops in the shop, link in bio",
+        { "key": "mug", "name": "Tide Mug", "product_url": "https://example.com/fictional/audit-set-v2/fictional-ceramic-mug", "audit_snapshot": "fictional-ceramic-mug", "type": "PHYSICAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Tide Mug, next batch drops in the shop, link in bio",
           "facts": [
             { "field": "price", "value": "$38 per mug" },
             { "field": "size", "value": "Holds about 12 oz" },
@@ -235,7 +235,7 @@
         { "kind": "opinion", "text": "Real talk, I think an AI tool that admits it does not know is worth more than one that always answers.", "fictional": true }
       ],
       "products": [
-        { "key": "newsletter", "name": "Signal Daily Newsletter", "type": "DIGITAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Subscribe to the free newsletter, link in bio",
+        { "key": "newsletter", "name": "Signal Daily Newsletter", "product_url": "https://example.com/fictional/audit-set-v2/fictional-planner-templates", "audit_snapshot": "fictional-planner-templates", "type": "DIGITAL_PRODUCT", "relationship": "OWN_PRODUCT", "offer": "Subscribe to the free newsletter, link in bio",
           "facts": [
             { "field": "price", "value": "Free" },
             { "field": "includes", "value": "One email every weekday with one AI tool tested" },

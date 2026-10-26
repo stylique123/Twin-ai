@@ -2,7 +2,9 @@
 //   node scripts/ops/realisticPanel.selftest.mjs
 // No network, no database, no model calls.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { panelScenarios } from './panelRun.mjs'
 import { panelEmail } from './seedFictionalPanel.mjs'
 import { realisticPlan, planSummary, realisticBody } from './realisticPanelPlan.mjs'
@@ -26,7 +28,23 @@ assert.equal(sum.budget_gate, 'within_cap')
 assert.equal(sum.reddit_scan_v2, 'owner_flag_off')
 assert.equal(sum.pain_map.fictional, true)
 assert.ok(sum.pain_map.entries > 0)
-assert.equal(sum.product_pages.planned, 0, 'no fixture carries a product URL yet, so nothing is read')
+// Product path, offline end to end: fixture product_url -> policy -> saved FICTIONAL snapshot -> facts -> trust.
+const withUrl = fixture.creators.flatMap((c) => c.products.filter((p) => p.product_url))
+assert.equal(withUrl.length, 4)
+for (const p of withUrl) assert.match(p.product_url, /^https:\/\/example\.com\/fictional\/audit-set-v2\/fictional-[a-z-]+$/)
+const snapDir = mkdtempSync(join(tmpdir(), 'rp-snap-'))
+const page = (t) => `<!doctype html><html data-fictional="true"><head><title>${t} (fictional)</title><meta name="description" content="Invented page."></head><body><h1>Made by hand</h1><p data-price>$20</p><a href="https://x.example/" data-cta>Buy now</a></body></html>`
+for (const p of withUrl) writeFileSync(join(snapDir, `${p.audit_snapshot}.html`), page(p.audit_snapshot))
+writeFileSync(join(snapDir, 'fictional-planner-templates.html'), '<html><title>unmarked</title></html>')
+const prod = realisticPlan({ fixture, list, env: { COST_MODE: 'full', PANEL_BUDGET_USD: '10', REALISTIC_SNAPSHOT_DIR: snapDir }, today: TODAY }).pages
+assert.equal(prod.planned, 4)
+assert.equal(prod.read, 3, 'the page not marked fictional is refused')
+assert.equal(prod.refused.not_marked_fictional, 1)
+assert.deepEqual(prod.facts, { speakable: 12, held_back: 3 }, 'every price is held back')
+// Without saved snapshots, offline: nothing is read and nothing falls back.
+const none = realisticPlan({ fixture, list, env: { COST_MODE: 'full', PANEL_BUDGET_USD: '10', REALISTIC_SNAPSHOT_DIR: join(snapDir, 'missing') }, today: TODAY }).pages
+assert.equal(none.read, 0)
+assert.equal(none.refused.no_snapshot_offline, 4)
 const coffee = list.find((sc) => sc.creator === 'mayas-coffee')
 const body = realisticBody(full, coffee)
 assert.equal(body.cost_mode, 'full')
@@ -34,6 +52,9 @@ assert.equal(body.panel_pain_map.fictional, true)
 for (const e of body.panel_pain_map.entries) assert.ok(e.thread_count >= 5 && e.community_count >= 2)
 const comedy = list.find((sc) => sc.creator === 'pip-sprocket')
 assert.equal(realisticBody(full, comedy).panel_pain_map, undefined, 'no map for a niche without one')
+assert.deepEqual(Object.keys(body.panel_extras).sort(), ['audience_comments', 'niche_notes', 'outside_knowledge'])
+const noNotes = realisticPlan({ fixture, list, env: { COST_MODE: 'full', PANEL_BUDGET_USD: '10', REALISTIC_NICHE_NOTES: 'off' }, today: TODAY })
+assert.equal(realisticBody(noNotes, coffee).panel_extras.niche_notes, undefined, 'an extra off by its flag is not sent')
 // The summary printed before the run is counts and dollars only: no topic text.
 assert.doesNotMatch(JSON.stringify(sum), /beans|roast|glaze/i)
 

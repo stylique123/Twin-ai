@@ -101,6 +101,27 @@ function afterFailedPageRead() {
   return { nameSearch: false, useExtracted: false };
 }
 const NEVER_SPOKEN_UNCONFIRMED = ["proof_number", "testimonial", "comparison"];
+const FIGURE = /[$£€¥]\s?\d|\d+(?:[.,]\d+)?\s?(?:%|x\b|percent|users|customers|people|reviews|stars)|\b\d{3,}\b/i;
+const PRAISE_OR_RIVAL = /\b(best|better than|#1|number one|loved by|rated|review|testimonial|vs\.?|versus|cheaper than)\b/i;
+function strip(s) {
+  return s.replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&").replace(/&[a-z]+;/g, " ").replace(/\s+/g, " ").trim();
+}
+function readFictionalSnapshot(html) {
+  if (!/<html[^>]*\bdata-fictional=["']true["']/i.test(html)) return { ok: false, reason: "not_marked_fictional", facts: [] };
+  const facts = [];
+  const add = (field, raw) => {
+    const value = strip(raw ?? "");
+    if (!value || value.length > 200) return;
+    const risky = field === "price" || FIGURE.test(value) || PRAISE_OR_RIVAL.test(value);
+    facts.push({ field, value, speakable: !risky });
+  };
+  add("name", /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]);
+  add("description", /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i.exec(html)?.[1]);
+  add("headline", /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1]);
+  add("price", /<[^>]+data-price[^>]*>([\s\S]*?)<\//i.exec(html)?.[1]);
+  for (const m of html.matchAll(/<a[^>]+data-cta[^>]*>([\s\S]*?)<\/a>/gi)) add("cta", m[1]);
+  return { ok: true, reason: "read", facts };
+}
 const PAIN_MIN_THREADS = 5;
 const PAIN_MIN_COMMUNITIES = 2;
 const PAIN_MAX_AGE_DAYS = 90;
@@ -407,6 +428,7 @@ export {
   personaMayInfluence,
   personaMetadata,
   planProductPageRead,
+  readFictionalSnapshot,
   redditScanV2Allowed,
   resolveCostMode,
   selectWithPersonas,
