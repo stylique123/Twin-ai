@@ -15601,7 +15601,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     try {
       const shots = (blueprint as { shot_list?: unknown })?.shot_list
       const script = (blueprint as { script?: unknown })?.script
-      // Before the shot list copies them: "26 six days" → "26 days".
+      // Before the shot list copies them: "23 three days" → "19 days".
       if (Array.isArray(script)) {
         for (const b of script as Array<{ line?: unknown }>) {
           if (typeof b?.line === 'string') b.line = collapseDoubledNumbers(b.line)

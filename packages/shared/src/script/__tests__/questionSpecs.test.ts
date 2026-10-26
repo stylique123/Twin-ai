@@ -36,10 +36,10 @@ describe('filling slots without asking', () => {
   it('a fact labelled for this option and slot fills it; a sensitive fact never does', () => {
     const f = fillSlots(story, { facts: [
       { text: 'The day I tossed a whole batch of untested green beans', option: 'product:story', slot: 'moment' },
-      { text: 'She only had $11 in her bank account', sensitive: true },
+      { text: 'She only had $9 in her bank account', sensitive: true },
     ] }, now)
     expect(f.moment?.source).toBe('labelled')
-    expect(Object.values(f).some((x) => x.value.includes('$11'))).toBe(false)
+    expect(Object.values(f).some((x) => x.value.includes('$9'))).toBe(false)
   })
 
   it('every slot filled → zero questions and a "Using" line (acceptance)', () => {
@@ -158,7 +158,7 @@ describe('probe 2 (2026-10-05): a question never presumes a venture she has not 
       .toEqual({ ok: false, reason: 'presumes_venture' })
   })
   it('"your roastery" is fine when her facts name it', () => {
-    expect(validateQuestion('Was there a morning in your roastery when a batch burned?', { spec: idea, slot: idea.slots[0]!, asked: [], known: `${known} Her roastery is in a commercial space.` }).ok).toBe(true)
+    expect(validateQuestion('Was there a morning in your roastery when a batch burned?', { spec: idea, slot: idea.slots[0]!, asked: [], known: `${known} Her roastery is in a shared kitchen unit.` }).ok).toBe(true)
   })
 })
 

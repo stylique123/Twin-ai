@@ -99,9 +99,9 @@ describe('owner fabrication audit 2026-10-01: a figure nothing she gave states i
 })
 
 describe('scrubLike (blind set 3 T5: private relocation story in her voice profile)', () => {
-  const priv = ['She had 26 days to move Maya Coffee from her home to a commercial space to avoid fines or a court date.']
+  const priv = ['She had 19 days to move Maya Coffee from her home to a shared kitchen unit to avoid fines or a court date.']
   it('cuts profile lines that retell a private fact without a listed word', () => {
-    const out = scrubLike({ dos: ['Introduce yourself and your mission to move from a home roastery to a commercial space.', 'Describe flavor notes vividly.'], hook_patterns: ["High-Stakes Countdown: 'I have 26 days to move maya coffee from my home to a commercial space.'"] }, priv)
+    const out = scrubLike({ dos: ['Introduce yourself and your mission to move from a home roastery to a shared kitchen unit.', 'Describe flavor notes vividly.'], hook_patterns: ["High-Stakes Countdown: 'I have 19 days to move maya coffee from my home to a shared kitchen unit.'"] }, priv)
     expect(out).toEqual({ dos: ['Describe flavor notes vividly.'], hook_patterns: [] })
   })
   it('leaves unrelated lines alone', () => {
