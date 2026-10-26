@@ -2,6 +2,7 @@ import { env } from './env.js'
 import { modelForTask } from './modelRouting.js'
 import { parseGeminiError, planRetry, quotaSummary } from './geminiQuota.js'
 import { readGroundedResponse, type GroundedAnswer } from './productWebSearch.js'
+import { workerEnv, geminiBackend, geminiGenerateRequest, geminiEmbedRequest, readEmbedding } from './geminiEndpoint.js'
 
 // Minimal Gemini JSON client for the worker (structure derivation, later steps).
 // Provider is isolated here so it can be swapped without touching job handlers.
@@ -49,7 +50,7 @@ export async function geminiJson(
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   const parts: Array<Record<string, unknown>> = [{ text: prompt }]
   for (const img of images) parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
-  const body = JSON.stringify({
+  const req = geminiGenerateRequest(workerEnv, m, {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts }],
     generationConfig: {
@@ -65,10 +66,7 @@ export async function geminiJson(
     // hard-fail DNA/structure jobs.
     let res: Response | null = null
     for (let attempt = 0; attempt < 3; attempt++) {
-      res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,
-        { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.geminiKey }, body },
-      )
+      res = await fetch(req.url, { ...req.init, signal: ctrl.signal })
       if (res.ok) break
 
       // ⚠️ A 429 IS NOT A 500, AND THIS LOOP USED TO TREAT THEM IDENTICALLY.
@@ -85,7 +83,7 @@ export async function geminiJson(
       // read the body" shape meant the diagnostic was only ever available for
       // the attempt that had already given up.
       if (res.status === 429) {
-        const quota = parseGeminiError(res.status, await res.text())
+        const quota = parseGeminiError(res.status, await res.text(), geminiBackend(workerEnv))
         const plan = planRetry(quota, attempt)
         if (plan.retry) {
           await new Promise((r) => setTimeout(r, plan.delayMs))
@@ -136,7 +134,7 @@ export async function geminiGroundedSearch(
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-  const body = JSON.stringify({
+  const req = geminiGenerateRequest(workerEnv, model, {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     tools: [{ google_search: {} }],
@@ -145,14 +143,11 @@ export async function geminiGroundedSearch(
   try {
     let res: Response | null = null
     for (let attempt = 0; attempt < 3; attempt++) {
-      res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.geminiKey }, body },
-      )
+      res = await fetch(req.url, { ...req.init, signal: ctrl.signal })
       if (res.ok) break
       // Same quota discipline as `geminiJson`: the class decides, not the hint.
       if (res.status === 429) {
-        const quota = parseGeminiError(res.status, await res.text())
+        const quota = parseGeminiError(res.status, await res.text(), geminiBackend(workerEnv))
         const plan = planRetry(quota, attempt)
         if (plan.retry) { await new Promise((r) => setTimeout(r, plan.delayMs)); continue }
         throw new Error(`${quotaSummary(quota)} — ${plan.reason}`)
@@ -182,21 +177,16 @@ export async function geminiEmbed(text: string, timeoutMs = 20_000): Promise<num
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelForTask('embed')}:embedContent`,
-      {
-        method: 'POST', signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.geminiKey },
-        body: JSON.stringify({
-          content: { parts: [{ text: text.slice(0, 2000) }] },
-          taskType: 'SEMANTIC_SIMILARITY',
-          outputDimensionality: EMBED_DIMS,
-        }),
-      },
-    )
+    const req = geminiEmbedRequest(workerEnv, {
+      model: modelForTask('embed'),
+      text: text.slice(0, 2000),
+      taskType: 'SEMANTIC_SIMILARITY',
+      outputDimensionality: EMBED_DIMS,
+    })
+    const res = await fetch(req.url, { ...req.init, signal: ctrl.signal })
     if (!res.ok) return null
-    const data = (await res.json()) as { embedding?: { values?: number[] } }
-    const v = data?.embedding?.values
+    // Developer `embedding.values` or Vertex `predictions[0].embeddings.values`.
+    const v = readEmbedding(await res.json())
     return Array.isArray(v) && v.length === EMBED_DIMS ? v : null
   } catch {
     return null

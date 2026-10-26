@@ -5,6 +5,7 @@
 // confirms in one tap. Video transcription (faster-whisper) is a later worker
 // enhancement; captions + post metadata already give a strong first profile.
 
+import { edgeGeminiKey, geminiPost } from './geminiEndpoint.ts'
 export const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -627,8 +628,8 @@ export async function synthesizeVoice(
   bio = '',
   images: InlineImage[] = [],
 ): Promise<unknown> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY')
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
+  // Key for the active backend (GEMINI_BACKEND; VERTEX_API_KEY on vertex).
+  if (!edgeGeminiKey()) throw new Error('GEMINI_API_KEY not configured')
   const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
 
   // Rank by reach so the model studies their WINNERS first. The patterns in a
@@ -662,13 +663,9 @@ Synthesize this creator's voice profile.${visionNote}`
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), timeoutMs)
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${useModel}:generateContent`,
+      const res = await fetch(...geminiPost(
+        useModel,
         {
-          method: 'POST',
-          signal: ctrl.signal,
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify({
             systemInstruction: { parts: [{ text: SYSTEM }] },
             contents: [{ role: 'user', parts: userParts }],
             generationConfig: {
@@ -683,9 +680,9 @@ Synthesize this creator's voice profile.${visionNote}`
                 ? { thinkingConfig: { thinkingBudget: Number(Deno.env.get('DNA_THINKING_BUDGET') ?? Deno.env.get('GEMINI_THINKING_BUDGET')) } }
                 : {}),
             },
-          }),
         },
-      )
+        ctrl.signal,
+      ))
       if (!res.ok) {
         const detail = await res.text()
         throw new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`)

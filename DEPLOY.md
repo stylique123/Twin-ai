@@ -41,6 +41,10 @@ the secrets once (SUPABASE_URL / SERVICE_ROLE / ANON are injected by the platfor
 ```bash
 supabase secrets set GEMINI_API_KEY=xxx APIFY_TOKEN=xxx
 # optional: GEMINI_MODEL=gemini-3.1-pro-preview  RECREATION_COST=10
+# optional, Vertex AI instead of the Gemini Developer API (default "developer"):
+#   supabase secrets set GEMINI_BACKEND=vertex VERTEX_API_KEY=AQ.xxx
+#   [GOOGLE_CLOUD_PROJECT=... GOOGLE_CLOUD_LOCATION=global] [VERTEX_MODEL_MAP='{"<id>":"<vertex id>"}']
+#   Contract: packages/shared/src/geminiBackend.ts. Unset GEMINI_BACKEND to roll back.
 
 # Manual fallback (CI does this for all functions): deploy one by name, e.g.
 supabase functions deploy generate-blueprint
@@ -58,6 +62,8 @@ sudo nano /opt/twinai-worker.env
 #   SUPABASE_URL=https://YOUR_REF.supabase.co
 #   SUPABASE_SERVICE_ROLE_KEY=xxx
 #   GEMINI_API_KEY=xxx
+#   # Vertex AI instead (optional): GEMINI_BACKEND=vertex  VERTEX_API_KEY=AQ.xxx
+#   #   then re-create the container (env is read at start): sudo bash worker/deploy-vps.sh
 #   APIFY_TOKEN=xxx            # YouTube + Instagram transcripts (yt-dlp is bot-blocked there)
 #   # Leave WORKER_JOB_TYPES UNSET on the shared worker: worker/src/env.ts is the
 #   # canonical registry (ingest,build_voice,scrape_dna,validate_source,editor_v2).

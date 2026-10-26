@@ -2,6 +2,7 @@
 // Pure helpers (CSV, pairs, sampling, scoring, cost cap) have no I/O and are
 // unit-tested in evalLib.selftest.mjs. Only callGemini touches the network, and
 // only when a key is present and the cost guard allows it. Fixture data is fictional.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -163,7 +164,7 @@ export function geminiText(j) {
  */
 export const MIN_MAX_OUT = 1024
 export async function callGemini({ model, system, user, maxOut = MIN_MAX_OUT, json = false, schema = null, fetchImpl = globalThis.fetch }) {
-  const key = process.env.GEMINI_API_KEY
+  const key = geminiApiKey()
   if (!key) throw new Error('GEMINI_API_KEY missing: refusing to call a model')
   const body = {
     systemInstruction: { parts: [{ text: system }] },
@@ -174,8 +175,8 @@ export async function callGemini({ model, system, user, maxOut = MIN_MAX_OUT, js
       ...(schema ? { responseSchema: schema } : {}),
     },
   }
-  const r = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
+  const r = await fetchImpl(geminiUrl(processEnv, model), {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body: geminiBody(body),
   })
   if (!r.ok) throw new Error(`gemini ${r.status}`)
   const j = await r.json()

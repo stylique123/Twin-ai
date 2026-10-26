@@ -6,9 +6,10 @@
 // check, this establishes two things a fix needs: the real rate, and a set of
 // LABELLED PAIRS to test a cheap detector against — so a model call is only
 // shipped if nothing cheaper can find them.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 const rows = JSON.parse(readFileSync(process.argv[2], 'utf8'))
 
@@ -27,9 +28,9 @@ Reply as JSON only:
 {"pairs":[{"a":1,"b":5,"why":"<what is repeated, in a few words>"}]}`
 
 async function detect(lines) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
+  const r = await fetch(geminiUrl(processEnv, 'gemini-2.5-flash'), {
+    method: 'POST', headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+    body: geminiBody({
       contents: [{ parts: [{ text: PROMPT(lines) }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 40000, responseMimeType: 'application/json' },
     }),

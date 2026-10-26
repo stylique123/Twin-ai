@@ -67,6 +67,8 @@ export interface GeminiQuotaError {
   /** The @type of every detail Google sent, so an unfamiliar shape is visible
    *  rather than silently ignored. */
   rawDetailsType?: string[]
+  /** Set only when the call went to Vertex AI (GEMINI_BACKEND=vertex). */
+  backend?: 'vertex'
 }
 
 /**
@@ -105,10 +107,14 @@ export function parseRetryDelayMs(raw: unknown): number | undefined {
  * not JSON, or not shaped like Google's error envelope, yields an object
  * carrying only `httpStatus` — which is honest.
  */
-export function parseGeminiError(httpStatus: number, body: string): GeminiQuotaError {
+export function parseGeminiError(httpStatus: number, body: string, backend: 'developer' | 'vertex' = 'developer'): GeminiQuotaError {
   const out: GeminiQuotaError = { httpStatus }
+  if (backend === 'vertex') out.backend = 'vertex'
   let parsed: unknown
   try { parsed = JSON.parse(body) } catch { return out }
+  // Vertex can wrap the same google.rpc envelope in a one-element array
+  // (`[{"error":{...}}]`, the streaming endpoints do). Same fields inside.
+  if (Array.isArray(parsed) && parsed.length > 0) parsed = parsed[0]
   const err = isRecord(parsed) ? parsed.error : undefined
   if (!isRecord(err)) return out
 
@@ -172,7 +178,14 @@ export function classifyQuota(e: GeminiQuotaError): QuotaClass {
     if (id.includes('perday') || id.includes('per_day') || id.includes('daily')) return 'daily'
     if (id.includes('perminute') || id.includes('per_minute')
       || id.includes('persecond') || id.includes('per_second')) return 'short_window'
+    return 'unknown'
   }
+  // ⚖️ VERTEX, AND ONLY VERTEX, WITH NO NAMED QUOTA. Vertex pay-as-you-go has no
+  // per-day request quota: a bare RESOURCE_EXHAUSTED there is Dynamic Shared
+  // Quota contention, which Google documents as "retry with backoff". This reads
+  // the BACKEND (a fact we chose) and the canonical STATUS (structured), never
+  // the message. On the developer backend an unnamed refusal stays `unknown`.
+  if (e.backend === 'vertex' && e.status === 'RESOURCE_EXHAUSTED') return 'short_window'
   return 'unknown'
 }
 
@@ -235,6 +248,7 @@ export function quotaSummary(e: GeminiQuotaError): string {
   const bits = [
     `Gemini ${e.httpStatus}`,
     `class=${cls}`,
+    e.backend ? `backend=${e.backend}` : '',
     e.status ? `status=${e.status}` : '',
     e.quotaId ? `quotaId=${e.quotaId}` : '',
     e.quotaMetric ? `metric=${e.quotaMetric}` : '',

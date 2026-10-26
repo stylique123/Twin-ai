@@ -4,15 +4,16 @@
 // to `ai_usage_ledger` with the job type as the stage and a traffic tag. Tokens
 // only; a failure to read or write usage never fails the job.
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { geminiModelOfUrl } from './generated/geminiBackend.js'
 
 export interface ModelUsage { calls: number; input: number; output: number; thinking: number; cached: number }
 export type UsageStore = Record<string, ModelUsage>
 
 const store = new AsyncLocalStorage<UsageStore>()
-const GEMINI = /^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/models\/([^:/?]+):(generateContent|embedContent)/
 
 export function geminiModelOf(url: string): string | null {
-  return GEMINI.exec(url)?.[1] ?? null
+  // Developer API and Vertex AI URLs alike (see geminiBackend.ts).
+  return geminiModelOfUrl(url)
 }
 
 // Plan 11.1 (owner 13 Oct): the scraping vendor's runs are counted too, as

@@ -9,9 +9,10 @@
 // ⚖️ AND "NEITHER IS BETTER" IS AN ALLOWED ANSWER. Forcing a choice on two
 // near-identical scripts manufactures a 50% win rate out of noise, which is
 // exactly how a repair pass that does nothing gets shipped as an improvement.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 const pairs = JSON.parse(readFileSync(process.argv[2], 'utf8'))
 
@@ -32,9 +33,9 @@ Reply as JSON only:
 (0 means genuinely equivalent.)`
 
 async function ask(a, b) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
+  const r = await fetch(geminiUrl(processEnv, 'gemini-2.5-flash'), {
+    method: 'POST', headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+    body: geminiBody({
       contents: [{ parts: [{ text: PROMPT(a, b) }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 40000, responseMimeType: 'application/json' },
     }),

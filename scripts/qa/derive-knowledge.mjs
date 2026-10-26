@@ -38,9 +38,10 @@
 //   GEMINI_API_KEY=... node scripts/qa/derive-knowledge.mjs \
 //     scripts/qa/real/captions-2026-08-11.json [--handle brett.tech] [--diff]
 
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 
 const VOICE = readFileSync('worker/src/voice.ts', 'utf8')
@@ -112,11 +113,11 @@ async function extract(handle, platform, captions) {
   const prompt = buildPrompt(handle, platform, captions)
   if (!prompt) return []
   const r = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    geminiUrl(processEnv, 'gemini-2.5-flash'),
     {
       method: 'POST',
       headers: { 'x-goog-api-key': KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: geminiBody({
         systemInstruction: { parts: [{ text: CAPTION_SYSTEM }] },
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {

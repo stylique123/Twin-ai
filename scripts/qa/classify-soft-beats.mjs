@@ -22,9 +22,10 @@
 //
 // This writes a distribution, not a verdict. A policy branch that fires on two
 // of a hundred beats is not worth building, and that is only knowable by looking.
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const KEY = process.env.GEMINI_API_KEY
+const KEY = geminiApiKey()
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 const rows = JSON.parse(readFileSync(process.argv[2], 'utf8'))
 
@@ -56,9 +57,9 @@ Reply as JSON only:
 If nothing is soft, reply {"soft":[]}.`
 
 async function classify(lines, plan) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + KEY, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
+  const r = await fetch(geminiUrl(processEnv, 'gemini-2.5-flash'), {
+    method: 'POST', headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+    body: geminiBody({
       contents: [{ parts: [{ text: PROMPT(lines, plan) }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 40000, responseMimeType: 'application/json' },
     }),

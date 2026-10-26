@@ -10,6 +10,7 @@
 //
 // Run: npx esbuild packages/shared/src/script/privacyGuard.ts --bundle --format=esm --platform=node --outfile=scripts/ops/.privacyGuard.bundle.mjs && node scripts/ops/scriptBatch.mjs [label] [limit]
 
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 import { combineReads, FLAG_KEYS } from './judgeScore.mjs'
 import { createClient } from '@supabase/supabase-js'
@@ -307,7 +308,7 @@ async function intakeProducts(token, admin, owner, voiceId, brandId) {
 // and scores what the owner asked about: the hook, the structure, the angle,
 // her information, outside information, invention, value, whether it moves a
 // viewer to buy or try, whether it sounds like her, and the scenes.
-const GEMINI = process.env.GEMINI_API_KEY ?? ''
+const GEMINI = geminiApiKey()
 const ANTHROPIC = process.env.ANTHROPIC_API_KEY ?? ''
 /** Gemini's schema (type: 'OBJECT') as standard JSON Schema (type: 'object'). */
 function toJsonSchema(s) {
@@ -491,10 +492,10 @@ async function judgeOnce(bp, sc, ctx, only = null) {
       continue
     }
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI}`, {
+      const res = await fetch(geminiUrl(processEnv, model), {
         signal: AbortSignal.timeout(150_000),
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        method: 'POST', headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' },
+        body: geminiBody({
           systemInstruction: { parts: [{ text: JUDGE_SYSTEM }] },
           contents: [{ role: 'user', parts: [{ text: input }] }],
           generationConfig: { responseMimeType: 'application/json', responseSchema: JUDGE_SCHEMA, temperature: 0 },

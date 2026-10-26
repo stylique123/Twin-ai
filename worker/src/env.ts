@@ -13,6 +13,7 @@ function need(name: string): string {
 // production worker, even if an environment variable is injected accidentally.
 // Non-production callers must opt in explicitly as well.
 import { speechModelLabel } from './speechModelLabel.js'
+import { geminiApiKey } from './generated/geminiBackend.js'
 export { speechModelLabel }
 
 export function resolveSpeechModelManifest(source: NodeJS.ProcessEnv = process.env): string {
@@ -24,7 +25,9 @@ export function resolveSpeechModelManifest(source: NodeJS.ProcessEnv = process.e
 export const env = {
   supabaseUrl: need('SUPABASE_URL'),
   serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
-  geminiKey: (process.env.GEMINI_API_KEY ?? '').trim(),
+  // GEMINI_API_KEY on the developer backend; VERTEX_API_KEY (else GEMINI_API_KEY)
+  // when GEMINI_BACKEND=vertex. See packages/shared/src/geminiBackend.ts.
+  geminiKey: geminiApiKey((n) => process.env[n]),
   // Optional. Enables reading public YouTube comments on niche library videos
   // (24-ideas #11). Absent = the sweep never runs.
   youtubeApiKey: (process.env.YOUTUBE_API_KEY ?? '').trim(),

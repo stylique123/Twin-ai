@@ -2,6 +2,7 @@
 // score `complete` against a hand key. Prints ids, booleans and the score only:
 // never transcript text. Reads only; writes nothing.
 //   OWNER_ID=<uuid> COMPLETE_IDS=<id8,id8,...> ONLY_IDS=<optional id8 list>
+import { geminiApiKey, geminiBody, geminiUrl, processEnv } from '../lib/geminiBackend.mjs'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { STORY_CLASSIFY_SYSTEM, STORY_CLASSIFY_SCHEMA, buildStoryClassifyPrompt, parseStoryLabels, scoreStoryLabels } from '../../packages/shared/src/script/storyClassify.ts'
@@ -28,8 +29,8 @@ const body = {
   contents: [{ role: 'user', parts: [{ text: buildStoryClassifyPrompt(items) }] }],
   generationConfig: { responseMimeType: 'application/json', responseSchema: STORY_CLASSIFY_SCHEMA, temperature: 0 },
 }
-const g = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env('GEMINI_API_KEY')}`, {
-  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+const g = await fetch(geminiUrl(processEnv, model), {
+  method: 'POST', headers: { 'x-goog-api-key': geminiApiKey(), 'content-type': 'application/json' }, body: geminiBody(body),
 })
 const gj = await g.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
 const txt = gj.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'

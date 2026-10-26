@@ -5,6 +5,7 @@
 // double-charge or double-edit. This is deliberately NOT worker/src/gemini.ts
 // (which retries). Model is the frozen DIRECTOR_MODEL constant, never env.
 import { env } from '../env.js'
+import { workerEnv, geminiGenerateRequest } from '../geminiEndpoint.js'
 import {
   DIRECTOR_MODEL, DECISION_PACING, DECISION_MUSIC, DECISION_HOOK,
   CAPTION_PRESET_IDS, TRANSITION_POLICIES, ZOOM_INTENSITIES, ZOOM_REASON_CODES,
@@ -131,7 +132,7 @@ export async function callDirectorOnce(
   cancelSignal?: AbortSignal,
 ): Promise<DirectorProviderResult> {
   if (!env.geminiKey) throw new DirectorProviderError('GEMINI_API_KEY not configured', 'director_no_credentials')
-  const body = JSON.stringify({
+  const req = geminiGenerateRequest(workerEnv, DIRECTOR_MODEL, {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
@@ -153,10 +154,7 @@ export async function callDirectorOnce(
     else cancelSignal.addEventListener('abort', onCancel, { once: true })
   }
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${DIRECTOR_MODEL}:generateContent`,
-      { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.geminiKey }, body },
-    )
+    const res = await fetch(req.url, { ...req.init, signal: ctrl.signal })
     // NO RETRY. Any non-2xx is a definitive, single-call failure.
     if (!res.ok) {
       // ⚠️ READ THE BODY BEFORE THROWING. It is the only place the reason exists
