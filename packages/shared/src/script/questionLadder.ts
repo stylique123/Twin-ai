@@ -49,7 +49,9 @@ export function ladderTemplate(level: LadderLevel, anchor: string, topic: string
   switch (level) {
     case 0: return `Has ${topic} ever come up in real life for you? If so, what happened?`
     case 1: return `You said "${a}". Where were you when that happened?`
-    case 2: return `You said "${a}". When did you first notice something was off, and what did you see?`
+    // Same beat (the complication), no date: "When did you…" trips the no-dates
+    // rule (questionUsefulness FORBIDDEN_TEXT) and was never askable.
+    case 2: return `You said "${a}". Was there a first sign something was off? If so, what did you see?`
     case 3: return `After "${a}", what did you do next?`
     case 4: return 'How did that end up?'
     case 5: return 'Is there anything you do differently now because of that? If so, what?'

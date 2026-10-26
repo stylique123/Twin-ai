@@ -6,6 +6,7 @@
 // or scarcity. Skip always works. Pure; records carry ids and counts, no text.
 
 import type { Slot } from './itemFormat.js'
+import { angleTemplate, type AngleKind } from './questionLadder.js'
 
 export type QuestionKind = 'story' | 'product_slot' | 'niche' | 'profile'
 const RANK: Record<QuestionKind, number> = { story: 0, product_slot: 1, niche: 2, profile: 3 }
@@ -189,6 +190,12 @@ export interface QuestionPlanInput {
   profileAskedEver?: boolean
   /** The profile field is still missing. */
   profileMissing?: boolean
+  /**
+   * ANGLE_TEMPLATES (default OFF, test and panel accounts only): word her
+   * missing-slot question with the picked angle's template (questionLadder
+   * angleTemplate) about this topic. Absent = today's slot wording.
+   */
+  angleWording?: { topic: string }
 }
 
 const PRODUCT_SLOT_TEXT: Partial<Record<Slot, string>> = {
@@ -207,6 +214,26 @@ const HER_SLOT_TEXT: Partial<Record<Slot, string>> = {
   objection: 'Is there a question people ask you about this? If so, what is it?',
   context: 'Is there a common belief about this you would want to correct?',
 }
+/** Which of her slots each angle template words, and with which template slot. */
+const ANGLE_TEMPLATE_SLOT: Partial<Record<AngleKind, Partial<Record<Slot, string>>>> = {
+  myth: { stance: 'truth', context: 'assumption' },
+  answer: { objection: '' },
+  stand: { stance: '' },
+  behind: { process: '' },
+  beforeafter: { proof: '' },
+  // 'offer' is left out: its template names a product detail ("roast") that
+  // is not hers, which the add-nothing rule forbids. 'moment' and 'show' have none.
+}
+
+/** The angle's own wording for her slot, or null to keep the slot text. */
+export function angleSlotText(angle: string, slot: Slot, topic: string | undefined): string | null {
+  const t = (topic ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
+  const m = ANGLE_TEMPLATE_SLOT[angle as AngleKind]
+  if (!t || !m || !(slot in m)) return null
+  const text = angleTemplate(angle as AngleKind, m[slot]!, t)
+  return text && !questionBreaksRules(text) ? text : null
+}
+
 const short = (t: string): string => {
   const s = t.replace(/\s+/g, ' ').trim()
   return s.length > 90 ? `${s.slice(0, 87).replace(/\s+\S*$/, '')}…` : s
@@ -236,7 +263,7 @@ export function questionCandidates(i: QuestionPlanInput): PlanQuestion[] {
   for (const s of missing) {
     if (s === 'story') q('mn:story', 'story', 'her_material', 'story', HER_SLOT_TEXT.story!)
     else if (i.hasProduct && PRODUCT_SLOT_TEXT[s]) q(`mn:${ek}:${s}`, 'product_slot', 'product', s, PRODUCT_SLOT_TEXT[s]!)
-    else if (HER_SLOT_TEXT[s]) q(`mn:her:${s}`, 'niche', 'her_material', s, HER_SLOT_TEXT[s]!)
+    else if (HER_SLOT_TEXT[s]) q(`mn:her:${s}`, 'niche', 'her_material', s, (i.angleWording && angleSlotText(i.angle, s, i.angleWording.topic)) || HER_SLOT_TEXT[s]!)
   }
   // Outside sources answer a missing slot with her own experience of it.
   if (missing.includes('objection') || missing.includes('context')) {

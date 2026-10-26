@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { nextBeat, ladderTemplate, validateLadderQuestion, isDuplicateQuestion } from '../questionLadder.js'
+import { nextBeat, ladderTemplate, validateLadderQuestion, isDuplicateQuestion, LADDER } from '../questionLadder.js'
+import { questionBreaksRules } from '../questionUsefulness.js'
 
 // Fictional creator (Maya's Coffee).
 const HER = "I skipped testing a new supplier's beans and had to toss the whole lot."
@@ -24,5 +25,16 @@ describe('question ladder', () => {
     expect(validateLadderQuestion('Did your supplier in Medellin charge you 400 dollars for the beans?', ctx).reasons).toContain('adds_detail')
     expect(validateLadderQuestion('Did that beans problem affect your health?', ctx).reasons).toContain('sensitive_not_hers')
     expect(isDuplicateQuestion('After you tossed the whole lot, what did you do next?', ctx.asked)).toBe(true)
+  })
+  it('level 2 asks the complication without a date, and the no-dates rule lets it through', () => {
+    const q = ladderTemplate(2, HER, 'testing new beans')
+    expect(LADDER[2].beat).toBe('complication')
+    expect(q).not.toMatch(/\bwhen\b/i)
+    expect(q).toMatch(/off/)
+    expect(q).toContain('If so, what did you see?')
+    expect(validateLadderQuestion(q, { herWords: HER, topic: 'testing new beans', asked: [] })).toEqual({ ok: true, reasons: [] })
+    expect(questionBreaksRules(q)).toBe(false)
+    // The old wording was blocked by that rule.
+    expect(questionBreaksRules('When did you first notice something was off, and what did you see?')).toBe(true)
   })
 })

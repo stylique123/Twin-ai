@@ -93,7 +93,7 @@ export const REGISTRY = {
       + 'Changes if the panel runner starts reporting coverage itself.',
   },
   'script/questionLadder.ts': {
-    symbols: ['ladderTemplate', 'angleTemplate', 'validateLadderQuestion', 'LADDER'],
+    symbols: ['LADDER'],
     why: 'Create flow spec v4 Part 7: the story question engine core (ladder, anchored templates, validation). '
       + 'Pure and tested; the panel-A route of the new Create flow reads it. Changes when that route ships (next PRs).',
   },

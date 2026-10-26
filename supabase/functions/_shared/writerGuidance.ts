@@ -124,3 +124,20 @@ export function bannedClaimHits(pack: PackLike | null, lines: readonly string[])
   }
   return hits
 }
+
+/**
+ * REPORT-ONLY banned-claim check on the finished script (NICHE_PACKS, default
+ * OFF). Flags lines; never edits, drops or reorders one. Null when the flag is
+ * off or no pack fits, so the caller writes nothing. The record carries beat
+ * indexes and reasons only, never line text.
+ */
+export function nichePackReport(
+  pack: PackLike | null, flag: string | undefined, script: readonly unknown[] | null | undefined,
+): { niche: string; flagged: Array<{ beat: number; reason: string }> } | null {
+  if (flag !== 'on' || !pack || !Array.isArray(script)) return null
+  const lines = script.map((b) => {
+    const l = (b as { line?: unknown } | null)?.line
+    return typeof l === 'string' ? l : ''
+  })
+  return { niche: String(pack.niche ?? ''), flagged: bannedClaimHits(pack, lines).map((h) => ({ beat: h.line, reason: h.reason })) }
+}
