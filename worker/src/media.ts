@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { env } from './env.js'
 import { readVerdict } from './profileReadVerdict.js'
-import { liveApifyDeps, prepareApifyRun, guardedApifyFetch } from './apifyGuard.js'
+import { liveApifyDeps, prepareApifyRun, guardedApifyFetch, creatorReadLimit, type ApifyTier } from './apifyGuard.js'
 
 // --- SSRF guard ------------------------------------------------------------
 // The worker downloads user-supplied URLs with yt-dlp, so we ONLY allow the
@@ -253,10 +253,13 @@ export async function scrapeTikTokPosts(handle: string, limit = 12): Promise<Scr
 // still works for some accounts and costs nothing; Apify is the fallback, not
 // the default. An EMPTY result counts as failure here: a profile that parses to
 // zero posts is the exact shape of the silent no-op this exists to end.
-export async function apifyDataset(actor: string, input: unknown, timeoutMs = 300_000, feature = 'profile_read'): Promise<Record<string, unknown>[]> {
+export async function apifyDataset(
+  actor: string, input: unknown, timeoutMs = 180_000, feature = 'profile_read', tier: ApifyTier = 'creator',
+): Promise<Record<string, unknown>[]> {
   if (!env.apifyToken) throw new Error('APIFY_TOKEN is not set; cannot scrape profile')
-  // Apify guardrails (apifyGuard.ts): test owners, ledger stops, per-run cap.
-  return guardedApifyFetch(await liveApifyDeps(env.apifyToken), feature, actor, input, { timeoutMs })
+  // Apify guardrails v6.4 (apifyGuard.ts): creator reads are recorded, never
+  // capped; batch callers pass tier 'batch' and get the hard caps.
+  return guardedApifyFetch(await liveApifyDeps(env.apifyToken), feature, actor, input, { timeoutMs, tier })
 }
 
 /** An Apify run that reports a failure IN ITS DATASET rather than by failing.
@@ -343,6 +346,8 @@ const tags = (text: string) =>
   Array.from(new Set((text.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 6)
 
 async function tiktokProfileViaApify(handle: string, limit: number) {
+  // v6.4: a creator read asks for ~10–20 results, never the old 50–90.
+  limit = creatorReadLimit(limit)
   // ⚠️ AN ERROR REPORT IS NOT A POST — the same rule on every Actor-backed
   // reader, because the shape is the Actor platform's, not Instagram's. And a
   // failure that is not about this creator is asked again once before it is
@@ -387,6 +392,8 @@ async function tiktokProfileViaApify(handle: string, limit: number) {
 }
 
 async function youtubeChannelViaApify(handle: string, limit: number) {
+  // v6.4: a creator read asks for ~10–20 results, never the old 50–90.
+  limit = creatorReadLimit(limit)
   // ⚠️ AN ERROR REPORT IS NOT A POST. See `partitionItems`; and see
   // `readProfileRecords` for why a transient one is asked again first.
   const { records } = await readProfileRecords(env.apifyYoutubeChannelActor, {
@@ -428,6 +435,8 @@ async function youtubeChannelViaApify(handle: string, limit: number) {
 }
 
 async function instagramProfileViaApify(handle: string, limit: number) {
+  // v6.4: a creator read asks for ~10–20 results, never the old 50–90.
+  limit = creatorReadLimit(limit)
   const h = handle.replace(/^@/, '')
   // ⚠️ AN ERROR REPORT IS NOT A POST. This is the function the defect was found
   // in: the Actor timed out on a large public account, wrote one error item, and
@@ -657,7 +666,7 @@ async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
   // run-sync-get-dataset-items returns the dataset directly as [{ data: [...] }].
   // (The older /run-sync + key-value-store path returned an empty body here and
   // broke JSON parsing — "Unexpected end of JSON input".)
-  const url = await prepareApifyRun(await liveApifyDeps(env.apifyToken), 'youtube_transcript', env.apifyYoutubeActor)
+  const url = await prepareApifyRun(await liveApifyDeps(env.apifyToken), 'youtube_transcript', env.apifyYoutubeActor, 'creator')
   // Test mode / test owner: stubbed reader, nothing read.
   if (url === null) throw new Error('This video has no captions we can read. Try a different reference.')
   const res = await fetch(url, {
@@ -745,7 +754,7 @@ async function instagramTranscriptViaApify(rawUrl: string): Promise<Transcript> 
   if (!env.apifyToken) {
     throw new Error('Instagram analysis is not configured yet. Try a TikTok link, or contact support.')
   }
-  const url = await prepareApifyRun(await liveApifyDeps(env.apifyToken), 'instagram_transcript', env.apifyInstagramActor)
+  const url = await prepareApifyRun(await liveApifyDeps(env.apifyToken), 'instagram_transcript', env.apifyInstagramActor, 'creator')
   if (url === null) throw new Error("Couldn't read that Instagram video — it may be private or removed. Try another.")
   const res = await fetch(url, {
     method: 'POST',

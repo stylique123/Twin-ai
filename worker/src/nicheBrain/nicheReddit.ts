@@ -63,7 +63,7 @@ export async function runNicheReddit(log: Log): Promise<void> {
           maxItems: 120, maxPostCount: 40, maxComments: 4, includeNSFW: false, skipComments: false,
         // Second live run: 2 of 3 niches aborted at 240 s. Apify's synchronous
         // run allows 300 s; the scrape is smaller and gets the full window.
-        }, 295_000, 'niche_reddit')
+        }, 295_000, 'niche_reddit', 'batch')
     const threads = threadsFromDataset(rows).filter((t) => inCommunities(t, subs))
     if (threads.length < 3) {
       await stamp({ items: [], threads: [], failure: `only ${threads.length} threads` })

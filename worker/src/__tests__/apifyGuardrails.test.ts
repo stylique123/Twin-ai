@@ -2,76 +2,165 @@ import { describe, it, expect, vi } from 'vitest'
 
 process.env.SUPABASE_URL ||= 'http://localhost'
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test'
-import { apifyLimits, budgetDecision, cappedRunUrl, guardedApifyFetch, apifyOwnerScope, ApifyRefusedError, type GuardDeps } from '../apifyGuard.js'
+import {
+  apifyLimits, budgetDecision, cappedRunUrl, guardedApifyFetch, apifyOwnerScope, ApifyRefusedError, spendAnomaly,
+  billingCycleStart, creatorReadLimit, type GuardDeps, type ApifyTier,
+} from '../apifyGuard.js'
+import { planCreatorRead, mergeByVideoId, videoIdOf } from '../creatorReadCache.js'
 import {
   redditScanV2Enabled, runRedditScanV2, buildPainMap, dueForScan, batchedScanInput, newerThanLastScan, livePatterns,
   type ScannedThread,
 } from '../nicheBrain/redditScanV2.js'
 
-const L = { dailyUsd: 2, monthlyUsd: 10, alertUsd: 5, runMaxUsd: 0.4 }
+const L = { creatorRunMaxUsd: 0.25, batchRunMaxUsd: 0.4, batchDailyUsd: 2, batchCycleUsd: 2, anomalyX: 3 }
 
-/** A fictional in-memory ledger with the same rule as 0294 apify_reserve. */
-function fakeLedger() {
-  const rows: number[] = []
-  const reserve: GuardDeps['reserve'] = async ({ usd, l }) => {
-    const total = rows.reduce((a, b) => a + b, 0)
-    const d = budgetDecision(total, total, usd, l)
-    if (!d.ok) return { ok: false, reason: d.reason }
-    rows.push(usd)
-    return { ok: true, month_usd: total + usd }
+/** A fictional in-memory ledger with the same rule as 0295 apify_reserve_tiered. */
+function fakeLedger(history: { avgUsd?: number } = {}) {
+  const rows: { usd: number; tier: ApifyTier }[] = []
+  const sum = (t?: ApifyTier) => rows.filter((r) => !t || r.tier === t).reduce((a, r) => a + r.usd, 0)
+  const reserve: GuardDeps['reserve'] = async ({ usd, tier, l }) => {
+    const s = { todayUsd: sum(), avgUsd: history.avgUsd ?? 0, batchDayUsd: sum('batch'), batchCycleUsd: sum('batch') }
+    const d = budgetDecision(s, tier, usd, l)
+    if (!d.ok) return { ok: false, reason: d.reason, today_usd: s.todayUsd, avg_usd: s.avgUsd }
+    rows.push({ usd, tier })
+    return { ok: true, today_usd: s.todayUsd + usd, avg_usd: s.avgUsd }
   }
   return { rows, reserve }
 }
 const okFetch = () => vi.fn(async () => new Response(JSON.stringify([{ id: 'fixture-1' }]), { status: 200 })) as unknown as typeof fetch
+const deps = (led: ReturnType<typeof fakeLedger>, f: typeof fetch, extra: Partial<GuardDeps> = {}): GuardDeps =>
+  ({ token: 't', reserve: led.reserve, fetch: f, limits: L, testMode: false, batchPaused: false, ...extra })
 
-describe('apify limits', () => {
-  it('defaults are $10/month, alert $5, $0.40/run, $2/day; env overrides', () => {
+describe('apify limits (v6.4)', () => {
+  it('defaults: creator run $0.25, batch run $0.40, batch $2/day and $2/cycle, alert at 3x', () => {
     expect(apifyLimits({})).toEqual(L)
-    expect(apifyLimits({ APIFY_MONTHLY_USD: '25' }).monthlyUsd).toBe(25)
-    expect(apifyLimits({ APIFY_MONTHLY_USD: 'lots' }).monthlyUsd).toBe(10)
+    expect(apifyLimits({ APIFY_BATCH_CYCLE_USD: '5' }).batchCycleUsd).toBe(5)
+    expect(apifyLimits({ APIFY_BATCH_CYCLE_USD: 'lots' }).batchCycleUsd).toBe(2)
   })
   it('every run URL carries maxTotalChargeUsd', () => {
-    expect(cappedRunUrl('fictional~actor', 'tok', 0.4)).toContain('maxTotalChargeUsd=0.40')
+    expect(cappedRunUrl('fictional~actor', 'tok', 0.25)).toContain('maxTotalChargeUsd=0.25')
+  })
+  it('a creator read asks for at most 20 results (default 20, never 50/90)', () => {
+    expect(creatorReadLimit(90, {})).toBe(20)
+    expect(creatorReadLimit(50, {})).toBe(20)
+    expect(creatorReadLimit(12, {})).toBe(12)
+    expect(creatorReadLimit(50, { APIFY_CREATOR_READ_LIMIT: '10' })).toBe(10)
+    expect(creatorReadLimit(50, { APIFY_CREATOR_READ_LIMIT: '500' })).toBe(20)
+  })
+  it('billing cycle starts on the 22nd (UTC), not the 1st', () => {
+    expect(billingCycleStart(new Date('2026-10-26T10:00:00Z')).toISOString()).toBe('2026-10-22T00:00:00.000Z')
+    expect(billingCycleStart(new Date('2026-11-05T10:00:00Z')).toISOString()).toBe('2026-10-22T00:00:00.000Z')
+    expect(billingCycleStart(new Date('2026-01-21T23:59:59Z')).toISOString()).toBe('2025-12-22T00:00:00.000Z')
+    expect(billingCycleStart(new Date('2026-11-22T00:00:00Z')).toISOString()).toBe('2026-11-22T00:00:00.000Z')
+  })
+  it('anomaly = today > 3x trailing average (no average, no anomaly)', () => {
+    expect(spendAnomaly(3.1, 1)).toBe(true)
+    expect(spendAnomaly(3, 1)).toBe(false)
+    expect(spendAnomaly(50, 0)).toBe(false)
   })
 })
 
-describe('ledger hard stop', () => {
-  it('stops at the daily limit: 5 runs of $0.40 fit in $2, the 6th never calls Apify', async () => {
+describe('creator reads: record-only, never refused', () => {
+  it('30 creator reads all run and are all recorded — no daily or monthly cap', async () => {
     const led = fakeLedger(); const f = okFetch()
-    const deps: GuardDeps = { token: 't', reserve: led.reserve, fetch: f, limits: L, testMode: false }
-    for (let i = 0; i < 5; i++) await guardedApifyFetch(deps, 'test', 'fictional~actor', {})
-    await expect(guardedApifyFetch(deps, 'test', 'fictional~actor', {})).rejects.toBeInstanceOf(ApifyRefusedError)
+    for (let i = 0; i < 30; i++) await guardedApifyFetch(deps(led, f), 'profile_read', 'a', {}, { tier: 'creator' })
+    expect(f).toHaveBeenCalledTimes(30)
+    expect(led.rows).toHaveLength(30)
+    expect(led.rows.every((r) => r.tier === 'creator' && r.usd === 0.25)).toBe(true)
+  })
+  it('a ledger that cannot be reached is logged, and the read still happens', async () => {
+    const f = okFetch(); const log = vi.fn()
+    const d: GuardDeps = { token: 't', reserve: async () => { throw new Error('function does not exist') }, fetch: f, limits: L, testMode: false, log }
+    expect(await guardedApifyFetch(d, 'profile_read', 'a', {}, { tier: 'creator' })).toHaveLength(1)
+    expect(f).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenCalledWith('warn', 'apify_record_failed', expect.objectContaining({ tier: 'creator' }))
+  })
+  it('the anomaly breaker NEVER pauses a creator\'s own onboarding read (it alerts instead)', async () => {
+    const led = fakeLedger({ avgUsd: 0.01 }); const f = okFetch(); const log = vi.fn()
+    // Spend far above 3x the average, and the batch pause switch on as well.
+    for (let i = 0; i < 10; i++) {
+      await guardedApifyFetch(deps(led, f, { log, batchPaused: true }), 'dna_scan', 'a', {}, { tier: 'creator' })
+    }
+    expect(f).toHaveBeenCalledTimes(10)
+    expect(log).toHaveBeenCalledWith('warn', 'apify_spend_anomaly', expect.objectContaining({ tier: 'creator' }))
+    expect(log).not.toHaveBeenCalledWith('error', 'apify_refused', expect.anything())
+  })
+  it('alert payload is dollars and ids only — no creator material', async () => {
+    const led = fakeLedger({ avgUsd: 0.01 }); const log = vi.fn()
+    await guardedApifyFetch(deps(led, okFetch(), { log }), 'dna_scan', 'a', { profiles: ['fictional-handle'] }, { tier: 'creator' })
+    expect(JSON.stringify(log.mock.calls)).not.toContain('fictional-handle')
+  })
+})
+
+describe('batch (tier-B) jobs: hard caps', () => {
+  it('stops at the cycle cap: 5 runs of $0.40 fit in $2, the 6th never calls Apify', async () => {
+    const led = fakeLedger(); const f = okFetch()
+    for (let i = 0; i < 5; i++) await guardedApifyFetch(deps(led, f), 'comments', 'a', {}, { tier: 'batch' })
+    await expect(guardedApifyFetch(deps(led, f), 'comments', 'a', {}, { tier: 'batch' })).rejects.toBeInstanceOf(ApifyRefusedError)
     expect(f).toHaveBeenCalledTimes(5)
-    expect(led.rows.reduce((a, b) => a + b, 0)).toBeCloseTo(2)
   })
-  it('stops at the monthly limit and alerts at $5', async () => {
-    const led = fakeLedger(); const f = okFetch(); const log = vi.fn()
-    const lim = { ...L, dailyUsd: 100 }
-    const deps: GuardDeps = { token: 't', reserve: led.reserve, fetch: f, limits: lim, testMode: false, log }
-    let n = 0
-    await expect((async () => { for (;;) { await guardedApifyFetch(deps, 'test', 'a', {}); n++ } })()).rejects.toThrow(/monthly_limit/)
-    expect(n).toBe(25)
-    expect(log).toHaveBeenCalledWith('warn', 'apify_spend_alert', expect.anything())
+  it('creator spend does not eat the batch cap', async () => {
+    const led = fakeLedger(); const f = okFetch()
+    for (let i = 0; i < 20; i++) await guardedApifyFetch(deps(led, f), 'profile_read', 'a', {}, { tier: 'creator' })
+    await guardedApifyFetch(deps(led, f), 'comments', 'a', {}, { tier: 'batch' })
+    expect(f).toHaveBeenCalledTimes(21)
   })
-  it('fails closed when the ledger is unreachable', async () => {
+  it('the anomaly breaker pauses batch jobs', async () => {
+    const led = fakeLedger({ avgUsd: 0.01 }); const f = okFetch()
+    await guardedApifyFetch(deps(led, f), 'dna_scan', 'a', {}, { tier: 'creator' }) // today 0.25 > 3 x 0.01
+    await expect(guardedApifyFetch(deps(led, f), 'niche_reddit', 'a', {}, { tier: 'batch' })).rejects.toThrow(/anomaly_paused/)
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+  it('the manual batch pause refuses batch runs', async () => {
+    const led = fakeLedger(); const f = okFetch()
+    await expect(guardedApifyFetch(deps(led, f, { batchPaused: true }), 'comments', 'a', {}, { tier: 'batch' })).rejects.toThrow(/batch_paused/)
+    expect(f).not.toHaveBeenCalled()
+  })
+  it('batch fails closed when the ledger is unreachable', async () => {
     const f = okFetch()
-    const deps: GuardDeps = { token: 't', reserve: async () => { throw new Error('function apify_reserve does not exist') }, fetch: f, limits: L, testMode: false }
-    await expect(guardedApifyFetch(deps, 'x', 'a', {})).rejects.toThrow(/ledger_unavailable/)
+    const d: GuardDeps = { token: 't', reserve: async () => { throw new Error('function does not exist') }, fetch: f, limits: L, testMode: false, batchPaused: false }
+    await expect(guardedApifyFetch(d, 'x', 'a', {}, { tier: 'batch' })).rejects.toThrow(/ledger_unavailable/)
     expect(f).not.toHaveBeenCalled()
   })
 })
 
 describe('test and panel accounts never trigger Apify', () => {
-  it('test mode returns empty without reserving or fetching', async () => {
-    const led = fakeLedger(); const f = okFetch()
-    expect(await guardedApifyFetch({ token: 't', reserve: led.reserve, fetch: f, limits: L, testMode: true }, 'x', 'a', {})).toEqual([])
-    expect(f).not.toHaveBeenCalled(); expect(led.rows).toHaveLength(0)
+  for (const tier of ['creator', 'batch'] as const) {
+    it(`test mode returns empty without recording or fetching (${tier})`, async () => {
+      const led = fakeLedger(); const f = okFetch()
+      expect(await guardedApifyFetch(deps(led, f, { testMode: true }), 'x', 'a', {}, { tier })).toEqual([])
+      expect(f).not.toHaveBeenCalled(); expect(led.rows).toHaveLength(0)
+    })
+    it(`a panel owner in scope returns empty (${tier})`, async () => {
+      const led = fakeLedger(); const f = okFetch()
+      const out = await apifyOwnerScope.run({ ownerId: '00000000-0000-0000-0000-00000000f1c7', testOwner: true },
+        () => guardedApifyFetch(deps(led, f), 'x', 'a', {}, { tier }))
+      expect(out).toEqual([]); expect(f).not.toHaveBeenCalled()
+    })
+  }
+})
+
+describe('creator read cache: 30 days, dedupe by video id', () => {
+  const now = Date.parse('2026-10-26T00:00:00Z')
+  const at = (days: number) => new Date(now - days * 86_400_000).toISOString()
+  it('a channel read in the last 30 days asks only for the newest 10', () => {
+    expect(planCreatorRead(Array.from({ length: 12 }, () => ({ observed_at: at(3) })), 20, now)).toEqual({ mode: 'incremental', limit: 10, cached: 12 })
+    expect(planCreatorRead(Array.from({ length: 12 }, () => ({ observed_at: at(31) })), 20, now).mode).toBe('full')
+    expect(planCreatorRead([], 20, now)).toEqual({ mode: 'full', limit: 20, cached: 0 })
   })
-  it('a panel owner in scope returns empty', async () => {
-    const led = fakeLedger(); const f = okFetch()
-    const out = await apifyOwnerScope.run({ ownerId: '00000000-0000-0000-0000-00000000f1c7', testOwner: true },
-      () => guardedApifyFetch({ token: 't', reserve: led.reserve, fetch: f, limits: L, testMode: false }, 'x', 'a', {}))
-    expect(out).toEqual([]); expect(f).not.toHaveBeenCalled()
+  it('video ids are stable across URL shapes', () => {
+    expect(videoIdOf('https://www.youtube.com/shorts/abcDEF123_x')).toBe('abcDEF123_x')
+    expect(videoIdOf('https://www.youtube.com/watch?v=abcDEF123_x&t=3')).toBe('abcDEF123_x')
+    expect(videoIdOf('https://www.tiktok.com/@fictional/video/7300000000000000001?lang=en')).toBe('7300000000000000001')
+    expect(videoIdOf('https://www.instagram.com/reel/Cfixture1/')).toBe('Cfixture1')
+    expect(videoIdOf('https://www.instagram.com/p/Cfixture1/')).toBe('Cfixture1')
+  })
+  it('merges fresh + cached, one entry per video, counts only what is new', () => {
+    const fresh = [{ url: 'https://www.youtube.com/shorts/vid000001' }, { url: 'https://www.youtube.com/watch?v=vid000002' }]
+    const cached = [{ url: 'https://youtube.com/shorts/vid000002' }, { url: 'https://youtube.com/shorts/vid000003' }]
+    const m = mergeByVideoId(fresh, cached)
+    expect(m.posts.map((p) => videoIdOf(p.url))).toEqual(['vid000001', 'vid000002', 'vid000003'])
+    expect(m.newCount).toBe(1)
   })
 })
 

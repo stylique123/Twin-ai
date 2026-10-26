@@ -1,6 +1,8 @@
 // REDDIT SCAN v2 — THE PAIN MAP (owner, 23 Oct). OFF unless REDDIT_SCAN_V2 is
 // exactly 'true', and it must never be turned on without counsel's written OK
 // and the owner's go. Nothing schedules it (the weekly job stays off).
+// v6.4: it is a tier-B (batch) job — its Apify run goes through apifyGuard with
+// tier 'batch': hard $2 per billing cycle (22nd→22nd UTC), anomaly breaker.
 //
 // ⚖️ What changes from v1: ONE batched Apify run for every due niche (~25
 // results each), only items newer than that niche's last scan, each niche at

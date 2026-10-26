@@ -22,8 +22,8 @@ const COMMENTS_PER_POST = 60
 let last = 0
 
 async function apifyItems(actor: string, input: unknown): Promise<Record<string, unknown>[]> {
-  // Apify guardrails (apifyGuard.ts): ledger stops, per-run cap.
-  return guardedApifyFetch(await liveApifyDeps(env.apifyToken), 'comments', actor, input, { timeoutMs: 240_000 })
+  // Apify guardrails v6.4: background job = tier B (hard caps, breaker).
+  return guardedApifyFetch(await liveApifyDeps(env.apifyToken), 'comments', actor, input, { timeoutMs: 240_000, tier: 'batch' })
 }
 
 export async function runCommentMiner(log: Log): Promise<void> {
