@@ -12,6 +12,7 @@
 
 import { db } from '../db.js'
 import { env } from '../env.js'
+import { guardedApifyFetch, liveApifyDeps } from '../apifyGuard.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
 import { candidateIn, commentKnowledge, normalizeComments, pickCandidates } from './commentMiningParse.js'
 
@@ -21,16 +22,8 @@ const COMMENTS_PER_POST = 60
 let last = 0
 
 async function apifyItems(actor: string, input: unknown): Promise<Record<string, unknown>[]> {
-  const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), 240_000)
-  try {
-    const r = await fetch(`https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${env.apifyToken}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input), signal: ctl.signal,
-    })
-    if (!r.ok) throw new Error(`apify ${actor} returned ${r.status}`)
-    const j = await r.json()
-    return Array.isArray(j) ? (j as Record<string, unknown>[]) : []
-  } finally { clearTimeout(timer) }
+  // Apify guardrails v6.4: background job = tier B (hard caps, breaker).
+  return guardedApifyFetch(await liveApifyDeps(env.apifyToken), 'comments', actor, input, { timeoutMs: 240_000, tier: 'batch' })
 }
 
 export async function runCommentMiner(log: Log): Promise<void> {

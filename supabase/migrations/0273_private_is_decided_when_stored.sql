@@ -1,11 +1,11 @@
 -- ⚠️ AUDIT 2026-10-03 (script batch, part 2): PRIVATE MATTER REACHED SCRIPTS
--- AGAIN. "face fines and a court date", "$11 in my bank account" and "the
--- officer joked" were spoken in part-1e#92, and eight more scripts told the
--- officer / inspector visit. The story lived in two places nothing flagged:
---   · fact cbd27272 ("The visiting officer joked…"), stored sensitive = false
---     because the word list named police but not the officer;
---   · her voice profile's sample_hooks and hook_patterns ("city inspector",
---     "Police Department code enforcement"), which have no flag at all.
+-- AGAIN. Story phrases about a legal hearing, a penalty and a personal money
+-- shortfall were spoken in part-1e#92, and eight more scripts told the
+-- official-visit story. The story lived in two places nothing flagged:
+--   · fact cbd27272 (an official-visit anecdote), stored sensitive = false
+--     because the word list named police but not that kind of official;
+--   · her voice profile's sample_hooks and hook_patterns (official-visit
+--     wording), which have no flag at all.
 -- Three changes, all decided when the content is STORED:
 --   1. The creator_knowledge flag uses the widened list (court, fines faced,
 --      any officer, an inspector's visit, enforcement, money hardship, medical:

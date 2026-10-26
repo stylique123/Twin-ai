@@ -72,6 +72,10 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0295_apify_tiers_billing_cycle':
+    'Adds a tier column to the service-role-only Apify spend ledger, apify_reserve_tiered (creator reads record-only, batch jobs capped per 22nd-to-22nd cycle with the anomaly breaker) and the apify_cycle_report view; NOT yet applied (file only, owner applies by hand). The editor never calls Apify. No staging-only surface.',
+  '0294_apify_spend_ledger':
+    'Service-role-only Apify spend ledger and apify_reserve hard stops (RLS on, no policies) plus the apify_cost_report view; applied in prod. Superseded for limits by 0295. The editor never calls Apify. No staging-only surface.',
   '0293_canary_feedback':
     'canary feedback table for the owner\'s canary account (scripts and Result screen only); staging is the editor test bed and runs no canary',
   '0292_check_line_source':

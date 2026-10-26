@@ -78,6 +78,8 @@ const SOURCES = [
   // would survive their own fix.
   ['packages/shared/src/script/hookEntity.ts', 'supabase/functions/_shared/hookEntity.ts'],
   ['packages/shared/src/script/advisoryRead.ts', 'supabase/functions/_shared/advisoryRead.ts'],
+  // Record-only copy of the writer's raw draft for the offline replay guard.
+  ['packages/shared/src/script/writerRaw.ts', 'supabase/functions/_shared/writerRaw.ts'],
   // ⚠️ FIX 8b. The trigger the edge function's judge call must obey — "2+
   // substantive soft beats", never the payoff branch G20 forbids. Generated
   // rather than retyped so the edge call site and the tested rule are the

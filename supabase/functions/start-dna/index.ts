@@ -8,7 +8,8 @@
 // Secrets: APIFY_TOKEN, GEMINI_API_KEY (shared with generate-blueprint)
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
-import { cors, json, normalizeHandle, handleShapeError, HANDLE_TOO_LONG, startApifyRun, type Platform } from '../_shared/dna.ts'
+import { cors, json, normalizeHandle, handleShapeError, HANDLE_TOO_LONG, startApifyRun, apifyRunMaxUsd, type Platform } from '../_shared/dna.ts'
+import { isPanelAccount } from '../_shared/testAccount.ts'
 import { monthlyScanCeiling, scanAllowance } from '../_shared/scanCeiling.ts'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
 
@@ -394,6 +395,33 @@ Deno.serve(async (req: Request) => {
   // Kick the Apify scrape asynchronously. If Apify isn't configured/healthy,
   // fail the voice cleanly so the UI can fall back to the manual quiz.
   try {
+    // Apify guardrails v6.4 (plan §30): panel/test accounts never start a run.
+    // A creator's own onboarding read is NEVER refused for money: the run is
+    // RECORDED (0295 apify_reserve_tiered, tier 'creator'; 0294 with no limit
+    // until 0295 is applied) and a ledger error is logged, not a stop.
+    if (isPanelAccount(user) || String(Deno.env.get('APIFY_TEST_MODE') ?? '').trim().toLowerCase() === 'true') {
+      throw new Error('apify stubbed for test accounts')
+    }
+    const runUsd = apifyRunMaxUsd(Deno.env.get('APIFY_CREATOR_RUN_MAX_USD'))
+    try {
+      const rec = await admin.rpc('apify_reserve_tiered', {
+        p_feature: 'dna_scan', p_actor: platform, p_owner: user.id, p_usd: runUsd, p_tier: 'creator',
+        p_daily_usd: 0, p_cycle_usd: 0, p_breaker_x: 3,
+      })
+      if (rec.error) {
+        const old = await admin.rpc('apify_reserve', {
+          p_feature: 'dna_scan', p_actor: platform, p_owner: user.id, p_usd: runUsd, p_daily_usd: 1e9, p_monthly_usd: 1e9,
+        })
+        if (old.error) console.warn(JSON.stringify({ event: 'apify_record_failed', feature: 'dna_scan' }))
+      } else {
+        const r = rec.data as { today_usd?: number; avg_usd?: number } | null
+        if ((r?.avg_usd ?? 0) > 0 && (r?.today_usd ?? 0) > 3 * (r?.avg_usd ?? 0)) {
+          console.warn(JSON.stringify({ event: 'apify_spend_anomaly', feature: 'dna_scan', today_usd: r?.today_usd, avg_usd: r?.avg_usd }))
+        }
+      }
+    } catch {
+      console.warn(JSON.stringify({ event: 'apify_record_failed', feature: 'dna_scan' }))
+    }
     const runId = await startApifyRun(platform, handle)
     const { data: job } = await admin
       .from('jobs')

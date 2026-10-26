@@ -38,6 +38,22 @@ export const SCAN_FAILURE_CAUSES = [
   'RATE_LIMITED',
   /** Our retriever ran and broke. OUR side, and the creator cannot fix it. */
   'SCRAPER_FAILED',
+  /** We READ the account, then a paid service we build the voice with refused
+   *  us for quota (Gemini 429 RESOURCE_EXHAUSTED, measured 2026-10-26). OURS,
+   *  and it does not pass in a minute, so the message must not promise that. */
+  'SERVICE_QUOTA',
+  /** We READ posts, but none carried words a voice can be learned from (every
+   *  caption / title came back blank). OURS to explain, not an empty account. */
+  'NO_USABLE_TEXT',
+  /** The voice model answered, but with nothing usable (no niche, tone or
+   *  summary). OURS. */
+  'VOICE_INCOMPLETE',
+  /** We built the voice and could not save it. OURS, and the creator cannot
+   *  fix it. */
+  'VOICE_SAVE_FAILED',
+  /** A step after the read ran out of time (the model call, or the whole wait
+   *  on the screen). OURS, and it usually passes. */
+  'SCAN_TIMED_OUT',
   /** Not a platform Twin reads. */
   'UNSUPPORTED_PLATFORM',
   /** ⚠️ THE HONEST DEFAULT. Anything unrecognised lands here, and its message
@@ -67,6 +83,9 @@ export interface ScanFailure {
   worthRetrying: boolean
   /** Whether the same creator on ANOTHER platform would likely work. */
   tryAnotherPlatform: boolean
+  /** ⚖️ ALWAYS TRUE. "Describe your voice yourself" is offered on every
+   *  failure, whoever's fault it is, so no cause is ever a dead end. */
+  offerManual: true
 }
 
 /**
@@ -74,7 +93,7 @@ export interface ScanFailure {
  * KNOWLEDGE. No "retriever", no "scraper", no "rate limited", no error codes.
  * And none of them says "private" unless the platform said private.
  */
-const FAILURES: Record<ScanFailureCause, Omit<ScanFailure, 'cause'>> = {
+const FAILURES: Record<ScanFailureCause, Omit<ScanFailure, 'cause' | 'offerManual'>> = {
   HANDLE_NOT_FOUND: {
     message: 'We could not find that account. Check the spelling of the handle and try again.',
     creatorCanFix: true, worthRetrying: false, tryAnotherPlatform: true,
@@ -107,6 +126,26 @@ const FAILURES: Record<ScanFailureCause, Omit<ScanFailure, 'cause'>> = {
     message: 'Something went wrong on our end while reading this account. It is not your account, and it is not you.',
     creatorCanFix: false, worthRetrying: true, tryAnotherPlatform: true,
   },
+  SERVICE_QUOTA: {
+    message: 'We read your account fine and kept what we found, but a service we use to build your voice has hit its usage limit for now. This is on our side, not your account. Try again a little later, or describe your voice yourself.',
+    creatorCanFix: false, worthRetrying: true, tryAnotherPlatform: true,
+  },
+  NO_USABLE_TEXT: {
+    message: 'We reached this account, but the posts we read had no words we could learn your voice from. This one is on us. Try another account, or describe your voice yourself.',
+    creatorCanFix: false, worthRetrying: false, tryAnotherPlatform: true,
+  },
+  VOICE_INCOMPLETE: {
+    message: 'We read your posts, but the voice we built came back empty. This is on our side. Try again, or describe your voice yourself.',
+    creatorCanFix: false, worthRetrying: true, tryAnotherPlatform: true,
+  },
+  VOICE_SAVE_FAILED: {
+    message: 'We built your voice but could not save it. This is on our side, not your account. Try again, or describe your voice yourself.',
+    creatorCanFix: false, worthRetrying: true, tryAnotherPlatform: true,
+  },
+  SCAN_TIMED_OUT: {
+    message: 'Building your voice took longer than it should. This is on our side. Try again, or describe your voice yourself.',
+    creatorCanFix: false, worthRetrying: true, tryAnotherPlatform: true,
+  },
   UNKNOWN: {
     message: 'We could not read this account right now. We are not sure why yet, so it is worth another try.',
     creatorCanFix: false, worthRetrying: true, tryAnotherPlatform: true,
@@ -114,7 +153,7 @@ const FAILURES: Record<ScanFailureCause, Omit<ScanFailure, 'cause'>> = {
 }
 
 export function scanFailure(cause: ScanFailureCause): ScanFailure {
-  return { cause, ...FAILURES[cause] }
+  return { cause, ...FAILURES[cause], offerManual: true }
 }
 
 /**

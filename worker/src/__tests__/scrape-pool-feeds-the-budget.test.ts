@@ -73,7 +73,10 @@ describe('the scan actually passes the pool', () => {
   it('does not call scrapeProfile with the default limit', () => {
     // The whole defect was an omitted third argument. Matching the CALL, not the
     // prose that explains it.
-    expect(SCAN).toMatch(/await scrapeProfile\(handle, platform, scrapePoolFor\(platform\)\)/)
+    // v6.4: the pool still feeds the read, clamped to the creator read limit
+    // (≤ 20) and trimmed by the 30-day cache plan.
+    expect(SCAN).toMatch(/planCreatorRead\(cached, creatorReadLimit\(scrapePoolFor\(platform\)\)\)/)
+    expect(SCAN).toMatch(/await scrapeProfile\(handle, platform, plan\.limit\)/)
     expect(SCAN).not.toMatch(/await scrapeProfile\(handle, platform\)/)
   })
 })

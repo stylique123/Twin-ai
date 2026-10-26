@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   parseCsv, scriptKey, buildPairs, sampleByGap, pairAccuracy, combineOrders, scorerPairAccuracy,
   costGuard, usd, truthLines, parseRepeatPairs, repeatRecall, loadCraftSet,
+  geminiText, callGemini, nullGuard, MIN_MAX_OUT, VERDICT_SCHEMA,
 } from './evalLib.mjs'
 import { rubricForPrompt, pickShots, parseVerdict } from './evalCraftJudgePairs.mjs'
 
@@ -65,5 +66,38 @@ assert.deepEqual(parseRepeatPairs('{"repeats":[{"earlier":1,"later":3,"verdict":
 assert.equal(parseRepeatPairs('not json', 3), null)
 const rr = repeatRecall(['X-1', 'X-2'], ['X-2', 'X-9'])
 assert.equal(rr.recall, 0.5); assert.deepEqual(rr.missed, ['X-1']); assert.deepEqual(rr.extra, ['X-9'])
+
+// Verdict parser: JSON or lone letter; prose that merely contains a letter is not a verdict.
+assert.equal(parseVerdict('{"winner":"A"}'), 'A')
+assert.equal(parseVerdict('```json\n{"winner": "b"}\n```'), 'B')
+assert.equal(parseVerdict('A'), 'A'); assert.equal(parseVerdict('B.'), 'B'); assert.equal(parseVerdict('Script B'), 'B')
+assert.equal(parseVerdict(''), null); assert.equal(parseVerdict('{"winner":"C"}'), null)
+assert.equal(parseVerdict('A is better than B'), null)
+
+// Fake generateContent responses.
+const resp = (parts, finishReason = 'STOP', usage = {}) => ({ candidates: [{ content: { role: 'model', parts }, finishReason }], usageMetadata: usage })
+assert.equal(geminiText(resp([{ text: '{"winner"' }, { text: ':"A"}' }])), '{"winner":"A"}')
+// Thinking-only (budget eaten by thoughts): no answer text -> null verdict, not a guess.
+const thinkingOnly = resp([{ text: 'Script A has a stronger hook but B', thought: true }], 'MAX_TOKENS', { thoughtsTokenCount: 16 })
+assert.equal(geminiText(thinkingOnly), ''); assert.equal(parseVerdict(geminiText(thinkingOnly)), null)
+assert.equal(geminiText({ candidates: [{ finishReason: 'MAX_TOKENS' }] }), '') // no content at all
+assert.equal(geminiText(resp([{ text: 'hmm', thought: true }, { text: 'B' }])), 'B')
+assert.equal(geminiText({}), '')
+
+// callGemini with a fake fetch: request shape + parsing + billing of thought tokens.
+process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'fake-key-selftest'
+let sent
+const fakeFetch = async (_url, init) => { sent = JSON.parse(init.body); return { ok: true, json: async () => resp([{ text: 'x', thought: true }, { text: '{"winner":"B"}' }], 'STOP', { promptTokenCount: 10, candidatesTokenCount: 5, thoughtsTokenCount: 40 }) } }
+const gr = await callGemini({ model: 'm', system: 's', user: 'u', maxOut: 16, schema: VERDICT_SCHEMA, fetchImpl: fakeFetch })
+assert.equal(gr.text, '{"winner":"B"}'); assert.equal(parseVerdict(gr.text), 'B'); assert.equal(gr.outTok, 45); assert.equal(gr.finishReason, 'STOP')
+assert.equal(sent.generationConfig.maxOutputTokens, MIN_MAX_OUT) // tiny caps are floored
+assert.equal(sent.generationConfig.thinkingConfig, undefined)
+assert.equal(sent.generationConfig.responseMimeType, 'application/json'); assert.deepEqual(sent.generationConfig.responseSchema, VERDICT_SCHEMA)
+
+// Null guard: >20% null in the first 6 calls stops; 1/6 does not.
+const ng1 = nullGuard(); for (const n of [true, true, false, false, false]) ng1.add(n)
+assert.equal(ng1.shouldStop(), false); ng1.add(false); assert.equal(ng1.shouldStop(), true)
+const ng2 = nullGuard(); for (const n of [true, false, false, false, false, false, true, true]) ng2.add(n)
+assert.equal(ng2.shouldStop(), false)
 
 console.log('evalLib selftest ok')

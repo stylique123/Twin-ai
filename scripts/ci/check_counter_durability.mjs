@@ -54,6 +54,8 @@ const REPO = join(fileURLToPath(import.meta.url), '..', '..', '..')
 // mechanism: it converts "nobody noticed" into "someone wrote down why", which
 // is the only difference between an omission and a decision.
 const EVENTS = {
+  apify_record_failed: { kind: 'incident', why: 'A creator Apify read could not be written to apify_spend_ledger (v6.4: record-only, the read still runs). Per occurrence, because unrecorded spend makes the cost report lie.' },
+  apify_spend_anomaly: { kind: 'incident', why: 'Today\'s Apify spend passed 3x the trailing 7-day daily average (plan v6.4 §30 alert). The ledger rows themselves are the durable record; this is the ops alert.' },
   // ── COUNTERS WITH A HOME ────────────────────────────────────────────────
   substance_route_shadow: {
     kind: 'counter',
@@ -1104,6 +1106,8 @@ const EVENTS = {
   downloader_probe: { kind: 'incident', why: 'What the CONTAINER can do, asked at boot rather than inferred from requirements.txt. Emitted once per worker start; zero impersonation targets is the line that would have explained a wave of TikTok failures before anybody read 38 error rows.' },
   scrape_dna_reader_failed: { kind: 'incident', why: 'The READER reported a failure of its own — an Apify Actor that times out writes an error into its dataset and exits zero, which used to reach a creator as "your account is private or empty". Per occurrence, because each one is a public account being told it is not.' },
   scrape_dna_unsupported_platform: { kind: 'incident', why: 'A platform the worker does not handle.' },
+  scrape_dna_mark_failed_failed: { kind: 'incident', why: 'Even the write marking a voice `failed` was refused, so the row stays `building` and the screen waits out its cap. Per occurrence; the job result still carries scan_cause.' },
+  scrape_dna_synth_quota_retry: { kind: 'incident', why: 'The voice-building model refused a scan for quota and the worker waited to retry (at most two per scan). Per occurrence, because a run of these is the first sign the model key has hit a spend cap only the owner can lift.' },
   profile_scrape_free_failed: { kind: 'incident', why: 'The free profile path failed; a paid one may follow.' },
   profile_scrape_free_empty: { kind: 'incident', why: 'The free profile path returned nothing.' },
   profile_facts_missing: { kind: 'incident', why: 'A scrape with no resolvable account facts.' },

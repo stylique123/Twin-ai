@@ -3,8 +3,8 @@ import { classifyFactRules } from '../factClass.js'
 
 // Fictional creator (Maya's Coffee), from the relevance brief Part 6.
 describe('classifyFactRules', () => {
-  it('A: lease with $11 left is a heavy challenge about her', () => {
-    const c = classifyFactRules('I signed my lease with $11 left in my account.')
+  it('A: lease with $9 left is a heavy challenge about her', () => {
+    const c = classifyFactRules('I signed my lease with $9 left in my account.')
     expect(c.weight).toBe('heavy')
     expect(c.subject).toBe('her')
   })
