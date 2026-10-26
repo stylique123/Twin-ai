@@ -388,3 +388,7 @@ export * from './script/scriptRules'
 export * from './script/shownJob'
 export * from './script/lineSources'
 export * from './productDetailsByKind'
+
+// Plan v6.8 §33: the beat budgets (shared with the beat writer), the quality profile switch and the Quality Controller.
+export * from './script/beatBudgets'
+export * from './script/qualityProfile'

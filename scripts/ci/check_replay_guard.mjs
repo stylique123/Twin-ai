@@ -29,4 +29,20 @@ try {
   if (v.length) { for (const x of v) console.error(`  ✗ ${x}`); console.error('replay guard FAILED — block the merge (plan v6.1 §27)'); process.exitCode = 1 }
   else console.log('replay guard OK')
   }
+  // QC STAGE (plan v6.8 §33): the Quality Controller replayed LAST over the same
+  // stored panels (+ panel 12) with the fixture creators' ledgers. It must hold:
+  // 0 placeholders, 0 repeats, blocking flags not worse than the stored scripts,
+  // median words not below the stored median. Ids and counts only.
+  const outQc = join(dir, 'qcReplay.mjs')
+  buildSync({ entryPoints: [join(root, 'packages/shared/src/script/qcReplay.ts')], bundle: true, format: 'esm', platform: 'node', outfile: outQc, logLevel: 'error' })
+  const q = await import(pathToFileURL(outQc).href)
+  const fx = JSON.parse(readFileSync(join(root, 'scripts/ops/fixtures/fictional-panel.json'), 'utf8'))
+  const p12 = JSON.parse(readFileSync(join(here, 'fixtures/replay_panel_12.json'), 'utf8')).cases
+  const qr = q.qcReplayAll([...fixture.cases, ...p12], fx.creators, fx.requests)
+  console.log(`qc stage:     ${JSON.stringify(qr.panels)}`)
+  const qv = q.qcGuardViolations(qr.panels)
+  if (!process.argv.includes('--print')) {
+    if (qv.length) { for (const x of qv) console.error(`  ✗ ${x}`); console.error('replay guard (QC stage) FAILED'); process.exitCode = 1 }
+    else console.log('replay guard (QC stage) OK')
+  }
 } finally { rmSync(dir, { recursive: true, force: true }) }

@@ -86,6 +86,17 @@ export function prescoreRow(scriptId, lines, scoreCraft) {
   return [scriptId, Number.isFinite(r?.craft) ? r.craft : '', Number.isFinite(r?.raw) ? Number(r.raw).toFixed(2) : '', caps]
 }
 
+/** QC REPORT ROW (plan v6.8 §33): the Quality Controller's per-script report for
+ * the blind package METADATA (qc-report.csv and scripts/<id>.json), never in
+ * sentences.csv (the answer key side). Ids, kinds and counts only. */
+export const QC_REPORT_HEADER = ['script_id', 'quality_profile', 'qc_profile', 'words_before', 'words_after', 'floor', 'target', 'beats_met', 'added', 'refused', 'removed_repeats', 'thin', 'label', 'chosen']
+export function qcReportRow(scriptId, qc, qualityProfile) {
+  if (!qc || typeof qc !== 'object' || qc.error) return [scriptId, qualityProfile ?? '', '', '', '', '', '', '', '', qc?.error ? 'error' : '', '', '', '', '']
+  return [scriptId, qualityProfile ?? '', qc.profile ?? '', qc.words_before ?? '', qc.words_after ?? '', qc.floor ?? '', qc.target ?? '', qc.beats_met ?? '',
+    (qc.added ?? []).map((a) => `${a.kind}:${a.id}`).join('|'), [...new Set((qc.refused ?? []).map((r) => r.reason))].join('|'),
+    qc.removed_repeats ?? 0, qc.thin ?? '', qc.label ?? '', qc.best_of_n?.chosen ?? '']
+}
+
 /** The judge bundle, built on the fly when the workflow did not build it. */
 async function loadCraftJudge() {
   const target = join(REPO, 'scripts', 'ops', '.craftJudge.bundle.mjs')
@@ -124,6 +135,7 @@ async function main() {
   mkdirSync(join(out, 'scripts'), { recursive: true })
   const { scoreCraft } = await loadCraftJudge()
   const pre = ['script_id,craft_1_to_7,raw,caps']
+  const qcRows = [QC_REPORT_HEADER.join(',')]
   const csv = [CSV_HEADER.join(',')]
   const bundle = []
   for (const row of panelRows) {
@@ -154,13 +166,18 @@ async function main() {
       check_status: bp.check_status ?? null,
       gate_pending: gatePending(bp),
       questions: panelQuestions(row.scenario, bp),
+      // Metadata, not the answer key: the quality profile and the QC report (ids and counts).
+      quality_profile: bp.quality_profile ?? null,
+      qc_report: bp.qc_report ?? null,
     }
     writeFileSync(join(out, 'scripts', `${scriptId.replace(/[^A-Za-z0-9_.-]/g, '_')}.json`), JSON.stringify(file, null, 2))
     pre.push(prescoreRow(scriptId, file.script.map((b) => b.line), scoreCraft).map(csvCell).join(','))
+    qcRows.push(qcReportRow(scriptId, bp.qc_report, bp.quality_profile?.profile ?? row.scenario?.quality_profile ?? null).map(csvCell).join(','))
     bundle.push(file)
   }
   writeFileSync(join(out, 'sentences.csv'), csv.join('\n') + '\n')
   writeFileSync(join(out, 'judge-prescore.csv'), pre.join('\n') + '\n')
+  writeFileSync(join(out, 'qc-report.csv'), qcRows.join('\n') + '\n')
   console.log(`exported ${bundle.length} panel scripts, ${csv.length - 1} sentences`)
   console.log(`panel questions: ${JSON.stringify(questionSummary(bundle.map((f) => f.questions)))}`)
   if (process.argv.includes('--to-db')) {
