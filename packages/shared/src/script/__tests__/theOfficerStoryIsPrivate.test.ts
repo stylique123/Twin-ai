@@ -1,5 +1,5 @@
 // ⚠️ AUDIT 2026-10-03 (script batch, part 2 — zero tolerance). part-1e#92
-// (generation 971f9c9f) said "face fines and a court date", "$11 in my bank
+// (generation 971f9c9f) said "face fines and a court date", "$9 in my bank
 // account" and "the officer joked"; eight more scripts told the officer or
 // inspector visit. The story lived in fact cbd27272 and in her voice profile's
 // sample hooks, and the word list caught none of it. Each layer is pinned here
@@ -9,8 +9,8 @@ import { describe, it, expect } from 'vitest'
 import { isPrivate, scrubPrivate, privateParts, guardScript, rewriteIsSafe, privateSqlPattern } from '../privacyGuard'
 
 const LEAKED = [
-  'I had 26 days to move my roastery… or face fines and a court date.',
-  'I had $11 in my bank account during inspections—until the officer joked she was coming back just for the coffee.',
+  'I had 19 days to move my roastery… or face fines and a court date.',
+  'I had $9 in my bank account during inspections—until the officer joked she was coming back just for the coffee.',
   'The visiting officer joked she told the girls in the office she might come back just for the coffee.',
   'today the city inspector walks through our doors',
   'Our inspector told her entire office she might return with coffee',

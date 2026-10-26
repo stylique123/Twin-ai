@@ -254,12 +254,12 @@ describe('audit 2026-10-03 (part 2): private is decided when the row is stored',
   it('the officer story is flagged even when the extractor did not mark it', () => {
     expect(row('The visiting officer joked she would come back just for the coffee.').sensitive).toBe(true)
     expect(row('Had to move the roastery or face fines and a court date.').sensitive).toBe(true)
-    expect(row('Moved the roastery out of the house.', { evidence: 'I had $11 in my bank account' }).sensitive).toBe(true)
+    expect(row('Moved the roastery out of the house.', { evidence: 'I had $9 in my bank account' }).sensitive).toBe(true)
   })
   it('ordinary coffee facts stay usable', () => {
     expect(row('Roasts every bag to order in small batches.').sensitive).toBe(false)
   })
   it('the extractor is told what legal and money trouble looks like', () => {
-    expect(VOICE).toMatch(/a court date[\s\S]*officer or inspector[\s\S]*\$11 in my bank account/)
+    expect(VOICE).toMatch(/a court date[\s\S]*officer or inspector[\s\S]*\$9 in my bank account/)
   })
 })

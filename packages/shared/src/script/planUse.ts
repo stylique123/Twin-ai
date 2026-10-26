@@ -1,7 +1,7 @@
 // WHAT TWIN WILL USE, SHOWN SO SHE CAN TRUST IT (owner, 2026-09-28).
 //
 // ⚠️ The first version listed eight items, truncated, two of them the same cup
-// score, one a legal deadline ("26 days … fines or a court date"). The rules:
+// score, one a legal deadline ("19 days … a penalty notice or a hearing date"). The rules:
 //   · only facts that FIT this idea are shown first; the rest sit behind "See all";
 //   · each says where it came from — "You wrote this" or "From your videos, not
 //     confirmed";
