@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import {
   resolveCostMode, planProductPageRead, usablePainMap, estimatePanelBudget, budgetGate,
   costByCallerAndModel, ExtrasLedger, EXTRAS, redditScanV2Allowed,
-} from '../../packages/shared/src/script/realisticPanel.ts'
+} from '../lib/realisticPanel.mjs'
 
 const PAIN = new URL('./fixtures/fictional-pain-map.json', import.meta.url)
 const PERSONAS_PER_SCRIPT = 3

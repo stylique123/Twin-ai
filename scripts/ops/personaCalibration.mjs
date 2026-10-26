@@ -21,8 +21,8 @@
 // Output is NUMBERS ONLY (counts, correlations, dollars). No hook or script text
 // is ever printed or written; results go to a local file the caller chooses.
 import { readFileSync, writeFileSync } from 'node:fs'
-import { pearson, spearman, PERSONA_MIN_CORRELATION, personaMayInfluence } from '../../packages/shared/src/script/realisticPanel.ts'
-import { parseCsv } from '../../packages/shared/src/script/painMap.ts'
+import { pearson, spearman, PERSONA_MIN_CORRELATION, personaMayInfluence } from '../lib/realisticPanel.mjs'
+import { parseCsv } from '../lib/painMap.mjs'
 
 const DIR = new URL('../../packages/shared/src/script/__tests__/fixtures/calibration/', import.meta.url)
 

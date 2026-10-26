@@ -456,3 +456,85 @@ export function costByCallerAndModel(rows: ReadonlyArray<{ provider: string; cal
   }
   return [...m.values()].map((e) => ({ ...e, usd: Math.round(e.usd * 100000) / 100000 })).sort((a, b) => b.usd - a.usd)
 }
+
+// ─── 6. THE WRITER CONTEXT IN FULL MODE (pain map + the other extras) ──────
+
+/**
+ * Fixture-provided extras a test/panel run may pass (FICTIONAL for the test
+ * creators). The writer sees each under a labelled block with its use rule.
+ * Real creators: never read (buildRealisticContext returns nothing).
+ */
+export interface PanelExtras {
+  outside_knowledge?: unknown
+  audience_comments?: unknown
+  niche_notes?: unknown
+}
+
+/** Per-run item caps per extra (the dollar caps live in ExtrasLedger). */
+export const EXTRA_ITEM_CAPS = { outside_knowledge: 4, audience_comments: 6, niche_notes: 4 } as const
+
+const SAFE_ITEM = /^[^@<>{}`]{3,200}$/
+function cleanItems(v: unknown, cap: number): string[] {
+  if (!Array.isArray(v) || cap <= 0) return []
+  const out: string[] = []
+  for (const x of v) {
+    const s = typeof x === 'string' ? x.replace(/\s+/g, ' ').trim() : ''
+    if (!s || !SAFE_ITEM.test(s) || HANDLE.test(s) || /https?:\/\//i.test(s)) continue
+    if (!out.includes(s)) out.push(s)
+    if (out.length >= cap) break
+  }
+  return out
+}
+
+export interface RealisticContext {
+  block: string
+  /** Counts only, per extra: how many items reached the writer. */
+  used: Record<'pain_map' | 'outside_knowledge' | 'audience_comments' | 'niche_notes', number>
+}
+
+/**
+ * The writer-context block for `full` mode. EMPTY (nothing counted) unless the
+ * decision applies and the extra's own flag is on, so a real creator, or a test
+ * run with the extras off, gets a byte-identical prompt (withRealisticContext).
+ * Audience comments: HER OWN audience first; the niche's only fill the cap.
+ * Every block states its use rule: none of it is her experience or proof.
+ */
+export function buildRealisticContext(input: { decision: CostModeDecision; pain?: UsablePainMap | null; extras?: PanelExtras | null; ledger?: ExtrasLedger | null }): RealisticContext {
+  const used: RealisticContext['used'] = { pain_map: 0, outside_knowledge: 0, audience_comments: 0, niche_notes: 0 }
+  const d = input.decision
+  if (!d.applies || d.mode !== 'full') return { block: '', used }
+  const parts: string[] = []
+  const take = (extra: Extra): boolean => !!d.extras[extra] && (!input.ledger || input.ledger.charge(extra, 0))
+  if (input.pain && input.pain.entries.length && d.extras.pain_map && take('pain_map')) {
+    parts.push(painMapPromptBlock(input.pain))
+    used.pain_map = Math.min(5, input.pain.entries.length)
+  }
+  const x = (input.extras && typeof input.extras === 'object' ? input.extras : {}) as PanelExtras
+  const outside = cleanItems(x.outside_knowledge, EXTRA_ITEM_CAPS.outside_knowledge)
+  if (outside.length && d.extras.outside_knowledge && take('outside_knowledge')) {
+    parts.push(['OUTSIDE AND NICHE KNOWLEDGE (general facts about the field; NOT her experience, NOT her numbers):', ...outside.map((s) => `- ${s}`)].join('\n'))
+    used.outside_knowledge = outside.length
+  }
+  const ac = (x.audience_comments && typeof x.audience_comments === 'object' ? x.audience_comments : {}) as { own?: unknown; niche?: unknown }
+  const own = cleanItems(ac.own, EXTRA_ITEM_CAPS.audience_comments)
+  const niche = cleanItems(ac.niche, EXTRA_ITEM_CAPS.audience_comments).filter((s) => !own.includes(s)).slice(0, EXTRA_ITEM_CAPS.audience_comments - own.length)
+  if ((own.length || niche.length) && d.extras.audience_comments && take('audience_comments')) {
+    parts.push([
+      'AUDIENCE WORDS (vocabulary and questions only; never quoted as a testimonial, never proof):',
+      ...own.map((s) => `- [her audience] ${s}`),
+      ...niche.map((s) => `- [niche audience] ${s}`),
+    ].join('\n'))
+    used.audience_comments = own.length + niche.length
+  }
+  const notes = cleanItems(x.niche_notes, EXTRA_ITEM_CAPS.niche_notes)
+  if (notes.length && d.extras.niche_notes && take('niche_notes')) {
+    parts.push(['NICHE NOTES (what works in this niche; shape only, NOT facts about her):', ...notes.map((s) => `- ${s}`)].join('\n'))
+    used.niche_notes = notes.length
+  }
+  return { block: parts.length ? `REALISTIC PANEL CONTEXT (test account)\n${parts.join('\n\n')}` : '', used }
+}
+
+/** Appends the block; returns the SAME string when the block is empty. */
+export function withRealisticContext(prompt: string, ctx: RealisticContext): string {
+  return ctx.block ? `${prompt}\n\n${ctx.block}` : prompt
+}
