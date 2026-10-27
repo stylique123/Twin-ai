@@ -154,6 +154,8 @@ const SOURCES = [
   ['packages/shared/src/script/itemFormat.ts', 'supabase/functions/_shared/itemFormat.ts'],
   ['packages/shared/src/script/angleFit.ts', 'supabase/functions/_shared/angleFit.ts'],
   ['packages/shared/src/script/questionUsefulness.ts', 'supabase/functions/_shared/questionUsefulness.ts'],
+  // The question engine (plan v7.1 §3): two questions about this request's gaps.
+  ['packages/shared/src/script/questionEngine.ts', 'supabase/functions/_shared/questionEngine.ts'],
   // Showability inferred from the product itself (trial, in memory only).
   ['packages/shared/src/script/inferShowability.ts', 'supabase/functions/_shared/inferShowability.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'supabase/functions/_shared/scriptFamily.ts'],

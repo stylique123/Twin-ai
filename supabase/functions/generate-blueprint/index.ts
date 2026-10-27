@@ -100,6 +100,7 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
+import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
 import { writerLoopOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
@@ -6901,7 +6902,7 @@ async function handle(req: Request): Promise<Response> {
     const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
     if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
     const sb = createClient(supabaseUrl, serviceKey)
-    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown }
+    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown; door?: unknown; idea?: unknown }
     const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
     if (specMode === 'angle_answer') {
       const key = String(b.key ?? '').slice(0, 160)
@@ -6935,7 +6936,7 @@ async function handle(req: Request): Promise<Response> {
       })(),
       pid ? sb.from('product_entities').select('id,name,offer').eq('id', pid).eq('owner_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
       sb.from('question_asks').select('slot_id, outcome').eq('owner_id', user.id).eq('option_id', 'mn').limit(500),
-      sb.from('brand_voices').select('profile').eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+      sb.from('brand_voices').select('profile, pre_script_brief').eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     const material: AngleMaterial[] = []
     for (const r of (kRows ?? []) as Array<Record<string, unknown>>) {
@@ -6962,7 +6963,23 @@ async function handle(req: Request): Promise<Response> {
     let questions: Array<{ ask_id: string | null; key: string; piece: string; kind: string; source: string; text: string; skippable: true }> = []
     if (picked) {
       const rows = (hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown }>
-      const plan = planQuestionsForAngle({
+      // ⚖️ THE QUESTION ENGINE (plan v7.1 §3; QUESTION_ENGINE=off is the kill
+      // switch): two questions about THIS request's gaps — a niche pain asking
+      // for her example, then the biggest missing slot worded for her door —
+      // never a closed key, never what she already answered in meaning.
+      const engineOn = questionEngineOn(Deno.env.get('QUESTION_ENGINE'))
+      const engineInput = engineOn ? {
+        door: b.door, angleNeeds: ANGLE_SPECS[picked].needs, ideaText: typeof b.idea === 'string' ? b.idea.slice(0, 400) : null,
+        productName: typeof p?.name === 'string' ? p.name : null,
+        material: material.map((m) => ({ slot: m.slot, text: m.text, source: m.source === 'product' ? 'product' as const : 'her_material' as const })),
+        pillars: pillarsFrom((v as { pre_script_brief?: unknown } | null)?.pre_script_brief ?? null),
+        painThemes: painItems.map((x) => ({ id: x.id, text: x.text })),
+        closedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler' || r.outcome === 'answered').map((r) => String(r.slot_id)),
+        savedAnswers: ((kRows ?? []) as Array<Record<string, unknown>>).filter((r) => r.source === 'asked').map((r) => String(r.text ?? '')),
+        profileMissing: !String(prof?.audience ?? '').trim() && !rows.some((r) => r.slot_id === 'mn:profile'),
+        voiceCard: false,
+      } : null
+      const plan = engineInput ? pickTwo(engineInput) : planQuestionsForAngle({
         angle: picked, angleNeeds: ANGLE_SPECS[picked].needs, onFile: [...new Set(material.map((m) => m.slot))],
         hasProduct: !!p, entityKey: p ? `product:${p.id}` : 'none',
         audience: audienceItems, painMap: painItems,
@@ -6976,7 +6993,7 @@ async function handle(req: Request): Promise<Response> {
           .select('id').maybeSingle()
         questions.push({ ask_id: (ins as { id?: string } | null)?.id ?? null, ...q })
       }
-      console.log(JSON.stringify({ event: 'mn_questions', angle: picked, ...questionPlanRecord(plan) }))
+      console.log(JSON.stringify({ event: 'mn_questions', angle: picked, ...(engineInput ? { engine: enginePlanRecord(engineInput, plan) } : questionPlanRecord(plan)) }))
     } else questions = []
     console.log(JSON.stringify({ event: 'mn_angles', cards: anglePickRecord(cards) }))
     return json({ cards, questions })
