@@ -109,3 +109,19 @@ describe('brief v2 2.15: stock closers are cut', () => {
       expect(dropStockCloser(t)).toBe(t)
   })
 })
+
+describe('plan v7.1 S6: a re-hook beat survives the clean-up', () => {
+  it('keeps a bare bridge line when its section is rehook, drops it otherwise', async () => {
+    const { cleanBeats } = await import('../beatCleanup')
+    const beats = [
+      { section: 'hook', line: 'My first batch cracked in the kiln.' },
+      { section: 'build', line: 'I loaded it wet and fired it too fast.' },
+      { section: 'rehook', line: "Here's the part nobody tells you." },
+      { section: 'build', line: 'Clay needs a full day to dry.' },
+      { section: 'cta', line: 'Save this before your next firing.' },
+    ]
+    expect(cleanBeats(beats, 'educate').beats.map((b) => b.section)).toContain('rehook')
+    const asBuild = beats.map((b) => (b.section === 'rehook' ? { ...b, section: 'build' } : b))
+    expect(cleanBeats(asBuild, 'educate').beats.length).toBe(4)
+  })
+})

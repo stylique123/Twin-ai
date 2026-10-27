@@ -81,3 +81,17 @@ describe('the edge wiring', () => {
     expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\)/)
   })
 })
+
+describe('plan v7.1 S7: the CTA is last', () => {
+  it('moves the CTA line to the end without adding or dropping', async () => {
+    const { moveCtaLast } = await import('../script/planner/spineComplete')
+    const s = [{ section: 'hook', line: 'A' }, { section: 'cta', line: 'Link in bio.' }, { section: 'build', line: 'B' }]
+    const r = moveCtaLast(s)
+    expect(r.moved).toBe(true)
+    expect(r.script.map((b) => b.line)).toEqual(['A', 'B', 'Link in bio.'])
+    expect(moveCtaLast(r.script).moved).toBe(false)
+  })
+  it('the edge runs it on the WRITER_LOOP stage', () => {
+    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\) && blueprint[\s\S]{0,300}moveCtaLast\(/)
+  })
+})

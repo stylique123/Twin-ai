@@ -116,7 +116,7 @@ import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
-import { completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY } from '../_shared/spineComplete.ts'
+import { moveCtaLast, completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY } from '../_shared/spineComplete.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -17568,6 +17568,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           console.log(JSON.stringify({ event: 'plan_b_skipped', reason: 'no_material' }))
         }
       } catch { /* Plan B never fails a build: the writer's script stays */ }
+    }
+    // ⚖️ CTA LAST (plan v7.1 S7): one pure reorder, nothing added or dropped,
+    // on the WRITER_LOOP stage (unset = trial only, 'all' = every account).
+    if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bpc = blueprint as Record<string, unknown>
+        const r = moveCtaLast(bpc.script as Array<Record<string, unknown>>)
+        if (r.moved) { bpc.script = r.script; console.log(JSON.stringify({ event: 'feature_fired', feature: 'cta_last', moved: true })) }
+      } catch { /* a reorder never fails a build */ }
     }
     // ⚖️ SPINE COMPLETENESS (craft rubric v1 item C; trial, test accounts only,
     // DEFAULT OFF: SPINE_COMPLETE=on turns it on). Deterministic: when no
