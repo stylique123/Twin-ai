@@ -8660,6 +8660,18 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   })()
   const voiceCard = voiceCardBuild?.card ?? null
   const voiceCardBlock = voiceCard ? `\n${voiceCardBrief(voiceCard)}` : ''
+  // ⚖️ Plan v7.1 WP6: her niche's pain themes for the writer-loop block
+  // (audience_pain_map, matched by nicheMatches). WRITER_LOOP stage; a failed
+  // read costs only the themes.
+  const loopPainThemes: string[] = await (async () => {
+    if (!writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)) return []
+    const niche = String((vp as { niche?: unknown } | null)?.niche ?? '').trim()
+    if (!niche) return []
+    try {
+      const { data } = await admin.from('audience_pain_map').select('id,niche,pain_sentence,status,origin,expiry').eq('status', 'active').limit(200)
+      return painItemsFromMap((data ?? []) as unknown[], niche, new Date().toISOString().slice(0, 10)).map((x) => x.text)
+    } catch { return [] }
+  })()
   // V4 (plan v7.1): when the writer-loop block carries the card (first, highest
   // priority), it is not repeated at the tail of the context line.
   const writerLoopCarriesVoice = !!voiceCard && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)
@@ -12960,10 +12972,10 @@ This is the video's position. Every field below must serve it. If the reference'
         const pr = (vp ?? {}) as { style_note?: unknown; samples?: unknown; voice_samples?: unknown }
         const sampleLines = sampleLinesFrom(pr.samples, pr.voice_samples ?? (dna as { voice_samples?: unknown } | null)?.voice_samples)
         const block = renderWriterLoop({
-          answers, pillars, profile: loopProfileForSeconds(lengthTarget ?? body.target_seconds),
+          answers, pillars, painThemes: loopPainThemes, profile: loopProfileForSeconds(lengthTarget ?? body.target_seconds),
           voice: { cardBlock: voiceCard ? voiceCardBrief(voiceCard) : null, styleNote: typeof pr.style_note === 'string' ? pr.style_note : null, sampleLines },
         })
-        console.log(JSON.stringify({ event: 'feature_fired', feature: 'writer_loop', answers: answers.length, pillars: pillars.length, voice_card: !!voiceCard, samples: sampleLines.length }))
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'writer_loop', answers: answers.length, pillars: pillars.length, pains: loopPainThemes.length, voice_card: !!voiceCard, samples: sampleLines.length }))
         return block
       } catch { return '' }
     })() : ''

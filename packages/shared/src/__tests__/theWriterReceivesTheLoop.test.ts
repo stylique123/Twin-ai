@@ -122,3 +122,16 @@ describe('plan v7.1: her own way to show the product reaches the writer', () => 
     expect(EDGE).toMatch(/HER OWN WAY TO SHOW IT/)
   })
 })
+
+describe('plan v7.1 WP6: her audience pain themes reach the writer, labelled outside', () => {
+  it('renders as topics only, with the never-her-experience rule', () => {
+    const out = renderWriterLoop({ answers: [], pillars: [], profile: 'standard', painThemes: ['beans go stale within a week'] })
+    expect(out).toMatch(/outside research; topics only/)
+    expect(out).toMatch(/Never present it as her experience, never quote it/)
+    expect(out.indexOf('outside research')).toBeLessThan(out.indexOf('THE HOUSE STRUCTURE'))
+  })
+  it('the edge reads the pain map for her niche on the WRITER_LOOP stage', () => {
+    expect(EDGE).toMatch(/const loopPainThemes: string\[\] = await[\s\S]{0,300}writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\)[\s\S]{0,400}painItemsFromMap\(/)
+    expect(EDGE).toMatch(/painThemes: loopPainThemes/)
+  })
+})

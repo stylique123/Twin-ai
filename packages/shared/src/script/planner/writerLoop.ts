@@ -109,7 +109,7 @@ export function writerLoopOn(stage: string | null | undefined, trialOn: boolean)
 const fence = (label: string, body: string) => `<<<${label}\n${body}\n>>>`
 
 /** The whole block. Empty sections are left out; the structure is always present. */
-export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: readonly string[]; profile: DurationProfile; voice?: VoiceForWriter | null }): string {
+export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: readonly string[]; profile: DurationProfile; voice?: VoiceForWriter | null; painThemes?: readonly string[] }): string {
   const parts: string[] = []
   const v = a.voice ?? null
   const samples = (v?.sampleLines ?? []).map((s) => String(s).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3)
@@ -128,6 +128,14 @@ export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: r
   }
   if (a.pillars.length) {
     parts.push(`Her content pillars: ${a.pillars.join('; ')}. Keep the script inside the pillar this request fits; do not drift to another.`)
+  }
+  // Plan v7.1 WP6: what her audience struggles with, from research (Reddit and
+  // public posts), as TOPICS ONLY. Labelled outside, never her experience,
+  // never quoted, never "most people" or a number.
+  const pains = (a.painThemes ?? []).map((t) => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3)
+  if (pains.length) {
+    parts.push(fence('what her audience struggles with (outside research; topics only)', pains.map((t) => `- ${t.slice(0, 160)}`).join('\n'))
+      + '\nUse one of these only to name the problem (step 2) or shape the hook, in your own words. Never present it as her experience, never quote it, never say "most people", "everyone" or a number about it.')
   }
   parts.push(renderHouseStructure(a.profile))
   return parts.join('\n\n')
