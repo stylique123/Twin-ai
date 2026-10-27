@@ -179,6 +179,29 @@ export function panelAnswerMode(env = process.env) {
   return env.PANEL_ANSWER_MODE === 'fixture' ? 'fixture' : 'skip'
 }
 
+/**
+ * Plan v7.1 WP12: the ANGLE LOOP (PANEL_ANGLE_LOOP=on). The question engine's
+ * two questions are answered the way a creator would: her fictional fixture
+ * answer for the question's kind (story / product_slot / niche / profile),
+ * else a skip. Returns the mn_answers the request carries and the per-question
+ * outcomes to send back as angle_answer. Default off: existing runs unchanged.
+ */
+export function panelAngleLoopOn(env = process.env) {
+  return env.PANEL_ANGLE_LOOP === 'on'
+}
+export function angleLoopAnswers(questions, creatorAnswers) {
+  const mn = {}
+  const sends = []
+  for (const q of questions ?? []) {
+    if (!q?.key || !/^mn:/.test(q.key)) continue
+    const a = creatorAnswers?.[q.kind]
+    const answer = typeof a === 'string' && a.trim() ? a.trim() : null
+    if (answer) mn[q.key] = answer
+    sends.push({ key: q.key, piece: q.piece, ask_id: q.ask_id ?? undefined, ...(answer ? { answer } : { skip: true }) })
+  }
+  return { mn_answers: mn, sends }
+}
+
 /** Answers for a 409 in fixture mode: the creator's fixture answer per field, else the skip text. */
 export function fixtureAnswers(questions, body, creatorAnswers) {
   const base = skipAnswers(questions, body)
@@ -314,6 +337,31 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
       try { json = JSON.parse(text) } catch { /* not JSON */ }
       return { status: res.status, ok: res.ok, json, text, ms: Date.now() - t0 }
     }
+    // Plan v7.1 WP12: the angle loop runs the question engine before the build.
+    let angleAsked = 0
+    let angleAnswered = 0
+    if (panelAngleLoopOn()) {
+      try {
+        const mode = async (payload) => {
+          const res = await fetch(`${url}/functions/v1/generate-blueprint`, {
+            method: 'POST', headers: { authorization: `Bearer ${await token()}`, apikey: anon, 'content-type': 'application/json' },
+            body: JSON.stringify(payload), signal: AbortSignal.timeout(60_000),
+          })
+          return res.ok ? await res.json().catch(() => null) : null
+        }
+        const base = { goal: body.goal, door: body.door, idea: String(body.reference_note ?? '').slice(0, 400), product_id: body.selected_product_id }
+        const plan = await mode({ mode: 'angle_plan', ...base })
+        const pick = (plan?.cards ?? []).find((c) => c.twins_pick) ?? plan?.cards?.[0]
+        if (pick) {
+          const withQs = await mode({ mode: 'angle_plan', ...base, angle: pick.angle })
+          const { mn_answers, sends } = angleLoopAnswers(withQs?.questions ?? [], answersBy.get(sc.creator))
+          for (const x of sends) await mode({ mode: 'angle_answer', product_id: body.selected_product_id, ...x })
+          angleAsked = sends.length
+          angleAnswered = Object.keys(mn_answers).length
+          body = { ...body, mn_answers }
+        }
+      } catch { /* the loop never stops a panel request */ }
+    }
     let r
     try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
     const asked = []
@@ -335,6 +383,8 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     }
     const lines = Array.isArray(bp?.script) ? bp.script.map((b) => String(b?.line ?? '')).filter(Boolean) : []
     const qrec = questionRecord({ mode, fields, answers: body.readiness_answers, lines, bp })
+    // Plan v7.1 WP12: the angle loop's counts, and whether her answers reached the script.
+    if (panelAngleLoopOn()) Object.assign(qrec, { angle_asked: angleAsked, angle_answered: angleAnswered, angle_use: panelQuestionUse(body.mn_answers ?? {}, lines) })
     records.push(qrec)
     // No viewer panel on a measure run: claim the script before the worker's poll can.
     if (r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
