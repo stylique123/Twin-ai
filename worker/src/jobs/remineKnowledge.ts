@@ -214,7 +214,7 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
   // Its own table: creator_knowledge is never written here. Never fails the re-mine.
   if (passageStoreOn(ownerId)) {
     try {
-      let rows = stored.flatMap((t) => {
+      let passageRows = stored.flatMap((t) => {
         if (!t.segments.length) return []
         const r = extractPassages(t.segments)
         return r.passages.map((p) => ({
@@ -227,20 +227,20 @@ export async function handleRemineKnowledge(job: Job): Promise<Record<string, un
       // so with STORY_CLASSIFY=on the model labels each story passage's three
       // beats (anchor, turn, resolution) and `complete` is the model's verdict.
       // One batched call, at most 30 passages; a failed call keeps the rule.
-      if (storyClassifyOn() && rows.some((r) => r.kind === 'story')) {
+      if (storyClassifyOn() && passageRows.some((r) => r.kind === 'story')) {
         try {
-          const items = rows.map((r, i) => ({ i, id: `p${i}`, text: r.text })).filter((x) => rows[x.i]!.kind === 'story').slice(0, 30)
+          const items = passageRows.map((r, i) => ({ i, id: `p${i}`, text: r.text })).filter((x) => passageRows[x.i]!.kind === 'story').slice(0, 30)
           const raw = await geminiJson(STORY_CLASSIFY_SYSTEM, buildStoryClassifyPrompt(items), STORY_CLASSIFY_SCHEMA, 90_000, 0, modelForTask('read'))
           const labels = new Map(parseStoryLabels(raw, items.map((x) => x.id)).map((l) => [l.id, l.complete]))
-          rows = rows.map((r, i) => (labels.has(`p${i}`) ? { ...r, complete: labels.get(`p${i}`) === true } : r))
+          passageRows = passageRows.map((r, i) => (labels.has(`p${i}`) ? { ...r, complete: labels.get(`p${i}`) === true } : r))
           console.log(JSON.stringify({ event: 'feature_fired', feature: 'story_classify', voice_id: voiceId, classified: labels.size, complete: [...labels.values()].filter(Boolean).length }))
         } catch (err) {
           console.warn('story_classify_failed', err instanceof Error ? err.message.slice(0, 200) : String(err))
         }
       }
-      if (rows.length) {
-        const { error } = await db.from('story_passages').upsert(rows, { onConflict: 'voice_id,source_url,start_sec' })
-        console.log(JSON.stringify({ event: 'feature_fired', feature: 'passage_store', voice_id: voiceId, rows: rows.length, error: error?.message ?? null }))
+      if (passageRows.length) {
+        const { error } = await db.from('story_passages').upsert(passageRows, { onConflict: 'voice_id,source_url,start_sec' })
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'passage_store', voice_id: voiceId, rows: passageRows.length, error: error?.message ?? null }))
       }
     } catch { /* storing never fails a re-mine */ }
   }
