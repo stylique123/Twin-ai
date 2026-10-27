@@ -1,0 +1,26 @@
+{
+  "_note": "FICTIONAL EXTRAS for the realistic panel mode (plan v6.8 §34.4). MADE UP for the fictional test creators: no real comment, person, account or source. Outside knowledge is general and illustrative only. Audience comments are invented; 'own' stands for her own audience (used first), 'niche' for the wider niche.",
+  "fictional": true,
+  "by_creator": {
+    "mayas-coffee": {
+      "outside_knowledge": ["Whole beans keep their aroma longer than ground coffee", "Roast date matters more than a best-before date"],
+      "audience_comments": { "own": ["how long do the beans stay fresh after opening", "what grind do you use for a pour over"], "niche": ["is light roast really stronger"] },
+      "niche_notes": ["Short demos of a single brewing step tend to hold attention", "A visible roast date makes a good opening shot"]
+    },
+    "clay-kiln": {
+      "outside_knowledge": ["Unglazed clay feet let a pot sit flat in the kiln"],
+      "audience_comments": { "own": ["is the mug safe in the dishwasher"], "niche": ["why do handmade mugs cost more"] },
+      "niche_notes": ["Close shots of hands at the wheel work as a first frame"]
+    },
+    "flowdesk": {
+      "outside_knowledge": ["Small teams often share one inbox for customer messages"],
+      "audience_comments": { "own": ["can I import my old messages"], "niche": ["which tool is easiest to set up"] },
+      "niche_notes": ["Showing the real screen beats describing a feature"]
+    },
+    "coach-ana": {
+      "outside_knowledge": ["Short sessions done often are easier to keep up than long ones"],
+      "audience_comments": { "own": ["what if I only have ten minutes"], "niche": ["do I need weights at home"] },
+      "niche_notes": ["One exercise per video keeps the message clear"]
+    }
+  }
+}

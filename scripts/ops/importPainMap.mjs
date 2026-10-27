@@ -18,7 +18,11 @@ const file = args.find((a) => !a.startsWith('--'))
 const apply = args.includes('--apply') && !args.includes('--dry-run')
 if (!file) { console.error('usage: importPainMap.mjs <file.csv> [--dry-run|--apply]'); process.exit(2) }
 
-const rows = rowsFromCsv(readFileSync(file, 'utf8'))
+const text = readFileSync(file, 'utf8')
+// ⚠️ audience_pain_map is read BY NICHE for every creator. A fictional map (made up
+// for the test creators, plan v6.8 §34.2) must never reach it.
+if (apply && /\bFICTIONAL\b/i.test(text)) { console.error('refused: this file is marked FICTIONAL and is never imported'); process.exit(2) }
+const rows = rowsFromCsv(text)
 const ok = []
 const reasonCounts = {}
 for (const r of rows) {
