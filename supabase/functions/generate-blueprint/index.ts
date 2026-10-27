@@ -7432,7 +7432,7 @@ async function handle(req: Request): Promise<Response> {
     // NULL rather than a guessed band: `under_1k` asserted for a creator
     // nobody counted would put a fabricated cohort into the outcome table that
     // Loop B then reads as a fact.
-    .select('id, handle, platform, profile, brand_kit, pre_script_brief, stats')
+    .select('id, handle, platform, profile, brand_kit, pre_script_brief, stats, default_capability_flags')
     .eq('owner_id', ownerId)
     .eq('is_default', true)
     .maybeSingle()
@@ -12861,6 +12861,8 @@ This is the video's position. Every field below must serve it. If the reference'
     const softwareBlockTrial = trialOn && trialSoftwareBlockExtends((ownedEntity as { type?: unknown } | null)?.type) && CATEGORY_DEMO.software
       ? `\n${CATEGORY_DEMO.software}` : ''
     const directionGuidance = renderDirectionGuidance({
+      // Plan v7.1: her "Can you record your screen?" answer (0103). False drops the screen-record cue.
+      canRecordScreen: ((voice as { default_capability_flags?: { can_record_screen?: unknown } | null } | null)?.default_capability_flags?.can_record_screen ?? null) as boolean | null,
       kind: (ownedEntity as { type?: string | null } | null)?.type as ProductKindInline ?? null,
       showability: (ownedEntity as { showability?: string | null } | null)?.showability as ShowabilityInline ?? null,
       // ⚠️ READ OUT OF THE SAME `knowledge` BLOB THE EXTRACTOR WRITES THEM TO,

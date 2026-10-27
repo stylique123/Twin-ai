@@ -214,3 +214,12 @@ describe('and the writer reads them back — no write-only column', () => {
     expect(EDGE).toMatch(/\.slice\(0, 12\)/)
   })
 })
+
+describe('plan v7.1: her screen-recording answer shapes the screen cues', () => {
+  it('drops screen_record when she said she cannot record her screen', () => {
+    const set = directionsFor({ kind: 'SAAS', showability: 'ALWAYS', sections: ['dashboard'], canRecordScreen: false })
+    expect(set.options.map((o) => o.id)).not.toContain('screen_record')
+    expect(set.options.map((o) => o.id)).toContain('point_camera_at')
+    expect(directionsFor({ kind: 'SAAS', showability: 'ALWAYS', sections: ['dashboard'] }).options.map((o) => o.id)).toContain('screen_record')
+  })
+})

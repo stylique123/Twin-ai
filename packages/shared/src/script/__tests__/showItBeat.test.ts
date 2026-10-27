@@ -64,7 +64,7 @@ describe('enforceShowItBeat', () => {
     expect(r.reason).toBe('no_candidate')
   })
 
-  it('does not enforce a screen beat yet; the job for a screen kind is app_payoff', () => {
+  it('a screen kind short of ALWAYS gets no enforced beat; the job for a screen kind is app_payoff', () => {
     const app = { type: 'APP', showability: 'SOMETIMES', relationship: 'OWN_PRODUCT', name: "Maya's Coffee Tracker" }
     const s = [
       { section: 'Hook', line: 'I stopped guessing my brew times.', shown_job: 'talk' },
@@ -72,8 +72,12 @@ describe('enforceShowItBeat', () => {
       { section: 'CTA', line: 'Try it tonight.', shown_job: 'cta' },
     ]
     const r = enforceShowItBeat(s, { entity: app, goal: 'leads', words: productWords(app.name) })
-    expect(r.reason).toBe('not_showable_kind')
+    expect(r.reason).toBe('not_showable')
     expect(r.script[1]).toMatchObject({ shown_job: 'talk' })
+    // Plan v7.1: recorded as ALWAYS showable, the app gets one result-on-screen beat.
+    const always = enforceShowItBeat(s, { entity: { ...app, showability: 'ALWAYS' }, goal: 'leads', words: productWords(app.name) })
+    expect(always.reason).toBe('retagged')
+    expect(always.script[1]).toMatchObject({ shown_job: 'app_payoff', camera: 'back' })
     expect(showJobFor('COURSE')).toBe('app_payoff')
     expect(showJobFor('PHYSICAL_PRODUCT')).toBe('demo')
   })
