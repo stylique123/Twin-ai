@@ -402,3 +402,18 @@ export function answerFactRow(a: { ownerId: string; voiceId?: string | null; pro
 export function questionPlanRecord(qs: readonly PlanQuestion[]) {
   return { asked: qs.length, items: qs.map((q) => ({ kind: q.kind, source: q.source, piece: q.piece })) }
 }
+
+/**
+ * Whether a creator_knowledge row may feed the angle cards (angle_plan).
+ * A claim is "unconfirmed" by default (itemFromCreatorKnowledge), but a row she
+ * TYPED as an answer (basis 'stated') and confirmed (creator_confirmed_at) is
+ * hers: without this, every non-story answer from the question panel
+ * (answerFactRow kind 'claim') was saved and then never read back as material,
+ * so the same gap was asked again on the next Create. Sensitive rows never feed.
+ */
+export function angleMaterialUsable(row: { sensitive?: unknown; basis?: unknown; creator_confirmed_at?: unknown }, itemStatus: string | null | undefined): boolean {
+  if (row.sensitive === true) return false
+  if (!itemStatus) return false
+  if (itemStatus !== 'unconfirmed') return true
+  return row.basis === 'stated' && typeof row.creator_confirmed_at === 'string' && row.creator_confirmed_at !== ''
+}

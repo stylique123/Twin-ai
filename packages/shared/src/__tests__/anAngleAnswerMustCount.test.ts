@@ -31,8 +31,8 @@ describe('Q1: a typed, confirmed answer is her fact on the next plan', () => {
     expect(itemFromCreatorKnowledge({ ...row, id: 'x' })?.status).toBe('unconfirmed')
   })
   it('the angle plan lets a stated, confirmed answer through', () => {
-    expect(angleBlock()).toMatch(/it\.status === 'unconfirmed' && !answeredByHer\(r\)/)
-    expect(EDGE).toMatch(/function answeredByHer[\s\S]{0,200}r\.basis === 'stated'[\s\S]{0,120}creator_confirmed_at/)
+    // #1319's angleMaterialUsable carries the same rule (stated + confirmed is hers).
+    expect(angleBlock()).toMatch(/!angleMaterialUsable\(r, it\.status\)/)
   })
 })
 
