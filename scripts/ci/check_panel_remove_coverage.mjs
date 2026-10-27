@@ -126,7 +126,12 @@ export const NOT_TARGET_OWNED = {
   'ops_events.user_id': 'operations log, no key; kept as audit trail',
   // Release S1 shadow runs (0289): test and panel accounts are served the new
   // path (stageFor returns new), never shadowed, so no row holds a panel id.
-  'shadow_runs.owner_id': 'shadow runs are for real creators only; panel accounts are never shadowed',
+  // Consent and deletion (0296, file only). Both are kept on purpose when a
+  // user's data is deleted (process_data_deletion retains them), so the panel
+  // removal keeps them for the same reason. They hold no content.
+  'consent_records.owner_id': 'consent proof (notice version and times only), kept on purpose after any data deletion; no FK, so it never blocks the auth delete',
+  'data_deletion_requests.owner_id': 'deletion request log (status and per-table counts only), kept as the audit trail of deletions; no FK, so it never blocks the auth delete',
+  'shadow_runs.owner_id':'shadow runs are for real creators only; panel accounts are never shadowed',
 }
 
 /** Problems (strings) comparing scanned columns with the residual list. */
