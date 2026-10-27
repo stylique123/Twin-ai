@@ -36,7 +36,7 @@ No private text here. Examples use fictional accounts (Maya's Coffee, FlowDesk).
 | guard | Invented causes cut | `script/inventedCause.ts` | `index.ts:15838` | trialOn | none | not counted | wired |
 | guard | No-story invented events dropped | `script/noStoryEvents.ts` | `index.ts:15848` | trialOn | none | run 5: 2 dropped | wired |
 | 2.2 | Complete-story detection | `script/passages.ts` `isCompleteStory` | **no caller** | — | none | 0 | built (orphan) |
-| 4.3 | Question ladder (story ladder, templates) | `script/questionLadder.ts` (#1148) | **no caller** | — | none | 0 | built (orphan) |
+| 4.3 | Question ladder (story ladder, templates) | `script/questionLadder.ts` (#1148) | `script/questionUsefulness.ts` `ladderQuestion` → `angle_plan` | `ANGLE_LADDER_ON=1` (default off) | `check_wiring_ledger.mjs` row 4.3a | 0 | wired (flag off) |
 | 4.3 | `storeGap` (gap → question) | `questionDeficit.ts` | **no caller** | — | none | 0 | built (orphan) |
 | 0.1/0.2 | Item format, slot map, adapters (counts per slot) | `script/itemFormat.ts` `slotCoverage` | `index.ts` after the speakable set (`feature_fired` `item_slots`) | trialOn, log only | `check_wiring_ledger.mjs` row 0.1 | not yet counted | wired |
 | 0.5 | Disconnect gate | `scripts/ci/check_wiring_ledger.mjs` + `wiring-ledger.json` | `pr-checks.yml` | CI | selftest (5 cases) | 13 rows pass | wired |

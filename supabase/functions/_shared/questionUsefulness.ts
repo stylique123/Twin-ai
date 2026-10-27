@@ -10,6 +10,7 @@
 // or scarcity. Skip always works. Pure; records carry ids and counts, no text.
 
 import type { Slot } from './itemFormat.ts'
+import { nextBeat, ladderTemplate, validateLadderQuestion, isDuplicateQuestion, LADDER, type LadderLevel } from './questionLadder.ts'
 
 export type QuestionKind = 'story' | 'product_slot' | 'niche' | 'profile'
 const RANK: Record<QuestionKind, number> = { story: 0, product_slot: 1, niche: 2, profile: 3 }
@@ -193,7 +194,26 @@ export interface QuestionPlanInput {
   profileAskedEver?: boolean
   /** The profile field is still missing. */
   profileMissing?: boolean
+  /**
+   * Story ladder (#1148 questionLadder.ts). OFF unless `on: true`. When on and
+   * the angle needs a story: no story on file asks the anchored level-0 door;
+   * a story on file climbs to its next missing beat. Every ladder question is
+   * checked by validateLadderQuestion and dropped when it fails.
+   */
+  ladder?: { on: boolean; storyId?: string; anchor?: string; have?: readonly LadderLevel[]; topic?: string; herWords?: string }
+  /** Questions already asked (any key): a meaning-duplicate is never asked again. Applied only with ladder on. */
+  askedTexts?: readonly string[]
+  /**
+   * The missing-problem question, asked BEFORE writing. OFF unless `on: true`.
+   * Asked only when no problem line is on file and she has not skipped it.
+   */
+  problem?: { on: boolean; onFile: boolean }
 }
+
+/** Key and wording of the pre-writing problem question (same words as spineComplete's MISSING_PROBLEM_QUESTION). */
+export const PROBLEM_QUESTION_KEY = 'mn:problem'
+export const PROBLEM_QUESTION_TEXT = 'What problem does this solve for your customer, in your words?'
+
 
 const PRODUCT_SLOT_TEXT: Partial<Record<Slot, string>> = {
   what_it_is: 'In one sentence, what is it?',
@@ -228,6 +248,27 @@ export function questionBreaksRules(text: string): boolean {
 
 const HARD = new Set<QuestionKind>(['story', 'product_slot'])
 
+const safeId = (t: string): string => t.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').slice(0, 40) || 'x'
+
+/** The story-ladder question for this angle, validated; null when none applies or it fails the checks. */
+export function ladderQuestion(i: QuestionPlanInput, needsStory: boolean, storyMissing: boolean): { key: string; piece: string; text: string; level: LadderLevel } | null {
+  const l = i.ladder
+  if (!l?.on || !needsStory) return null
+  const topic = (l.topic ?? '').replace(/\s+/g, ' ').trim()
+  const anchor = storyMissing ? '' : (l.anchor ?? '').trim()
+  // Level 0 needs a topic to anchor in; without one the fixed story template stands.
+  if (storyMissing && !topic) return null
+  const level = nextBeat({ storyId: l.storyId ?? 'story', anchor, have: [...(l.have ?? [])] })
+  if (level === null) return null
+  const text = ladderTemplate(level, anchor, topic)
+  const check = validateLadderQuestion(text, {
+    herWords: `${l.herWords ?? ''}\n${anchor}`, topic, asked: i.askedTexts ?? [], followUp: level === 4 || level === 5,
+  })
+  if (!check.ok) return null
+  const sid = safeId(l.storyId ?? 'story')
+  return { key: level === 0 ? 'mn:story' : `mn:ladder:${sid}:${level}`, piece: level === 0 ? 'story' : `story.${LADDER[level].beat}`, text, level }
+}
+
 /** All candidates from every source, before ranking. */
 export function questionCandidates(i: QuestionPlanInput): PlanQuestion[] {
   const required = new Set<Slot>([...i.angleNeeds, ...(i.templateNeeds ?? [])])
@@ -237,7 +278,10 @@ export function questionCandidates(i: QuestionPlanInput): PlanQuestion[] {
   const out: PlanQuestion[] = []
   const q = (key: string, kind: QuestionKind, source: QuestionSource, piece: string, text: string) =>
     out.push({ key, kind, source, piece, text, skippable: true })
+  const lad = i.ladder?.on ? ladderQuestion(i, required.has('story'), missing.includes('story')) : null
+  if (lad) q(lad.key, 'story', 'her_material', lad.piece, lad.text)
   for (const s of missing) {
+    if (s === 'story' && lad) continue
     if (s === 'story') q('mn:story', 'story', 'her_material', 'story', HER_SLOT_TEXT.story!)
     else if (i.hasProduct && PRODUCT_SLOT_TEXT[s]) q(`mn:${ek}:${s}`, 'product_slot', 'product', s, PRODUCT_SLOT_TEXT[s]!)
     else if (HER_SLOT_TEXT[s]) q(`mn:her:${s}`, 'niche', 'her_material', s, HER_SLOT_TEXT[s]!)
@@ -253,6 +297,7 @@ export function questionCandidates(i: QuestionPlanInput): PlanQuestion[] {
     const piece: Slot = missing.includes('stance') ? 'stance' : 'context'
     for (const n of i.niche ?? []) q(`mn:niche:${n.id}`, 'niche', 'niche', piece, `Others in your niche say "${short(n.text)}". Do you agree? If not, why not?`)
   }
+  if (i.problem?.on && !i.problem.onFile) q(PROBLEM_QUESTION_KEY, i.hasProduct ? 'product_slot' : 'niche', i.hasProduct ? 'product' : 'her_material', 'problem', PROBLEM_QUESTION_TEXT)
   if (i.profileMissing && !i.profileAskedEver) q('mn:profile', 'profile', 'profile', 'profile', 'Who do you mostly make videos for?')
   return out
 }
@@ -268,7 +313,11 @@ export function planQuestionsForAngle(i: QuestionPlanInput): PlanQuestion[] {
   for (const { c } of ranked) {
     if (out.length === 3) break
     if (skipped.has(c.key) || pieces.has(c.piece)) continue
-    if (isForbiddenPiece(c.piece) || questionBreaksRules(c.text)) continue
+    // A ladder follow-up (turn, resolution…) follows a story she already told:
+    // validateLadderQuestion did the presume check; dates and scarcity still block.
+    const followUp = c.key.startsWith('mn:ladder:')
+    if (isForbiddenPiece(c.piece) || (followUp ? FORBIDDEN_TEXT.test(c.text) : questionBreaksRules(c.text))) continue
+    if (i.ladder?.on && isDuplicateQuestion(c.text, i.askedTexts ?? [])) continue
     // Soft questions only top up to two: the average stays near 1.5.
     if (!HARD.has(c.kind) && out.length >= 2) continue
     pieces.add(c.piece)
@@ -300,7 +349,7 @@ export function answerFactRow(a: { ownerId: string; voiceId?: string | null; pro
   const cut = text.length <= 240 ? text : (text.slice(0, 240).match(/^.*[.!?](?=\s|$)/)?.[0] ?? text.slice(0, 240))
   return {
     owner_id: a.ownerId, voice_id: a.voiceId ?? null, product_entity_id: a.productId ?? null,
-    kind: a.piece === 'story' ? 'experience' : 'claim',
+    kind: a.piece === 'story' || a.piece.startsWith('story.') ? 'experience' : 'claim',
     text: cut, evidence: text.slice(0, 4000), basis: 'stated', source: 'asked',
     source_ref: `asked:${a.key}`.slice(0, 200), confidence: 0.9, times_seen: 1,
     creator_confirmed_at: a.now, last_observed_at: a.now,
