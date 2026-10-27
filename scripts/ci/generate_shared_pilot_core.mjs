@@ -261,6 +261,8 @@ const SOURCES = [
   ['packages/shared/src/script/planner/spinePlanner.ts', 'supabase/functions/_shared/spinePlanner.ts'],
   // The spine contract (A6, trial only): spine beats, the objection move, title inherits the hook.
   ['packages/shared/src/script/planner/spineContract.ts', 'supabase/functions/_shared/spineContract.ts'],
+  // The writer receives the loop (plan v7.1 WP6-8): her answers, pillars, voice and the house structure.
+  ['packages/shared/src/script/planner/writerLoop.ts', 'supabase/functions/_shared/writerLoop.ts'],
   // Packaging keeps the promise (plan v5.1 item G, trial only): titles/captions inherit the shipped hook.
   ['packages/shared/src/script/planner/packagingPromise.ts', 'supabase/functions/_shared/packagingPromise.ts'],
   // Plan B (owner decision 5, trial only): the code-assembled, line-sourced script body.

@@ -100,6 +100,7 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
+import { writerLoopOn, renderWriterLoop, answersForThisVideo, pillarsFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
@@ -8541,6 +8542,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   })()
   const voiceCard = voiceCardBuild?.card ?? null
   const voiceCardBlock = voiceCard ? `\n${voiceCardBrief(voiceCard)}` : ''
+  // V4 (plan v7.1): when the writer-loop block carries the card (first, highest
+  // priority), it is not repeated at the tail of the context line.
+  const writerLoopCarriesVoice = !!voiceCard && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)
   // ⚖️ THE VOICE AT THE POLISH STEP (panel-10; trial only, kill VOICE_POLISH=off):
   // her style note (brand_voices.profile.style_note) and verbatim samples ride
   // to the Plan B polish and the worker's async polish with the card.
@@ -11943,7 +11947,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
 - Audience: ${trialOn ? 'on file. Owner 2026-10-05: her profile labels were said out loud ("everyday people and beginners"). Never name or label her audience; speak to one viewer as "you".' : `${audienceResolved}${prov('audience')}`}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. ⚠️ Do NOT invent her audience\'s pain, a statistic about them, or a claim about what they feel (owner fabrication audit 2026-10-01). Speak only to the problem this video\'s own topic solves, in general words.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}${voiceCardBlock}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}${writerLoopCarriesVoice ? '' : voiceCardBlock}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
 - ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}
 - ${knowledgeBoard.split('\n').join('\n  ')}${recentlySaidBlock ? `\n- ${recentlySaidBlock.split('\n').join('\n  ')}` : ''}${reference_url ? `
@@ -12805,13 +12809,37 @@ This is the video's position. Every field below must serve it. If the reference'
     // the template block, so every fallback script returned candidates with no
     // shape id, 0 passing hooks and an empty pick. The retry drops ONLY the
     // template skeleton (the slow part); the candidate block is a few lines.
-    const familyHookRuleRetry = familyHookRulePlain + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
+    // ⚖️ S4 (plan v7.1): the retry kept the hook candidates but dropped the
+    // spine, so a timed-out script came back with no structure. The spine block
+    // is short; only the template skeleton (the slow part) stays out.
+    const familyHookRuleRetry = familyHookRulePlain + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
+    // ⚖️ THE WRITER RECEIVES THE LOOP (plan v7.1 Q5, Q6, V3, V4, S1). Her answers
+    // for this video, her pillars, her voice (card first, her note, her lines)
+    // and the house structure, in one block straight after the hook rule — in
+    // the first prompt AND the retry. WRITER_LOOP: unset = trial only, 'all' =
+    // every account, 'off' = nobody. Logs: counts only.
+    const writerLoopBlock = writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) ? (() => {
+      try {
+        const answers = answersForThisVideo((body as { mn_answers?: unknown }).mn_answers, body.readiness_answers)
+        const pillars = pillarsFrom(brief)
+        const pr = (vp ?? {}) as { style_note?: unknown; samples?: unknown }
+        const sampleLines = (Array.isArray(pr.samples) ? pr.samples : []).filter((x): x is string => typeof x === 'string').slice(0, 3)
+        const block = renderWriterLoop({
+          answers, pillars, profile: loopProfileForSeconds(lengthTarget ?? body.target_seconds),
+          voice: { cardBlock: voiceCard ? voiceCardBrief(voiceCard) : null, styleNote: typeof pr.style_note === 'string' ? pr.style_note : null, sampleLines },
+        })
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'writer_loop', answers: answers.length, pillars: pillars.length, voice_card: !!voiceCard, samples: sampleLines.length }))
+        return block
+      } catch { return '' }
+    })() : ''
     const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
     const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
 
-${hookRule}
+${hookRule}${writerLoopBlock ? `
+
+${writerLoopBlock}` : ''}
 
 ${positionBlock}${referenceBlock}${historyBlock ? `
 
