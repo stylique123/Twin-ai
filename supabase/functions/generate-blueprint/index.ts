@@ -7925,7 +7925,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // had no stories. Her two newest COMPLETE story passages ride in with her
   // answers as her own words (kind 'experience'); the same off-ask and purpose
   // filters below decide whether they fit this video. WRITER_LOOP stage.
-  if (voice?.id && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)) {
+  if (voice?.id && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id)) {
     try {
       const { data: sp } = await admin.from('story_passages').select('id, text, created_at')
         .eq('owner_id', ownerId).eq('voice_id', voice.id).eq('kind', 'story').eq('complete', true)
@@ -8664,7 +8664,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // (audience_pain_map, matched by nicheMatches). WRITER_LOOP stage; a failed
   // read costs only the themes.
   const loopPainThemes: string[] = await (async () => {
-    if (!writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)) return []
+    if (!writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id)) return []
     const niche = String((vp as { niche?: unknown } | null)?.niche ?? '').trim()
     if (!niche) return []
     try {
@@ -8674,7 +8674,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   })()
   // V4 (plan v7.1): when the writer-loop block carries the card (first, highest
   // priority), it is not repeated at the tail of the context line.
-  const writerLoopCarriesVoice = !!voiceCard && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)
+  const writerLoopCarriesVoice = !!voiceCard && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id)
   // ⚖️ THE VOICE AT THE POLISH STEP (panel-10; trial only, kill VOICE_POLISH=off):
   // her style note (brand_voices.profile.style_note) and verbatim samples ride
   // to the Plan B polish and the worker's async polish with the card.
@@ -11580,7 +11580,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // ⚖️ HER OWN WAY TO SHOW IT (plan v7.1). The Product Library asks how she
     // shows it on camera and stores the answer as a `show_action` fact; nothing
     // read it. Her words lead the showing beat; the scene guidance follows.
-    const herShowAction = ownedEntity && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) ? (knowledgeFacts(chosenEntity).find((f) => f.field === 'show_action')?.value ?? '').slice(0, 240) : ''
+    const herShowAction = ownedEntity && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) ? (knowledgeFacts(chosenEntity).find((f) => f.field === 'show_action')?.value ?? '').slice(0, 240) : ''
     const showLine = herShowAction
       ? `${showLineBase}\n- HER OWN WAY TO SHOW IT (her words; use this for the showing beat and its direction): ${herShowAction}`
       : showLineBase
@@ -12967,7 +12967,7 @@ This is the video's position. Every field below must serve it. If the reference'
     // and the house structure, in one block straight after the hook rule — in
     // the first prompt AND the retry. WRITER_LOOP: unset = trial only, 'all' =
     // every account, 'off' = nobody. Logs: counts only.
-    const writerLoopBlock = writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) ? (() => {
+    const writerLoopBlock = writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) ? (() => {
       try {
         const answers = answersForThisVideo((body as { mn_answers?: unknown }).mn_answers, body.readiness_answers)
         const pillars = pillarsFrom(brief)
@@ -15770,7 +15770,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // that break her rhythm are rewritten once; a rewrite is kept only when
         // the whole script's voice score goes UP and it passes the same guards.
         // WRITER_LOOP stage (unset = trial only). One model call, only on a fail.
-        if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)) {
+        if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id)) {
           try {
             const now = vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))
             const before = voiceCheck(voiceCard, now)
@@ -17780,7 +17780,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     }
     // ⚖️ CTA LAST (plan v7.1 S7): one pure reorder, nothing added or dropped,
     // on the WRITER_LOOP stage (unset = trial only, 'all' = every account).
-    if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+    if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       try {
         const bpc = blueprint as Record<string, unknown>
         const r = moveCtaLast(bpc.script as Array<Record<string, unknown>>)

@@ -98,12 +98,26 @@ export function pillarsFrom(brief: unknown): string[] {
 
 export interface VoiceForWriter { styleNote?: string | null; sampleLines?: readonly string[] | null; cardBlock?: string | null }
 
-/** The stage switch. 'all' → everyone; 'off' → nobody; anything else → trial only. */
-export function writerLoopOn(stage: string | null | undefined, trialOn: boolean): boolean {
+/**
+ * The stage switch. 'all' → everyone; 'off' → nobody; a number 1–99 (the ramp:
+ * 5, 25, 50) → trial accounts plus that share of real creators, by a stable
+ * per-user bucket so a creator keeps her arm as the share grows; anything else
+ * → trial only.
+ */
+export function writerLoopOn(stage: string | null | undefined, trialOn: boolean, userId?: string | null): boolean {
   const s = String(stage ?? '').trim().toLowerCase()
   if (s === 'off' || s === 'false' || s === '0') return false
-  if (s === 'all') return true
-  return trialOn
+  if (s === 'all' || s === '100') return true
+  const pct = /^\d{1,2}$/.test(s) ? Number(s) : 0
+  if (trialOn) return true
+  return pct > 0 && !!userId && loopBucket(userId) < pct
+}
+
+/** Stable 0–99 bucket (FNV-1a over 'writer_loop:' + user id). */
+export function loopBucket(userId: string): number {
+  let h = 0x811c9dc5
+  for (const ch of `writer_loop:${userId}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0 }
+  return h % 100
 }
 
 const fence = (label: string, body: string) => `<<<${label}\n${body}\n>>>`

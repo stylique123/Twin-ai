@@ -78,7 +78,7 @@ describe('the edge wiring', () => {
     expect(EDGE).toMatch(/\$\{writerLoopCarriesVoice \? '' : voiceCardBlock\}/)
   })
   it('reads WRITER_LOOP for the stage', () => {
-    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\)/)
+    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\)/)
   })
 })
 
@@ -92,7 +92,7 @@ describe('plan v7.1 S7: the CTA is last', () => {
     expect(moveCtaLast(r.script).moved).toBe(false)
   })
   it('the edge runs it on the WRITER_LOOP stage', () => {
-    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\) && blueprint[\s\S]{0,300}moveCtaLast\(/)
+    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\) && blueprint[\s\S]{0,300}moveCtaLast\(/)
   })
 })
 
@@ -118,7 +118,7 @@ describe('plan v7.1 WP4: her stored stories reach the pile', () => {
 
 describe('plan v7.1: her own way to show the product reaches the writer', () => {
   it('the show_action fact rides the show line on the WRITER_LOOP stage', () => {
-    expect(EDGE).toMatch(/const herShowAction = ownedEntity && writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\)[^\n]*f\.field === 'show_action'/)
+    expect(EDGE).toMatch(/const herShowAction = ownedEntity && writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\)[^\n]*f\.field === 'show_action'/)
     expect(EDGE).toMatch(/HER OWN WAY TO SHOW IT/)
   })
 })
@@ -131,7 +131,21 @@ describe('plan v7.1 WP6: her audience pain themes reach the writer, labelled out
     expect(out.indexOf('outside research')).toBeLessThan(out.indexOf('THE HOUSE STRUCTURE'))
   })
   it('the edge reads the pain map for her niche on the WRITER_LOOP stage', () => {
-    expect(EDGE).toMatch(/const loopPainThemes: string\[\] = await[\s\S]{0,300}writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\)[\s\S]{0,400}painItemsFromMap\(/)
+    expect(EDGE).toMatch(/const loopPainThemes: string\[\] = await[\s\S]{0,300}writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\)[\s\S]{0,400}painItemsFromMap\(/)
     expect(EDGE).toMatch(/painThemes: loopPainThemes/)
+  })
+})
+
+describe('plan v7.1 WP14: the WRITER_LOOP ramp', async () => {
+  const { writerLoopOn, loopBucket } = await import('../script/planner/writerLoop')
+  it('a percentage serves trial accounts plus that share of real creators, stably', () => {
+    const ids = Array.from({ length: 400 }, (_, i) => `user-${i}`)
+    const at = (p: string) => ids.filter((id) => writerLoopOn(p, false, id)).length / ids.length
+    expect(at('25')).toBeGreaterThan(0.15)
+    expect(at('25')).toBeLessThan(0.35)
+    expect(ids.filter((id) => writerLoopOn('5', false, id)).every((id) => writerLoopOn('25', false, id))).toBe(true)
+    expect(writerLoopOn('25', true, 'x')).toBe(true)
+    expect(writerLoopOn('25', false, null)).toBe(false)
+    expect(loopBucket('a')).toBe(loopBucket('a'))
   })
 })
