@@ -12,6 +12,7 @@
 
 import { db } from './db.js'
 import type { Transcript } from './media.js'
+import { youtubeCacheFresh, youtubeCacheKey } from './youtubeTranscriptActor.js'
 
 /** What was stored, and enough about how it was obtained to keep the profile
  *  row's cost columns truthful when a retry never touches the network. */
@@ -66,6 +67,37 @@ export async function writeCachedTranscript(url: string, t: Transcript): Promise
     }, { onConflict: 'url' })
   } catch (e) {
     console.error(JSON.stringify({ event: 'transcript_cache_write_failed', url,
+      error: e instanceof Error ? e.message : String(e) }))
+  }
+}
+
+/**
+ * YouTube transcripts keyed by VIDEO ID (youtu.be, watch?v= and /shorts/ all
+ * share one row under `youtube:<id>`), usable for 30 days. Same table, no new
+ * column: the synthetic key lives in `url`, freshness comes from captured_at.
+ * Null on miss, expiry or any doubt.
+ */
+export async function readYoutubeTranscriptCache(videoId: string, now = Date.now()): Promise<Transcript | null> {
+  const hit = await readCachedTranscript(youtubeCacheKey(videoId))
+  if (!hit || !youtubeCacheFresh(hit.capturedAt, now)) return null
+  return hit.transcript
+}
+
+/** Best-effort write after a successful paid fetch; refreshes captured_at so
+ *  the 30 days restart from this fetch. */
+export async function writeYoutubeTranscriptCache(videoId: string, t: Transcript): Promise<void> {
+  try {
+    await db.from('reference_transcripts').upsert({
+      url: youtubeCacheKey(videoId),
+      transcript: t,
+      chars: (t.text ?? '').length,
+      source: t.source ?? null,
+      paid_because: t.paidBecause ?? null,
+      download_route: t.downloadRoute ?? null,
+      captured_at: new Date().toISOString(),
+    }, { onConflict: 'url' })
+  } catch (e) {
+    console.error(JSON.stringify({ event: 'transcript_cache_write_failed', url: youtubeCacheKey(videoId),
       error: e instanceof Error ? e.message : String(e) }))
   }
 }

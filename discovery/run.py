@@ -202,10 +202,52 @@ def insert(items, niche):
             prefer='resolution=ignore-duplicates,return=minimal')
 
 
+def _env_usd(name, default):
+    try:
+        v = float(os.environ.get(name, '').strip())
+        return v if v >= 0 else default
+    except ValueError:
+        return default
+
+
+def _apify_reserve(feature, actor, rpc=None):
+    """APIFY POLICY v2: DISCOVERY IS A BACKGROUND (BATCH) JOB.
+
+    Every run is recorded in apify_spend_ledger (tier 'batch') through the same
+    0295 RPC the worker calls, BEFORE the run starts, reserving the per-run cap.
+    Same rules as the worker's batch tier: APIFY_TEST_MODE=true stubs (no call),
+    APIFY_BATCH_PAUSED=true refuses, and the hard daily / per-cycle caps and the
+    anomaly breaker live in the RPC. Fails closed: no ledger answer, no run.
+    Returns the capped USD for the run, or None when the run must not happen.
+    """
+    if os.environ.get('APIFY_TEST_MODE', '').strip().lower() == 'true':
+        return None
+    if os.environ.get('APIFY_BATCH_PAUSED', '').strip().lower() == 'true':
+        print(json.dumps({'event': 'apify_refused', 'feature': feature, 'tier': 'batch', 'reason': 'batch_paused'}), file=sys.stderr)
+        return None
+    cap = _env_usd('APIFY_BATCH_RUN_MAX_USD', 0.4)
+    body = {'p_feature': feature, 'p_actor': actor, 'p_owner': None, 'p_usd': cap, 'p_tier': 'batch',
+            'p_daily_usd': _env_usd('APIFY_BATCH_DAILY_USD', 2), 'p_cycle_usd': _env_usd('APIFY_BATCH_CYCLE_USD', 2),
+            'p_breaker_x': _env_usd('APIFY_ANOMALY_X', 3) or 3}
+    call = rpc or (lambda b: _sb('rpc/apify_reserve_tiered', method='POST', body=b, prefer='return=representation'))
+    try:
+        ans = call(body) or {}
+    except Exception as e:  # ledger unavailable -> fail closed, as the worker does for batch
+        ans = {'ok': False, 'reason': 'ledger_unavailable: %s' % type(e).__name__}
+    if not ans.get('ok'):
+        print(json.dumps({'event': 'apify_refused', 'feature': feature, 'tier': 'batch', 'reason': ans.get('reason')}), file=sys.stderr)
+        return None
+    return cap
+
+
 def instagram(query, limit):
     if not APIFY_TOKEN:
         return []
-    url = 'https://api.apify.com/v2/acts/%s/run-sync-get-dataset-items?token=%s' % (IG_ACTOR, APIFY_TOKEN)
+    cap = _apify_reserve('discovery_instagram', IG_ACTOR)
+    if cap is None:
+        return []
+    url = 'https://api.apify.com/v2/acts/%s/run-sync-get-dataset-items?token=%s&maxTotalChargeUsd=%.2f' % (
+        IG_ACTOR, APIFY_TOKEN, cap)
     body = {'search': query, 'searchType': 'hashtag', 'searchLimit': 1,
             'resultsType': 'posts', 'resultsLimit': limit, 'addParentData': False}
     req = urllib.request.Request(url, data=json.dumps(body).encode(),
@@ -402,6 +444,19 @@ def _selftest():
         # 1000 distinct 'u%d' values repeat across the three full pages by design
         # here; what matters is that paging did not stop before the short page.
         print('selftest: paging stopped early (%d pairs)' % len(seen), file=sys.stderr); bad += 1
+
+    # ── APIFY LEDGER (policy v2): batch tier, fail closed ───────────────────
+    _calls = []
+    def _ok(b):
+        _calls.append(b); return {'ok': True, 'id': 1}
+    if _apify_reserve('discovery_instagram', 'fixture-actor', rpc=_ok) is None or _calls[0].get('p_tier') != 'batch':
+        print('selftest: a discovery run was not recorded as batch', file=sys.stderr); bad += 1
+    if _apify_reserve('discovery_instagram', 'fixture-actor', rpc=lambda b: {'ok': False, 'reason': 'daily_limit'}) is not None:
+        print('selftest: a refused reservation still ran', file=sys.stderr); bad += 1
+    def _boom(b):
+        raise OSError('fixture')
+    if _apify_reserve('discovery_instagram', 'fixture-actor', rpc=_boom) is not None:
+        print('selftest: an unreachable ledger did not fail closed', file=sys.stderr); bad += 1
 
     if bad:
         print('discovery selftest: %d FAILED' % bad, file=sys.stderr); sys.exit(1)
