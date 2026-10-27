@@ -135,6 +135,8 @@ export interface DirectionContext {
   /** The product's name and what she said about it — only read to tell a
    *  consumable from a made-by-hand object (phase 3). Never quoted. */
   readonly productText?: string | null
+  /** Plan v7.1: her capability flag. `false` → no screen-recording cue; she films the screen instead. */
+  readonly canRecordScreen?: boolean | null
 }
 
 // ── PHASE 3 (owner spec 2026-10-01): WHAT KIND OF THING IS BEING SHOWN ─────
@@ -279,7 +281,7 @@ export function directionsFor(ctx: DirectionContext): DirectionSet {
     }
     return {
       format: 'App Showcase',
-      options: SCREEN_DIRECTIONS,
+      options: ctx.canRecordScreen === false ? SCREEN_DIRECTIONS.filter((d) => d.id !== 'screen_record') : SCREEN_DIRECTIONS,
       nameableSections: sections,
       because: 'This is a screen product and these sections were actually found on its own '
         + 'pages. Name ONLY these. Any other screen you name is one nobody confirmed.',

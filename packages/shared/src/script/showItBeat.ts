@@ -87,10 +87,13 @@ export function enforceShowItBeat<T extends ShowItBeatIn>(
   const e = opts.entity
   if (!e) return same('no_entity')
   const kind = String(e.type ?? '').toUpperCase()
-  // Physical only for now: a screen beat waits until she has named a screen she can show.
-  if (kind !== 'PHYSICAL_PRODUCT') return same('not_showable_kind')
   const show = String(e.showability ?? '').toUpperCase()
-  if (show !== 'ALWAYS' && show !== 'SOMETIMES') return same('not_showable')
+  // Plan v7.1: a screen product recorded as ALWAYS showable gets one result-on-
+  // screen beat (app_payoff) too; its shot is "the screen showing the result",
+  // which names no page. Anything weaker than ALWAYS still waits.
+  const screen = SCREEN_KINDS.has(kind)
+  if (kind !== 'PHYSICAL_PRODUCT' && !screen) return same('not_showable_kind')
+  if (screen ? show !== 'ALWAYS' : (show !== 'ALWAYS' && show !== 'SOMETIMES')) return same('not_showable')
   if (ownsEntity(e) !== true) return same('not_owned')
   if (!SHOW_GOALS.has(String(opts.goal ?? '').trim().toLowerCase())) return same('goal')
   const spoken = script.map((b, i) => (b && typeof b === 'object' && String(b.line ?? '').trim() ? i : -1)).filter((i) => i >= 0)

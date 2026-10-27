@@ -15,3 +15,11 @@ describe('plan v7.1 WP4: all', () => {
     expect(passageStoreOn('a', '')).toBe(false)
   })
 })
+
+describe('plan v7.1 WP4: the story classifier switch', async () => {
+  const { storyClassifyOn } = await import('../passageStoreGate.js')
+  it('is off unless STORY_CLASSIFY=on', () => {
+    expect(storyClassifyOn(undefined)).toBe(false)
+    expect(storyClassifyOn('on')).toBe(true)
+  })
+})

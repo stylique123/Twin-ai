@@ -102,18 +102,32 @@ export function pillarsFrom(brief: unknown): string[] {
 
 export interface VoiceForWriter { styleNote?: string | null; sampleLines?: readonly string[] | null; cardBlock?: string | null }
 
-/** The stage switch. 'all' → everyone; 'off' → nobody; anything else → trial only. */
-export function writerLoopOn(stage: string | null | undefined, trialOn: boolean): boolean {
+/**
+ * The stage switch. 'all' → everyone; 'off' → nobody; a number 1–99 (the ramp:
+ * 5, 25, 50) → trial accounts plus that share of real creators, by a stable
+ * per-user bucket so a creator keeps her arm as the share grows; anything else
+ * → trial only.
+ */
+export function writerLoopOn(stage: string | null | undefined, trialOn: boolean, userId?: string | null): boolean {
   const s = String(stage ?? '').trim().toLowerCase()
   if (s === 'off' || s === 'false' || s === '0') return false
-  if (s === 'all') return true
-  return trialOn
+  if (s === 'all' || s === '100') return true
+  const pct = /^\d{1,2}$/.test(s) ? Number(s) : 0
+  if (trialOn) return true
+  return pct > 0 && !!userId && loopBucket(userId) < pct
+}
+
+/** Stable 0–99 bucket (FNV-1a over 'writer_loop:' + user id). */
+export function loopBucket(userId: string): number {
+  let h = 0x811c9dc5
+  for (const ch of `writer_loop:${userId}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0 }
+  return h % 100
 }
 
 const fence = (label: string, body: string) => `<<<${label}\n${body}\n>>>`
 
 /** The whole block. Empty sections are left out; the structure is always present. */
-export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: readonly string[]; profile: DurationProfile; voice?: VoiceForWriter | null }): string {
+export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: readonly string[]; profile: DurationProfile; voice?: VoiceForWriter | null; painThemes?: readonly string[] }): string {
   const parts: string[] = []
   const v = a.voice ?? null
   const samples = (v?.sampleLines ?? []).map((s) => String(s).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3)
@@ -132,6 +146,14 @@ export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: r
   }
   if (a.pillars.length) {
     parts.push(`Her content pillars: ${a.pillars.join('; ')}. Keep the script inside the pillar this request fits; do not drift to another.`)
+  }
+  // Plan v7.1 WP6: what her audience struggles with, from research (Reddit and
+  // public posts), as TOPICS ONLY. Labelled outside, never her experience,
+  // never quoted, never "most people" or a number.
+  const pains = (a.painThemes ?? []).map((t) => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3)
+  if (pains.length) {
+    parts.push(fence('what her audience struggles with (outside research; topics only)', pains.map((t) => `- ${t.slice(0, 160)}`).join('\n'))
+      + '\nUse one of these only to name the problem (step 2) or shape the hook, in your own words. Never present it as her experience, never quote it, never say "most people", "everyone" or a number about it.')
   }
   parts.push(renderHouseStructure(a.profile))
   return parts.join('\n\n')
