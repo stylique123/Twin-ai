@@ -295,6 +295,19 @@ const SOURCES = [
   ['packages/shared/src/creator/creatorTypeRules.json', 'supabase/functions/_shared/creatorTypeRulesData.ts'],
   ['packages/shared/src/creator/writerGuidance.ts', 'supabase/functions/_shared/writerGuidance.ts'],
   ['packages/shared/src/creator/nichePackRegistry.ts', 'supabase/functions/_shared/nichePackRegistry.ts'],
+  // ⚖️ THE QUALITY CONTROLLER (plan v6.8 §33) runs last, in the worker, after
+  // the gate and the polish; the edge holds the profile switch. The judge it
+  // uses for best-of-N is mirrored to the worker beside it.
+  ['packages/shared/src/script/qualityProfile.ts', 'supabase/functions/_shared/qualityProfile.ts'],
+  // Shared with the beat writer (#1338) and the A2 structure checks (#1339): copied identically.
+  ['packages/shared/src/script/beatBudgets.ts', 'supabase/functions/_shared/beatBudgets.ts'],
+  ['packages/shared/src/script/beatBudgets.ts', 'worker/src/generated/beatBudgets.ts'],
+  ['packages/shared/src/script/structureChecks.ts', 'supabase/functions/_shared/structureChecks.ts'],
+  ['packages/shared/src/script/structureChecks.ts', 'worker/src/generated/structureChecks.ts'],
+  ['packages/shared/src/script/planner/qualityController.ts', 'supabase/functions/_shared/qualityController.ts'],
+  ['packages/shared/src/script/hookJudge.ts', 'worker/src/generated/hookJudge.ts'],
+  ['packages/shared/src/script/craftJudge.ts', 'worker/src/generated/craftJudge.ts'],
+  ['packages/shared/src/script/planner/qualityController.ts', 'worker/src/generated/qualityController.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
@@ -322,6 +335,8 @@ const render = (from, src0, to = '') => {
     + `// Edit the source instead. CI regenerates this file and fails on a diff.\n`
     + src
       .replace(/from '\.\.\/assessed'/g, "from './assessed.js'")
+      // A planner/ source imports its parent's modules as `../x.js`; the worker copies are flat siblings.
+      .replace(/from\s+'\.\.\/([A-Za-z0-9_-]+)\.js'/g, (m, name) => (/\/(?:templates|planner|hooks)\//.test(from) ? `from './${name}.js'` : m))
       .replace(/(from\s+'\.\/[A-Za-z0-9_-]+)'/g, "$1.js'")
   }
   return `// GENERATED FROM ${from} — DO NOT EDIT.\n`

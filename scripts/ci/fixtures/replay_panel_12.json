@@ -1,0 +1,2587 @@
+{
+ "_note": "Panel 12 (panel-current-12) stored scripts of the FICTIONAL panel accounts, one per request n (latest 200 row). Read-only export for the offline QC acceptance replay. Creator material: scripts/ops/fixtures/fictional-panel.json (request n = requests[n]).",
+ "cases": [
+  {
+   "batch": "panel-current-12",
+   "n": 0,
+   "creator": "mayas-coffee",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "A regular told me her coffee beans tasted flat after a week.",
+     "section": "hook"
+    },
+    {
+     "line": "To check your beans, read the roast date, smell a handful. And watch the bloom, since fresh beans bubble when water hits, while old ones sit there.",
+     "section": "promise"
+    },
+    {
+     "line": "A regular told me her beans tasted flat after a week, and when I asked, she was keeping them in the fridge next to the onions.",
+     "section": "anchor"
+    }
+   ],
+   "hook_options": [
+    "A regular told me her coffee beans tasted flat after a week.",
+    "Stop brewing old coffee beans without checking the bag roast date first.",
+    "Here are 3 ways to check if your coffee beans are stale.",
+    "As a coffee roaster, here is how I spot stale coffee beans.",
+    "Stop storing coffee beans until you run these 3 freshness checks."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 1,
+   "creator": "mayas-coffee",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "sell",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "This is the roast that emptied my table by ten.",
+     "section": "Hook"
+    },
+    {
+     "line": "Do you ever wonder what makes fresh coffee actually taste distinct?",
+     "section": "Setup"
+    },
+    {
+     "line": "At my first market stall I sold out of Harbor Blend by ten in the morning and spent the rest of the day handing out samples from an empty table.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I roast Harbor Blend on Tuesdays, write the roast date by hand, and ship twelve ounce bags within two days, available at the link in bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "This is the roast that emptied my table by ten.",
+    "If you brew fresh coffee every morning, look at this label.",
+    "I write every roast date on these bags by hand.",
+    "Market shoppers cleared my entire table before ten in the morning.",
+    "Here is the exact blend that sold out before ten."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 2,
+   "creator": "mayas-coffee",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "personal_brand",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Here is how my garage coffee roasting actually started.",
+     "section": "Hook"
+    },
+    {
+     "line": "Do you ever look at a fresh bag of coffee and think about roasting your own beans at home?",
+     "section": "Reality Check"
+    },
+    {
+     "line": "I started roasting in my garage with a secondhand popcorn popper, and the first batch set off the smoke alarm twice.",
+     "section": "Creator Truth"
+    },
+    {
+     "line": "The week I bought a proper drum roaster, I roasted my old garage favourite again and honestly could not get it to taste the same for a month.",
+     "section": "refill"
+    },
+    {
+     "line": "I think most people who say they hate light roast have only ever had it stale.",
+     "section": "refill"
+    },
+    {
+     "line": "Honestly, I think the roast date on the bag matters more than the country on the label.",
+     "section": "refill"
+    },
+    {
+     "line": "Have you ever tried roasting coffee at home, or do you leave that to someone else?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Here is how my garage coffee roasting actually started.",
+    "Have you ever thought about roasting your own coffee beans?",
+    "My garage roasting setup was not glamorous at all.",
+    "Thinking about roasting your own coffee at home?",
+    "Roasting your own coffee beans starts with a lot of smoke."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 3,
+   "creator": "mayas-coffee",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "entertain",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "A regular told me her beans tasted flat after a week.",
+     "section": "hook"
+    },
+    {
+     "line": "Honestly, when I asked what happened, she told me she was keeping them in the fridge right next to the onions.",
+     "section": "reality_check"
+    },
+    {
+     "line": "Here's the thing, fresh roast needs to stay away from humidity and light, unless you really enjoy onion-infused coffee in the morning.",
+     "section": "build"
+    },
+    {
+     "line": "Where do you actually store your roasted beans at home?",
+     "section": "cta"
+    }
+   ],
+   "hook_options": [
+    "A regular told me her beans tasted flat after a week.",
+    "Stop storing your roasted coffee beans in the refrigerator.",
+    "If your coffee tastes flat, check where you store it.",
+    "I still remember this storage disaster.",
+    "Here is why your coffee beans taste flat.",
+    "Stop storing your coffee like groceries.",
+    "Do your coffee beans taste completely flat?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 4,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Stop putting new skincare on your face before patch testing.",
+     "section": "Hook"
+    },
+    {
+     "line": "And this is where people get caught out: when I read a label, I look for fragrance, parfum. And essential oils first. Even products marketed for calming skin often sneak in masking scents that cause burning.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Once a bottle passes that check, I patch-test on the inner arm for a few days before using it on the face. Testing there allows you to monitor redness safely before committing your facial barrier to a brand new product.",
+     "section": "Payoff"
+    },
+    {
+     "line": "I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+     "section": "refill"
+    },
+    {
+     "line": "Save this guideline for the next time you review an ingredient panel. And tell me in the comments: do you patch-test new products first, or put them straight on your face?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop putting new skincare on your face before patch testing.",
+    "Most advice says natural smells better. Here is what sensitive skin needs.",
+    "If your moisturizer burns, check the label for parfum first.",
+    "Why your sensitive skin reacts to long ingredient lists.",
+    "Why botanical extracts make your sensitive skin sting."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 5,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "sell",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "I made the first jar of the moisturizer in my kitchen because every store cream I tried left my cheeks red by lunchtime.",
+     "section": "Build"
+    },
+    {
+     "line": "In my experience, the batch I threw out taught me more than any good one, so I make it in small batches of sixty jars.",
+     "section": "build"
+    },
+    {
+     "line": "I leave out fragrance and essential oils entirely, because I think a short ingredient list is far kinder to sensitive skin.",
+     "section": "build"
+    },
+    {
+     "line": "Calm Cream: 50 ml jar, link in bio.",
+     "section": "Turn"
+    }
+   ],
+   "hook_options": [
+    "I made the first jar of this moisturizer in my kitchen.",
+    "The 50 ml moisturizer formulated for highly reactive skin.",
+    "Every store cream I tested failed my sensitive skin.",
+    "This is the moisturizer I had to create myself.",
+    "Here is why I made Calm Cream.",
+    "If store moisturizers make your cheeks sting, look at this.",
+    "The reason I stopped using store bought face creams.",
+    "Why sensitive skin reacts to most daily moisturizers."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 6,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "personal_brand",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "I threw out forty jars before getting this right.",
+     "section": "Hook"
+    },
+    {
+     "line": "My first batch separated in the jar overnight, because sensitive skin requires fewer ingredients rather than relying on masking agents.",
+     "section": "Setup"
+    },
+    {
+     "line": "A stable emulsion without aggressive masking agents requires absolute discipline, and every single batch demands that level of care.",
+     "section": "Turn"
+    },
+    {
+     "line": "In my experience, the batch I threw out taught me more than any good one, so I now write the temperature of each step in a notebook.",
+     "section": "build"
+    },
+    {
+     "line": "I think fragrance is in most skincare for the shopper, not for the skin.",
+     "section": "refill"
+    },
+    {
+     "line": "I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+     "section": "refill"
+    },
+    {
+     "line": "Have you ever had a project or craft where your very first attempt was a complete disaster? Tell me in the comments.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "I threw out forty jars before getting this right.",
+    "My very first batch was an absolute disaster.",
+    "I woke up and my first batch had completely separated.",
+    "The truth behind my worst formulation night.",
+    "Why gentle formulation takes far more patience.",
+    "What happened when my first batch failed completely.",
+    "The real cost of formulating without shortcuts."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 7,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "followers",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Stop buying daily creams based on how pleasant they smell.",
+     "section": "Hook"
+    },
+    {
+     "line": "In my experience, fragrance exists for the shopper who opens the cap in an aisle, not for the skin barrier underneath. I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I speak about sensitive skin, gentle routines and reading ingredient lists calmly.",
+     "section": "refill"
+    },
+    {
+     "line": "Does your current moisturizer leave your cheeks red, or did you switch to unscented?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop buying daily creams based on how pleasant they smell.",
+    "Most advice tells you to hydrate more, skipping the hidden scent triggers.",
+    "If your gentle cream stings, check the ingredient list first.",
+    "Stop using skincare that leaves your face stinging.",
+    "If your gentle cream stings, check this first.",
+    "Why your sensitive skin cream still stings.",
+    "Stop buying daily skincare for how it smells.",
+    "Most sensitive skin routines fail on this detail."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 8,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Five saved replies cut forty percent of our support inbox.",
+     "section": "Hook"
+    },
+    {
+     "line": "Do you find yourself typing out the exact same explanation three times before noon? When customer messages pile up, it usually feels like you need more hours just to stay afloat.",
+     "section": "Setup"
+    },
+    {
+     "line": "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Write one clean reply for each question. Save them where you can paste them immediately. Ship it. That alone clears out half your backlog.",
+     "section": "Payoff"
+    },
+    {
+     "line": "I built the first version of FlowDesk over a winter because my partner and I kept answering the same customer email twice.",
+     "section": "refill"
+    },
+    {
+     "line": "Look. Most small shops do not need a help desk. They need fewer repeat emails.",
+     "section": "refill"
+    },
+    {
+     "line": "Save this process for Monday morning. Which customer question eats up most of your day right now? Drop it below.",
+     "section": "Close"
+    }
+   ],
+   "hook_options": [
+    "Five saved replies cut forty percent of our support inbox.",
+    "Our inbox halved the day we wrote five saved replies.",
+    "Stop answering the same customer email twice.",
+    "How we cut forty percent of customer support email instantly.",
+    "Why do you keep answering the same customer email twice?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 9,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "leads",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "My partner and I kept answering the same customer email.",
+     "section": "Hook"
+    },
+    {
+     "line": "You do not need a complicated ticketing platform, but you do need an immediate way to know who owns what.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I built the first version of FlowDesk over a winter because my partner and I kept answering the same customer email twice.",
+     "section": "Payoff"
+    },
+    {
+     "line": "$12 per month for up to three teammates.",
+     "section": "build"
+    },
+    {
+     "line": "A shared inbox that turns each email into a card on a board.",
+     "section": "build"
+    },
+    {
+     "line": "Stop answering twice. Tag every email for a week. Find the top five repeats. Write one reply each. Save them. Ship it.",
+     "section": "refill"
+    },
+    {
+     "line": "Look. Most small shops do not need a help desk. They need fewer repeat emails.",
+     "section": "refill"
+    },
+    {
+     "line": "Our first paying customer, um, she found a bug in like the first hour, no wait, first forty minutes, and I fixed it on a call with her just, like, watching me type, which was terrifying.",
+     "section": "refill"
+    },
+    {
+     "line": "Look. Week one, our first customer's bug was a duplicate email. Same message, two cards. Fixed it live. She signed up for a year that afternoon.",
+     "section": "refill"
+    },
+    {
+     "line": "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.",
+     "section": "refill"
+    },
+    {
+     "line": "I once lost a whole Saturday to a support ticket that was really a typo in our help page.",
+     "section": "refill"
+    },
+    {
+     "line": "FlowDesk: free 14-day trial, link in bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "My partner and I kept answering the same customer email.",
+    "Three reasons your team answers the exact same support email.",
+    "We answered a customer twice and decided to rebuild everything.",
+    "Are you still answering the same customer support email twice every week?",
+    "Look at your inbox before you touch your shop code today.",
+    "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.",
+    "Small store owners, stop replying to support emails from personal accounts."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 10,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "authority",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Our first paying customer caught a bug forty minutes after launch.",
+     "section": "Hook"
+    },
+    {
+     "line": "Stop answering twice. Tag every email for a week. Find the top five repeats. Write one reply each. Save them. Ship it.",
+     "section": "Actionable Framework"
+    },
+    {
+     "line": "Our first paying customer, um, she found a bug in like the first hour, no wait, first forty minutes, and I fixed it on a call with her just, like, watching me type, which was terrifying. I think, um, most small shops don't actually need a help desk, it's more like, they need fewer repeat emails, so yeah, I mean that's kind of the whole point of FlowDesk honestly.",
+     "section": "build"
+    },
+    {
+     "line": "How do you handle fixing mistakes directly in front of buyers? Drop your take below.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Our first paying customer caught a bug forty minutes after launch.",
+    "Stop buying complex help desks if you just need fewer emails.",
+    "Five repeat questions are eating most of your weekly customer support.",
+    "Have you ever had a customer watch you fix their problem live?",
+    "Stop hiding your support mistakes from the people paying you.",
+    "What happens when your first buyer catches a day one bug?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 11,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "conversations",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Five saved replies cut forty percent of our customer support email.",
+     "section": "Hook"
+    },
+    {
+     "line": "Look. Most small shops do not need a help desk. They need fewer repeat emails.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.",
+     "section": "build"
+    },
+    {
+     "line": "Do you write every customer reply by hand, or do you keep a list of saved answers ready?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Five saved replies cut forty percent of our customer support email.",
+    "We counted our support inbox and forty percent was repeat questions.",
+    "Stop setting up complicated help desks before auditing repeat emails.",
+    "Small shop owners, want to spend less time answering customer email?",
+    "Do you spend your morning answering the same five customer emails?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 12,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Three weeks of wall taps can teach your first deadlift. Start with a wall.",
+     "section": "Hook"
+    },
+    {
+     "line": "So the warm-up, um, it's like five minutes. March in place, some hip circles. A few hinges with the broomstick, oh and arm swings, I always forget the arm swings. So yeah, then you start.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "A client learned the hip hinge touching her hips to a wall every morning while the kettle boiled, and three weeks later she deadlifted her first kettlebell! Hip hinge at home: stand a foot from a wall, soft knees, push your hips back until they tap it, keep the broomstick on your head, back and tailbone, then stand tall. One more rep!",
+     "section": "build"
+    },
+    {
+     "line": "I think beginners quit because the plan is too big, not because they are lazy.",
+     "section": "refill"
+    },
+    {
+     "line": "Save this drill for your next morning routine, and tell me in the comments if you try it.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Three weeks of wall taps can teach your first deadlift.",
+    "A client learned to hinge while her kettle boiled.",
+    "She touched her hips to a wall every single morning.",
+    "How do you learn the hip hinge at home without hurting your back?",
+    "Can you touch your hips to a wall while your kettle boils?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 13,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "leads",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Stop starting with giant workout plans when training at home.",
+     "section": "Hook"
+    },
+    {
+     "line": "Most routines give you an hour of complicated exercises, but Home Strength Starter begins with basic movement patterns that protect your back.",
+     "section": "Setup"
+    },
+    {
+     "line": "The first step is mastering the hip hinge at home. Stand a foot from a wall, keep soft knees. And push your hips back until they tap it while holding a broomstick along your tailbone, back, and head.",
+     "section": "Build"
+    },
+    {
+     "line": "Start way smaller than you think, because beginners quit when plans get too big!",
+     "section": "Re-hook"
+    },
+    {
+     "line": "The third step is your warm up. Legit, I think a five minute warm up does more for beginners than any fancy workout plan.",
+     "section": "Build"
+    },
+    {
+     "line": "Spend five minutes doing hip circles, arm swings, marching in place, and broomstick hinges!",
+     "section": "build"
+    },
+    {
+     "line": "That five minute routine sets you up properly and makes every single session feel manageable from day one.",
+     "section": "Anchor"
+    },
+    {
+     "line": "Home Strength Starter: book a free 15-minute intro call, link in bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop starting with giant workout plans when training at home.",
+    "If you skip your strength training, check your five minute warm up.",
+    "Stop jumping into heavy lifting before mastering the wall tap.",
+    "Here are 3 rules for starting strength workouts at home.",
+    "Why starting your home strength workouts feels way too hard.",
+    "What online workout videos never tell you about starting out."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 14,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "personal_brand",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "The ten day mistake I made on my very first deadlift.",
+     "section": "Hook"
+    },
+    {
+     "line": "So yeah, um, the deadlift thing. I basically just copied some video and like. My lower back was done for a week, no wait, more like ten days. And that's honestly why the broomstick comes out first now.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "After my deadlift went wrong I spent a whole month with just a broomstick and a mirror, and legit, my form has never been better!",
+     "section": "refill"
+    },
+    {
+     "line": "I think beginners quit because the plan is too big, not because they are lazy.",
+     "section": "refill"
+    },
+    {
+     "line": "Legit, I think a five-minute warm-up does more for beginners than any fancy workout plan!",
+     "section": "refill"
+    },
+    {
+     "line": "Have you ever had a movement go totally sideways like that when starting out? Tell me your story in the comments.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "The ten day mistake I made on my very first deadlift.",
+    "My first deadlift attempt put my back out for ten days.",
+    "I copied a random deadlift video and could not move.",
+    "I copied a random workout video and could not move for days."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 15,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "followers",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Stop starting giant workout plans when you want home strength.",
+     "section": "Hook"
+    },
+    {
+     "line": "Legit, you don't quit because you're lazy, you quit because that plan is way too big!",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Third, start smaller than you think. No, even smaller than that.",
+     "section": "Build"
+    },
+    {
+     "line": "One of my first clients literally just had a hallway and two dumbbells, and we built her whole plan around that!",
+     "section": "build"
+    },
+    {
+     "line": "Save this for your next session, and tell me, what does your current warm up look like?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop starting giant workout plans when you want home strength.",
+    "If you want to start strength training, check your five minute warm up.",
+    "Most advice pushes huge workout routines. Here is why smaller works better.",
+    "Three rules I think every beginner needs for their first workout.",
+    "Three simple things that make your first home workout stick.",
+    "Why a five minute warm up beats a fancy workout plan."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 16,
+   "creator": "clay-kiln",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "A craft fair buyer asked why my mug bottom was unglazed.",
+     "section": "Hook"
+    },
+    {
+     "line": "A buyer at a craft fair picked up a mug, turned it over, and asked why the bottom was not glazed, so now I explain it on every label.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I think a bare clay foot is honest, mind you, it shows what the mug is made of.",
+     "section": "Payoff"
+    }
+   ],
+   "hook_options": [
+    "A craft fair buyer asked why my mug bottom was unglazed.",
+    "Stop buying handmade ceramics before looking at the unglazed foot.",
+    "The three second step potters take before firing every mug.",
+    "Ever wonder why your handmade mug has an unglazed bottom?",
+    "Why potters never put glaze on the foot of a mug.",
+    "Stop wondering why the bottom of your handmade mug is bare.",
+    "Why is the bottom of a handmade mug never glazed?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 17,
+   "creator": "clay-kiln",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "sell",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "I once glazed a Tide Mug all the way down.",
+     "section": "Hook"
+    },
+    {
+     "line": "Most people pick up a handmade mug and never notice the bottom, but every single curve on this piece has a very specific reason behind it.",
+     "section": "Setup"
+    },
+    {
+     "line": "And the clay decided, as it does, to weld it to the shelf for good.",
+     "section": "Story"
+    },
+    {
+     "line": "Now before glazing I wax the foot, wipe a finger's width above it with a damp sponge, dip for three seconds. And let it dry overnight before it goes in the kiln.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I think a bare clay foot is honest, mind you, it shows what the mug is made of.",
+     "section": "refill"
+    },
+    {
+     "line": "My first kiln load came out with every mug glued to the shelf because I glazed the bottoms.",
+     "section": "refill"
+    },
+    {
+     "line": "Each one is hand-thrown and fired twice right here in our home studio. The next batch of the Tide Mug drops in the shop today, link in bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "I once glazed a Tide Mug all the way down.",
+    "Stop ignoring the unglazed foot on your handmade mugs.",
+    "Three seconds in glaze changes how this mug functions.",
+    "This unglazed ring on the Tide Mug is not a mistake.",
+    "Look at the bottom of the Tide Mug before you buy.",
+    "Stop wondering why handmade mug bottoms have no glaze.",
+    "If your mug has raw clay underneath, check this detail.",
+    "One hidden detail on the Tide Mug changes everything."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 18,
+   "creator": "clay-kiln",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "entertain",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "My first kiln load came out with every mug glued to the shelf because I glazed the bottoms.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "People often wonder why handmade kitchenware leaves that raw circle underneath.",
+     "section": "Turn"
+    },
+    {
+     "line": "After that first kiln load I spent a whole evening, mind you, grinding glaze off the shelves with a stone, which is how I learned to wax every foot before glazing.",
+     "section": "refill"
+    },
+    {
+     "line": "Before glazing I wax the foot, wipe a finger's width above it with a damp sponge, dip for three seconds, and let it dry overnight before it goes in the kiln.",
+     "section": "refill"
+    },
+    {
+     "line": "Do you prefer the tactile texture of raw clay on the base of your mugs, or do you expect everything fully glazed? Tell me your thoughts below.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "My first kiln load came out glued to the shelf.",
+    "Stop ignoring the bare clay underneath your kitchen mugs.",
+    "Three seconds in the glaze bucket saved my kiln shelves.",
+    "I ruined an entire kiln batch in one afternoon."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 19,
+   "creator": "clay-kiln",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "conversations",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "I once glazed a Tide Mug all the way down out of stubbornness, and the clay decided, as it does, to weld it to the shelf for good.",
+     "section": "Setup"
+    },
+    {
+     "line": "That boundary where the color ends is not an accident or cutting corners, but the only reason the mug actually survives the firing and makes it to your kitchen.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "What would you do \u2014 tell me in the comments?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "I once glazed a Tide Mug all the way down out of stubbornness.",
+    "Stop assuming unglazed bottoms on pottery mean the maker cut corners.",
+    "People assume bare clay is unfinished, but glaze on the bottom ruins shelves.",
+    "Glazing all the way to the bottom never works in the kiln.",
+    "Stop expecting handmade kitchen pottery to be fully glazed to the table.",
+    "Why does handmade stoneware always stop glaze right before the base?",
+    "Two things happen when glaze touches a bare kiln shelf.",
+    "If you buy handmade mugs, look at the base right now."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 20,
+   "creator": "signal-daily",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Real talk, an AI tool linked me a source that did not contain the quote.",
+     "section": "Hook"
+    },
+    {
+     "line": "I asked an AI tool to summarize my own newsletter. The catch? It quoted a sentence I never wrote.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Real talk, after the misquote I asked the same tool to show sources, and it linked a paragraph that did not contain the quote at all. So what? I check the link every time now.",
+     "section": "build"
+    },
+    {
+     "line": "Before trusting an AI answer: ask for its sources, open one, find the exact sentence. And if it is not there, treat the whole answer as a draft.",
+     "section": "Payoff"
+    },
+    {
+     "line": "Save this checklist for your next research session. And tell me in the comments: have you ever caught your favorite AI model making up a citation?",
+     "section": "Close"
+    }
+   ],
+   "hook_options": [
+    "Real talk, an AI tool linked me a source that did not contain the quote.",
+    "I asked the tool to show sources after a misquote happened.",
+    "I checked the link an AI gave me and the quote never existed.",
+    "Are you checking the links your AI tool gives you?",
+    "Never paste an AI summary without opening the link first.",
+    "Do AI tools actually cite real paragraphs when asked?",
+    "Treat every single AI summary as an unverified draft."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 21,
+   "creator": "signal-daily",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "leads",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "An AI summarized my newsletter and quoted a line I never wrote.",
+     "section": "Hook"
+    },
+    {
+     "line": "The first rule is demanding sources. I think the most useful AI feature most people ignore is asking it to show its sources.",
+     "section": "Build One"
+    },
+    {
+     "line": "The second rule matters even more. Real talk, I think an AI tool that admits it does not know is worth more than one that always answers.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I asked an AI tool to summarize my own newsletter and it confidently quoted a sentence I never wrote.",
+     "section": "build"
+    },
+    {
+     "line": "The third rule is verification. Before trusting an AI answer, ask for its sources. Open one, find the exact sentence. And if it is not there, treat the whole answer as a draft.",
+     "section": "Build Three"
+    },
+    {
+     "line": "I spent a week letting an AI assistant plan my calendar and it double-booked me on the one day I had a dentist appointment.",
+     "section": "refill"
+    },
+    {
+     "line": "Signal Daily Newsletter: Subscribe to the free newsletter, link in bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "An AI summarized my newsletter and quoted a line I never wrote.",
+    "Stop trusting an AI model that refuses to admit what it ignores.",
+    "If your AI cannot cite its work, treat it as a draft.",
+    "Here are 2 rules before trusting an AI tool with your work.",
+    "Real talk, 2 checks to run before trusting any AI summary.",
+    "Can your AI tool pass these 2 checks on its sources?",
+    "Stop copying generated text before running these 2 quick checks.",
+    "Two daily checks I run before trusting any AI tool."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 22,
+   "creator": "signal-daily",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "entertain",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "An AI tool summarized my work and quoted words I never wrote.",
+     "section": "Hook"
+    },
+    {
+     "line": "Real talk, I asked for sources and it linked text without the quote at all.",
+     "section": "Setup"
+    },
+    {
+     "line": "Tell me in the comments.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "An AI tool summarized my work and quoted words I never wrote.",
+    "My own newsletter was summarized with a sentence that never existed.",
+    "An AI tool claimed I wrote something that was never in my newsletter.",
+    "Real talk, here is the catch with trusting an AI summary.",
+    "What happens when an AI tool quotes something you never wrote?",
+    "The catch with an AI tool is how confidently it lies.",
+    "Have you ever checked the actual sources behind an AI summary?",
+    "The catch is, an AI tool quoted text I never wrote."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 23,
+   "creator": "signal-daily",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "authority",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Stop trusting tools that pretend they know every single answer. Most generated answers sound completely confident until you look closer.",
+     "section": "Hook"
+    },
+    {
+     "line": "My first rule is watching for honesty. Real talk, I find an AI tool that admits it does not know is worth far more than one that always answers with complete certainty.",
+     "section": "Setup"
+    },
+    {
+     "line": "The second rule, and the catch most people miss, is verifying the citation. I think the most useful AI feature most people ignore is asking it to show its sources.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "The third rule is stripping out the hype. Look past the marketing claims to see what is actually useful for your daily work and what is just noise.",
+     "section": "Anchor"
+    },
+    {
+     "line": "I asked an AI tool to summarize my own newsletter and it confidently quoted a sentence I never wrote.",
+     "section": "refill"
+    },
+    {
+     "line": "Save this checklist for the next time you test an AI tool. Which one of these three matters most in your daily workflow?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop trusting tools that pretend they know every single answer.",
+    "If you test new tools daily, check whether they admit errors.",
+    "Stop accepting AI summaries before you open the reference link.",
+    "Here are three rules to test any AI tool.",
+    "Can your AI tool pass these three simple sanity checks?",
+    "Before trusting an AI answer, run these three quick checks.",
+    "Stop letting an AI tool guess when these three checks work."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 24,
+   "creator": "pip-sprocket",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "What does every puppet show get wrong backstage?",
+     "section": "Hook"
+    },
+    {
+     "line": "Oh no! They forget the emergency parts. We check a spare arm, spare eyes, and the lighting cue sheet!",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I think puppets let people laugh at things they would never laugh at if a person said them.",
+     "section": "refill"
+    },
+    {
+     "line": "The final rule is one silly line for Sprocket in case anything breaks, which it will!",
+     "section": "Payoff"
+    }
+   ],
+   "hook_options": [
+    "What does every puppet show get wrong backstage?",
+    "Here is our exact backstage check before Sprocket breaks anything.",
+    "Oh no, you never run a puppet show without these backstage spares.",
+    "Never start the puppet show until this backstage check is done.",
+    "Sprocket breaks things on stage, so backstage is where we prepare."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 25,
+   "creator": "pip-sprocket",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "educate",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Do you still think puppets are only for kids?",
+     "section": "Hook"
+    },
+    {
+     "line": "Look at our backstage check. A spare arm, spare eyes, the lighting cue sheet. And one silly line for Sprocket in case anything breaks, which it will!",
+     "section": "Reality Check"
+    },
+    {
+     "line": "What made you realize puppet humor is actually hilarious for grown ups?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Do you still think puppets are only for kids?",
+    "Why does everyone assume puppets are only for children?",
+    "Ever wonder why adults love good puppet comedy?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 26,
+   "creator": "pip-sprocket",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "leads",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Here is what happened at our very first sing-along.",
+     "section": "Hook"
+    },
+    {
+     "line": "We were standing there waiting for the voices to start. The lights were up, the music cue was running, and every single person in the seats stared right back in absolute silence.",
+     "section": "Setup"
+    },
+    {
+     "line": "Oh no, at our first sing-along nobody sang. So Sprocket sang alone, very badly. And by the second chorus the whole room joined in to make him stop!",
+     "section": "Re-hook"
+    },
+    {
+     "line": "People worry puppet shows are just for kids. Sprocket says absolutely not! Our live show is written for adults.",
+     "section": "Context"
+    },
+    {
+     "line": "The first time I performed Sprocket live, his arm fell off mid-joke and the crowd laughed harder at that than at anything I wrote.",
+     "section": "refill"
+    },
+    {
+     "line": "Our backstage check: spare arm, spare eyes, the lighting cue sheet, and one silly line for Sprocket in case anything breaks, which it will!",
+     "section": "refill"
+    },
+    {
+     "line": "I think puppets let people laugh at things they would never laugh at if a person said them.",
+     "section": "refill"
+    },
+    {
+     "line": "Pip and Sprocket Live: Tickets for Pip and Sprocket Live at https://example. com/pip-live. Send me a message if you want it.",
+     "section": "Call to Action"
+    }
+   ],
+   "hook_options": [
+    "Here is what happened at our very first sing-along.",
+    "Sprocket sang so badly the whole crowd reacted.",
+    "Our first audience sing-along took a very strange turn.",
+    "What happens when an entire audience refuses to sing?",
+    "Oh no, our very first live sing-along failed completely.",
+    "Sprocket tried to sing alone onstage last month.",
+    "This was the most awkward room we ever faced.",
+    "Our live show had one completely unscripted moment."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 27,
+   "creator": "pip-sprocket",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "sell",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "The first time I performed Sprocket live, his arm fell off mid-joke and the crowd laughed harder at that than at anything I wrote.",
+     "section": "Setup"
+    },
+    {
+     "line": "Oh no, at our first sing-along nobody sang! Sprocket sang badly until the whole room joined in to make him stop.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Come experience Pip and Sprocket Live for yourself. Grab your tickets through the link in bio right now.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "The first time I performed Sprocket live, his arm fell off.",
+    "Stop skipping live puppet comedy if you need a real laugh.",
+    "If you want live puppet comedy, check Pip and Sprocket Live.",
+    "Our live puppet comedy show is pure unscripted chaos.",
+    "Sprocket is ready for our live puppet comedy sing-along.",
+    "Pip and Sprocket Live is the weirdest comedy night out.",
+    "Here is why our live puppet show gets so loud.",
+    "If you love comedy, you need this live puppet show."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 28,
+   "creator": "quiet-loom",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "personal_brand",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Weaving by hand is slow work in a fast world.",
+     "section": "Hook"
+    },
+    {
+     "line": "The Harbor Fog Scarf is hand woven wool. It is soft grey. Nothing about it is rushed.",
+     "section": "Setup"
+    },
+    {
+     "line": "I weave alone, slowly. People often ask about the time it takes. But speed ruins the cloth. Hand work requires complete stillness.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I make these for people who like handmade winter things. When you touch hand woven wool, you feel the patience in it. Every row takes care. Every inch takes silence.",
+     "section": "Story"
+    },
+    {
+     "line": "Do you prefer objects made by hand. Or does speed matter more to you? Tell me your thoughts below. Save this if you appreciate quiet crafts.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "I make this scarf thread by thread alone.",
+    "Do you ever crave quiet, slow work?",
+    "Most things are rushed, so I weave slowly.",
+    "Here is why I choose to weave alone."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 29,
+   "creator": "quiet-loom",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "sell",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "The Harbor Fog Scarf is hand-woven wool. Soft grey. Thread by thread.",
+     "section": "Hook"
+    },
+    {
+     "line": "I weave it slowly. Undyed wool on the loom. Then washed and pressed.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "The finished piece is about 180 centimeters long and 30 centimeters wide. Soft and warm.",
+     "section": "Anchor"
+    },
+    {
+     "line": "Harbor Fog Scarf: at https://example. com/quiet-loom. Send me a message if you want it.",
+     "section": "Offer"
+    }
+   ],
+   "hook_options": [
+    "The Harbor Fog Scarf is hand-woven wool.",
+    "Weaving a scarf by hand takes time.",
+    "Hand weaving requires patience and raw wool.",
+    "Every scarf begins thread by thread.",
+    "Making the Harbor Fog Scarf thread by thread."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 30,
+   "creator": "quiet-loom",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "personal_brand",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Weaving looks peaceful until you sit at the loom. Most people imagine a quiet, meditative afternoon where cloth appears effortlessly.",
+     "section": "Hook"
+    },
+    {
+     "line": "A single mistake sits inside the finished wool forever.",
+     "section": "Turn"
+    },
+    {
+     "line": "Here is what happens when you build cloth slowly. You stop fighting the repetitive rhythm and start respecting the actual time it takes.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Real handmade wool carries that quiet discipline. It does not exist to be fast. It exists to be grounded thread by thread.",
+     "section": "Payoff"
+    },
+    {
+     "line": "Does slow creative work bring you calm. Or does repetitive focus test your patience? Tell me your experience below.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Weaving looks peaceful until you sit at the loom.",
+    "What did you expect handmade winter wool to feel like?",
+    "Stop romanticizing hand weaving before you try it.",
+    "If you love handmade winter wool, watch this.",
+    "Three things weaving taught me about patience."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 31,
+   "creator": "quiet-loom",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "sell",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Looking for genuine handmade wool?",
+     "section": "Hook"
+    },
+    {
+     "line": "Do you love undyed wool? I weave each piece slowly.",
+     "section": "Setup"
+    },
+    {
+     "line": "Woven on a floor loom. Then washed and pressed carefully.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "It measures 180 centimeters long. And 30 centimeters wide.",
+     "section": "Payoff"
+    },
+    {
+     "line": "I weave alone, slowly. For people who like handmade winter things.",
+     "section": "refill"
+    },
+    {
+     "line": "Harbor Fog Scarf: at https://example. com/quiet-loom. Send me a message if you want it.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Looking for genuine handmade wool?",
+    "Our Harbor Fog Scarf dropped.",
+    "I just finished this scarf.",
+    "Fresh off the floor loom.",
+    "A new wool scarf release."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 32,
+   "creator": "mayas-coffee",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "I bought a drum roaster and lost my profile.",
+     "section": "Hook"
+    },
+    {
+     "line": "When you change machines, airflow and heat transfer behave in completely unfamiliar ways.",
+     "section": "Setup"
+    },
+    {
+     "line": "I think most people who say they hate light roast have only ever had it stale.",
+     "section": "refill"
+    },
+    {
+     "line": "The week I bought a proper drum roaster, I roasted my old garage favourite again and honestly could not get it to taste the same for a month.",
+     "section": "Re-hook"
+    }
+   ],
+   "hook_options": [
+    "I bought a drum roaster and lost my profile.",
+    "The week I upgraded my roaster, everything changed.",
+    "It took a full month to fix my roast.",
+    "Here is why better coffee equipment changes your familiar roast.",
+    "Why new coffee roasting gear changes your favorite profile.",
+    "What happens when you switch to a new roaster.",
+    "Here is the truth about upgrading your roasting gear.",
+    "Why your roast tastes completely different on new equipment."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 33,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "sell",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Stop putting new skincare on your face before patch testing first. I look for parfum, then patch test on the inner arm.",
+     "section": "Hook"
+    },
+    {
+     "line": "Fragrance is in most skincare for the shopper, not for the skin. I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+     "section": "Build"
+    },
+    {
+     "line": "This cleansing balm rinses off with warm water. You can find Melt Balm at the link in bio.",
+     "section": "Offer"
+    }
+   ],
+   "hook_options": [
+    "Stop putting new skincare on your face before patch testing first.",
+    "If your skin is sensitive, check the ingredient list length first.",
+    "Stop using cleansers with fragrance if your face stings easily.",
+    "If you have sensitive skin, check the label for fragrance first.",
+    "Stop buying daily skincare based on how pleasant the bottle smells.",
+    "Are you still buying products without checking for added parfum?",
+    "If your skin is sensitive, start checking labels for fragrance first."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 34,
+   "creator": "signal-daily",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Can your AI calendar tool prove where it got that time?",
+     "section": "Hook"
+    },
+    {
+     "line": "I spent a week letting an AI assistant plan my calendar, and it double-booked my dentist day.",
+     "section": "Reality Check"
+    },
+    {
+     "line": "If the tool cannot point back to the exact email or note it used, I am taking a blind risk with my day.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Real talk: ask for its sources, open one, and find the exact sentence.",
+     "section": "Protocol"
+    },
+    {
+     "line": "Treat generated schedules as a suggestion, not a final calendar invite. Let me know in the comments.",
+     "section": "Payoff"
+    }
+   ],
+   "hook_options": [
+    "Should you actually trust that new AI calendar feature?",
+    "Can your AI calendar tool prove where it got that time?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 35,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "educate",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Stop answering twice if customers ask the same five questions.",
+     "section": "Hook"
+    },
+    {
+     "line": "The first step is simple. Tag every single customer email that comes in for one full week. Do not change how you answer yet, just label the incoming topics as they arrive.",
+     "section": "Setup"
+    },
+    {
+     "line": "At the end of the week, look across the board and find the top five repeats. You will see that a small cluster of identical questions makes up almost the entire backlog.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Write one thorough, accurate reply for each of those five questions. Save them inside your inbox template library, and deploy them across the team so nobody drafts from scratch again.",
+     "section": "Payoff"
+    },
+    {
+     "line": "Look. Most small shops do not need a help desk. They need fewer repeat emails.",
+     "section": "refill"
+    },
+    {
+     "line": "Save this workflow for your next inbox audit, and let me know in the comments how many repeat tickets you see daily.",
+     "section": "Close"
+    }
+   ],
+   "hook_options": [
+    "Stop answering twice if customers ask the same five questions.",
+    "Five saved replies will fix your repeat email backlog.",
+    "If customer emails keep repeating, check your top five tags.",
+    "Stop answering twice by fixing your five repeat emails.",
+    "Why answer the same customer support email twice?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 36,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "leads",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "A client learned the hip hinge while waiting on her kettle.",
+     "section": "Hook"
+    },
+    {
+     "line": "Most beginners think they need heavy weights or a huge room right away. You do not need to complicate things when you are just finding your rhythm.",
+     "section": "Setup"
+    },
+    {
+     "line": "A client learned the hip hinge touching her hips to a wall every morning while the kettle boiled, and three weeks later she deadlifted her first kettlebell!",
+     "section": "Story Proof"
+    },
+    {
+     "line": "And this is where real momentum happens. It comes from having a clear weekly rhythm you can actually maintain.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "That is why my Home Strength Starter plan is built around the equipment you already have at home. It includes a weekly plan, a short warm-up video for every session, and one video check-in call every two weeks.",
+     "section": "Offer Structure"
+    },
+    {
+     "line": "You do not need to buy anything new or clear out a whole garage. We take what is already in your living room and turn it into safe progress.",
+     "section": "Application"
+    },
+    {
+     "line": "$90 per month.",
+     "section": "build"
+    },
+    {
+     "line": "Hip hinge at home: stand a foot from a wall, soft knees, push your hips back until they tap it, keep the broomstick on your head, back and tailbone, then stand tall. One more rep!",
+     "section": "refill"
+    },
+    {
+     "line": "Legit, I think a five-minute warm-up does more for beginners than any fancy workout plan!",
+     "section": "refill"
+    },
+    {
+     "line": "Home Strength Starter: book a free 15-minute intro call, link in bio.",
+     "section": "Call to Action"
+    }
+   ],
+   "hook_options": [
+    "A client learned the hip hinge while waiting on her kettle.",
+    "Three weeks of wall taps can teach your first deadlift.",
+    "She touched her hips to a wall every single morning.",
+    "Are you struggling to start strength training at home?",
+    "Why you do not need gym gear to start.",
+    "Struggling to learn the deadlift without hurting your back?",
+    "How to hinge properly before touching a heavy weight."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 37,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "leads",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Stop answering customer support tickets out of a standard email inbox. When two people answer customer email together, wires get crossed.",
+     "section": "Hook"
+    },
+    {
+     "line": "Look. I built FlowDesk because my partner and I kept answering the same customer email twice.",
+     "section": "Setup"
+    },
+    {
+     "line": "And this is what changes the day you switch: FlowDesk is a shared inbox that turns each email into a card on a board. You see exactly what needs a reply, who has it, and what is finished.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "We counted. Forty percent of our support email was the same five questions. We saved five replies. Inbox halved.",
+     "section": "Payoff"
+    },
+    {
+     "line": "Our first paying customer, um, she found a bug in like the first hour, no wait, first forty minutes, and I fixed it on a call with her just, like, watching me type, which was terrifying.",
+     "section": "refill"
+    },
+    {
+     "line": "FlowDesk includes a fourteen-day free trial with no card needed. DM me and I'll help you pick the right flowdesk.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop answering customer support tickets out of a standard email inbox.",
+    "If you answer customer email yourself, check your weekly repeat questions.",
+    "Stop buying complex enterprise software when you have three team members.",
+    "Answering customer email alone or with a tiny team?",
+    "Stop answering support tickets out of a standard email inbox.",
+    "If you answer customer email yourself, look at this setup."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 38,
+   "creator": "clay-kiln",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "sell",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Stop putting ceramic bowls in the microwave without checking the clay. Here is the honest answer for our stoneware.",
+     "section": "Hook"
+    },
+    {
+     "line": "People always ask can a Moss Bowl go in the microwave, and the clay handles it just fine, mind you, though you will want a cloth when lifting it.",
+     "section": "Setup"
+    },
+    {
+     "line": "Notice how the glaze pools darker at the rim, leaving a raw unglazed foot. After that first kiln load I spent a whole evening, mind you, grinding glaze off the shelves with a stone, which is how I learned to wax every foot before glazing.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "You can claim your own Moss Bowl right now through the link in bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop putting ceramic bowls in the microwave without checking the clay.",
+    "Three things to know before microwaving handmade stoneware bowls.",
+    "If you buy handmade bowls, check whether the foot is unglazed.",
+    "Can your handmade Moss Bowl go in the microwave?",
+    "Stop putting ceramic bowls in the microwave before this.",
+    "Does handmade stoneware survive your everyday microwave?",
+    "Can you put handmade stoneware bowls in the microwave?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 39,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "leads",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Stop squatting forward on your knees at home.",
+     "section": "Hook"
+    },
+    {
+     "line": "Instead, keep soft knees and push your hips straight back.",
+     "section": "Setup"
+    },
+    {
+     "line": "Stand a foot from a wall, hold a broomstick down your back, and tap your hips back until you touch it.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Legit, I think a five-minute warm-up does more for beginners than any fancy workout plan!",
+     "section": "build"
+    },
+    {
+     "line": "A weekly plan built around the equipment you already have.",
+     "section": "refill"
+    },
+    {
+     "line": "Home Strength Starter: book a free 15-minute intro call, link in bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop squatting forward on your knees at home.",
+    "Most squat advice misses the simple hip hinge drill.",
+    "If squats hurt your knees, check your hip movement.",
+    "Why squats hurt your knees at home.",
+    "Stop squatting straight down on your knees.",
+    "If squats hurt your knees, check this.",
+    "Your home squats should not hurt knees.",
+    "Why beginner squats feel awful on knees."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 40,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Stop putting unverified formulas on your face before testing your inner arm.",
+     "section": "Hook"
+    },
+    {
+     "line": "Have you ever put on a cream, felt your cheeks start stinging, and assumed that meant the formula was doing its job?",
+     "section": "Setup"
+    },
+    {
+     "line": "When I read a label, I look for fragrance, parfum. And essential oils first. Then I patch test on the inner arm for a few days before anything touches the face.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+     "section": "build"
+    },
+    {
+     "line": "Save this reminder for the next time you check an ingredient panel, and tell me if your routine currently stings.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop putting unverified formulas on your face before testing your inner arm.",
+    "If your daily moisturizer stings your skin, check for added parfum.",
+    "Stop assuming your skincare is only working if you feel it sting.",
+    "Why does your skincare feel like it stings?",
+    "Stop thinking your skincare has to burn.",
+    "Does your moisturizer sting when you put it on?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 41,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "followers",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Stop starting with giant workout plans when you want home strength.",
+     "section": "Hook"
+    },
+    {
+     "line": "Legit, people don't quit because they're lazy, the plan is just way too big, so start smaller than you think!",
+     "section": "Reality Check"
+    },
+    {
+     "line": "Stand a foot from a wall, push your hips back until you tap it, stand tall, one more rep!",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Tell me below.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop starting with giant workout plans when you want home strength.",
+    "People blame their motivation. Here is why the plan is the actual issue.",
+    "If you keep quitting new workouts, check how big your plan is.",
+    "What the new workout area means for you."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 42,
+   "creator": "clay-kiln",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "sell",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "I once glazed a Tide Mug all the way down out of stubbornness.",
+     "section": "Hook"
+    },
+    {
+     "line": "That mistake changed our whole finishing routine.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I once glazed a Tide Mug all the way down out of stubbornness, and the clay decided, as it does, to weld it to the shelf for good. I think a bare clay foot is honest, mind you, it shows what the mug is made of.",
+     "section": "build"
+    },
+    {
+     "line": "Holds about 12 oz.",
+     "section": "build"
+    },
+    {
+     "line": "Hand-thrown, trimmed and fired twice.",
+     "section": "build"
+    },
+    {
+     "line": "Dishwasher safe, with an unglazed foot.",
+     "section": "build"
+    },
+    {
+     "line": "My first kiln load came out with every mug glued to the shelf because I glazed the bottoms.",
+     "section": "refill"
+    },
+    {
+     "line": "$38 per mug.",
+     "section": "refill"
+    },
+    {
+     "line": "Tide Mug, next batch drops in the shop, link in bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "I once glazed a Tide Mug all the way down out of stubbornness.",
+    "Stop buying handmade mugs if you hate seeing bare raw clay.",
+    "Before glazing I wax the foot, wipe a finger's width above it with a damp sponge, dip for three seconds, and let it dry overnight before it goes in the kiln.",
+    "I once welded an entire mug to the kiln shelf.",
+    "Here is the glaze step nobody sees on a Tide Mug.",
+    "Stop glazing ceramic pieces all the way down to the bottom.",
+    "This is why the bottom of your mug stays raw clay.",
+    "One stubborn glaze mistake ruined my entire kiln shelf forever."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 43,
+   "creator": "mayas-coffee",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "followers",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "If you want to start roasting, check where your smoke alarm is.",
+     "section": "Hook"
+    },
+    {
+     "line": "Instead, reality hit me immediately.",
+     "section": "Setup"
+    },
+    {
+     "line": "I started roasting in my garage with a secondhand popcorn popper, and the first batch set off the smoke alarm twice.",
+     "section": "The Story"
+    },
+    {
+     "line": "Here is the thing, roasting coffee does not need a pristine setup. Because honestly, I think the roast date on the bag matters more than the country on the label. I think most people who say they hate light roast have only ever had it stale.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "At my first market stall I sold out of Harbor Blend by ten in the morning and spent the rest of the day handing out samples from an empty table.",
+     "section": "refill"
+    },
+    {
+     "line": "Freshness always beats perfection on day one. If you brew coffee at home, what was the first brewing experiment that went completely sideways for you?",
+     "section": "Payoff and Close"
+    }
+   ],
+   "hook_options": [
+    "If you want to start roasting, check where your smoke alarm is.",
+    "Stop buying coffee without checking the roast date on the bag.",
+    "My first home coffee roast started with a thrifted popcorn machine.",
+    "Here is what I thought coffee roasting would actually look like.",
+    "I expected coffee roasting to look completely different than this.",
+    "What nobody tells you about roasting your own coffee beans.",
+    "If you want to roast coffee, prepare for the smoke.",
+    "Here is the thing about trying to roast at home."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 44,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "leads",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Small shop owners, look at your inbox before and after FlowDesk.",
+     "section": "Hook"
+    },
+    {
+     "line": "Before, customer questions sit inside a crowded thread. You open an email, wonder if someone replied, and leave it unread.",
+     "section": "Build"
+    },
+    {
+     "line": "After, FlowDesk turns each incoming email into a clear card on a board. You see what needs an answer today, and what is already done.",
+     "section": "Turn"
+    },
+    {
+     "line": "And you keep saved replies ready for the questions your shop gets every week. The same five questions stop taking up your entire morning.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "",
+     "section": "Offer"
+    },
+    {
+     "line": "$12 per month for up to three teammates.",
+     "section": "build"
+    },
+    {
+     "line": "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.",
+     "section": "refill"
+    },
+    {
+     "line": "I think, um, most small shops don't actually need a help desk, it's more like, they need fewer repeat emails, so yeah, I mean that's kind of the whole point of FlowDesk honestly.",
+     "section": "refill"
+    },
+    {
+     "line": "FlowDesk: free 14-day trial, link in bio.",
+     "section": "Close"
+    }
+   ],
+   "hook_options": [
+    "Small shop owners, look at your inbox before and after FlowDesk.",
+    "Here is what happens when every support email becomes a card.",
+    "Turning customer emails into simple board cards changes your week.",
+    "Two things happen when your store stops using a standard inbox.",
+    "If you answer customer emails alone, you need this board."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 45,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "sell",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Stop rubbing heavy creams into skin that needs gentle cleansing.",
+     "section": "Hook"
+    },
+    {
+     "line": "Have you ever brought home a rich face cream that felt soothing at first, only to end up with tightness and irritation a few hours later?",
+     "section": "Setup"
+    },
+    {
+     "line": "The second check is how the product leaves your skin, where a dedicated cleansing balm simply dissolves buildup and rinses completely clean with warm water. I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+     "section": "Setup"
+    },
+    {
+     "line": "In my experience, gentle care begins with simple formulas, which is why Melt Balm is made in small batches and poured by hand into each 90 g tin.",
+     "section": "Setup"
+    },
+    {
+     "line": "My first batch separated in the jar overnight, and I threw out forty jars before I got the emulsion right.",
+     "section": "refill"
+    },
+    {
+     "line": "I think fragrance is in most skincare for the shopper, not for the skin.",
+     "section": "refill"
+    },
+    {
+     "line": "Grab your Melt Balm \u2014 the link is in my bio.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop rubbing heavy creams into skin that needs gentle cleansing.",
+    "If your skin reacts easily, check the length of your ingredient list.",
+    "Stop buying daily creams before checking total formula length.",
+    "Here are two checks before choosing a balm or cream.",
+    "If your skin feels reactive, check these two formula rules.",
+    "Two plain checks to decide between a balm or cream.",
+    "Balm or cream: two things your skin actually needs."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 46,
+   "creator": "signal-daily",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "authority",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Stop trusting an AI email draft just because it carries a label.",
+     "section": "Hook"
+    },
+    {
+     "line": "Every inbox app adds a label now. The catch? That badge only means an algorithm wrote it, not that any fact is true.",
+     "section": "Setup"
+    },
+    {
+     "line": "Before trusting an AI answer: ask for its sources, open one, find the exact sentence, and if it is not there, treat the whole answer as a draft.",
+     "section": "build"
+    },
+    {
+     "line": "I asked an AI tool to summarize my own newsletter and it confidently quoted a sentence I never wrote.",
+     "section": "refill"
+    },
+    {
+     "line": "Real talk, I think an AI tool that admits it does not know is worth more than one that always answers.",
+     "section": "refill"
+    },
+    {
+     "line": "I think the most useful AI feature most people ignore is asking it to show its sources.",
+     "section": "refill"
+    },
+    {
+     "line": "Do you actually check the original source before hitting send, or trust the badge? Let me know below.",
+     "section": "Close"
+    }
+   ],
+   "hook_options": [
+    "Stop trusting an AI email draft just because it carries a label.",
+    "If a mail app labels a draft, check where it got facts.",
+    "Stop hitting send on AI drafts before verifying the exact sentence.",
+    "Why mail apps labelling AI drafts does not fix the real problem.",
+    "Can your email app prove the sources behind that draft?",
+    "Stop assuming a labelled AI draft is ready to send."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 47,
+   "creator": "mayas-coffee",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "educate",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Stop trusting the expiration date on coffee bags.",
+     "section": "Hook"
+    },
+    {
+     "line": "Honestly, most bags list a date months away, but beans lose their peak flavor long before that mark.",
+     "section": "Belief"
+    },
+    {
+     "line": "Here's the thing, to check if your beans are stale, read the roast date, smell a handful, and watch the bloom.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "When hot water hits fresh grounds, they swell up and bubble immediately, while old beans simply sit there flat.",
+     "section": "Fix"
+    }
+   ],
+   "hook_options": [
+    "Stop trusting the expiration date on coffee bags.",
+    "Here is how you actually test coffee freshness.",
+    "Why does your morning coffee still taste flat?",
+    "Here is the mistake ruining your fresh coffee.",
+    "Read the roast date, not the expiration date."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 48,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "personal_brand",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "I almost gave up on calming the sensitive skin.",
+     "section": "Hook"
+    },
+    {
+     "line": "Every bottle promised relief, but layering six different extracts only made the irritation worse.",
+     "section": "Setup"
+    },
+    {
+     "line": "",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I think fragrance is in most skincare for the shopper, not for the skin.",
+     "section": "refill"
+    },
+    {
+     "line": "I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+     "section": "refill"
+    },
+    {
+     "line": "How many steps are currently in your sensitive skin routine? Tell me below.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "I almost gave up on calming my sensitive skin.",
+    "I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+    "Stop testing new bottles every time your skin reacts.",
+    "Why does gentle skincare still irritate your skin?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 49,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "leads",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "We counted our support inbox and forty percent was repeat questions. It feels like good customer service, but it burns hours.",
+     "section": "Hook"
+    },
+    {
+     "line": "Help Scout Well known for its straightforward shared inbox and knowledge base software tailored to small teams seeking to avoid enterprise complexity.",
+     "section": "Reality Check"
+    },
+    {
+     "line": "When two people answer email together, wires get crossed and customers receive conflicting answers.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved. Stop answering twice. Tag every email for a week. Find the top five repeats. Write one reply each. Save them. Ship it.",
+     "section": "build"
+    },
+    {
+     "line": "Our first paying customer, um, she found a bug in like the first hour, no wait, first forty minutes, and I fixed it on a call with her just, like, watching me type, which was terrifying.",
+     "section": "refill"
+    },
+    {
+     "line": "Look. Most small shops do not need a help desk. They need fewer repeat emails.",
+     "section": "refill"
+    },
+    {
+     "line": "I built the first version of FlowDesk over a winter because my partner and I kept answering the same customer email twice.",
+     "section": "refill"
+    },
+    {
+     "line": "Look. Week one, our first customer's bug was a duplicate email. Same message, two cards. Fixed it live. She signed up for a year that afternoon.",
+     "section": "refill"
+    },
+    {
+     "line": "I once lost a whole Saturday to a support ticket that was really a typo in our help page.",
+     "section": "refill"
+    },
+    {
+     "line": "DM me and we'll talk it through.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "We counted our support inbox and forty percent was repeat questions.",
+    "Stop writing custom email replies to the exact same five questions.",
+    "Three mistakes making your shop support inbox take twice as long.",
+    "Shop owners, here are three mistakes in your support inbox.",
+    "Stop answering support emails twice if customers ask the same questions.",
+    "Three inbox mistakes small shop teams make every single week.",
+    "Why your customer support inbox is secretly stealing your mornings.",
+    "Are you still answering every customer support email from scratch?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 50,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "followers",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Stop starting with hour long beginner workouts.",
+     "section": "Hook"
+    },
+    {
+     "line": "And this is where it shifts: start smaller than you think. Even smaller than that. I think beginners quit because the plan is too big, not because they are lazy. Legit, I think a five-minute warm-up does more for beginners than any fancy workout plan!",
+     "section": "Turn"
+    },
+    {
+     "line": "Send this to someone who needs to hear this today.",
+     "section": "Close"
+    }
+   ],
+   "hook_options": [
+    "Stop starting with hour long beginner workouts.",
+    "People blame discipline. Here is what truly breaks beginners.",
+    "If you feel lazy, check your workout duration.",
+    "Beginners do not quit because they are lazy.",
+    "Why your first home workout plan fails.",
+    "Stop starting with giant home workout routines.",
+    "The real reason you stopped working out.",
+    "You quit your plan because it was too big."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 51,
+   "creator": "clay-kiln",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "personal_brand",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "Watch how a plain lump of clay becomes a morning mug.",
+     "section": "Hook"
+    },
+    {
+     "line": "Centering the clay on the wheel takes patience before anything resembles kitchenware. You have to anchor your elbows, steady your palms, and bring the wall up evenly so the rim stays level.",
+     "section": "Setup"
+    },
+    {
+     "line": "Pulling the walls too thin is where things usually collapse. The clay holds water as you work, and if you rush the pull, the whole shape twists right off the center pin.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Once the mug dries leather hard, trimming creates the clean bottom foot. When the foot is trimmed properly, the mug sits solid on your counter without rocking or sticking to surfaces. Do you prefer drinking from a heavy ceramic mug or something lightweight?",
+     "section": "Turn"
+    },
+    {
+     "line": "I once glazed a Tide Mug all the way down out of stubbornness, and the clay decided, as it does, to weld it to the shelf for good.",
+     "section": "refill"
+    },
+    {
+     "line": "Tell me your thoughts in the comments.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Watch how a plain lump of clay becomes a morning mug.",
+    "Why does shaping a simple handmade mug take so much patience?",
+    "Never rush pulling the walls when turning clay into a mug.",
+    "If you love handmade kitchen mugs, this shaping process is everything.",
+    "Three precise steps turn an unformed lump into your favorite mug."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 52,
+   "creator": "signal-daily",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "authority",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "I tested three AI summarizers on the exact same newsletter issue.",
+     "section": "Hook"
+    },
+    {
+     "line": "The catch was only one kept the numbers right. Most people ignore asking it to show its sources.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Real talk, I think an AI tool that admits it does not know is worth more than one that always answers.",
+     "section": "refill"
+    },
+    {
+     "line": "Before trusting an AI answer: ask for its sources, open one, find the exact sentence, and if it is not there, treat the whole answer as a draft.",
+     "section": "refill"
+    },
+    {
+     "line": "Share your experience in the comments so we can compare notes.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "I tested three AI summarizers on the exact same newsletter issue.",
+    "Stop trusting AI summaries if the tool cannot prove its numbers.",
+    "Three simple checks to run before trusting any generated AI answer.",
+    "Testing three AI summarizers taught me three rules for generated text.",
+    "Stop trusting AI summaries before you check these three simple rules.",
+    "Three rules I use after testing three AI tools on my writing.",
+    "If you summarize long documents with AI, check these three rules.",
+    "Can your AI summarizer actually keep three numbers accurate in a row?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 53,
+   "creator": "pip-sprocket",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "entertain",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Once I accidentally grabbed a gym sock instead of an arm.",
+     "section": "Hook"
+    },
+    {
+     "line": "FLOP! It turns out an escalated live mistake leaves no room to hide. If you rush in the dark, laundry happens.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Backstage, Sprocket's spare arm lives in a sock drawer, and once I grabbed a sock instead, so he did a whole sketch with a sock arm.",
+     "section": "build"
+    },
+    {
+     "line": "Have you ever had a quick backstage mistake turn into complete chaos?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Once I accidentally grabbed a gym sock instead of an arm.",
+    "Stop assuming the audience will not notice a tube sock arm.",
+    "If your puppet show feels chaotic backstage, check your sock drawer.",
+    "Oh no, backstage Sprocket had to perform with a sock.",
+    "Have you ever sent a puppet on stage wearing laundry?",
+    "What happens when Sprocket's spare arm is just a sock?",
+    "One drawer mistake gave Sprocket a floppy sock arm.",
+    "Backstage panic is grabbing a drawer sock instead of an arm."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 54,
+   "creator": "quiet-loom",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Stop buying wide looms for your first weave.",
+     "section": "Hook"
+    },
+    {
+     "line": "The fear is getting stuck making only narrow strips.",
+     "section": "Setup"
+    },
+    {
+     "line": "Wider looms sound versatile. But warping a wide warp requires consistent physical tension across the entire width. Which can easily frustrate someone learning thread control.",
+     "section": "Build"
+    },
+    {
+     "line": "And this is where the craft clicks. It travels easily and warps in a fraction of the time.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Mastering selvages and thread tension slowly on a compact width builds the exact muscle memory you need before ever upgrading to heavier equipment.",
+     "section": "Payoff"
+    }
+   ],
+   "hook_options": [
+    "Stop buying wide looms for your first weave.",
+    "If weaving scarves, check sixteen inch loom widths.",
+    "Stop assuming narrow looms cannot make wide blankets.",
+    "Why starting on a wide weaving loom backfires.",
+    "Stop buying huge looms for your first project."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 55,
+   "creator": "mayas-coffee",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "educate",
+   "target_seconds": 90,
+   "script": [
+    {
+     "line": "I bought a commercial drum roaster and lost my profile for a month.",
+     "section": "Hook"
+    },
+    {
+     "line": "The week I bought a proper drum roaster, I roasted my old garage favourite again and honestly could not get it to taste the same for a month.",
+     "section": "Setup"
+    },
+    {
+     "line": "To check if your beans are stale, read the roast date on the bag, smell a handful, and then watch what happens when you brew.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Then watch the bloom; fresh beans swell and bubble when the water hits, old ones just sit there.",
+     "section": "Turn"
+    },
+    {
+     "line": "When you brew with beans rested just right, you get that vibrant sweetness without any complicated equipment. Check the bloom on your next morning pour.",
+     "section": "Payoff"
+    }
+   ],
+   "hook_options": [
+    "I bought a commercial drum roaster and lost my profile for a month.",
+    "It took me an entire month to get my favourite roast back.",
+    "The week I bought my drum roaster, my coffee went completely flat.",
+    "Why your coffee tastes different at home than at the cafe.",
+    "Why your morning cup never matches the coffee shop flavor.",
+    "Why home brewed coffee tastes completely different than the cafe."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 56,
+   "creator": "glow-lab",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "authority",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Stop testing new skincare on your face before the arm.",
+     "section": "Hook"
+    },
+    {
+     "line": "Most formulas include scents to create an experience in the store aisle.",
+     "section": "Setup"
+    },
+    {
+     "line": "Here is what happens when you inspect the fine print. When I read a label, I look for fragrance, parfum. And essential oils first.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Then I patch-test on the inner arm for a few days before using it on the face. That gives your skin time to react where it will not cause visible distress. I think a short ingredient list is kinder to sensitive skin than a long one full of extracts.",
+     "section": "Payoff"
+    },
+    {
+     "line": "Save this guide so you remember what to check on your next label, and tell me in the comments what ingredients you avoid.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop testing new skincare on your face before the arm.",
+    "Labels highlight gentle formulas. Here is the ingredient that gets hidden.",
+    "If your skin stings often, check for parfum on the label.",
+    "Why fragrance free labels still confuse sensitive skin.",
+    "What fragrance free actually means on a skincare label.",
+    "Stop putting new cream on your face without this check."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 57,
+   "creator": "flowdesk",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "personal_brand",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "We kept answering the exact same customer email twice.",
+     "section": "Hook"
+    },
+    {
+     "line": "FlowDesk started because my partner and I spent one winter, well most of a winter. Completely tangled in duplicate replies before I finally sat down and built the thing.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "Now FlowDesk sorts your shop inbox so replies get drafted, you approve them. And you ship it, instead of two people guessing who has the ticket.",
+     "section": "Build"
+    },
+    {
+     "line": "Our first paying customer, um, she found a bug in like the first hour, no wait, first forty minutes, and I fixed it on a call with her just, like, watching me type, which was terrifying.",
+     "section": "refill"
+    },
+    {
+     "line": "Look. Most small shops do not need a help desk. They need fewer repeat emails.",
+     "section": "refill"
+    },
+    {
+     "line": "Stop answering twice. Tag every email for a week. Find the top five repeats. Write one reply each. Save them. Ship it.",
+     "section": "refill"
+    },
+    {
+     "line": "How does your team keep two people from replying to the same customer ticket at once?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "We kept answering the exact same customer email twice.",
+    "Stop answering support email without knowing who owns the thread.",
+    "If you share an email inbox, check your sent folder.",
+    "Have you ever replied to an email your partner already answered?",
+    "If two people share one inbox, wires cross immediately.",
+    "The customer email that made me build FlowDesk."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 58,
+   "creator": "coach-ana",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Five minutes of warm up movement can change your entire home workout.",
+     "section": "Hook"
+    },
+    {
+     "line": "Legit, jumping straight into lifting makes everything feel stiff, so don't skip the warm-up, okay!",
+     "section": "Setup"
+    },
+    {
+     "line": "My first move is five minutes of marching in place, hip circles, and those arm swings people forget.",
+     "section": "First Move"
+    },
+    {
+     "line": "Stand a foot from a wall, tap your hips back, and keep that broomstick touching your head, back, and tailbone!",
+     "section": "Second Move"
+    },
+    {
+     "line": "Get those two done first and you are ready for one more rep.",
+     "section": "Payoff Close"
+    }
+   ],
+   "hook_options": [
+    "Five minutes of warm up movement can change your entire home workout.",
+    "If your knees feel tight at home, check your hip hinge.",
+    "Do you really need a long warm up before training at home?",
+    "Stop starting your home workout without these two warm up moves.",
+    "Why do beginners always skip these two simple warm up moves?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 59,
+   "creator": "clay-kiln",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "entertain",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "After that first kiln load I spent an evening grinding shelves.",
+     "section": "Hook"
+    },
+    {
+     "line": "My first kiln load came out with every mug glued to the shelf because I glazed the bottoms, which is how I learned to wax the foot, wipe a finger's width above it, and dip for three seconds, mind you.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I once glazed a Tide Mug all the way down out of stubbornness, and the clay decided, as it does, to weld it to the shelf for good, though I think a bare clay foot is honest anyway.",
+     "section": "build"
+    },
+    {
+     "line": "I threw the same mug shape about two hundred times before the handles stopped cracking in the kiln.",
+     "section": "refill"
+    },
+    {
+     "line": "If you have ever had a disaster happen inside your kiln, let me know in the comments how long it took to clean up.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "After that first kiln load I spent an evening grinding shelves.",
+    "Stop dipping pieces before wiping a finger width above the base.",
+    "Three seconds in the glaze bucket protects the entire piece.",
+    "Why you should never glaze the bottom of clay.",
+    "What went wrong in my very first kiln firing?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 60,
+   "creator": "signal-daily",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "followers",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Stop trusting an AI answer if it cannot cite sources.",
+     "section": "Hook"
+    },
+    {
+     "line": "I asked an AI tool to summarize my own newsletter. It confidently quoted a sentence I never wrote.",
+     "section": "Setup"
+    },
+    {
+     "line": "I tell the tool to cite where each claim originated. Real talk, I think an AI tool that admits it does not know is worth more than one that always answers.",
+     "section": "Build"
+    },
+    {
+     "line": "Before trusting an AI answer, ask for sources and open one. If the exact sentence is not there, treat it as a draft.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I think the most useful AI feature most people ignore is asking it to show its sources.",
+     "section": "refill"
+    },
+    {
+     "line": "Send this to someone who uses AI every day, and tell me in the comments if you check sources.",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "Stop trusting an AI answer if it cannot cite sources.",
+    "If an AI gives you an answer, check its sources.",
+    "Stop relying on AI tools if they never admit doubt.",
+    "What is the one question to ask before trusting an AI answer?",
+    "Real talk, stop trusting an AI answer until it proves its sources.",
+    "Can your AI tool actually show you where it found that answer?",
+    "Before you trust that generated answer, ask it for the exact source.",
+    "The most useful AI feature is asking it to show its sources."
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 61,
+   "creator": "pip-sprocket",
+   "fictional": true,
+   "arm": "baseline_p10",
+   "goal": "personal_brand",
+   "target_seconds": 30,
+   "script": [
+    {
+     "line": "Sharing a live stage with a heckling puppet is genuinely terrifying.",
+     "section": "Hook"
+    },
+    {
+     "line": "You write a clean joke, you practice every pause. And then Sprocket just turns around and roasts your whole delivery live in front of everyone.",
+     "section": "Setup"
+    },
+    {
+     "line": "The room loves him and hates you.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "I think puppets let people laugh at things they would never laugh at if a person said them.",
+     "section": "refill"
+    },
+    {
+     "line": "Would you roast your co-star back, or let the puppet win?",
+     "section": "CTA"
+    }
+   ],
+   "hook_options": [
+    "I never know if my puppet is sticking to the script.",
+    "Sharing a live stage with a heckling puppet is genuinely terrifying.",
+    "What happens when your own puppet starts heckling you on stage?",
+    "Sprocket says the cruelest things whenever we get on stage.",
+    "Have you ever been roasted on stage by a piece of foam?"
+   ]
+  },
+  {
+   "batch": "panel-current-12",
+   "n": 62,
+   "creator": "quiet-loom",
+   "fictional": true,
+   "arm": "refill_v2",
+   "goal": "educate",
+   "target_seconds": 60,
+   "script": [
+    {
+     "line": "Here are two rules for choosing your winter scarf yarn.",
+     "section": "Hook"
+    },
+    {
+     "line": "Have you ever picked a yarn that felt soft in your hands. But became heavy and stiff once woven? Scarf fabric needs to breathe and bend comfortably.",
+     "section": "Setup"
+    },
+    {
+     "line": "The first rule is to choose natural wool. Wool holds warmth even when damp. It creates soft, pliable fabric thread by thread. Avoid synthetic fibers that trap sweat.",
+     "section": "Build"
+    },
+    {
+     "line": "The second rule matters even more. Check the twist of the yarn. Pick a loose, plied yarn instead of a tight cord. A relaxed thread expands slowly into balanced cloth.",
+     "section": "Re-hook"
+    },
+    {
+     "line": "When you match natural wool with an open twist. Your scarf stays light around your neck. It shields the cold while draping naturally across your shoulders.",
+     "section": "Payoff"
+    },
+    {
+     "line": "I weave alone, slowly. For people who like handmade winter things.",
+     "section": "refill"
+    },
+    {
+     "line": "Which fiber do you prefer when making winter scarves? Save this note for your next project.",
+     "section": "Close"
+    }
+   ],
+   "hook_options": [
+    "Here are two rules for choosing your winter scarf yarn.",
+    "Two simple checks before picking your winter yarn.",
+    "Pick your winter scarf yarn with these two rules."
+   ]
+  }
+ ]
+}

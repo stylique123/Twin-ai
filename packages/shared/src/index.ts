@@ -394,3 +394,7 @@ export * from './productDetailsByKind'
 // Plan v6.6 §32: the manual voice card (describe your voice yourself, no model call).
 export { buildManualVoiceCard, sanitizeManualVoiceAnswers, manualVoiceCardOn, withManualVoiceCard, MANUAL_VOICE_KEY, type ManualVoiceAnswers } from './script/voice/voiceCard'
 export * from './creator/writerGuidance'
+
+// Plan v6.8 §33: the beat budgets (shared with the beat writer), the quality profile switch and the Quality Controller.
+export * from './script/beatBudgets'
+export * from './script/qualityProfile'

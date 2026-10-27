@@ -44,7 +44,7 @@ describe('Q2: an answered key is never asked again', () => {
 
 describe('Q3: the answer is saved under her ready voice', () => {
   it('angle_answer passes a voice id, read from her ready brand voice', () => {
-    expect(angleBlock()).toMatch(/answerFactRow\(\{[^}]*voiceId: [^,]*readyVoiceId\(sb, user\.id\)/)
+    expect(EDGE).toMatch(/answerFactRow\(\{[^}]*voiceId: [^,]*readyVoiceId\(sb, user\.id\)/)
     expect(EDGE).toMatch(/async function readyVoiceId[\s\S]{0,300}\.eq\('status', 'ready'\)/)
   })
 })

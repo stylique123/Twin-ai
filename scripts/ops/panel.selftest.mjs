@@ -2,7 +2,7 @@
 //   node scripts/ops/panel.selftest.mjs
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { panelScenarios, skipAnswers, PANEL_SKIP_ANSWER, panelArm, armBody } from './panelRun.mjs'
+import { panelScenarios, skipAnswers, PANEL_SKIP_ANSWER, panelArm, armBody, qualityArms, expandQualityArms, QUALITY_ARM_STRIDE } from './panelRun.mjs'
 import { productKnowledge, resolveExpiry, panelEmail, panelDomain, reusePlan, PANEL_CREDITS, PANEL_DOMAIN, LEGACY_PANEL_DOMAIN, PANEL_TAG } from './seedFictionalPanel.mjs'
 import { ledgerWithText, assertOutsideRepo, csvCell, gatePending } from './exportPanel.mjs'
 
@@ -160,4 +160,19 @@ await import('./panelModes.selftest.mjs')
   for (let n = 1; n <= 24; n++) assert.deepEqual(armBody(rAlt, n, noEnv), { refill_arm: n % 2 === 1 ? 'baseline_p10' : 'refill_v2' })
   assert.deepEqual(armBody({ accounts: [] }, 4, { PANEL_REFILL_ARM: 'alternate' }), { refill_arm: 'refill_v2' })
   console.log('panel selftest (refill arms): ok')
+}
+
+// QUALITY PROFILE ARMS (plan v6.8 §33): two or more arms on the SAME requests.
+{
+  const noEnv = {}
+  assert.deepEqual(qualityArms({}, noEnv), [])
+  assert.deepEqual(qualityArms({ quality_profile: 'full_stack' }, noEnv), ['full_stack'])
+  assert.deepEqual(qualityArms({ quality_profile: 'paired' }, noEnv), ['baseline_p10', 'full_stack'])
+  assert.deepEqual(qualityArms({ quality_profile: ['full_stack', 'ablate:refill_v2', 'nope'] }, noEnv), ['full_stack', 'ablate:REFILL_V2'])
+  assert.deepEqual(qualityArms({ quality_profile: 'full_stack' }, { PANEL_QUALITY_PROFILE: 'baseline_p10,full_stack' }), ['baseline_p10', 'full_stack'])
+  const base = [{ n: 0, body: {} }, { n: 5, body: {} }]
+  assert.deepEqual(expandQualityArms(base, []), base)
+  const two = expandQualityArms(base, ['baseline_p10', 'full_stack'])
+  assert.deepEqual(two.map((x) => [x.n, x.request_n, x.quality_profile]), [[0, 0, 'baseline_p10'], [5, 5, 'baseline_p10'], [QUALITY_ARM_STRIDE, 0, 'full_stack'], [QUALITY_ARM_STRIDE + 5, 5, 'full_stack']])
+  console.log('panel selftest (quality arms): ok')
 }

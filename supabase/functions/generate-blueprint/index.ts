@@ -121,6 +121,8 @@ import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
 import { moveCtaLast, completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY, isProblemLine } from '../_shared/spineComplete.ts'
+import { resolveQualityProfile, qualityFlag, qualityLevers, qualityRefillArm, type QualityLever, type QualityProfile } from '../_shared/qualityProfile.ts'
+import { QC_STORY_KEY, QC_PRODUCT_KEY, qcProfileForSeconds, qcAnswersToStore, runQualityController, qcLogRecord } from '../_shared/qualityController.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -6922,23 +6924,7 @@ async function handle(req: Request): Promise<Response> {
       const key = String(b.key ?? '').slice(0, 160)
       const piece = String(b.piece ?? '').slice(0, 40)
       if (!/^mn:[a-z0-9:_-]+$/i.test(key) || !piece) return json({ error: 'key and piece are required' }, 400)
-      const herAnswer = b.skip === true || typeof b.answer !== 'string' ? '' : b.answer.trim().slice(0, 2000)
-      const gate = herAnswer ? gateAnswer(herAnswer, {}, { known: await knownForGate(sb, user.id) }) : null
-      const row = gate && gate.outcome !== 'filler' && gate.outcome !== 'direction'
-        ? answerFactRow({ ownerId: user.id, voiceId: gate ? await readyVoiceId(sb, user.id) : null, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
-      const outcome = !herAnswer || !row ? (gate ? 'filler' : 'skipped') : 'answered'
-      if (typeof b.ask_id === 'string' && /^[0-9a-f-]{36}$/.test(b.ask_id)) {
-        await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
-      } else {
-        await sb.from('question_asks').insert({ owner_id: user.id, entity_key: pid ? `product:${pid}` : 'none', option_id: 'mn', slot_id: key, angle: 'first', wording: '-', outcome })
-          .then(() => {}, () => {})
-      }
-      let saved = false
-      if (row) {
-        const { error } = await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true })
-        saved = !error || error.code === '23505'
-      }
-      console.log(JSON.stringify({ event: 'mn_answer', outcome, piece, saved }))
+      const { outcome, saved } = await storeAngleAnswer(sb, user, b, pid)
       return json({ ok: true, outcome, saved })
     }
     const [{ data: kRows }, { data: prod }, { data: hist }, { data: v }] = await Promise.all([
@@ -7211,6 +7197,17 @@ async function handle(req: Request): Promise<Response> {
   // story-hook dedupe off and no #1303 relevance filter. 'baseline_p10' = that
   // setup; 'refill_v2' = that setup + REFILL_V2, the only difference. REFILL V2
   // (trial, DEFAULT OFF): REFILL_V2=true turns it on for the trial, REFILL_V2=off kills it.
+  // ⚖️ THE QUALITY PROFILE (plan v6.8 §33; test and panel accounts ONLY):
+  // `quality_profile` = baseline_p10 | full_stack | ablate:<LEVER>, default
+  // full_stack. It sets REFILL_V2, SPINE_COMPLETE, POLISH_REORDER,
+  // BEST_OF_N_JUDGE (+ HOOK_GATE_V2, POLISH_CHECK_V2, VOICE_BARE_LINES once
+  // #1325/#1322 merge; OFF until then) and QUALITY_CONTROLLER as a group. A real
+  // creator gets null and every flag below reads the env exactly as before.
+  // Kill: QUALITY_PROFILE=off; an env 'off' on any one lever still wins.
+  let qualityProfileMemo: QualityProfile | null | undefined
+  const qualityProfile = (): QualityProfile | null => (qualityProfileMemo !== undefined ? qualityProfileMemo
+    : (qualityProfileMemo = resolveQualityProfile({ testAccount: isHeartbeat, requested: (body as { quality_profile?: unknown } | undefined)?.quality_profile, kill: Deno.env.get('QUALITY_PROFILE') })))
+  const qFlag = (l: QualityLever): string | undefined => qualityFlag(qualityProfile(), l, Deno.env.get(l))
   const refillArm = (): RefillArm | null => (isHeartbeat ? refillArmOf((body as { refill_arm?: unknown } | undefined)?.refill_arm) : null)
   const relevantRefillCtx = (): RefillContext | null => refillContextFor({ trialOn, arm: refillArm(), env: { RELEVANT_REFILL: Deno.env.get('RELEVANT_REFILL'), REFILL_V2: Deno.env.get('REFILL_V2') }, topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => x.trim()).join(' '), angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? ''), niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '), product: String((ownedEntity as { name?: unknown } | null)?.name ?? '') })
 
@@ -7263,6 +7260,15 @@ async function handle(req: Request): Promise<Response> {
   try {
     body = await req.json()
     if (isHeartbeat && (body as { trial_off?: unknown }).trial_off === true) trialOn = false
+    // QUALITY PROFILE → REFILL (test and panel accounts only; plan v6.8 §33): the
+    // profile's refill is applied as the request's refill arm, so the existing
+    // refill switch reads it unchanged. An explicit panel refill_arm wins.
+    // baseline_p10 → 'baseline_p10'; REFILL_V2 in effect → 'refill_v2'
+    // (REFILL_V2=off still kills it); ablate:REFILL_V2 → no arm (env decides).
+    if (isHeartbeat && qualityProfile() && refillArmOf((body as { refill_arm?: unknown }).refill_arm) == null) {
+      const qa = qualityRefillArm(qualityProfile(), null) ?? (qFlag('REFILL_V2') === 'true' ? 'refill_v2' : null)
+      if (qa) (body as { refill_arm?: unknown }).refill_arm = qa
+    }
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
@@ -7755,6 +7761,33 @@ function clipAtSentence(t: string, max = 240): string {
 }
 
 /** Her brand, her products and her stated facts: what she has already said is hers. */
+// ⚖️ THE ANGLE-ANSWER STORE (plan v5.1 M), one function for its two callers: the
+// angle_answer mode, and the Quality Controller's thin-material answer (plan
+// v6.8 §33, key 'mn:qc:*') arriving in a generate request's readiness_answers.
+// Same answer gate, same answerFactRow (source 'asked'), same question_asks row.
+async function storeAngleAnswer(sb: ReturnType<typeof createClient>, user: { id: string }, b: { key?: unknown; piece?: unknown; answer?: unknown; skip?: unknown; ask_id?: unknown }, pid: string | null): Promise<{ outcome: string; saved: boolean }> {
+      const key = String(b.key ?? '').slice(0, 160)
+      const piece = String(b.piece ?? '').slice(0, 40)
+      const herAnswer = b.skip === true || typeof b.answer !== 'string' ? '' : b.answer.trim().slice(0, 2000)
+      const gate = herAnswer ? gateAnswer(herAnswer, {}, { known: await knownForGate(sb, user.id) }) : null
+      const row = gate && gate.outcome !== 'filler' && gate.outcome !== 'direction'
+        ? answerFactRow({ ownerId: user.id, voiceId: gate ? await readyVoiceId(sb, user.id) : null, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
+      const outcome = !herAnswer || !row ? (gate ? 'filler' : 'skipped') : 'answered'
+      if (typeof b.ask_id === 'string' && /^[0-9a-f-]{36}$/.test(b.ask_id)) {
+        await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
+      } else {
+        await sb.from('question_asks').insert({ owner_id: user.id, entity_key: pid ? `product:${pid}` : 'none', option_id: 'mn', slot_id: key, angle: 'first', wording: '-', outcome })
+          .then(() => {}, () => {})
+      }
+      let saved = false
+      if (row) {
+        const { error } = await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true })
+        saved = !error || error.code === '23505'
+      }
+      console.log(JSON.stringify({ event: 'mn_answer', outcome, piece, saved }))
+      return { outcome, saved }
+}
+
 async function knownForGate(sb: ReturnType<typeof createClient>, ownerId: string): Promise<string> {
   const [{ data: br }, { data: en }, { data: kn }] = await Promise.all([
     sb.from('brands').select('name').eq('owner_id', ownerId),
@@ -12959,7 +12992,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
     asyncPolish = asyncPolishOn(trialOn, Deno.env.get('ASYNC_POLISH'))
     const deadlineFields = asyncPolish
-      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...(bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE')) ? { bestOfN: true, bestOfNCtx: {
+      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...((qualityProfile() ? bestOfNOn(isHeartbeat && trialOn, qFlag('BEST_OF_N_JUDGE')) : bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE'))) ? { bestOfN: true, bestOfNCtx: {
           items: templateLedger, products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
           v2: Deno.env.get('TARGETED_FLAGS_V2') !== 'false', wrongProduct: Deno.env.get('WRONG_PRODUCT_BLOCK') !== 'false' } } : {}) }
       : writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
@@ -17636,6 +17669,22 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     const panelArmReq = (body as { panel_arm?: unknown }).panel_arm
     if (isHeartbeat && (panelArmReq === 'writer' || panelArmReq === 'plan_b') && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).panel_arm = panelArmReq
     if (refillArm() && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).refill_arm = refillArm()
+    // The quality profile in effect (test accounts only): profile name and lever names, no text.
+    if (qualityProfile() && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).quality_profile = qualityLevers(qualityProfile()!, Object.fromEntries((['REFILL_V2', 'SPINE_COMPLETE', 'POLISH_REORDER', 'BEST_OF_N_JUDGE', 'HOOK_GATE_V2', 'POLISH_CHECK_V2', 'VOICE_BARE_LINES', 'QUALITY_CONTROLLER'] as QualityLever[]).map((l) => [l, Deno.env.get(l)])))
+    // QC THIN-MATERIAL ANSWERS (plan v6.8 §33; test and panel accounts only):
+    // her answer to the QC's one question is saved through the EXISTING
+    // angle-answer store (storeAngleAnswer: answer gate, answerFactRow, source
+    // 'asked'), so the next request's ledger carries it as her fact.
+    if (qualityProfile()) {
+      for (const qa of qcAnswersToStore(body.readiness_answers as Record<string, unknown> | undefined)) {
+        try {
+          const pidQ = qa.product && (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const r = await storeAngleAnswer(admin, user, { key: qa.key, piece: qa.piece, answer: qa.answer }, pidQ)
+          console.log(JSON.stringify({ event: 'qc_answer_stored', piece: qa.piece, outcome: r.outcome, saved: r.saved }))
+        } catch { /* storing her answer never fails a build */ }
+      }
+    }
+    let planBShipped = false
     const planBTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
     if (planBOn && planBTarget && blueprint && typeof blueprint === 'object') {
       try {
@@ -17680,6 +17729,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             console.log(JSON.stringify({ event: 'best_of_n', ...writerLadderForFailure!.bestOfNRecord }))
           }
           if (!keepWriter) {
+          planBShipped = true
           bpb2.script = out.script
           if (out.script[0]?.line) bpb2.hook_options = [out.script[0].line]
           if (Array.isArray(bpb2.shot_list)) bpb2.shot_list = syncShotListSpokenText(bpb2.shot_list as Array<{ spoken_text?: unknown }>, bpb2.script as unknown[]).shots
@@ -17705,7 +17755,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // problem/reality line is there, her on-topic problem item is placed after
     // the hook VERBATIM (never an invented line); exactly one CTA ends the
     // script (extras dropped, her offer appended when none). Never adds a claim.
-    if (spineCompleteOn(trialOn, isHeartbeat, Deno.env.get('SPINE_COMPLETE')) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+    if ((qualityProfile() ? spineCompleteOn(trialOn, isHeartbeat, qFlag('SPINE_COMPLETE')) : spineCompleteOn(trialOn, isHeartbeat, Deno.env.get('SPINE_COMPLETE'))) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       try {
         const bps = blueprint as Record<string, unknown>
         const tgtS = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
@@ -17805,15 +17855,63 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
-        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }
+        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(qualityProfile() ? (polishReorderOn(trialOn, isHeartbeat, qFlag('POLISH_REORDER')) ? { reorder: true } : {}) : { ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }) }
         // The hedge's extra cost, visible on the row (counts only).
         if (writerLadderForFailure?.bestOfNRecord) bpg.best_of_n = writerLadderForFailure.bestOfNRecord
         if (writerLadderForFailure?.hedgeCalls != null) bpg.writer_hedge = { calls: writerLadderForFailure.hedgeCalls, hedged: writerLadderForFailure.hedged === true, aborted: writerLadderForFailure.hedgeAborted ?? 0 }
         bpg.polish_pending = { steps: polishDeferred.length ? [...polishDeferred] : ['self_review'], at: new Date().toISOString() }
         console.log(JSON.stringify({ event: 'async_polish_queued', deferred: polishDeferred.length, elapsed_ms: Date.now() - reqStartedAt }))
       }
+      // ⚖️ THE QUALITY CONTROLLER (plan v6.8 §33; lever QUALITY_CONTROLLER of the
+      // quality profile, test and panel accounts only): the worker runs it LAST,
+      // after the polish and the gate. Ids and the request's topic words only.
+      if (qFlag('QUALITY_CONTROLLER') === 'on') {
+        const answeredQ = [QC_STORY_KEY, QC_PRODUCT_KEY].filter((k) => typeof (body.readiness_answers as Record<string, unknown> | undefined)?.[k] === 'string')
+        ;(inventionRecheck.ledger as Record<string, unknown>).quality_controller = {
+          profile: qcProfileForSeconds(body.target_seconds),
+          topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => String(x ?? '').trim()).join(' ').slice(0, 300),
+          angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? '').slice(0, 200),
+          niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '),
+          product: String((ownedEntity as { name?: unknown } | null)?.name ?? ''),
+          plan_b: planBShipped,
+          goal: String((body as { goal?: unknown }).goal ?? '').slice(0, 40),
+          answered: answeredQ,
+        }
+      }
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
+    }
+    // ⚖️ QC WITH THE GATE OFF (plan v6.8 §33; full_stack on a test or panel
+    // account only). The gate job is also where the polish runs, so with the
+    // gate off there is no later stage: the QC runs here, last, on the edge.
+    // Same pure function as the worker; on any error the script stands.
+    else if (qualityProfile() === 'full_stack' && qFlag('QUALITY_CONTROLLER') === 'on' && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bpq = blueprint as Record<string, unknown>
+        const tgtQ = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+        const ledgerQ = buildInventionLedger({
+          knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: tgtQ, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+        })
+        const qc = runQualityController({
+          script: bpq.script as Array<Record<string, unknown>>, ledger: ledgerQ, targetProductId: tgtQ, profile: qcProfileForSeconds(body.target_seconds),
+          topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => String(x ?? '').trim()).join(' '),
+          angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? ''),
+          niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '),
+          product: String((ownedEntity as { name?: unknown } | null)?.name ?? ''), goal: String((body as { goal?: unknown }).goal ?? ''),
+          flagCtx: { items: ledgerQ, products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })), v2: true, wrongProduct: true },
+          planB: planBShipped,
+          answered: [QC_STORY_KEY, QC_PRODUCT_KEY].filter((k) => typeof (body.readiness_answers as Record<string, unknown> | undefined)?.[k] === 'string'),
+        })
+        if (qc.changed) {
+          bpq.script = qc.script
+          if (Array.isArray(bpq.shot_list)) bpq.shot_list = syncShotListSpokenText(bpq.shot_list as Array<{ spoken_text?: unknown }>, bpq.script as unknown[]).shots
+        }
+        if (qc.question) bpq.gate_questions = mergeQuestions(Array.isArray(bpq.gate_questions) ? (bpq.gate_questions as Array<{ text?: unknown; writes_to?: unknown }>) : [], [qc.question])
+        bpq.qc_report = qc.report
+        console.log(JSON.stringify({ event: 'quality_controller', where: 'edge', changed: qc.changed, ...qcLogRecord(qc.report) }))
+      } catch { /* the QC never fails a build */ }
     }
     // ⚖️ WHAT THE WRITER WAS SHOWN, ON EVERY GENERATION (owner, 13 Oct).
     // creator_knowledge_uses records her stored items (and records nothing when

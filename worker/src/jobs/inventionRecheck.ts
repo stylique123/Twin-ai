@@ -33,6 +33,36 @@ import {
 } from '../generated/asyncPolish.js'
 import { voicePolishBrief, voicePolishVerdict, polishFactChecks, type VoiceCard } from '../generated/voiceCard.js'
 import { reorderEnding, reorderCheck } from '../generated/spineComplete.js'
+import { runQualityController, qcLogRecord, type QcProfile } from '../generated/qualityController.js'
+
+/** ⚖️ THE QUALITY CONTROLLER, LAST (plan v6.8 §33). Runs only when the edge put
+ *  `quality_controller` on the job: the QUALITY_CONTROLLER lever of the quality
+ *  profile, test and panel accounts only. Deterministic, never fails the job:
+ *  on any error the script stands and the record says so. Logs ids and counts. */
+export function applyQualityController(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: Parameters<typeof runQualityController>[0]['ledger'], products: Array<{ id: string; name: string }>, target: string | null, generationId: string): void {
+  const q = extra.quality_controller
+  if (!q || typeof q !== 'object' || !Array.isArray(bp.script)) return
+  const o = q as Record<string, unknown>
+  try {
+    const profile: QcProfile = o.profile === 'sprint' || o.profile === 'deep' ? o.profile : 'standard'
+    const r = runQualityController({
+      script: bp.script as Array<Record<string, unknown>>, ledger, targetProductId: target, profile,
+      topic: String(o.topic ?? ''), angle: String(o.angle ?? ''), niche: String(o.niche ?? ''), product: String(o.product ?? ''),
+      flagCtx: { items: ledger, products, v2: true, wrongProduct: true },
+      planB: o.plan_b === true,
+      goal: String(o.goal ?? ''),
+      answered: Array.isArray(o.answered) ? o.answered.map(String) : [],
+    })
+    if (r.changed) { bp.script = r.script; resyncShotListToScript(bp) }
+    // The existing ask flow: one question on gate_questions; her answer is stored as her fact by the edge.
+    if (r.question) bp.gate_questions = [...(Array.isArray(bp.gate_questions) ? bp.gate_questions : []), r.question]
+    bp.qc_report = r.report
+    console.log(JSON.stringify({ event: 'quality_controller', generation_id: generationId, changed: r.changed, ...qcLogRecord(r.report) }))
+  } catch (e) {
+    bp.qc_report = { version: 'qc-v1', error: true }
+    console.warn(JSON.stringify({ event: 'quality_controller_failed', generation_id: generationId, error: String((e as Error)?.name ?? 'error') }))
+  }
+}
 
 /** The fast judge and the rewrite (task class of model_routing_v1.json). */
 export const INVENTION_RECHECK_TASK = INVENTION_JUDGE_CASCADE.fast
@@ -333,6 +363,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
   // check_status 'unchecked' (the script was never checked-and-repaired), no retry.
   if (measureOnly && gate.record.outcome === 'measure_only' && gate.record.timed_out !== true) {
     bp.invention_gate = gate.record
+    applyQualityController(bp, extra, ledger, products, target, generationId)
     bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
     await chain
     await deps.saveBlueprint(generationId, bp)
@@ -403,6 +434,7 @@ export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<
     bp.check_lines_version = v2 ? TARGETED_FLAGS_V2_VERSION : targeted ? TARGETED_FLAGS_VERSION : CHECK_LINES_VERSION
     if (lines.length) console.log(JSON.stringify({ event: 'check_lines', generation_id: generationId, lines: checkLinesLog(lines) }))
   }
+  applyQualityController(bp, extra, ledger, products, target, generationId)
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
   // No progress write may land after (and clobber) the result.
   await chain
