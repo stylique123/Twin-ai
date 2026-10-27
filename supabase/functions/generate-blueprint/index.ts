@@ -100,7 +100,7 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
-import { writerLoopOn, renderWriterLoop, answersForThisVideo, pillarsFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
+import { writerLoopOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
@@ -130,7 +130,7 @@ import {
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
-import { voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
+import { rhythmMisses, voiceRhythmRepairPrompt, voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -12822,8 +12822,8 @@ This is the video's position. Every field below must serve it. If the reference'
       try {
         const answers = answersForThisVideo((body as { mn_answers?: unknown }).mn_answers, body.readiness_answers)
         const pillars = pillarsFrom(brief)
-        const pr = (vp ?? {}) as { style_note?: unknown; samples?: unknown }
-        const sampleLines = (Array.isArray(pr.samples) ? pr.samples : []).filter((x): x is string => typeof x === 'string').slice(0, 3)
+        const pr = (vp ?? {}) as { style_note?: unknown; samples?: unknown; voice_samples?: unknown }
+        const sampleLines = sampleLinesFrom(pr.samples, pr.voice_samples ?? (dna as { voice_samples?: unknown } | null)?.voice_samples)
         const block = renderWriterLoop({
           answers, pillars, profile: loopProfileForSeconds(lengthTarget ?? body.target_seconds),
           voice: { cardBlock: voiceCard ? voiceCardBrief(voiceCard) : null, styleNote: typeof pr.style_note === 'string' ? pr.style_note : null, sampleLines },
@@ -15605,6 +15605,36 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           }
         }
         voiceGateAudit.voice_card = { id: voiceCard.id, misses: misses.length, repaired: cardRepaired }
+        // ⚖️ V5 (plan v7.1): the voice check only logged. When it fails, the lines
+        // that break her rhythm are rewritten once; a rewrite is kept only when
+        // the whole script's voice score goes UP and it passes the same guards.
+        // WRITER_LOOP stage (unset = trial only). One model call, only on a fail.
+        if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)) {
+          try {
+            const now = vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))
+            const before = voiceCheck(voiceCard, now)
+            const idx = before.pass ? [] : rhythmMisses(voiceCard, now).slice(0, 4)
+            let rhythmKept = 0
+            if (idx.length) {
+              const fixed = await callModel(apiKey, VOICE_REPAIR_SYSTEM, voiceRhythmRepairPrompt(voiceCard, vBeats, idx), REPAIR_SCHEMA)
+              const want = new Set(idx)
+              for (const r of parseRepairRewrites(fixed)) {
+                const i = typeof r?.index === 'number' ? r.index : -1
+                const line = typeof r?.line === 'string' ? r.line.trim() : ''
+                if (!want.has(i) || line === '') continue
+                if (voiceCardMisses(voiceCard, [line]).length > 0) continue
+                if (claimsPersonalUse(line) && !claimsPersonalUse(String(vBeats[i].line ?? ''))) continue
+                const trial = vBeats.map((b, j) => (j === i ? line : (typeof b?.line === 'string' ? b.line : '')))
+                if (voiceCheck(voiceCard, trial).score <= voiceCheck(voiceCard, vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))).score) continue
+                vBeats[i].line = line
+                rhythmKept++
+              }
+            }
+            voiceGateAudit.voice_rhythm = { pass_before: before.pass, flagged: idx.length, repaired: rhythmKept }
+          } catch (err) {
+            console.warn('voice_rhythm_repair_failed', err instanceof Error ? err.message : err)
+          }
+        }
       }
       if (flagged.length > 0) console.warn(JSON.stringify({ event: 'voice_gate', rules, flagged: flagged.length, repaired }))
     } catch { /* the voice gate never fails a generation */ }

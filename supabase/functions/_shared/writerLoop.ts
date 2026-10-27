@@ -136,3 +136,17 @@ export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: r
   parts.push(renderHouseStructure(a.profile))
   return parts.join('\n\n')
 }
+
+/**
+ * V6 (plan v7.1): her lines live in two fields. `brand_voices.profile.samples`
+ * (a list) is read first; the Settings box writes `voice_samples` (pasted
+ * text) instead, so when the list is empty her pasted text is split into
+ * sentences of 6+ words. At most `n`, verbatim.
+ */
+export function sampleLinesFrom(profileSamples: unknown, pasted: unknown, n = 3): string[] {
+  const list = (Array.isArray(profileSamples) ? profileSamples : []).filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+  if (list.length) return list.slice(0, n).map((x) => x.replace(/\s+/g, ' ').trim())
+  const text = typeof pasted === 'string' ? pasted : ''
+  return (text.match(/[^.!?\n]+[.!?]?/g) ?? []).map((x) => x.replace(/\s+/g, ' ').trim())
+    .filter((x) => x.split(' ').length >= 6).slice(0, n)
+}

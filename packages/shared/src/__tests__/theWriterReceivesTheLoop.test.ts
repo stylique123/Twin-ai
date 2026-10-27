@@ -95,3 +95,16 @@ describe('plan v7.1 S7: the CTA is last', () => {
     expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\) && blueprint[\s\S]{0,300}moveCtaLast\(/)
   })
 })
+
+describe('plan v7.1 V5/V6: the voice is used and repaired', () => {
+  it('V6: profile samples first, else her pasted text split into real sentences', async () => {
+    const { sampleLinesFrom } = await import('../script/planner/writerLoop')
+    expect(sampleLinesFrom(['One line.'], 'ignored')).toEqual(['One line.'])
+    expect(sampleLinesFrom([], 'Short. I glaze every mug twice before the kiln. Clay never lies to you about the heat.')).toEqual(
+      ['I glaze every mug twice before the kiln.', 'Clay never lies to you about the heat.'])
+  })
+  it('V5: the rhythm repair runs on a failed check, is kept only when the score rises, on the WRITER_LOOP stage', () => {
+    expect(EDGE).toMatch(/const idx = before\.pass \? \[\] : rhythmMisses\(voiceCard, now\)/)
+    expect(EDGE).toMatch(/voiceCheck\(voiceCard, trial\)\.score <= voiceCheck\(voiceCard,/)
+  })
+})

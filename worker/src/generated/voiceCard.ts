@@ -630,6 +630,28 @@ export function voiceCardRepairPrompt(
     + misses.map((m) => `index ${m.index}\nNOT HER WORDS: ${m.phrases.join(', ')}\nLINE: ${String(beats[m.index]?.line ?? '')}`).join('\n\n')
 }
 
+/**
+ * V5 (plan v7.1): when the voice check fails, the lines that break HER rhythm
+ * (a sentence longer than her longest) are the ones rewritten. Returns the
+ * indices to repair; empty when the card has no pacing or nothing is too long.
+ */
+export function rhythmMisses(card: VoiceCard, lines: readonly string[]): number[] {
+  const bound = Math.max(card.pacing?.long_bound ?? Math.round(card.sentence_length.mean * 2), 8)
+  const out: number[] = []
+  lines.forEach((l, i) => {
+    if (splitSentences(String(l ?? '')).some((s) => words(s).length > bound)) out.push(i)
+  })
+  return out
+}
+
+/** The rhythm repair prompt: her card, her bound, the lines; keep every fact. */
+export function voiceRhythmRepairPrompt(card: VoiceCard, beats: ReadonlyArray<{ line?: unknown }>, indices: readonly number[]): string {
+  const bound = Math.max(card.pacing?.long_bound ?? Math.round(card.sentence_length.mean * 2), 8)
+  return `${voiceCardBrief(card)}\nRewrite ONLY these lines to HER rhythm: no sentence longer than ${bound} words, about ${Math.round(card.sentence_length.mean)} words on average, her openers and her words. Keep every fact, number, name and claim; add nothing. `
+    + 'Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
+    + indices.map((i) => `index ${i}\nLINE: ${String(beats[i]?.line ?? '')}`).join('\n\n')
+}
+
 // ── THE VOICE AT THE POLISH STEP (panel-10 advisor: "voice is not visible") ──
 //
 // The polish (async worker self-review and Plan B polish) gets her style note,
