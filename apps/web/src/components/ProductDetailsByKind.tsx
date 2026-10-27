@@ -15,7 +15,21 @@ import {
  */
 export function trialUser(userId: string | null | undefined): boolean {
   const id = String(import.meta.env.VITE_TRIAL_USER_ID ?? '').trim()
-  return id !== '' && userId === id
+  if (id !== '' && userId === id) return true
+  return canaryUser(userId)
+}
+
+/**
+ * 🐤 THE CANARY'S SCREENS (Fast Path v1 Track B). The owner's account, named in
+ * `VITE_CANARY_ACCOUNT_ID`, sees the same trial screens as the test account
+ * (angle cards' panel, check this line, the general-version banner, the Using
+ * list). `VITE_CANARY_KILL=1` hides them. The WRITER's kill switch is the
+ * server's `CANARY_KILL` (docs/release/canary.md); this one only hides screens.
+ */
+export function canaryUser(userId: string | null | undefined): boolean {
+  if (['1', 'true'].includes(String(import.meta.env.VITE_CANARY_KILL ?? '').trim().toLowerCase())) return false
+  const id = String(import.meta.env.VITE_CANARY_ACCOUNT_ID ?? '').trim().toLowerCase()
+  return id !== '' && String(userId ?? '').trim().toLowerCase() === id
 }
 
 const HOLD_UP: Array<{ value: HoldUp; label: string }> = [
