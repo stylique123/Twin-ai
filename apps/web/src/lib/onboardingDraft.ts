@@ -32,6 +32,9 @@ export interface OnboardingDraft {
    *  by `voiceId`'s row and shown on screen while the scan runs; it is not a
    *  credential, and it is capped so a hand-edited draft cannot grow unbounded. */
   handle: string
+  /** True when she chose "describe your voice myself" (no scan). Plan v6.6 §32: lets the
+   *  confirm step store her typed answers for the manual voice card. Optional: older drafts lack it. */
+  manual?: boolean
   profile: VoiceProfile | null
   audience: string
   product: string
@@ -210,6 +213,7 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       // VALIDATED AND CAPPED, like every other free-text field read back out of
       // localStorage. A draft is not a trusted source.
       handle: typeof value.handle === 'string' ? value.handle.slice(0, 120) : '',
+      ...(value.manual === true ? { manual: true } : {}),
       profile: value.profile ?? null,
       audience: value.audience ?? value.profile?.audience ?? '',
       product: value.product ?? value.profile?.offer ?? '',

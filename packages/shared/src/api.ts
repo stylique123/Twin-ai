@@ -3468,6 +3468,8 @@ export interface VoiceCardViewDto {
   id: string
   title: string
   counted_from: string
+  /** True on a card built by hand from typed answers (no model call); a later rebuild replaces it. */
+  manual?: true
   sections: Array<{ key: VoiceCardSectionKey; label: string; summary: string; items: string[]; editable: boolean }>
 }
 export interface VoiceCardEditsDto {

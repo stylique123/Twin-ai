@@ -60,7 +60,11 @@ export function VoiceCardPanel({ userId, load = voiceCardRequest }: { userId: st
   return (
     <section aria-label="This is how you sound" className="mt-4 rounded-xl border p-4 space-y-3">
       <h3 className="font-semibold">{card.title}</h3>
-      <p className="text-xs">Counted from {card.counted_from}.</p>
+      {card.manual ? (
+        <p data-testid="voice-card-manual" className="text-xs">Set up by hand from {card.counted_from}. No AI was used; Twin will rebuild it once it has your videos.</p>
+      ) : (
+        <p className="text-xs">Counted from {card.counted_from}.</p>
+      )}
       {card.sections.map((s) => (
         <div key={s.key} data-testid={`voice-${s.key}`} className="space-y-1">
           <p className="text-sm font-medium">{s.label}</p>

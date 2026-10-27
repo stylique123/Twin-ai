@@ -129,7 +129,7 @@ import {
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
-import { voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
+import { voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, withManualVoiceCard, manualVoiceCardOn, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -6741,7 +6741,8 @@ async function handle(req: Request): Promise<Response> {
     const { data: asked } = await sb.from('creator_knowledge').select('source, text').eq('owner_id', user.id).eq('voice_id', v.id)
       .eq('source', 'asked').order('created_at', { ascending: false }).limit(40)
     const source = await loadVoiceSourceInline(sb, user.id, v.id, (asked ?? []) as Array<{ source?: unknown; text?: unknown }>, scrubPrivate(prof))
-    const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' })
+    // Plan v6.6 §32: a hand-typed voice gets the manual card (no model call) when MANUAL_VOICE_CARD is on.
+    const built = withManualVoiceCard(buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' }), prof, manualVoiceCardOn(Deno.env.get('MANUAL_VOICE_CARD')))
     const savedEdits = b.action === 'edit' ? sanitizeVoiceCardEdits(b.edits) : sanitizeVoiceCardEdits(prof.voice_card_edits)
     const card = built.card ? applyVoiceCardEdits(built.card, savedEdits, voiceSourceTexts(source)) : null
     console.log(JSON.stringify({ event: 'voice_card_view', action: b.action === 'edit' ? 'edit' : 'get', reason: built.reason, edited: card?.edited === true }))
@@ -8508,7 +8509,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
       if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'))) return null
       const source = await loadVoiceSourceInline(admin, ownerId, (voice as { id?: unknown } | null)?.id ?? null, askedRows, vp)
-      const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' })
+      const built = withManualVoiceCard(buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' }), voice?.profile, manualVoiceCardOn(Deno.env.get('MANUAL_VOICE_CARD')))
       const edits = (voice?.profile as { voice_card_edits?: unknown } | null)?.voice_card_edits
       return { ...built, card: built.card ? applyVoiceCardEdits(built.card, sanitizeVoiceCardEdits(edits), voiceSourceTexts(source)) : null, source }
     } catch { return null }
