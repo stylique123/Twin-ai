@@ -855,6 +855,7 @@ const EVENTS = {
   mn_angles: { kind: 'counter_ephemeral', why: 'Plan v5.1 N (trial): angle cards shown (ids, shapes, fits); diagnostic only, recomputable from her material.' },
   spec_question_rejected: { kind: 'counter_ephemeral', why: 'A generated question failed validation and was not shown.' },
   spec_question_skipped: { kind: 'counter_ephemeral', why: 'The wording call failed or was slow; no question shown.' },
+  niche_pack_flags: { kind: 'counter_ephemeral', why: 'Report-only count and reasons of niche-pack banned claims in the shipped script (NICHE_PACKS, default off); the beat indexes ride on the blueprint, the log line is not stored.' },
   writer_guidance: { kind: 'counter_ephemeral', why: 'Whether the flagged creator-type and niche-pack blocks reached the writer prompt (W12.2, both default off); a log line, not a table.' },
   recently_said: { kind: 'counter_ephemeral', why: 'How many lines her last scripts repeat; the lines go to the writer, not a table.' },
   her_cta_picked: { kind: 'counter_ephemeral', why: 'Which of her CTAs (by job) a video got; the CTA itself ships in the script.' },

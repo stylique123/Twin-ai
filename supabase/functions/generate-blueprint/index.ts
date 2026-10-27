@@ -81,7 +81,7 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser, capQuestions } from '../_shared/beatCleanup.ts'
 import { robotPass } from '../_shared/robotPhrases.ts'
-import { creatorTypeHookBlock, pickNichePack, nichePackBlock } from '../_shared/writerGuidance.ts'
+import { creatorTypeHookBlock, pickNichePack, nichePackBlock, nichePackReport } from '../_shared/writerGuidance.ts'
 import CREATOR_TYPE_RULES_DATA from '../_shared/creatorTypeRulesData.ts'
 import { NICHE_PACK_REGISTRY } from '../_shared/nichePackRegistry.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
@@ -7019,6 +7019,9 @@ async function handle(req: Request): Promise<Response> {
           }
         })() : {}),
         ...(problemQOn ? { problem: { on: true, onFile: rows.some((r) => r.slot_id === PROBLEM_QUESTION_KEY && r.outcome === 'answered') || material.some((m) => isProblemLine(m.text)) } } : {}),
+        // ANGLE_TEMPLATES=on (default OFF; this path is test/panel accounts only):
+        // her missing-slot question uses the picked angle's template.
+        ...(Deno.env.get('ANGLE_TEMPLATES') === 'on' ? { angleWording: { topic: String(p?.name ?? prof?.niche ?? '').trim() } } : {}),
       })
       for (const q of plan) {
         const { data: ins } = await sb.from('question_asks').insert({ owner_id: user.id, entity_key: p ? `product:${p.id}` : 'none', option_id: 'mn', slot_id: q.key, angle: 'first', wording: q.text })
@@ -17822,6 +17825,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       } catch { /* bookkeeping never fails a generation */ }
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
+    // W12.2 niche pack banned claims, REPORT ONLY (NICHE_PACKS, default OFF):
+    // the shipped script's lines are flagged, never edited. Indexes and reasons only.
+    try {
+      const npr = nichePackReport(
+        pickNichePack(NICHE_PACK_REGISTRY, niche, (vp as { creator_type?: unknown } | null)?.creator_type),
+        Deno.env.get('NICHE_PACKS'), (blueprint as { script?: unknown[] })?.script)
+      if (npr) {
+        ;(blueprint as Record<string, unknown>).niche_pack_flags = npr.flagged
+        console.log(JSON.stringify({ event: 'niche_pack_flags', flagged: npr.flagged.length, reasons: [...new Set(npr.flagged.map((f) => f.reason))] }))
+      }
+    } catch { /* a report never fails a build */ }
     ;(blueprint as Record<string, unknown>).beat_trace = beatTrace
     {
       const spoken = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)

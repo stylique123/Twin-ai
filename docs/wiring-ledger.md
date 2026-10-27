@@ -35,9 +35,9 @@ No private text here. Examples use fictional accounts (Maya's Coffee, FlowDesk).
 | guard | Stock closer dropped | `script/beatCleanup.ts` `dropStockCloser` | `index.ts:15815` | trialOn | none | storyload-4: 0/16 stock closers | wired |
 | guard | Invented causes cut | `script/inventedCause.ts` | `index.ts:15838` | trialOn | none | not counted | wired |
 | guard | No-story invented events dropped | `script/noStoryEvents.ts` | `index.ts:15848` | trialOn | none | run 5: 2 dropped | wired |
-| 2.2 | Complete-story detection | `script/passages.ts` `isCompleteStory` | **no caller** | — | none | 0 | built (orphan) |
+| 2.2 | Complete-story detection | `script/passages.ts` `isCompleteStory` | indirect: `extractPassages` sets `passage.complete`; `worker/src/jobs/remineKnowledge.ts` stores it and tallies `complete` | remine job | none | not counted | wired (indirect); see note 2.2 |
 | 4.3 | Question ladder (story ladder, templates) | `script/questionLadder.ts` (#1148) | `script/questionUsefulness.ts` `ladderQuestion` → `angle_plan` | `ANGLE_LADDER_ON=1` (default off) | `check_wiring_ledger.mjs` row 4.3a | 0 | wired (flag off) |
-| 4.3 | `storeGap` (gap → question) | `questionDeficit.ts` | **no caller** | — | none | 0 | built (orphan) |
+| 4.3 | `storeGap` (gap → question) | `questionDeficit.ts` | **no caller** | — | none | 0 | delete candidate; see note 4.3 |
 | 0.1/0.2 | Item format, slot map, adapters (counts per slot) | `script/itemFormat.ts` `slotCoverage` | `index.ts` after the speakable set (`feature_fired` `item_slots`) | trialOn, log only | `check_wiring_ledger.mjs` row 0.1 | not yet counted | wired |
 | 0.5 | Disconnect gate | `scripts/ci/check_wiring_ledger.mjs` + `wiring-ledger.json` | `pr-checks.yml` | CI | selftest (5 cases) | 13 rows pass | wired |
 
@@ -176,3 +176,23 @@ Compared plan v3.10 against the scratchpad backlog, open GitHub issues (6, all e
 | 11.1-2 usage ledger, worker side | worker/src/index.ts job loop → `withUsage` → `ai_usage_ledger` (one row per model per job, stage = job type, traffic test/real) | aiUsageLedger.test.ts | rows in `ai_usage_ledger` | all jobs; `TEST_OWNER_IDS` tags test traffic | built; 0286 applied |
 | 1.2 follow-up fields probe | scripts/eval/fields-probe.ts via fields-probe.yml (job SYSTEM + SCHEMA from `extractPrompt.ts`, same save filters) | made-up pages in scripts/eval/fixtures/pages | `::notice fields-probe` per-field counts | manual dispatch, 2 model calls | built |
 | 11.1-1 cost by stage | edge `stageOfCall`/`inStage` in callModel → `blueprint.ai_usage_by_stage`; worker failed jobs recorded; `ai_model_prices` (UNCONFIRMED) + views `ai_cost_by_stage_script`, `ai_cost_by_stage_worker`; batch `::notice batch-cost` | usageStageOfCall.test.ts, aiUsageLedger.test.ts | views above | all traffic | built; 0287 applied |
+
+### Notes on two orphan rows (wiring leftovers, 2026-10-26)
+
+**2.2 `isCompleteStory`: not an orphan, keep, do not wire further.** It has no
+direct caller outside `passages.ts`, but `extractPassages` calls it for every
+story passage and `remineKnowledge` (worker) saves the result as
+`complete` and counts it. A second flagged caller would add nothing: the plan
+2.3 note in `script/storyClassify.ts` records that this regex scored 0 of 5 on
+real spoken stories, so the model classifier owns "complete story" and this
+rule stays only as the cheap prefilter it already is. Nothing deleted.
+
+**4.3 `storeGap`: recommend deletion (not deleted).** It was written for "the
+line under the script" that names what the store lacks; that line was never
+built and no screen reads it. The question card already picks by the same
+counts through `nextQuestionByDeficit`, so wiring `storeGap` behind a flag
+would mean building a new UI line for an unasked-for feature. Its only reader
+is its own test (`a-full-store-stops-the-asking.test.ts`). If the owner wants
+the line, wire it there behind a default-OFF flag; otherwise delete the
+function and its `describe('storeGap …')` block together.
+
