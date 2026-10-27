@@ -82,12 +82,6 @@ export const REGISTRY = {
     why: 'Create flow spec v4 Part 7: the story question engine core (ladder, anchored templates, validation). '
       + 'Pure and tested; the panel-A route of the new Create flow reads it. Changes when that route ships (next PRs).',
   },
-  'script/factClass.ts': {
-    symbols: ['classifyFactRules'],
-    why: 'Relevance-and-classification brief, item 1: the rules-first fact classifier, SHADOW ONLY by owner decision. '
-      + 'It runs offline against the test account (2026-10-06: 58 facts, 32 low confidence) and must not change a '
-      + 'script until the 100-fact labelled set measures it. Changes when the backfill job or the routing engine reads it.',
-  },
   'outcomeLog.ts': {
     symbols: ['listPostAttributions', 'mintPostAttribution', 'listDnaClaims'],
     // ⚠️⚠️ THIS ENTRY MUST NOT NAME THE SYMBOLS IT DISCUSSES IN ITS `why`. This
