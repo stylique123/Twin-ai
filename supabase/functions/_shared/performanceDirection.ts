@@ -253,6 +253,19 @@ export function directionsFor(ctx: DirectionContext): DirectionSet {
   }
 
   const onScreen = kind === 'SAAS' || kind === 'DIGITAL_PRODUCT' || kind === 'APP'
+  // ⚖️ Plan v7.1: UNKNOWN is not permission. A physical product nobody has said
+  // she can show gets the body-and-face set, the same rule productSceneGuidance
+  // already follows, so the two layers stop disagreeing.
+  if (!onScreen && (showability === 'UNKNOWN' || !showability) && kind) {
+    return {
+      format: 'Talking Review',
+      options: SELF_DIRECTIONS,
+      nameableSections: sections,
+      because: 'Nobody has said whether this product can be shown on camera, so no '
+        + 'handling cue is offered. Direct the body and the face; once she says she can '
+        + 'show it, the hold-up and open-it cues return.',
+    }
+  }
   if (onScreen) {
     // ⚠️ A SCREEN CUE THAT NAMES NOTHING REAL IS THE SAME BUG IN A DIFFERENT
     // COSTUME. Without a section map, "show the dashboard" is a guess about a
