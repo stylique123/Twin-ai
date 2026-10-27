@@ -860,6 +860,7 @@ const EVENTS = {
   self_review: { kind: 'counter_ephemeral', why: 'How many weak lines the self-review rewrote in one script and why others were rejected; the result ships in generations.blueprint.script and its cost in blueprint.ai_usage.' },
   drafts_picked: { kind: 'counter_ephemeral', why: 'Which of 2-3 drafts the picker kept (test account only); the picked script ships in generations.blueprint and the extra cost shows in blueprint.ai_usage.' },
   knowledge_route: { kind: 'counter_ephemeral', why: 'Which source the knowledge router picked for each role of one script; durable on generations.blueprint.knowledge_route.' },
+  reddit_scan_v2: { kind: 'counter_ephemeral', why: 'Plan v7.1 WP5: one batched pain-map scan (niches scanned, patterns kept); durable in public.audience_pain_map (counts, communities, links, dates; no post text, no usernames).' },
   niche_reddit: { kind: 'counter_ephemeral', why: 'One sub-niche read from the top Reddit threads of the year (questions, complaints, buying asks, debates, phrases); durable in public.niche_reddit.items/threads, a failure in niche_reddit.failure.' },
   niche_research: { kind: 'counter_ephemeral', why: 'One sub-niche researched by grounded search (dates, news, products, competitors, questions); durable in public.niche_research.items/sources.' },
   knowledge_scoped_by_id: { kind: 'counter_ephemeral', why: 'Facts held back because they carry another product id (0260); the durable effect is which facts the writer was given (script_attempts selection).' },
