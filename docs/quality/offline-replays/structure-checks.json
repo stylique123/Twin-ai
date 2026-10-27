@@ -1,0 +1,311 @@
+{
+ "labeled": {
+  "scripts": 109,
+  "not_postable": 95,
+  "craft_le3": 59,
+  "checks": {
+   "hook_payoff": {
+    "applied": 109,
+    "failed": 47,
+    "reasons": {
+     "no_payoff_by_line_3": 47
+    },
+    "vs_not_postable": {
+     "tp": 45,
+     "fp": 2,
+     "fn": 50,
+     "precision": 0.96,
+     "recall": 0.47
+    },
+    "vs_craft_le3": {
+     "tp": 34,
+     "fp": 13,
+     "fn": 25,
+     "precision": 0.72,
+     "recall": 0.58
+    },
+    "failed_ids": [
+     "S02",
+     "S03",
+     "S04",
+     "S06",
+     "S07",
+     "S11",
+     "S13",
+     "S15",
+     "S16",
+     "S17",
+     "S18",
+     "S21",
+     "S22",
+     "S23",
+     "P6-02",
+     "P6-05",
+     "P6-07",
+     "P6-08",
+     "P6-16",
+     "P6-18",
+     "P6-19",
+     "P6-20",
+     "P6-23",
+     "P7-02",
+     "P7-05",
+     "P7-06",
+     "P7-13",
+     "P7-16",
+     "P7-17",
+     "P7-18",
+     "P8-02",
+     "P8-03",
+     "P8-05",
+     "P8-06",
+     "P8-08",
+     "P8-10",
+     "P8-13",
+     "P8-16",
+     "P8-18",
+     "P8-20",
+     "P10-06",
+     "P10-07",
+     "P10-11",
+     "P10-12",
+     "P10-15",
+     "P10-17",
+     "P10-24"
+    ]
+   },
+   "story_before_lesson": {
+    "applied": 8,
+    "failed": 3,
+    "reasons": {
+     "lesson_first": 3
+    },
+    "vs_not_postable": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1,
+     "recall": 0.6
+    },
+    "vs_craft_le3": {
+     "tp": 1,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.33,
+     "recall": 1
+    },
+    "failed_ids": [
+     "S09",
+     "P7-10",
+     "P10-10"
+    ]
+   },
+   "one_story": {
+    "applied": 109,
+    "failed": 15,
+    "reasons": {
+     "stories_3": 11,
+     "stories_2": 4
+    },
+    "vs_not_postable": {
+     "tp": 13,
+     "fp": 2,
+     "fn": 82,
+     "precision": 0.87,
+     "recall": 0.14
+    },
+    "vs_craft_le3": {
+     "tp": 4,
+     "fp": 11,
+     "fn": 55,
+     "precision": 0.27,
+     "recall": 0.07
+    },
+    "failed_ids": [
+     "P10-01",
+     "P10-02",
+     "P10-04",
+     "P10-05",
+     "P10-06",
+     "P10-07",
+     "P10-10",
+     "P10-14",
+     "P10-16",
+     "P10-18",
+     "P10-19",
+     "P10-20",
+     "P10-21",
+     "P10-23",
+     "P10-24"
+    ],
+    "named_cases": {
+     "P10-01": "fail"
+    }
+   },
+   "leads_offer": {
+    "applied": 29,
+    "failed": 1,
+    "reasons": {
+     "no_offer": 1
+    },
+    "vs_not_postable": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 23,
+     "precision": 1,
+     "recall": 0.04
+    },
+    "vs_craft_le3": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 8,
+     "precision": 1,
+     "recall": 0.11
+    },
+    "failed_ids": [
+     "P7-05"
+    ]
+   },
+   "no_pitch_non_sell": {
+    "applied": 80,
+    "failed": 0,
+    "reasons": {},
+    "vs_not_postable": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 71,
+     "precision": null,
+     "recall": 0
+    },
+    "vs_craft_le3": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 50,
+     "precision": null,
+     "recall": 0
+    },
+    "failed_ids": []
+   },
+   "reshape_keeps_refs": {
+    "applied": 0,
+    "failed": 0,
+    "reasons": {},
+    "vs_not_postable": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 0,
+     "precision": null,
+     "recall": null
+    },
+    "vs_craft_le3": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 0,
+     "precision": null,
+     "recall": null
+    },
+    "failed_ids": []
+   },
+   "pacing": {
+    "applied": 109,
+    "failed": 34,
+    "reasons": {
+     "long_hook": 6,
+     "long_line": 5,
+     "too_short": 23
+    },
+    "vs_not_postable": {
+     "tp": 29,
+     "fp": 5,
+     "fn": 66,
+     "precision": 0.85,
+     "recall": 0.31
+    },
+    "vs_craft_le3": {
+     "tp": 20,
+     "fp": 14,
+     "fn": 39,
+     "precision": 0.59,
+     "recall": 0.34
+    },
+    "failed_ids": [
+     "S02",
+     "S04",
+     "S09",
+     "S10",
+     "S13",
+     "S14",
+     "S16",
+     "S19",
+     "S20",
+     "S21",
+     "S22",
+     "P6-01",
+     "P6-03",
+     "P6-06",
+     "P6-07",
+     "P6-13",
+     "P6-16",
+     "P6-18",
+     "P6-19",
+     "P7-02",
+     "P7-04",
+     "P7-05",
+     "P7-07",
+     "P7-11",
+     "P7-13",
+     "P7-14",
+     "P7-16",
+     "P7-17",
+     "P8-02",
+     "P8-03",
+     "P8-11",
+     "P8-13",
+     "P10-12",
+     "P10-19"
+    ]
+   }
+  }
+ },
+ "panel12": {
+  "snapshot_sha256": "8ce8b9bbacd6ac05eb205bba2da61e53e165c5b10d2b96ed0b4ae0a41b7dc2b1",
+  "scripts": 63,
+  "checks": {
+   "hook_payoff": {
+    "pass": 41,
+    "fail": 22,
+    "n/a": 0
+   },
+   "story_before_lesson": {
+    "pass": 5,
+    "fail": 5,
+    "n/a": 53
+   },
+   "one_story": {
+    "pass": 45,
+    "fail": 18,
+    "n/a": 0
+   },
+   "leads_offer": {
+    "pass": 18,
+    "fail": 0,
+    "n/a": 45
+   },
+   "no_pitch_non_sell": {
+    "pass": 44,
+    "fail": 1,
+    "n/a": 18
+   },
+   "reshape_keeps_refs": {
+    "pass": 0,
+    "fail": 0,
+    "n/a": 63
+   },
+   "pacing": {
+    "pass": 43,
+    "fail": 20,
+    "n/a": 0
+   }
+  }
+ }
+}
