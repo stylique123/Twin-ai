@@ -388,3 +388,5 @@ export * from './script/scriptRules'
 export * from './script/shownJob'
 export * from './script/lineSources'
 export * from './productDetailsByKind'
+// Plan v6.6 §32: the manual voice card (describe your voice yourself, no model call).
+export { buildManualVoiceCard, sanitizeManualVoiceAnswers, manualVoiceCardOn, withManualVoiceCard, MANUAL_VOICE_KEY, type ManualVoiceAnswers } from './script/voice/voiceCard'

@@ -155,6 +155,7 @@ import { cn } from '../lib/cn'
 import { LogoMark } from '../components/Logo'
 import type { SellsKind } from '@twinai/shared'
 import { loadProductEntities, sellsAnswerWithLibrary, type LibraryProductView } from '@twinai/shared'
+import { manualVoiceCardOn, sanitizeManualVoiceAnswers, MANUAL_VOICE_KEY } from '@twinai/shared'
 import { StoryInterview } from '../components/StoryInterview'
 import { loadSellsFacet } from '../lib/ownSellsLoad'
 import { clearStoryDraft } from '../lib/storyDraft'
@@ -198,6 +199,35 @@ const PLACEHOLDER: Record<Platform, string> = {
 // and the Product Library, a finished feature with zero rows because it waits.
 type Mode = 'handle' | 'building' | 'stories' | 'confirm'
 
+/** VITE_MANUAL_VOICE_CARD: default OFF; only 'true' / 'on' / '1' turns it on. */
+export function manualVoiceCardFlag(): boolean {
+  return manualVoiceCardOn(import.meta.env.VITE_MANUAL_VOICE_CARD as string | undefined)
+}
+
+/**
+ * The profile to save, with her typed answers attached as `manual_voice` when
+ * she set up by hand and the flag is on. Pure apart from the flag read: no
+ * model call, nothing inferred. Every value is something she typed.
+ */
+export function withManualVoiceAnswers(
+  vp: VoiceProfile,
+  draft: Pick<OnboardingDraft, 'manual'>,
+  audience: string,
+  product: string,
+  flagOn: boolean = manualVoiceCardFlag(),
+): VoiceProfile {
+  if (!flagOn || draft.manual !== true) return vp
+  const answers = sanitizeManualVoiceAnswers({
+    niche: vp.niche,
+    tone: vp.tone,
+    audience: audience || vp.audience || '',
+    stories: [...(vp.sample_hooks ?? []), ...(vp.pov ?? []), ...(vp.enemy ? [vp.enemy] : [])],
+    products: [product || vp.offer || ''].filter(Boolean),
+  })
+  if (!answers) return vp
+  return { ...vp, [MANUAL_VOICE_KEY]: { source: 'manual', ...answers, saved_at: new Date().toISOString() } } as VoiceProfile
+}
+
 // A blank, editable voice profile — the starting point for the manual path and the
 // scan-failed fallback. Shared so both use the exact same shape.
 function emptyVoiceProfile(): VoiceProfile {
@@ -236,13 +266,14 @@ export default function Onboarding() {
     safeWriteDraft(next)
   }, [])
 
-  const startDraft = useCallback((voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null) => {
+  const startDraft = useCallback((voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null, manual = false) => {
     const next: OnboardingDraft = {
       version: ONBOARDING_DRAFT_VERSION,
       userId,
       voiceId,
       platform,
       handle: handle.trim().slice(0, 120),
+      ...(manual ? { manual: true } : {}),
       profile,
       ...emptyProfileAnswers(),
       workKind: null,
@@ -295,8 +326,8 @@ export default function Onboarding() {
     safeClearDraft(userId)
     setDraft(null)
   }, [navigate, refreshProfile, userId])
-  const handleStarted = useCallback((voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null) => {
-    startDraft(voiceId, platform, handle, profile)
+  const handleStarted = useCallback((voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null, manual = false) => {
+    startDraft(voiceId, platform, handle, profile, manual)
     setMode(profile ? 'confirm' : 'building')
   }, [startDraft])
 
@@ -323,11 +354,12 @@ export default function Onboarding() {
   //
   // The creator's answer wins wherever they gave one. The scan fills only what
   // is still blank, which is what it was always for.
-  const handleReady = useCallback((profile: VoiceProfile) => {
+  const handleReady = useCallback((profile: VoiceProfile, manual = false) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
       const next: OnboardingDraft = {
         ...current,
+        ...(manual ? { manual: true } : {}),
         profile,
         // ⚠️ THE CHOOSER SEEDS THE BOX, SO ONE FACT HAS ONE ORIGIN. The confirm
         // screen still shows free-text "who you're talking to" and "your goal",
@@ -495,7 +527,7 @@ function HandleStep({
   onStarted,
   seed,
 }: {
-  onStarted: (voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null) => void
+  onStarted: (voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null, manual?: boolean) => void
   /** ⚖️ SET ONLY WHEN A FAILED SCAN SENT THEM BACK HERE. A normal arrival gets
    *  the empty form it always got; this is a recovery path, not a new default. */
   seed?: { handle: string; platform: Platform } | null
@@ -536,7 +568,7 @@ function HandleStep({
     setManualBusy(true)
     try {
       const res = await startManualVoice(platform, handle.trim())
-      onStarted(res.brand_voice_id, platform, handle.trim(), emptyVoiceProfile())
+      onStarted(res.brand_voice_id, platform, handle.trim(), emptyVoiceProfile(), true)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not set up a manual voice.')
     } finally {
@@ -643,7 +675,7 @@ function BuildingStep({
   onDraftChange,
 }: {
   draft: OnboardingDraft
-  onReady: (profile: VoiceProfile) => void
+  onReady: (profile: VoiceProfile, manual?: boolean) => void
   onBack: () => void
   onScanDead: () => void
   /** Take the same handle to another platform, in one tap. */
@@ -1122,7 +1154,7 @@ function BuildingStep({
                 scraper outage) must never wall a signup out of the product. */}
             <button
               className="btn-gradient"
-              onClick={() => onReady(emptyVoiceProfile())}
+              onClick={() => onReady(emptyVoiceProfile(), true)}
             >
               Describe your voice myself <ArrowRight className="h-4 w-4" />
             </button>
@@ -1475,7 +1507,10 @@ export function ConfirmStep({
     setErr(null)
     setBusy(true)
     try {
-      await saveVoiceProfile(draft.voiceId, vp)
+      // Plan v6.6 §32: a hand-typed voice also stores her typed answers, labelled
+      // manual, so the server can build a voice card with no model call. Behind
+      // VITE_MANUAL_VOICE_CARD (default off); a later scan replaces it.
+      await saveVoiceProfile(draft.voiceId, withManualVoiceAnswers(vp, draft, audience, product))
       // The capability answer, stored as this brand's DEFAULT. Written only when
       // there IS one: an unanswered question leaves the column exactly as it was,
       // because `can_record_screen = false` permanently hides a surface and

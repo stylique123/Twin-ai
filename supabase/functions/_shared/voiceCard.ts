@@ -56,6 +56,10 @@ export interface VoiceCard {
   material?: MaterialAmount
   /** Her own edits ("this is how you sound"), applied on top of the counts. */
   edited?: boolean
+  /** 'manual': built from what she typed by hand (no model call), to be replaced by a counted card later. Absent = counted. */
+  source?: 'counted' | 'manual'
+  /** Present only on a manual card: her typed answers, as she typed them. */
+  manual?: ManualVoiceAnswers
 }
 
 export type ToneLabel = 'playful' | 'energetic' | 'curious' | 'clipped' | 'even'
@@ -377,6 +381,7 @@ export function voiceCardBrief(card: VoiceCard): string {
     card.tone ? `- Humor and tone: ${card.tone.label} (${card.tone.laughter_per_100_words} laughs, ${card.tone.caps_per_100_words} shouted words, ${card.tone.asides_per_100_words} asides per 100 words). Do not add jokes or energy she does not have.` : '',
     card.pacing ? `- Pacing: ${pct(card.pacing.short_share)} of her sentences are 6 words or fewer, ${pct(card.pacing.long_share)} are 20 or more; her longest usual sentence is ${card.pacing.long_bound} words. No sentence longer than that.` : '',
   ]
+  if (card.source === 'manual' && card.manual) lines.push(...manualBriefLines(card.manual))
   return lines.filter(Boolean).join('\n')
 }
 
@@ -450,7 +455,7 @@ export function richSamples(samples: readonly unknown[] | undefined): boolean {
   return words(s.join(' ')).length >= RICH_SAMPLES_WORDS && s.flatMap(splitSentences).length >= RICH_SAMPLES_SENTENCES
 }
 
-export interface CreatorVoiceCard { card: VoiceCard | null; reason: 'ok' | 'thin' | 'too_little'; material: MaterialAmount }
+export interface CreatorVoiceCard { card: VoiceCard | null; reason: 'ok' | 'thin' | 'too_little' | 'manual'; material: MaterialAmount }
 
 /**
  * The card from her transcripts and answers. A thin creator gets NO card (the
@@ -530,6 +535,8 @@ export interface VoiceCardView {
   /** Counted from: e.g. "3 videos (16 min) and 12 answers". */
   counted_from: string
   sections: Array<{ key: VoiceCardSection; label: string; summary: string; items: string[]; editable: boolean }>
+  /** Set only on a card built by hand (no model call). */
+  manual?: true
 }
 export type VoiceCardSection = 'sentences' | 'openers' | 'uses' | 'avoids' | 'tone' | 'pacing' | 'signatures' | 'never_says'
 
@@ -546,13 +553,16 @@ export interface VoiceCardEdits {
 export function voiceCardView(card: VoiceCard): VoiceCardView {
   const pct = (n: number) => `${Math.round(n * 100)}%`
   const m = card.material
-  const counted = m
+  const counted = card.source === 'manual'
+    ? 'what you typed when you set up your voice by hand'
+    : m
     ? `${m.transcripts} video${m.transcripts === 1 ? '' : 's'} (${Math.round(m.speech_minutes)} min) and ${m.answers} answer${m.answers === 1 ? '' : 's'}`
     : `${card.passages} passages of your own words`
   return {
     id: card.id,
     title: 'This is how you sound',
     counted_from: counted,
+    ...(card.source === 'manual' ? { manual: true as const } : {}),
     sections: [
       { key: 'sentences', label: 'Your sentences', summary: `About ${Math.round(card.sentence_length.mean)} words each; ${card.formality.label}.`, items: [], editable: false },
       { key: 'openers', label: 'How you usually open', summary: `${pct(card.openers?.question_share ?? 0)} of your openings are questions.`, items: (card.openers?.top ?? []).map((o) => o.text), editable: true },
@@ -753,4 +763,129 @@ export function voicePolishVerdict(card: VoiceCard, before: readonly string[], a
   const b = voiceCheck(card, before).score, a = voiceCheck(card, after).score
   if (!checksOk) return { keep: false, before: b, after: a, reason: 'checks_failed' }
   return a > b ? { keep: true, before: b, after: a, reason: 'improved' } : { keep: false, before: b, after: a, reason: 'not_better' }
+}
+
+// ── THE MANUAL CARD: "DESCRIBE YOUR VOICE YOURSELF" (plan v6.6 §32) ─────────
+//
+// ⚖️ NO MODEL CALL. While Gemini is paused a creator who sets up her voice by
+// hand still needs a usable card. This one is a fixed template filled from
+// what she typed (niche, tone, audience, her stories, her products). Every
+// count on it is taken off her typed stories; when there are none it uses
+// neutral defaults, never an inferred guess.
+//
+// ⚖️ LABELLED MANUAL. `source: 'manual'` on the card, `manual: true` on the
+// view, `reason: 'manual'` on the build. A counted card (her own material)
+// always wins over it, so a later rebuild replaces it with no migration.
+//
+// ⚖️ BEHIND A FLAG, DEFAULT OFF: MANUAL_VOICE_CARD (edge) and
+// VITE_MANUAL_VOICE_CARD (web) must be 'true', 'on' or '1'.
+
+/** Stored at brand_voices.profile.manual_voice by the hand-typed onboarding path. */
+export const MANUAL_VOICE_KEY = 'manual_voice'
+
+export interface ManualVoiceAnswers {
+  niche: string
+  tone: string
+  audience: string
+  stories: string[]
+  products: string[]
+}
+
+/** Default OFF: only an explicit 'true' / 'on' / '1' turns the manual card on. */
+export function manualVoiceCardOn(flag: string | undefined | null): boolean {
+  return ['true', 'on', '1'].includes(String(flag ?? '').trim().toLowerCase())
+}
+
+const clip = (x: unknown, max: number) => (typeof x === 'string' ? norm(x).replace(/\s+/g, ' ').trim().slice(0, max) : '')
+const clipList = (xs: unknown, n: number, max: number) => (Array.isArray(xs) ? xs : []).map((x) => clip(x, max)).filter(Boolean).slice(0, n)
+
+/** Her typed answers, sanitised (strings only, capped). Null when nothing usable was typed. */
+export function sanitizeManualVoiceAnswers(x: unknown): ManualVoiceAnswers | null {
+  const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>
+  const a: ManualVoiceAnswers = {
+    niche: clip(o.niche, 120),
+    tone: clip(o.tone, 120),
+    audience: clip(o.audience, 200),
+    stories: clipList(o.stories, 8, 400),
+    products: clipList(o.products, 6, 120),
+  }
+  return a.niche || a.tone || a.stories.length ? a : null
+}
+
+const TONE_WORDS: Array<[ToneLabel, RegExp]> = [
+  ['playful', /\b(funny|playful|humou?r|silly|witty|jok\w*|sarcas\w*|cheeky)\b/],
+  ['energetic', /\b(energetic|hype\w*|excit\w*|loud|high[- ]energy|bubbly|enthusias\w*)\b/],
+  ['curious', /\b(curious|question\w*|nerdy|inquisitive|explor\w*)\b/],
+  ['clipped', /\b(direct|blunt|short|no[- ]nonsense|straight|concise|punchy)\b/],
+]
+const CASUAL_TONE = /\b(casual|chill|relaxed|friendly|laid[- ]back|conversational|funny|playful|real|raw)\b/
+const FORMAL_TONE = /\b(professional|formal|expert|polished|authoritative|corporate|academic)\b/
+
+/**
+ * The manual card. Pure and deterministic: the same answers give the same card.
+ * Returns null when nothing usable was typed.
+ */
+export function buildManualVoiceCard(answers: unknown): VoiceCard | null {
+  const a = sanitizeManualVoiceAnswers(answers)
+  if (!a) return null
+  const tone = a.tone.toLowerCase()
+  const sentences = a.stories.flatMap(splitSentences)
+  const lens = sentences.map((s) => words(s).length).filter((n) => n > 0).sort((x, y) => x - y)
+  const n = lens.length
+  const mean = n ? round(lens.reduce((x, y) => x + y, 0) / n, 1) : 12
+  const median = n ? lens[Math.floor(n / 2)]! : 12
+  const ws = words(a.stories.join(' '))
+  const pc = personCounts(ws)
+  const pTotal = pc.i + pc.we + pc.you
+  const dominant: Person | null = pTotal ? (['i', 'we', 'you'] as const).reduce((b, k) => (pc[k] > pc[b] ? k : b), 'i' as Person) : null
+  const storyText = a.stories.join('\n').toLowerCase()
+  const toneLabel: ToneLabel = TONE_WORDS.find(([, re]) => re.test(tone))?.[0] ?? 'even'
+  const formality: Formality = FORMAL_TONE.test(tone) ? 'formal' : CASUAL_TONE.test(tone) ? 'casual' : 'neutral'
+  const longBound = n ? lens[Math.min(n - 1, Math.floor(n * 0.9))]! : 22
+  return {
+    id: `manual-${hash(JSON.stringify(a))}`,
+    passages: a.stories.length,
+    sentences: n,
+    sentence_length: { mean, median },
+    signatures: [],
+    formality: { label: formality, contractions_per_100_words: 0, slang_per_100_words: 0 },
+    question_rate: n ? round(sentences.filter((s) => s.endsWith('?')).length / n) : 0,
+    exclamation_rate: n ? round(sentences.filter((s) => s.endsWith('!')).length / n) : 0,
+    person: { i: pTotal ? round(pc.i / pTotal) : 0, we: pTotal ? round(pc.we / pTotal) : 0, you: pTotal ? round(pc.you / pTotal) : 0, dominant },
+    never_uses: GENERIC_AI_PHRASES.filter((p) => !hasPhrase(storyText, p)),
+    openers: { top: [], question_share: 0, you_share: 0, i_share: 0 },
+    vocabulary: { uses: [], avoids: [] },
+    tone: { label: toneLabel, laughter_per_100_words: 0, caps_per_100_words: 0, asides_per_100_words: 0 },
+    pacing: {
+      short_share: n ? round(lens.filter((l) => l <= 6).length / n) : 0,
+      long_share: n ? round(lens.filter((l) => l >= 20).length / n) : 0,
+      spread: n ? round(lens[n - 1]! - lens[0]!, 1) : 0,
+      long_bound: Math.max(8, longBound),
+      words_per_minute: null,
+    },
+    source: 'manual',
+    manual: a,
+  }
+}
+
+function manualBriefLines(a: ManualVoiceAnswers): string[] {
+  return [
+    '- This card was set up BY HAND from what she typed (no videos counted yet). Treat it as her own description, not as counts.',
+    a.niche ? `- Her niche, in her words: ${a.niche}.` : '',
+    a.tone ? `- Her tone, in her words: ${a.tone}.` : '',
+    a.audience ? `- Who she talks to: ${a.audience}.` : '',
+    a.products.length ? `- What she sells: ${a.products.join('; ')}.` : '',
+    a.stories.length ? `- Her own stories (use only these facts; do not invent others): ${a.stories.map((s) => `"${s}"`).join(' ')}` : '',
+  ]
+}
+
+/**
+ * The counted card wins. Only when there is none (thin or too little) and the
+ * flag is on does the manual card from `profile.manual_voice` fill in.
+ */
+export function withManualVoiceCard(built: CreatorVoiceCard, profile: unknown, flagOn: boolean): CreatorVoiceCard {
+  if (built.card || !flagOn) return built
+  const stored = (profile && typeof profile === 'object' ? (profile as Record<string, unknown>)[MANUAL_VOICE_KEY] : null)
+  const card = buildManualVoiceCard(stored)
+  return card ? { card: { ...card, material: built.material }, reason: 'manual', material: built.material } : built
 }

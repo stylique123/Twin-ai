@@ -51,7 +51,7 @@ import {
   evidenceLevel, groundingDepth, creatorDepth, substanceIssues, isProgressCheck,
   SUBSTANCE_SOURCES, type SubstanceItem,
 } from '../_shared/knowledgeResolver.ts'
-import { inStage, currentStageUsage, stageOfCall } from '../_shared/aiUsage.ts'
+import { inStage, currentStageUsage, stageOfCall, setLedgerContext, withScriptLedger } from '../_shared/aiUsage.ts'
 import { buildProvenance } from '../_shared/provenance.ts'
 import { dropInventedCauses, isSubjectOnlyTopic, subjectsLine } from '../_shared/inventedCause.ts'
 import { checkSupport } from '../_shared/supportCheck.ts'
@@ -71,7 +71,7 @@ import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
 import { pickAngleCards, angleCardsRecord, ANGLE_SPECS, pickAngles, anglePickRecord, type AngleMaterial } from '../_shared/angleFit.ts'
-import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, type OutsideItem } from '../_shared/questionUsefulness.ts'
+import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, PROBLEM_QUESTION_KEY, type OutsideItem } from '../_shared/questionUsefulness.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -117,7 +117,7 @@ import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
-import { moveCtaLast, completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY } from '../_shared/spineComplete.ts'
+import { moveCtaLast, completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY, isProblemLine } from '../_shared/spineComplete.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -131,7 +131,7 @@ import {
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
-import { rhythmMisses, voiceRhythmRepairPrompt, voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
+import { rhythmMisses, voiceRhythmRepairPrompt, voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, withManualVoiceCard, manualVoiceCardOn, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -6637,7 +6637,13 @@ async function ideaQuestionsMode(apiKey: string, paragraph: string, audience: re
 }
 
 installUsageTracking()
-Deno.serve((req: Request) => trackUsage(() => handle(req)))
+// Ops audit: every request's model calls also go to ai_usage_ledger (fail-open).
+Deno.serve((req: Request) => trackUsage(() => withScriptLedger(() => handle(req), () => {
+  const url = Deno.env.get('SUPABASE_URL'); const key = serviceKeyFrom(Deno.env)
+  if (!url || !key) return null
+  const db = createClient(url, key)
+  return (rows) => db.from('ai_usage_ledger').insert(rows)
+})))
 
 async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -6677,6 +6683,10 @@ async function handle(req: Request): Promise<Response> {
     })()
     : (await userClient.auth.getUser()).data.user
   if (!user) return json({ error: 'Not authenticated' }, 401)
+  if (!isShadowRun) {
+    const testTraffic = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    setLedgerContext({ ownerId: user.id, traffic: testTraffic ? 'test' : 'real' })
+  }
 
   // Idea Mode questions: no credit, no build, its own light rate limit.
   const peek = await req.clone().json().catch(() => null) as { mode?: unknown; paragraph?: unknown } | null
@@ -6743,7 +6753,8 @@ async function handle(req: Request): Promise<Response> {
     const { data: asked } = await sb.from('creator_knowledge').select('source, text').eq('owner_id', user.id).eq('voice_id', v.id)
       .eq('source', 'asked').order('created_at', { ascending: false }).limit(40)
     const source = await loadVoiceSourceInline(sb, user.id, v.id, (asked ?? []) as Array<{ source?: unknown; text?: unknown }>, scrubPrivate(prof))
-    const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' })
+    // Plan v6.6 §32: a hand-typed voice gets the manual card (no model call) when MANUAL_VOICE_CARD is on.
+    const built = withManualVoiceCard(buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' }), prof, manualVoiceCardOn(Deno.env.get('MANUAL_VOICE_CARD')))
     const savedEdits = b.action === 'edit' ? sanitizeVoiceCardEdits(b.edits) : sanitizeVoiceCardEdits(prof.voice_card_edits)
     const card = built.card ? applyVoiceCardEdits(built.card, savedEdits, voiceSourceTexts(source)) : null
     console.log(JSON.stringify({ event: 'voice_card_view', action: b.action === 'edit' ? 'edit' : 'get', reason: built.reason, edited: card?.edited === true }))
@@ -6935,7 +6946,7 @@ async function handle(req: Request): Promise<Response> {
         return q
       })(),
       pid ? sb.from('product_entities').select('id,name,offer').eq('id', pid).eq('owner_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
-      sb.from('question_asks').select('slot_id, outcome').eq('owner_id', user.id).eq('option_id', 'mn').limit(500),
+      sb.from('question_asks').select('slot_id, outcome, wording').eq('owner_id', user.id).eq('option_id', 'mn').limit(500),
       sb.from('brand_voices').select('profile, pre_script_brief').eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     const material: AngleMaterial[] = []
@@ -6963,6 +6974,9 @@ async function handle(req: Request): Promise<Response> {
     let questions: Array<{ ask_id: string | null; key: string; piece: string; kind: string; source: string; text: string; skippable: true }> = []
     if (picked) {
       const rows = (hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown }>
+      const ladderOn = Deno.env.get('ANGLE_LADDER_ON') === '1'
+      const problemQOn = Deno.env.get('ANGLE_PROBLEM_Q_ON') === '1'
+
       // ⚖️ THE QUESTION ENGINE (plan v7.1 §3; QUESTION_ENGINE=off is the kill
       // switch): two questions about THIS request's gaps — a niche pain asking
       // for her example, then the biggest missing slot worded for her door —
@@ -6979,6 +6993,8 @@ async function handle(req: Request): Promise<Response> {
         profileMissing: !String(prof?.audience ?? '').trim() && !rows.some((r) => r.slot_id === 'mn:profile'),
         voiceCard: false,
       } : null
+      // The engine replaces the older planner; with QUESTION_ENGINE=off the
+      // planner (and its ladder / problem-question flags) asks instead.
       const plan = engineInput ? pickTwo(engineInput) : planQuestionsForAngle({
         angle: picked, angleNeeds: ANGLE_SPECS[picked].needs, onFile: [...new Set(material.map((m) => m.slot))],
         hasProduct: !!p, entityKey: p ? `product:${p.id}` : 'none',
@@ -6987,6 +7003,19 @@ async function handle(req: Request): Promise<Response> {
         skippedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler' || r.outcome === 'answered').map((r) => String(r.slot_id)),
         profileAskedEver: rows.some((r) => r.slot_id === 'mn:profile'),
         profileMissing: !String(prof?.audience ?? '').trim(),
+        // Story ladder (#1148) and the pre-writing problem question: both OFF
+        // unless ANGLE_LADDER_ON / ANGLE_PROBLEM_Q_ON is '1'. Off = unchanged.
+        ...(ladderOn ? (() => {
+          const st = material.find((m) => m.slot === 'story' && (m.source ?? 'her_material') === 'her_material')
+          const sid = String(st?.id ?? 'story').toLowerCase().replace(/[^a-z0-9_-]+/g, '_').slice(0, 40) || 'x'
+          const have = rows.filter((r) => r.outcome === 'answered' && String(r.slot_id).startsWith(`mn:ladder:${sid}:`))
+            .map((r) => Number(String(r.slot_id).split(':').pop())).filter((n) => n >= 1 && n <= 6) as Array<1 | 2 | 3 | 4 | 5 | 6>
+          return {
+            ladder: { on: true, storyId: st?.id ?? 'story', anchor: st?.text ?? '', have, topic: String(p?.name ?? '').trim().slice(0, 60), herWords: material.filter((m) => (m.source ?? 'her_material') === 'her_material').map((m) => m.text).join('\n').slice(0, 4000) },
+            askedTexts: rows.map((r) => String((r as { wording?: unknown }).wording ?? '')).filter((w) => w && w !== '-').slice(-50),
+          }
+        })() : {}),
+        ...(problemQOn ? { problem: { on: true, onFile: rows.some((r) => r.slot_id === PROBLEM_QUESTION_KEY && r.outcome === 'answered') || material.some((m) => isProblemLine(m.text)) } } : {}),
       })
       for (const q of plan) {
         const { data: ins } = await sb.from('question_asks').insert({ owner_id: user.id, entity_key: p ? `product:${p.id}` : 'none', option_id: 'mn', slot_id: q.key, angle: 'first', wording: q.text })
@@ -8574,7 +8603,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
       if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'))) return null
       const source = await loadVoiceSourceInline(admin, ownerId, (voice as { id?: unknown } | null)?.id ?? null, askedRows, vp)
-      const built = buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' })
+      const built = withManualVoiceCard(buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' }), voice?.profile, manualVoiceCardOn(Deno.env.get('MANUAL_VOICE_CARD')))
       const edits = (voice?.profile as { voice_card_edits?: unknown } | null)?.voice_card_edits
       return { ...built, card: built.card ? applyVoiceCardEdits(built.card, sanitizeVoiceCardEdits(edits), voiceSourceTexts(source)) : null, source }
     } catch { return null }
@@ -17668,7 +17697,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // neither stored nor used), is stored as her fact through the same
         // row the angle questions use (answerFactRow, source 'asked'), and is
         // placed after the hook word for word. Never an invented problem line.
-        const rawProblem = (body.readiness_answers as Record<string, unknown> | undefined)?.[SPINE_PROBLEM_KEY]
+        // With ANGLE_PROBLEM_Q_ON, her pre-writing answer (mn_answers['mn:problem']) counts too.
+        const mnProblem = Deno.env.get('ANGLE_PROBLEM_Q_ON') === '1' ? ((body as { mn_answers?: Record<string, unknown> }).mn_answers ?? {})[PROBLEM_QUESTION_KEY] : undefined
+        const rawProblem = (body.readiness_answers as Record<string, unknown> | undefined)?.[SPINE_PROBLEM_KEY] ?? mnProblem
         let problemAnswer = problemAnswerItem(rawProblem)
         if (problemAnswer) {
           const g = gateAnswer(problemAnswer.text, {}, { known: await knownForGate(admin, ownerId) })

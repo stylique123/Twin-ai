@@ -31,4 +31,23 @@ assert.equal(s.p90_s, 90)
 assert.equal(spike(s), true, '1 failure in 3 runs is above 1 in 24')
 assert.equal(spike({ runs: 24, failure_rate: 1 / 24, p90_s: 125 }), false, 'exactly at the limits is not a spike')
 assert.equal(pct([], 90), null)
+// Feedback and post counts only ever cover canary-tagged scripts; bad ratings never count.
+const s2 = summarize({
+  attempts: [], gens,
+  costs: [],
+  feedback: [
+    { generation_id: 'g1', rating: 10, edited: false },
+    { generation_id: 'g2', rating: 0, edited: true },   // out of range: not rated, still an edit
+    { generation_id: 'g3', rating: 1, edited: true },   // not a canary script: ignored entirely
+  ],
+  posts: [{ generation_id: 'g3' }],
+})
+assert.equal(s2.rated, 1); assert.equal(s2.avg_rating, 10)
+assert.equal(s2.edited, 1, 'the non-canary edit is not counted')
+assert.equal(s2.posted, 0, 'a non-canary post is not counted')
+assert.equal(s2.runs, 0); assert.equal(s2.failure_rate, 0); assert.equal(s2.p90_s, null)
+assert.equal(spike(s2), false, 'a quiet day is not a spike')
+const s3 = summarize({ attempts: [], gens: [{ id: 'gx', blueprint: { canary: 'true' } }], costs: [], feedback: [], posts: [] })
+assert.equal(s3.scripts, 0, 'only the boolean tag the server writes counts as a canary script')
+assert.equal(s3.usd_per_script, null); assert.equal(s3.avg_rating, null)
 console.log('canaryDailyReport selftest ok')

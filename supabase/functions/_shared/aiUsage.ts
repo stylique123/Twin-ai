@@ -99,3 +99,57 @@ export function currentUsage(): UsageStore | null {
   const s = store.getStore()
   return s ? structuredClone(s) : null
 }
+
+// Ops audit (2026-10-26): THE WRITER IN THE LEDGER. The worker writes one
+// ai_usage_ledger row per model per job; the writer kept its tally only on the
+// saved blueprint, so a failed or abandoned script cost nothing in the
+// reports. Now each request also writes one row per stage and model, stage
+// `script:<stage>`. Counts only. Fail-open: a ledger error never fails a script.
+export interface LedgerContext { ownerId: string; traffic: 'test' | 'real' }
+const ledgerCtx = new AsyncLocalStorage<{ ctx: LedgerContext | null }>()
+
+/** Names who this request is for, so its usage can be written. Shadow re-runs never call it. */
+export function setLedgerContext(ctx: LedgerContext): void {
+  const box = ledgerCtx.getStore()
+  if (box) box.ctx = ctx
+}
+
+/** The ledger rows for one script request: one per stage and model. */
+export function scriptLedgerRows(byStageUsage: UsageStore | null, ctx: LedgerContext) {
+  return Object.entries(byStageUsage ?? {}).map(([key, u]) => {
+    const i = key.indexOf('|')
+    const stage = i < 0 ? 'other' : key.slice(0, i)
+    const model = i < 0 ? key : key.slice(i + 1)
+    return {
+      job_id: null, stage: `script:${stage}`, owner_id: ctx.ownerId, model, traffic: ctx.traffic,
+      calls: u.calls, input_tokens: u.input, output_tokens: u.output, thinking_tokens: u.thinking, cached_tokens: u.cached,
+    }
+  })
+}
+
+type LedgerInsert = (rows: ReturnType<typeof scriptLedgerRows>) => PromiseLike<{ error: unknown } | unknown>
+
+/**
+ * Runs one request and then writes its usage to the ledger, whatever the
+ * outcome. Nothing is written when no context was set (unauthenticated or
+ * shadow). Never throws because of the ledger and never logs its rows.
+ */
+export async function withScriptLedger<T>(fn: () => Promise<T>, insert: () => LedgerInsert | null): Promise<T> {
+  const box: { ctx: LedgerContext | null } = { ctx: null }
+  return ledgerCtx.run(box, async () => {
+    try {
+      return await fn()
+    } finally {
+      try {
+        const rows = box.ctx ? scriptLedgerRows(currentStageUsage(), box.ctx) : []
+        const ins = rows.length ? insert() : null
+        if (ins) {
+          const r = await ins(rows) as { error?: unknown } | undefined
+          if (r?.error) console.warn(JSON.stringify({ event: 'ai_usage_ledger_write_failed', rows: rows.length }))
+        }
+      } catch {
+        console.warn(JSON.stringify({ event: 'ai_usage_ledger_write_failed' }))
+      }
+    }
+  })
+}
