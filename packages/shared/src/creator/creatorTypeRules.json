@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "types": {
+    "coach": {
+      "label": "Coach or consultant",
+      "hook_families": ["list_promise", "contrarian_imperative", "insider_credential"],
+      "beat_shape": ["hook", "numbered_points", "recap_or_soft_offer"],
+      "rules": [
+        "A list hook must name its count, and the body must deliver exactly that count.",
+        "Close on a lesson recap or a soft offer, not a hard sell."
+      ],
+      "cta_default": "soft_offer"
+    },
+    "maker": {
+      "label": "Maker or product seller",
+      "hook_families": ["visual_reveal_verdict", "social_proof_result", "buyer_callout"],
+      "beat_shape": ["hook", "show_it", "specific_reason", "where_to_get_it"],
+      "rules": [
+        "Show the thing early; the body carries most of the words.",
+        "Give one specific reason to want it before saying where to get it."
+      ],
+      "cta_default": "where_to_buy"
+    },
+    "local_business": {
+      "label": "Local business",
+      "hook_families": ["buyer_callout", "visual_reveal_verdict", "behind_the_counter"],
+      "beat_shape": ["hook", "show_the_place", "specific_reason", "how_to_visit"],
+      "rules": [
+        "Name the neighbourhood or the visit occasion, never a claim about competitors.",
+        "End with how to visit or book."
+      ],
+      "cta_default": "visit_or_book"
+    },
+    "educator": {
+      "label": "Educator",
+      "hook_families": ["question_answered", "borrowed_authority", "mid_step_open"],
+      "beat_shape": ["question_hook", "answer_immediately", "steps", "recap"],
+      "rules": [
+        "Answer the hook's question in the first beat after the hook.",
+        "Recap the steps at the end."
+      ],
+      "cta_default": "none"
+    },
+    "community": {
+      "label": "Community or personal brand",
+      "hook_families": ["first_person_confession", "belief_statement", "shared_experience_list"],
+      "beat_shape": ["confession_or_belief", "story", "what_it_meant", "invite_replies"],
+      "rules": [
+        "Invite replies rather than a sales call to action."
+      ],
+      "cta_default": "invite_replies"
+    },
+    "entertainer": {
+      "label": "Entertainer",
+      "hook_families": ["cold_open_scene", "count_or_figure"],
+      "beat_shape": ["cold_open", "escalation", "punchline"],
+      "rules": [
+        "No call to action by default.",
+        "Trigger stacking is not required."
+      ],
+      "cta_default": "none"
+    }
+  }
+}

@@ -81,6 +81,9 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser, capQuestions } from '../_shared/beatCleanup.ts'
 import { robotPass } from '../_shared/robotPhrases.ts'
+import { creatorTypeHookBlock, pickNichePack, nichePackBlock } from '../_shared/writerGuidance.ts'
+import CREATOR_TYPE_RULES_DATA from '../_shared/creatorTypeRulesData.ts'
+import { NICHE_PACK_REGISTRY } from '../_shared/nichePackRegistry.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { sanitizeNeverUse, neverUseEntryOf, addNeverUse, filterLedgerByNeverUse, knowledgeBlocked, outsideAllowed, removeUsingItem, type NeverUseEntry, type TracedRow, type UsingItemRef } from '../_shared/usingBlock.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
@@ -11971,6 +11974,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         + ' the placeholder rule above applies to this input too, and a creator'
         + ' cannot read "[KEYWORD]" aloud.'
 
+    // W12.2 — per-type hook rules and the niche pack, from data. Both flags
+    // default OFF; off, each block is '' and the prompt is unchanged.
+    const creatorTypeBlock = creatorTypeHookBlock(
+      (vp as { creator_type?: unknown } | null)?.creator_type, Deno.env.get('CREATOR_TYPE_RULES'), CREATOR_TYPE_RULES_DATA)
+    const nichePackGuide = nichePackBlock(
+      pickNichePack(NICHE_PACK_REGISTRY, niche, (vp as { creator_type?: unknown } | null)?.creator_type),
+      Deno.env.get('NICHE_PACKS'))
+    if (creatorTypeBlock || nichePackGuide) console.log(JSON.stringify({ event: 'writer_guidance', creator_type: !!creatorTypeBlock, niche_pack: !!nichePackGuide }))
     const hookPatternsLine = hookPatterns.length
       ? hookPatterns.join(' | ')
       : 'NONE STORED. Use the moves listed under THIS VIDEO\'S FAMILY below.'
@@ -12024,7 +12035,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
 - Hook formula (A FILL-IN TEMPLATE, NOT A LINE TO COPY): ${vp.hook_style ?? ''}${hookFormulaRule}
-- Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${hookPatternsLine}
+- Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${hookPatternsLine}${creatorTypeBlock ? `
+- ${creatorTypeBlock.split('\n').join('\n  ')}` : ''}${nichePackGuide ? `
+- ${nichePackGuide.split('\n').join('\n  ')}` : ''}
 - Their video FORMATS (their real playbook — adapt ONE of these to the reference for the concept.premise): ${formatsLine}
 - Their TITLE style (follow this shape for the packaging.titles): ${titleStyleLine}
 - Their THUMBNAIL style (follow this for the packaging.thumbnail): ${thumbStyleLine}

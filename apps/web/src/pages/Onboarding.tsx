@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import CreatorTypePicker from '../components/CreatorTypePicker'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
@@ -2023,6 +2024,7 @@ export function ConfirmStep({
         <Labeled label="Niche">
           <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
         </Labeled>
+        <CreatorTypePicker value={vp.creator_type} onChange={(t) => setVp({ ...vp, creator_type: t })} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
           <Labeled label="Tone">
             <input className="field" value={vp.tone} onChange={(e) => setField('tone', e.target.value)} />
