@@ -183,6 +183,9 @@ export * from './briefToProfileAnswers'
 // here so a future reader does not write a third copy of a rule that exists.
 export * from './script/beatAsk'
 export * from './script/craftBeats'
+export * from './script/beatBudgets'
+export * from './script/beatWriterMap'
+export * from './script/beatPrompt'
 
 // ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
 export * from './twinStrength'
