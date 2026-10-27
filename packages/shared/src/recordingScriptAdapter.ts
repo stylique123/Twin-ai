@@ -624,7 +624,9 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       background: '',
       movement: '',
       caption_text: pushCaption(captionFromLine(clip.label), n),
-      pause_after: false,
+      // Plan v7.1: the teleprompter HOLDS after a product or screen showing
+      // beat, so she can finish the move before the next line scrolls in.
+      pause_after: clip.medium === 'camera' || clip.medium === 'screen',
       show_in_teleprompter: false,
       clip_label: clip.label,
       clip_medium: clip.medium,

@@ -166,3 +166,10 @@ describe('choosing which beat is the ending', () => {
     expect(JSON.stringify(build(bp))).not.toContain('Follow for more')
   })
 })
+
+describe('plan v7.1: the teleprompter holds after a showing beat', () => {
+  it('a trailing product clip beat pauses after; a b-roll clip does not', async () => {
+    const src = (await import('node:fs')).readFileSync(new URL('../recordingScriptAdapter.ts', import.meta.url), 'utf8')
+    expect(src).toMatch(/pause_after: clip\.medium === 'camera' \|\| clip\.medium === 'screen'/)
+  })
+})
