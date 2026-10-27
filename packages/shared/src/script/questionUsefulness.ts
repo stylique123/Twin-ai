@@ -153,6 +153,22 @@ export interface OutsideItem { id: string; text: string; origin?: string }
  * (e.g. automated Reddit items, Tier 2, OFF) yields nothing. Missing or empty
  * table → [] — that is fine.
  */
+/**
+ * Plan v7.1 WP5: the scan stores a niche KEY ("home coffee", "home-coffee"),
+ * her profile says it in her words ("Home coffee & roasting"). Exact equality
+ * matched neither, so her pains never reached her questions. Same niche when
+ * the normalised forms are equal, one contains the other, or they share a
+ * specific word (5+ letters).
+ */
+export function nicheMatches(a: string, b: string): boolean {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const x = norm(a); const y = norm(b)
+  if (!x || !y) return false
+  if (x === y || x.includes(y) || y.includes(x)) return true
+  const wy = new Set(y.split(' ').filter((w) => w.length >= 5))
+  return x.split(' ').some((w) => w.length >= 5 && wy.has(w))
+}
+
 export function painItemsFromMap(rows: readonly unknown[] | null | undefined, niche: string, today: string): OutsideItem[] {
   const n = niche.trim().toLowerCase()
   if (!n) return []
@@ -161,7 +177,7 @@ export function painItemsFromMap(rows: readonly unknown[] | null | undefined, ni
     const x = r as { id?: unknown; niche?: unknown; pain_sentence?: unknown; status?: unknown; origin?: unknown; expiry?: unknown }
     if (!x || x.origin !== 'audience_pain' || x.status !== 'active') continue
     if (typeof x.pain_sentence !== 'string' || !x.pain_sentence.trim()) continue
-    if (String(x.niche ?? '').trim().toLowerCase() !== n) continue
+    if (!nicheMatches(String(x.niche ?? ''), n)) continue
     if (typeof x.expiry === 'string' && x.expiry < today) continue
     out.push({ id: String(x.id ?? x.pain_sentence).slice(0, 40), text: x.pain_sentence.trim(), origin: 'audience_pain' })
     if (out.length === 3) break

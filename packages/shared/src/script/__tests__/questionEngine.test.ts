@@ -63,3 +63,17 @@ describe('pickTwo', () => {
     expect(questionEngineOn('off')).toBe(false)
   })
 })
+
+describe('plan v7.1 WP5: her niche finds the scan niche', async () => {
+  const { nicheMatches, painItemsFromMap } = await import('../questionUsefulness')
+  it('matches across case, punctuation, containment and a shared specific word', () => {
+    expect(nicheMatches('home-coffee', 'Home coffee & roasting')).toBe(true)
+    expect(nicheMatches('pottery', 'Pottery')).toBe(true)
+    expect(nicheMatches('ceramics studio', 'wheel ceramics')).toBe(true)
+    expect(nicheMatches('coffee', 'fitness')).toBe(false)
+  })
+  it('the pain map read uses it', () => {
+    const rows = [{ id: 'a', niche: 'home-coffee', pain_sentence: 'Beans go stale fast', status: 'active', origin: 'audience_pain', expiry: '2099-01-01' }]
+    expect(painItemsFromMap(rows, 'Home coffee & roasting', '2026-10-27')).toHaveLength(1)
+  })
+})
