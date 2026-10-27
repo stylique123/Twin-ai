@@ -245,6 +245,8 @@ const SOURCES = [
   ['packages/shared/src/script/novelDetail.ts', 'worker/src/generated/novelDetail.ts'],
   ['packages/shared/src/script/beatCleanup.ts', 'worker/src/generated/beatCleanup.ts'],
   ['packages/shared/src/script/passages.ts', 'worker/src/generated/passages.ts'],
+  // Plan v7.1 WP4: the story classifier, run by the re-mine when STORY_CLASSIFY=on.
+  ['packages/shared/src/script/storyClassify.ts', 'worker/src/generated/storyClassify.ts'],
   ['packages/shared/src/script/privacyGuard.ts', 'worker/src/generated/privacyGuard.ts'],
   // The test-viewer rewrite is held to the same unpicked-product / follow-ask rules (audit 2026-10-01 S1).
   ['packages/shared/src/script/scriptRules.ts', 'worker/src/generated/scriptRules.ts'],

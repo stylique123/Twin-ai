@@ -7,3 +7,8 @@ export function passageStoreOn(ownerId: string, list = process.env.PASSAGE_STORE
   const ids = list.split(',').map((s) => s.trim()).filter(Boolean)
   return ids.includes('all') || ids.includes(ownerId)
 }
+
+/** Plan v7.1 WP4: the model story classifier in the re-mine. OFF unless STORY_CLASSIFY=on. */
+export function storyClassifyOn(v: string | undefined = process.env.STORY_CLASSIFY): boolean {
+  return String(v ?? '').trim().toLowerCase() === 'on'
+}
