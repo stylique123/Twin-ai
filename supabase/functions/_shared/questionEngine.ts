@@ -31,6 +31,8 @@ export interface EngineInput {
   /** The idea she typed or the note with her link; used to fit pains and pillars. */
   ideaText?: string | null
   productName?: string | null
+  /** product_entities.type (SAAS, APP, DIGITAL_PRODUCT, PHYSICAL, COURSE, SERVICE…), for the show-it wording. */
+  productKind?: string | null
   pillars?: readonly string[]
   painThemes?: readonly PainTheme[]
   /** Keys answered or skipped before (question_asks), never asked again. */
@@ -97,8 +99,17 @@ export function painToQuestion(theme: PainTheme): { key: string; text: string } 
 }
 
 /** Door-specific wording for a missing slot. */
-export function gapQuestion(slot: Slot, door: Door, subject: string): string {
+export function gapQuestion(slot: Slot, door: Door, subject: string, productKind?: string | null): string {
   const s = subject.trim() || 'this'
+  // Plan v7.1: how she SHOWS it depends on what it is.
+  if (slot === 'show_it' && door === 'product' && productKind) {
+    const k = productKind.toUpperCase()
+    if (k === 'SAAS' || k === 'APP' || k === 'DIGITAL_PRODUCT' || k === 'COURSE' || k === 'COMMUNITY') {
+      return `What's the one thing you'd do on your screen to show ${s} working? Can you screen-record it, or will you film the screen with your camera?`
+    }
+    if (k === 'SERVICE') return `What could viewers see of ${s} in action: your setup, a session, a before/after you can share?`
+    return `What would you do with ${s} on camera: open it, hold it up, use it? Show us the moment it matters.`
+  }
   const bank: Partial<Record<Slot, Record<Door, string>>> = {
     story: {
       product: `What was the moment you first used ${s} and something changed? Tell it like you'd tell a friend.`,
@@ -173,7 +184,7 @@ export function pickTwo(i: EngineInput): PlanQuestion[] {
   for (const slot of GAP_ORDER) {
     const row = inv.find((r) => r.slot === slot && r.status === 'missing')
     if (!row) continue
-    push(`mn:gap:${slot}`, gapQuestion(slot, door, subject), slot === 'what_it_is' || slot === 'close' || slot === 'show_it' ? 'product_slot' : 'story',
+    push(`mn:gap:${slot}`, gapQuestion(slot, door, subject, i.productKind), slot === 'what_it_is' || slot === 'close' || slot === 'show_it' ? 'product_slot' : 'story',
       row.gap === 'product' ? 'product' : 'her_material', PIECE[slot] ?? slot)
   }
   // Onboarding gap, once

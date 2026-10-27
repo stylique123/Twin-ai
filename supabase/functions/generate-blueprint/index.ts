@@ -6948,7 +6948,7 @@ async function handle(req: Request): Promise<Response> {
         if (pid) q = q.or(`product_entity_id.eq.${pid},product_entity_id.is.null`)
         return q
       })(),
-      pid ? sb.from('product_entities').select('id,name,offer').eq('id', pid).eq('owner_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+      pid ? sb.from('product_entities').select('id,name,offer,type').eq('id', pid).eq('owner_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
       sb.from('question_asks').select('slot_id, outcome, wording').eq('owner_id', user.id).eq('option_id', 'mn').limit(500),
       sb.from('brand_voices').select('profile, pre_script_brief').eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     ])
@@ -6988,6 +6988,7 @@ async function handle(req: Request): Promise<Response> {
       const engineInput = engineOn ? {
         door: b.door, angleNeeds: ANGLE_SPECS[picked].needs, ideaText: typeof b.idea === 'string' ? b.idea.slice(0, 400) : null,
         productName: typeof p?.name === 'string' ? p.name : null,
+        productKind: typeof (p as { type?: unknown } | null)?.type === 'string' ? String((p as { type?: unknown }).type) : null,
         material: material.map((m) => ({ slot: m.slot, text: m.text, source: m.source === 'product' ? 'product' as const : 'her_material' as const })),
         pillars: pillarsFrom((v as { pre_script_brief?: unknown } | null)?.pre_script_brief ?? null),
         painThemes: painItems.map((x) => ({ id: x.id, text: x.text })),
@@ -11518,9 +11519,16 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         ? PURPOSE_SHAPE_BY_GOAL_INLINE[videoGoal] : undefined
       if (shapeKey) mentionLine += `\n- ${PURPOSE_SHAPE_INLINE[shapeKey]}`
     }
-    const showLine = !ownedEntity || !sceneGuidance
+    const showLineBase = !ownedEntity || !sceneGuidance
       ? ''
       : productSceneDirection(String(ownedEntity.name ?? 'the product'), sceneGuidance)
+    // ⚖️ HER OWN WAY TO SHOW IT (plan v7.1). The Product Library asks how she
+    // shows it on camera and stores the answer as a `show_action` fact; nothing
+    // read it. Her words lead the showing beat; the scene guidance follows.
+    const herShowAction = ownedEntity && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) ? (knowledgeFacts(chosenEntity).find((f) => f.field === 'show_action')?.value ?? '').slice(0, 240) : ''
+    const showLine = herShowAction
+      ? `${showLineBase}\n- HER OWN WAY TO SHOW IT (her words; use this for the showing beat and its direction): ${herShowAction}`
+      : showLineBase
 
     // ── THE WRITER MAY NOT ARGUE AGAINST THE PRODUCT THAT WAS SELECTED ──────
     //

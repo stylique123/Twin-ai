@@ -115,3 +115,10 @@ describe('plan v7.1 WP4: her stored stories reach the pile', () => {
     expect(EDGE).toMatch(/kind: 'experience'[\s\S]{0,300}source_ref: `passage:/)
   })
 })
+
+describe('plan v7.1: her own way to show the product reaches the writer', () => {
+  it('the show_action fact rides the show line on the WRITER_LOOP stage', () => {
+    expect(EDGE).toMatch(/const herShowAction = ownedEntity && writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn\)[^\n]*f\.field === 'show_action'/)
+    expect(EDGE).toMatch(/HER OWN WAY TO SHOW IT/)
+  })
+})

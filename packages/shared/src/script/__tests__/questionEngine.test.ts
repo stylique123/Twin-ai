@@ -77,3 +77,10 @@ describe('plan v7.1 WP5: her niche finds the scan niche', async () => {
     expect(painItemsFromMap(rows, 'Home coffee & roasting', '2026-10-27')).toHaveLength(1)
   })
 })
+
+describe('plan v7.1: the show-it question fits the product kind', () => {
+  it('screen kinds ask about the screen; physical asks about handling it', () => {
+    expect(gapQuestion('show_it', 'product', 'FlowDesk', 'SAAS')).toMatch(/screen-record it, or will you film the screen/)
+    expect(gapQuestion('show_it', 'product', 'the tote', 'PHYSICAL')).toMatch(/open it, hold it up, use it/)
+  })
+})

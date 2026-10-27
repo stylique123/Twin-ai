@@ -45,7 +45,12 @@ describe('a product that cannot be shown gets no prop', () => {
 describe('a screen product may only name screens somebody actually found', () => {
   it('withholds screen cues entirely when no section map exists', () => {
     const set = directionsFor({ kind: 'SAAS', showability: 'ALWAYS', sections: [] })
-    expect(set.options).toEqual(SELF_DIRECTIONS)
+    // Plan v7.1 (owner, 27 Oct): she may film her OWN screen doing the step she
+    // says; still no cue that NAMES a screen part nobody found.
+    const ids = set.options.map((o) => o.id)
+    for (const named of ['point_camera_at', 'scroll_to', 'click_through', 'screen_record']) expect(ids).not.toContain(named)
+    expect(ids).toContain('film_your_screen')
+    for (const o of SELF_DIRECTIONS) expect(ids).toContain(o.id)
     expect(set.nameableSections).toEqual([])
     expect(set.because).toMatch(/nobody confirmed exists|NO named sections/i)
   })
