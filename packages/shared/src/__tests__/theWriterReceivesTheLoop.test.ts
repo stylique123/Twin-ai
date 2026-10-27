@@ -108,3 +108,10 @@ describe('plan v7.1 V5/V6: the voice is used and repaired', () => {
     expect(EDGE).toMatch(/voiceCheck\(voiceCard, trial\)\.score <= voiceCheck\(voiceCard,/)
   })
 })
+
+describe('plan v7.1 WP4: her stored stories reach the pile', () => {
+  it('complete story passages for her voice are read on the WRITER_LOOP stage, as her experience', () => {
+    expect(EDGE).toMatch(/from\('story_passages'\)[\s\S]{0,200}\.eq\('kind', 'story'\)\.eq\('complete', true\)/)
+    expect(EDGE).toMatch(/kind: 'experience'[\s\S]{0,300}source_ref: `passage:/)
+  })
+})

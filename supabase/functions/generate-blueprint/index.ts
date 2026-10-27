@@ -7841,6 +7841,28 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     .order('created_at', { ascending: false })
     .limit(20))
   const askedRows = askedRead.rows
+  // ⚖️ HER STORIES, VERBATIM (plan v7.1 WP4). The passage store held stories
+  // cut from her own videos and nothing read it, so the planner's "story first"
+  // had no stories. Her two newest COMPLETE story passages ride in with her
+  // answers as her own words (kind 'experience'); the same off-ask and purpose
+  // filters below decide whether they fit this video. WRITER_LOOP stage.
+  if (voice?.id && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)) {
+    try {
+      const { data: sp } = await admin.from('story_passages').select('id, text, created_at')
+        .eq('owner_id', ownerId).eq('voice_id', voice.id).eq('kind', 'story').eq('complete', true)
+        .order('created_at', { ascending: false }).limit(2)
+      const passages = ((sp ?? []) as Array<{ id?: unknown; text?: unknown; created_at?: unknown }>).filter((r) => typeof r.text === 'string' && r.text.trim())
+      for (const r of passages) {
+        const text = String(r.text).replace(/\s+/g, ' ').trim()
+        ;(askedRows as unknown as Array<Record<string, unknown>>).push({
+          id: String(r.id ?? ''), kind: 'experience', text: text.length <= 400 ? text : (text.slice(0, 400).match(/^.*[.!?](?=\s|$)/)?.[0] ?? text.slice(0, 400)),
+          basis: 'stated', times_seen: 1, confidence: 0.9, source: 'transcript', source_ref: `passage:${String(r.id ?? '')}`,
+          last_observed_at: String(r.created_at ?? ''), evidence: text.slice(0, 4000),
+        })
+      }
+      if (passages.length) console.log(JSON.stringify({ event: 'feature_fired', feature: 'story_passages_read', rows: passages.length }))
+    } catch { /* a missing table or failed read costs only the stories */ }
+  }
   // Her consent wins: a private fact she switched on for this video is read
   // from the table by id, and only those ids.
   // ⚠️ AUDIT 2026-10-01 (5.1): the screen and the writer rank the store

@@ -8,3 +8,10 @@ describe('passage store gate (plan 2.2)', () => {
     expect(passageStoreOn('c', 'b, c')).toBe(true)
   })
 })
+
+describe('plan v7.1 WP4: all', () => {
+  it("'all' stores for every owner; unset is still nobody", () => {
+    expect(passageStoreOn('a', 'all')).toBe(true)
+    expect(passageStoreOn('a', '')).toBe(false)
+  })
+})
