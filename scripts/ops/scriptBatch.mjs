@@ -393,7 +393,12 @@ const JUDGE_SCHEMA = {
 // reviewer reads and the lengthen pass are off in everyday test runs and on
 // at checkpoints. JUDGE_READS=0 skips the reviewer entirely.
 const JUDGE_READS = Math.max(0, Math.min(5, Number(process.env.JUDGE_READS ?? 3)))
-const PANEL_ON = process.env.BATCH_PANEL !== 'off'
+// ⚖️ COST_MODE=full (plan v6.8 §34, realistic panel mode): the practice viewers run as on
+// production. Every account this script signs in as is a TEST account (heartbeat or a seeded
+// fictional panel account), so real creators are never touched. Their reads are a SIGNAL only
+// until calibrated (realisticPanel.ts personaMayInfluence, r >= 0.5; scripts/ops/personaCalibration.mjs).
+const COST_MODE = String(process.env.COST_MODE ?? '').trim().toLowerCase()
+const PANEL_ON = COST_MODE === 'full' || process.env.BATCH_PANEL !== 'off'
 const LENGTHEN_ON = process.env.BATCH_LENGTHEN !== 'off'
 /** FNV-1a with a final avalanche, so neighbouring n do not cycle. */
 function styleHash(str) {
@@ -803,7 +808,7 @@ async function reportUsage(admin) {
   const { data: gens } = await admin.from('generations').select('blueprint').in('id', ids)
   const total = sumUsage((gens ?? []).map((g) => g?.blueprint?.ai_usage))
   const line = Object.entries(total).map(([m, r]) => `${m}: ${r.calls} calls, ${r.input} in, ${r.output} out`).join('; ')
-  console.log(`::notice title=batch-usage::${ids.length} scripts; ${line}; reviewer reads ${JUDGE_READS}/script; panel ${PANEL_ON ? 'on' : 'off'}; lengthen ${LENGTHEN_ON ? 'on' : 'off'}`)
+  console.log(`::notice title=batch-usage::${ids.length} scripts; ${line}; reviewer reads ${JUDGE_READS}/script; panel ${PANEL_ON ? 'on' : 'off'}; cost_mode ${COST_MODE || 'test'}; lengthen ${LENGTHEN_ON ? 'on' : 'off'}`)
   // Plan 11.1-1: estimated cost by stage from the price table (UNCONFIRMED prices).
   const { data: cost } = await admin.from('ai_cost_by_stage_script').select('stage, est_usd').in('generation_id', ids)
   const byStage = {}

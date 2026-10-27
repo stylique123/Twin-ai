@@ -183,6 +183,9 @@ export * from './briefToProfileAnswers'
 // here so a future reader does not write a third copy of a rule that exists.
 export * from './script/beatAsk'
 export * from './script/craftBeats'
+export * from './script/beatBudgets'
+export * from './script/beatWriterMap'
+export * from './script/beatPrompt'
 
 // ⚖️ THE METER READS THESE. Counts a creator can check, never a score.
 export * from './twinStrength'
@@ -391,3 +394,7 @@ export * from './productDetailsByKind'
 // Plan v6.6 §32: the manual voice card (describe your voice yourself, no model call).
 export { buildManualVoiceCard, sanitizeManualVoiceAnswers, manualVoiceCardOn, withManualVoiceCard, MANUAL_VOICE_KEY, type ManualVoiceAnswers } from './script/voice/voiceCard'
 export * from './creator/writerGuidance'
+
+// Plan v6.8 §33: the beat budgets (shared with the beat writer), the quality profile switch and the Quality Controller.
+export * from './script/beatBudgets'
+export * from './script/qualityProfile'

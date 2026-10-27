@@ -1,0 +1,10 @@
+{
+  "_note": "Stored persona calibration (plan v6.8 §34.3). UNRUN: needs AI calls (scripts/ops/personaCalibration.mjs, est. ~$0.37, ~$0.55 with retries, UNCONFIRMED prices). Until each persona has r >= 0.5 on BOTH the hook set (603 rated hooks) and the craft set (109 scripts), personaMayInfluence() is false and its reads are a signal only. Numbers only; replace this file with the --run output.",
+  "status": "unrun",
+  "min_correlation": 0.5,
+  "personas": [
+    { "persona": "loyal_follower", "hook_r": null, "craft_r": null, "measured_at": null },
+    { "persona": "new_scroller", "hook_r": null, "craft_r": null, "measured_at": null },
+    { "persona": "skeptic", "hook_r": null, "craft_r": null, "measured_at": null }
+  ]
+}

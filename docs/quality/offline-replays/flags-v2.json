@@ -1,0 +1,939 @@
+{
+ "scripts": 109,
+ "lines": 474,
+ "context_sources": {
+  "index": 85,
+  "case": 24
+ },
+ "invented": {
+  "tp": 12,
+  "fp": 11,
+  "fn": 7,
+  "precision": 0.52,
+  "recall": 0.63
+ },
+ "invented_or_embellished": {
+  "tp": 21,
+  "fp": 2,
+  "fn": 127,
+  "precision": 0.91,
+  "recall": 0.14
+ },
+ "by_panel": {
+  "P5": {
+   "lines": 95,
+   "invented": {
+    "tp": 6,
+    "fp": 7,
+    "fn": 6,
+    "precision": 0.46,
+    "recall": 0.5
+   },
+   "invented_or_embellished": {
+    "tp": 12,
+    "fp": 1,
+    "fn": 40,
+    "precision": 0.92,
+    "recall": 0.23
+   }
+  },
+  "P6": {
+   "lines": 91,
+   "invented": {
+    "tp": 0,
+    "fp": 2,
+    "fn": 1,
+    "precision": 0,
+    "recall": 0
+   },
+   "invented_or_embellished": {
+    "tp": 1,
+    "fp": 1,
+    "fn": 17,
+    "precision": 0.5,
+    "recall": 0.06
+   }
+  },
+  "P7": {
+   "lines": 76,
+   "invented": {
+    "tp": 1,
+    "fp": 1,
+    "fn": 0,
+    "precision": 0.5,
+    "recall": 1
+   },
+   "invented_or_embellished": {
+    "tp": 2,
+    "fp": 0,
+    "fn": 15,
+    "precision": 1,
+    "recall": 0.12
+   }
+  },
+  "P8": {
+   "lines": 79,
+   "invented": {
+    "tp": 2,
+    "fp": 1,
+    "fn": 0,
+    "precision": 0.67,
+    "recall": 1
+   },
+   "invented_or_embellished": {
+    "tp": 3,
+    "fp": 0,
+    "fn": 25,
+    "precision": 1,
+    "recall": 0.11
+   }
+  },
+  "P10": {
+   "lines": 133,
+   "invented": {
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1,
+    "recall": 1
+   },
+   "invented_or_embellished": {
+    "tp": 3,
+    "fp": 0,
+    "fn": 30,
+    "precision": 1,
+    "recall": 0.09
+   }
+  }
+ },
+ "by_reason": {
+  "absolute_efficacy": {
+   "flagged": 14,
+   "on_I": 5,
+   "on_E": 8,
+   "on_S": 1,
+   "on_N": 0
+  },
+  "invented_team": {
+   "flagged": 2,
+   "on_I": 2,
+   "on_E": 0,
+   "on_S": 0,
+   "on_N": 0
+  },
+  "unbacked_timeframe": {
+   "flagged": 2,
+   "on_I": 0,
+   "on_E": 2,
+   "on_S": 0,
+   "on_N": 0
+  },
+  "invented_habit": {
+   "flagged": 1,
+   "on_I": 1,
+   "on_E": 0,
+   "on_S": 0,
+   "on_N": 0
+  },
+  "scarcity_unbacked": {
+   "flagged": 2,
+   "on_I": 1,
+   "on_E": 0,
+   "on_S": 0,
+   "on_N": 1
+  },
+  "unbacked_name": {
+   "flagged": 1,
+   "on_I": 1,
+   "on_E": 0,
+   "on_S": 0,
+   "on_N": 0
+  },
+  "invented_origin": {
+   "flagged": 2,
+   "on_I": 2,
+   "on_E": 0,
+   "on_S": 0,
+   "on_N": 0
+  },
+  "wrong_product": {
+   "flagged": 2,
+   "on_I": 2,
+   "on_E": 0,
+   "on_S": 0,
+   "on_N": 0
+  },
+  "invented_inner_state": {
+   "flagged": 1,
+   "on_I": 1,
+   "on_E": 0,
+   "on_S": 0,
+   "on_N": 0
+  }
+ },
+ "scripts_detail": [
+  {
+   "id": "S01",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "S02",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 1
+  },
+  {
+   "id": "S03",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 1
+  },
+  {
+   "id": "S04",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "S05",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "S06",
+   "source": "index",
+   "lines": 5,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "S07",
+   "source": "index",
+   "lines": 4,
+   "flagged": 1,
+   "invented_lines": 0
+  },
+  {
+   "id": "S08",
+   "source": "index",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 1
+  },
+  {
+   "id": "S09",
+   "source": "index",
+   "lines": 4,
+   "flagged": 2,
+   "invented_lines": 1
+  },
+  {
+   "id": "S10",
+   "source": "index",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 1
+  },
+  {
+   "id": "S11",
+   "source": "index",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 1
+  },
+  {
+   "id": "S12",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "S13",
+   "source": "index",
+   "lines": 3,
+   "flagged": 1,
+   "invented_lines": 0
+  },
+  {
+   "id": "S14",
+   "source": "index",
+   "lines": 3,
+   "flagged": 1,
+   "invented_lines": 0
+  },
+  {
+   "id": "S15",
+   "source": "index",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "S16",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "S17",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "S18",
+   "source": "index",
+   "lines": 4,
+   "flagged": 1,
+   "invented_lines": 2
+  },
+  {
+   "id": "S19",
+   "source": "index",
+   "lines": 3,
+   "flagged": 1,
+   "invented_lines": 0
+  },
+  {
+   "id": "S20",
+   "source": "index",
+   "lines": 5,
+   "flagged": 2,
+   "invented_lines": 1
+  },
+  {
+   "id": "S21",
+   "source": "index",
+   "lines": 4,
+   "flagged": 1,
+   "invented_lines": 0
+  },
+  {
+   "id": "S22",
+   "source": "index",
+   "lines": 5,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "S23",
+   "source": "index",
+   "lines": 7,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "P6-01",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-02",
+   "source": "index",
+   "lines": 7,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-03",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-04",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-05",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-06",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-07",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-08",
+   "source": "index",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-09",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-10",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-11",
+   "source": "index",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-12",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-13",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-14",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-15",
+   "source": "index",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-16",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-17",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-18",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-19",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-20",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-21",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 1
+  },
+  {
+   "id": "P6-22",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P6-23",
+   "source": "index",
+   "lines": 4,
+   "flagged": 2,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-01",
+   "source": "index",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-02",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-03",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-04",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-05",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-06",
+   "source": "index",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-07",
+   "source": "index",
+   "lines": 3,
+   "flagged": 1,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-08",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-09",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-10",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-11",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-12",
+   "source": "index",
+   "lines": 7,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-13",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-14",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-15",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-16",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-17",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-18",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P7-19",
+   "source": "index",
+   "lines": 5,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "P8-01",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-02",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-03",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-04",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-05",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-06",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-07",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-08",
+   "source": "index",
+   "lines": 4,
+   "flagged": 1,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-09",
+   "source": "index",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-10",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-11",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-12",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-13",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-14",
+   "source": "index",
+   "lines": 4,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "P8-15",
+   "source": "index",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-16",
+   "source": "index",
+   "lines": 6,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "P8-17",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-18",
+   "source": "index",
+   "lines": 3,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-19",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P8-20",
+   "source": "index",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-01",
+   "source": "case",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-02",
+   "source": "case",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-03",
+   "source": "case",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-04",
+   "source": "case",
+   "lines": 7,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-05",
+   "source": "case",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-06",
+   "source": "case",
+   "lines": 7,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-07",
+   "source": "case",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-08",
+   "source": "case",
+   "lines": 5,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-09",
+   "source": "case",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-10",
+   "source": "case",
+   "lines": 6,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "P10-11",
+   "source": "case",
+   "lines": 5,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "P10-12",
+   "source": "case",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-13",
+   "source": "case",
+   "lines": 5,
+   "flagged": 1,
+   "invented_lines": 1
+  },
+  {
+   "id": "P10-14",
+   "source": "case",
+   "lines": 8,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-15",
+   "source": "case",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-16",
+   "source": "case",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-17",
+   "source": "case",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-18",
+   "source": "case",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-19",
+   "source": "case",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-20",
+   "source": "case",
+   "lines": 7,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-21",
+   "source": "case",
+   "lines": 6,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-22",
+   "source": "case",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-23",
+   "source": "case",
+   "lines": 4,
+   "flagged": 0,
+   "invented_lines": 0
+  },
+  {
+   "id": "P10-24",
+   "source": "case",
+   "lines": 9,
+   "flagged": 0,
+   "invented_lines": 0
+  }
+ ]
+}

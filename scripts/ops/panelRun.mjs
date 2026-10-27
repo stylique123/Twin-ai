@@ -30,6 +30,7 @@ import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 import { templateOf } from './templateOf.mjs'
 import { awaitChecked, backgroundPending, blueprintLoader } from './awaitChecked.mjs'
+import { realisticPlan, planSummary, realisticBody, realisticCostReport } from './realisticPanelPlan.mjs'
 
 export const PANEL_SKIP_ANSWER = 'Nothing specific, keep it general.'
 // A request's duration profile (templateData.ts DURATION_PROFILES) sets its target length.
@@ -175,6 +176,34 @@ export function armBody(accountsDoc, n, env = process.env) {
   return arm === 'plan_b' ? { plan_b: true, panel_arm: 'plan_b', ...refill } : { panel_arm: 'writer', ...refill }
 }
 
+/** THE QUALITY PROFILE ARMS (plan v6.8 §33): `quality_profile` on the private
+ * panel row, or env PANEL_QUALITY_PROFILE (env wins). One profile
+ * ('full_stack' | 'baseline_p10' | 'ablate:<LEVER>') runs every request on it;
+ * a list (array, or comma-separated) runs EVERY request once PER ARM, so the
+ * arms are compared on the SAME requests; 'paired' = baseline_p10,full_stack.
+ * Unknown names are dropped. No field = no body field (the edge default for
+ * test accounts is full_stack). Real creators never honour the field. */
+export const QUALITY_LEVER_NAMES = ['REFILL_V2', 'SPINE_COMPLETE', 'POLISH_REORDER', 'BEST_OF_N_JUDGE', 'HOOK_GATE_V2', 'POLISH_CHECK_V2', 'VOICE_BARE_LINES', 'QUALITY_CONTROLLER']
+export function qualityProfileName(v) {
+  const s = String(v ?? '').trim()
+  if (s === 'baseline_p10' || s === 'full_stack') return s
+  const m = /^ablate:([A-Za-z0-9_]+)$/.exec(s)
+  return m && QUALITY_LEVER_NAMES.includes(m[1].toUpperCase()) ? `ablate:${m[1].toUpperCase()}` : null
+}
+export function qualityArms(accountsDoc, env = process.env) {
+  const raw = env.PANEL_QUALITY_PROFILE || accountsDoc?.quality_profile
+  if (!raw) return []
+  const list = raw === 'paired' ? ['baseline_p10', 'full_stack'] : Array.isArray(raw) ? raw : String(raw).split(',')
+  return [...new Set(list.map(qualityProfileName).filter(Boolean))]
+}
+/** Request n of arm k is stored as n + k × this stride (script_batch_results.n), so arms never collide. */
+export const QUALITY_ARM_STRIDE = 1000
+/** One scenario per request per arm. A single arm keeps n; arm k > 0 is n + k × stride. `request_n` is the fixture index. */
+export function expandQualityArms(list, arms) {
+  if (!arms.length) return list
+  return arms.flatMap((arm, k) => list.map((sc) => ({ ...sc, n: sc.n + k * QUALITY_ARM_STRIDE, request_n: sc.n, quality_profile: arm })))
+}
+
 export function panelAnswerMode(env = process.env) {
   return env.PANEL_ANSWER_MODE === 'fixture' ? 'fixture' : 'skip'
 }
@@ -294,7 +323,10 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   const accounts = JSON.parse(row.content)
   const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'))
   const budget = Number(process.env.PANEL_BUDGET_USD || 2.5)
-  const list = panelScenarios(fixture, accounts, limit, filter)
+  const qArms = qualityArms(accounts)
+  const list = expandQualityArms(panelScenarios(fixture, accounts, limit, filter), qArms)
+  if (qArms.length) console.log(`panel ${batch}: quality arms ${qArms.join(' | ')}${qArms.length > 1 ? ` on the SAME ${list.length / qArms.length} requests (arm k stored at n + ${QUALITY_ARM_STRIDE}k)` : ''}`)
+  if (qArms.length && refillArm(accounts)) console.log(`::warning title=panel-arms::refill_arm is also set; an explicit refill_arm wins over the profile's refill on the edge`)
   if (filter.modes.length || filter.range) console.log(`panel ${batch}: subset modes=${filter.modes.join(',') || 'all'} range=${filter.range || 'all'} -> ${list.length} requests, est $${panelEstimate(list.length).toFixed(2)} at $${PANEL_EST_USD_PER_REQUEST}/request`)
   const mode = panelAnswerMode()
   const answersBy = new Map(fixture.creators.map((c) => [c.key, c.answers ?? {}]))
@@ -304,6 +336,14 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   if (refillArm(accounts)) console.log(`panel ${batch}: refill arm ${refillArm(accounts)}${refillArm(accounts) === 'alternate' ? ' (odd n baseline_p10, even n refill_v2)' : ' on every request'}`)
   if (panelArmsOn(accounts)) console.log(`panel ${batch}: arms plan_b=${list.filter((x) => panelArm(accounts, x.n) === 'plan_b').length} writer=${list.filter((x) => panelArm(accounts, x.n) === 'writer').length}`)
   console.log(`panel ${batch}: ${list.length} scenarios, ${done.size} already done, budget $${budget}`)
+  // ⚖️ REALISTIC MODE (plan v6.8 §34): COST_MODE=full turns the secondary stack on for these
+  // TEST accounts. The per-panel Apify + AI budget is printed first; over the cap, nothing runs.
+  const startedAt = new Date().toISOString()
+  const real = realisticPlan({ fixture, list })
+  if (real.decision.mode === 'full') {
+    console.log(`::notice title=panel-realistic-budget::${JSON.stringify(planSummary(real))}`)
+    if (!real.gate.ok) throw new Error(`panel: realistic budget refused (${real.gate.reason}): est $${real.budget.total_usd} vs PANEL_BUDGET_USD`)
+  }
   const clients = new Map()
   const spent = async () => {
     const { data: rs } = await admin.from('script_batch_results').select('generation_id').eq('batch', batch).gte('n', 0).not('generation_id', 'is', null)
@@ -325,7 +365,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     // Reference mode: the made-up reference is stored as this creator's transcripts row
     // (subject 'reference'); the edge reads it by transcript_id and never fetches the url.
     const refBody = sc.reference ? { transcript_id: await storeFictionalReference(admin, sc.owner_id, sc.reference) } : {}
-    let body = { ...sc.body, ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.n), idempotency_key: `${batch}-${sc.n}` }
+    let body = { ...sc.body, ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.request_n ?? sc.n), ...realisticBody(real, sc), ...(sc.quality_profile ? { quality_profile: sc.quality_profile } : {}), idempotency_key: `${batch}-${sc.n}` }
     const post = async () => {
       const t0 = Date.now()
       const res = await fetch(`${url}/functions/v1/generate-blueprint`, {
@@ -390,7 +430,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     await admin.from('script_batch_results').insert({
       batch, n: sc.n,
-      scenario: { group: 'panel', mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.n).refill_arm ?? null), word_budget: bp?.word_budget ?? null, body },
+      scenario: { group: 'panel', mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [
@@ -407,4 +447,8 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   console.log(`::notice title=panel-questions::${JSON.stringify(questionSummary(records))}`)
   const end = await spent()
   console.log(`::notice title=panel-cost::est $${end.usd.toFixed(3)} for ${end.scripts} scripts, $${(end.usd / Math.max(1, end.scripts)).toFixed(4)}/script (UNCONFIRMED prices)`)
+  if (real.decision.mode === 'full') {
+    const { data: rs } = await admin.from('script_batch_results').select('generation_id').eq('batch', batch).gte('n', 0).not('generation_id', 'is', null)
+    console.log(`::notice title=panel-realistic-cost::${JSON.stringify({ by_caller_model: await realisticCostReport(admin, (rs ?? []).map((r) => r.generation_id), startedAt), extras_use: real.ledger.report() })}`)
+  }
 }

@@ -31,8 +31,8 @@ describe('Q1: a typed, confirmed answer is her fact on the next plan', () => {
     expect(itemFromCreatorKnowledge({ ...row, id: 'x' })?.status).toBe('unconfirmed')
   })
   it('the angle plan lets a stated, confirmed answer through', () => {
-    expect(angleBlock()).toMatch(/it\.status === 'unconfirmed' && !answeredByHer\(r\)/)
-    expect(EDGE).toMatch(/function answeredByHer[\s\S]{0,200}r\.basis === 'stated'[\s\S]{0,120}creator_confirmed_at/)
+    // #1319's angleMaterialUsable carries the same rule (stated + confirmed is hers).
+    expect(angleBlock()).toMatch(/!angleMaterialUsable\(r, it\.status\)/)
   })
 })
 
@@ -44,7 +44,7 @@ describe('Q2: an answered key is never asked again', () => {
 
 describe('Q3: the answer is saved under her ready voice', () => {
   it('angle_answer passes a voice id, read from her ready brand voice', () => {
-    expect(angleBlock()).toMatch(/answerFactRow\(\{[^}]*voiceId: [^,]*readyVoiceId\(sb, user\.id\)/)
+    expect(EDGE).toMatch(/answerFactRow\(\{[^}]*voiceId: [^,]*readyVoiceId\(sb, user\.id\)/)
     expect(EDGE).toMatch(/async function readyVoiceId[\s\S]{0,300}\.eq\('status', 'ready'\)/)
   })
 })

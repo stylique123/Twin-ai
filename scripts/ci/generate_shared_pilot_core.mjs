@@ -39,6 +39,10 @@ const SOURCES = [
   // like every other generated file, and the module has no imports to rewrite.
   ['packages/shared/src/script/hookContract.ts', 'supabase/functions/_shared/hookContract.ts'],
   ['packages/shared/src/script/craftBeats.ts', 'supabase/functions/_shared/craftBeats.ts'],
+  // The beat writer (plan §33 item 6) and the beat budgets the QC shares.
+  ['packages/shared/src/script/beatBudgets.ts', 'supabase/functions/_shared/beatBudgets.ts'],
+  ['packages/shared/src/script/beatWriterMap.ts', 'supabase/functions/_shared/beatWriterMap.ts'],
+  ['packages/shared/src/script/beatPrompt.ts', 'supabase/functions/_shared/beatPrompt.ts'],
   ['packages/shared/src/script/emphasis.ts', 'supabase/functions/_shared/emphasis.ts'],
   ['packages/shared/src/script/beatAsk.ts', 'supabase/functions/_shared/beatAsk.ts'],
   ['packages/shared/src/script/shotLabel.ts', 'supabase/functions/_shared/shotLabel.ts'],
@@ -159,6 +163,8 @@ const SOURCES = [
   // The question engine (plan v7.1 §3): two questions about this request's gaps.
   ['packages/shared/src/script/questionEngine.ts', 'supabase/functions/_shared/questionEngine.ts'],
   ['packages/shared/src/script/questionLadder.ts', 'supabase/functions/_shared/questionLadder.ts'],
+  // Realistic panel mode (plan v6.8 §34): cost_mode, pain-map validation, page-read policy. Test/panel only.
+  ['packages/shared/src/script/realisticPanel.ts', 'supabase/functions/_shared/realisticPanel.ts'],
   // Showability inferred from the product itself (trial, in memory only).
   ['packages/shared/src/script/inferShowability.ts', 'supabase/functions/_shared/inferShowability.ts'],
   ['packages/shared/src/script/scriptFamily.ts', 'supabase/functions/_shared/scriptFamily.ts'],
@@ -176,6 +182,8 @@ const SOURCES = [
   ['packages/shared/src/script/outsideSelect.ts', 'supabase/functions/_shared/outsideSelect.ts'],
   // Release flags (owner rule): per-component stage, rollout and kill switch. Default S0 = today's trialOn.
   ['packages/shared/src/script/releaseFlags.ts', 'supabase/functions/_shared/releaseFlags.ts'],
+  // The canary switch (Fast Path v1 Track B): one server-side account allowlist + one kill switch.
+  ['packages/shared/src/script/canary.ts', 'supabase/functions/_shared/canary.ts'],
   // S1 shadow runner (pure part) and the rollback monitor's rules (docs/release/shadow-and-flags.md §3, §6).
   ['packages/shared/src/script/shadowRunner.ts', 'supabase/functions/_shared/shadowRunner.ts'],
   ['packages/shared/src/script/releaseMonitor.ts', 'supabase/functions/_shared/releaseMonitor.ts'],
@@ -291,6 +299,19 @@ const SOURCES = [
   ['packages/shared/src/creator/creatorTypeRules.json', 'supabase/functions/_shared/creatorTypeRulesData.ts'],
   ['packages/shared/src/creator/writerGuidance.ts', 'supabase/functions/_shared/writerGuidance.ts'],
   ['packages/shared/src/creator/nichePackRegistry.ts', 'supabase/functions/_shared/nichePackRegistry.ts'],
+  // ⚖️ THE QUALITY CONTROLLER (plan v6.8 §33) runs last, in the worker, after
+  // the gate and the polish; the edge holds the profile switch. The judge it
+  // uses for best-of-N is mirrored to the worker beside it.
+  ['packages/shared/src/script/qualityProfile.ts', 'supabase/functions/_shared/qualityProfile.ts'],
+  // Shared with the beat writer (#1338) and the A2 structure checks (#1339): copied identically.
+  ['packages/shared/src/script/beatBudgets.ts', 'supabase/functions/_shared/beatBudgets.ts'],
+  ['packages/shared/src/script/beatBudgets.ts', 'worker/src/generated/beatBudgets.ts'],
+  ['packages/shared/src/script/structureChecks.ts', 'supabase/functions/_shared/structureChecks.ts'],
+  ['packages/shared/src/script/structureChecks.ts', 'worker/src/generated/structureChecks.ts'],
+  ['packages/shared/src/script/planner/qualityController.ts', 'supabase/functions/_shared/qualityController.ts'],
+  ['packages/shared/src/script/hookJudge.ts', 'worker/src/generated/hookJudge.ts'],
+  ['packages/shared/src/script/craftJudge.ts', 'worker/src/generated/craftJudge.ts'],
+  ['packages/shared/src/script/planner/qualityController.ts', 'worker/src/generated/qualityController.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
@@ -318,6 +339,8 @@ const render = (from, src0, to = '') => {
     + `// Edit the source instead. CI regenerates this file and fails on a diff.\n`
     + src
       .replace(/from '\.\.\/assessed'/g, "from './assessed.js'")
+      // A planner/ source imports its parent's modules as `../x.js`; the worker copies are flat siblings.
+      .replace(/from\s+'\.\.\/([A-Za-z0-9_-]+)\.js'/g, (m, name) => (/\/(?:templates|planner|hooks)\//.test(from) ? `from './${name}.js'` : m))
       .replace(/(from\s+'\.\/[A-Za-z0-9_-]+)'/g, "$1.js'")
   }
   return `// GENERATED FROM ${from} — DO NOT EDIT.\n`

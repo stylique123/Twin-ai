@@ -71,7 +71,7 @@ import { decideBeatCameras } from '../_shared/beatCamera.ts'
 import { auditSoftwareClose } from '../_shared/softwareClose.ts'
 import { itemFromCreatorKnowledge, itemFromProductFact, slotCoverage, groupProductFactLines, kindReadiness, needCheck } from '../_shared/itemFormat.ts'
 import { pickAngleCards, angleCardsRecord, ANGLE_SPECS, pickAngles, anglePickRecord, type AngleMaterial } from '../_shared/angleFit.ts'
-import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, PROBLEM_QUESTION_KEY, type OutsideItem } from '../_shared/questionUsefulness.ts'
+import { usefulQuestions, candidatesFromNeedCheck, questionNecessity, questionUse, planQuestionsForAngle, questionPlanRecord, answerFactRow, painItemsFromMap, PROBLEM_QUESTION_KEY, angleMaterialUsable, type OutsideItem } from '../_shared/questionUsefulness.ts'
 import { inferShowability as inferShowabilityFromProduct } from '../_shared/inferShowability.ts'
 import { SCREEN_KINDS as SHOW_SCREEN_KINDS, enforceShowItBeat, applyCloseUpShots, productWords, trialSoftwareBlockExtends, trialSoftwareTarget,
   CLOSE_UP_SHOT_RULE, CLOSE_UP_SHOT_LIST_RULE } from '../_shared/showItBeat.ts'
@@ -92,7 +92,9 @@ import { asyncPolishOn, asyncDeadlineTimeout, isDeferredStep, runHedged, writerH
 import { bestOfNOn, pickEligible, checkCandidate, keepWriterOverPlanB, blueprintLines, BEST_OF_N_GRACE_MS, type BestOfNFlagCtx, type CandidateCheck } from '../_shared/craftJudge.ts'
 import { degradedBlueprint, writerTimeoutFallbackOn } from '../_shared/writerTimeout.ts'
 import { isPanelAccount, gateMeasureOnly, gateRepairTrialOn, gateModeLabel } from '../_shared/testAccount.ts'
+import { resolveCostMode, usablePainMap, painItemsForQuestions, buildRealisticContext, withRealisticContext, type PanelExtras, type RealisticContext } from '../_shared/realisticPanel.ts'
 import { COMPONENTS as RELEASE_COMPONENTS, componentOn, type Component as ReleaseComponent } from '../_shared/releaseFlags.ts'
+import { isCanaryAccount, trialSideDoorOpen } from '../_shared/canary.ts'
 import { loadReleaseRegistry, scheduleShadowRun, SHADOW_HEADER, SHADOW_OWNER_HEADER } from '../_shared/shadowRun.ts'
 import { readOnlyClient } from '../_shared/readOnlyClient.ts'
 // WRITER RAW (record only, test accounts; kill WRITER_RAW_RECORD=off) — see _shared/writerRaw.ts.
@@ -121,6 +123,8 @@ import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
 import { moveCtaLast, completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY, isProblemLine } from '../_shared/spineComplete.ts'
+import { resolveQualityProfile, qualityFlag, qualityLevers, qualityRefillArm, type QualityLever, type QualityProfile } from '../_shared/qualityProfile.ts'
+import { QC_STORY_KEY, QC_PRODUCT_KEY, qcProfileForSeconds, qcAnswersToStore, runQualityController, qcLogRecord } from '../_shared/qualityController.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -6739,8 +6743,11 @@ async function handle(req: Request): Promise<Response> {
   //   voice_card {action: 'edit', edits}    → her edits saved on brand_voices.profile.voice_card_edits
   // Edits only remove items or add never-says; an added phrase of hers is kept
   // only when it is verbatim in her own material. Logs: counts only.
+  // 🐤 Trial side doors (voice_card, check_line, using_item, angle_plan/answer):
+  // the heartbeat/panel test accounts AND the canary (CANARY_ACCOUNT_IDS, kill CANARY_KILL).
+  const sideDoorOpen = () => trialSideDoorOpen({ userId: user.id, heartbeatUserId: Deno.env.get('HEARTBEAT_USER_ID'), isPanel: isPanelAccount(user), canaryAccountsRaw: Deno.env.get('CANARY_ACCOUNT_IDS'), canaryKillRaw: Deno.env.get('CANARY_KILL') })
   if (specMode === 'voice_card') {
-    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    const testAccount = sideDoorOpen()
     if (!testAccount || String(Deno.env.get('VOICE_CARD_ENABLED') ?? '').trim().toLowerCase() === 'false') return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { action?: unknown; edits?: unknown }
@@ -6764,7 +6771,7 @@ async function handle(req: Request): Promise<Response> {
     return json({ card: card ? voiceCardView(card) : null, reason: built.reason, material: built.material, edits: savedEdits })
   }
   if (specMode === 'check_line') {
-    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    const testAccount = sideDoorOpen()
     if (!testAccount || !checkLineOn(Deno.env.get('CHECK_LINE_KILL'))) return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { generation_id?: unknown; line_index?: unknown; decision?: unknown; text?: unknown }
@@ -6827,7 +6834,7 @@ async function handle(req: Request): Promise<Response> {
   //       default voice); a stored fact is also switched off (creator_excluded_at).
   // Logs: ids, kinds and counts only, never her text.
   if (specMode === 'using_item') {
-    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    const testAccount = sideDoorOpen()
     if (!testAccount || Deno.env.get('USING_ITEM_KILL') === '1') return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { generation_id?: unknown; item?: unknown; action?: unknown }
@@ -6913,32 +6920,16 @@ async function handle(req: Request): Promise<Response> {
   // source_ref 'asked:mn:…'); a skip is recorded in question_asks
   // (option_id 'mn') and that key is never asked again. Logs: counts and ids.
   if (specMode === 'angle_plan' || specMode === 'angle_answer') {
-    const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
+    const testAccount = sideDoorOpen()
     if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
     const sb = createClient(supabaseUrl, serviceKey)
-    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown; door?: unknown; idea?: unknown }
+    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown; door?: unknown; idea?: unknown; cost_mode?: unknown; panel_pain_map?: unknown }
     const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
     if (specMode === 'angle_answer') {
       const key = String(b.key ?? '').slice(0, 160)
       const piece = String(b.piece ?? '').slice(0, 40)
       if (!/^mn:[a-z0-9:_-]+$/i.test(key) || !piece) return json({ error: 'key and piece are required' }, 400)
-      const herAnswer = b.skip === true || typeof b.answer !== 'string' ? '' : b.answer.trim().slice(0, 2000)
-      const gate = herAnswer ? gateAnswer(herAnswer, {}, { known: await knownForGate(sb, user.id) }) : null
-      const row = gate && gate.outcome !== 'filler' && gate.outcome !== 'direction'
-        ? answerFactRow({ ownerId: user.id, voiceId: gate ? await readyVoiceId(sb, user.id) : null, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
-      const outcome = !herAnswer || !row ? (gate ? 'filler' : 'skipped') : 'answered'
-      if (typeof b.ask_id === 'string' && /^[0-9a-f-]{36}$/.test(b.ask_id)) {
-        await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
-      } else {
-        await sb.from('question_asks').insert({ owner_id: user.id, entity_key: pid ? `product:${pid}` : 'none', option_id: 'mn', slot_id: key, angle: 'first', wording: '-', outcome })
-          .then(() => {}, () => {})
-      }
-      let saved = false
-      if (row) {
-        const { error } = await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true })
-        saved = !error || error.code === '23505'
-      }
-      console.log(JSON.stringify({ event: 'mn_answer', outcome, piece, saved }))
+      const { outcome, saved } = await storeAngleAnswer(sb, user, b, pid)
       return json({ ok: true, outcome, saved })
     }
     const [{ data: kRows }, { data: prod }, { data: hist }, { data: v }] = await Promise.all([
@@ -6954,9 +6945,9 @@ async function handle(req: Request): Promise<Response> {
     ])
     const material: AngleMaterial[] = []
     for (const r of (kRows ?? []) as Array<Record<string, unknown>>) {
-      if (r.sensitive === true) continue
       const it = itemFromCreatorKnowledge(r)
-      if (!it || (it.status === 'unconfirmed' && !answeredByHer(r))) continue
+      // Her typed-and-confirmed answers count (angleMaterialUsable); sensitive rows never do.
+      if (!it || !angleMaterialUsable(r, it.status)) continue
       material.push({ id: it.id, slot: it.slot_hint, text: it.text, source: r.product_entity_id ? 'product' : 'her_material' })
     }
     const p = prod as { id?: string; name?: unknown; knowledge?: unknown; offer?: unknown } | null
@@ -6971,7 +6962,12 @@ async function handle(req: Request): Promise<Response> {
       .map((m) => ({ id: String(m.id ?? m.text).slice(0, 40), text: m.text.replace(/^Viewers (asks?|requests?)\s*(?:about|for|:)?\s*/i, ''), origin: 'her_material' }))
     const painNiche = String(prof?.niche ?? '').trim()
     const painRes = painNiche ? await sb.from('audience_pain_map').select('id,niche,pain_sentence,status,origin,expiry').eq('status', 'active').limit(50).then((r) => r, () => ({ data: null })) : { data: null }
-    const painItems = painItemsFromMap((painRes as { data?: unknown[] | null }).data ?? [], painNiche, new Date().toISOString().slice(0, 10))
+    // ⚖️ REALISTIC PANEL MODE (plan v6.8 §34.2): this route is test-account only (above).
+    // With cost_mode 'full' a panel run may pass its own pain map (the FICTIONAL one for the
+    // test creators): validated here (topics/counts/links/dates; ≥5 threads, ≥2 communities,
+    // ≤90 days), used only as question seeds, never as proof or her experience.
+    const panelPain = usablePainMap(b.panel_pain_map, { decision: resolveCostMode({ account: 'test', requested: b.cost_mode }), today: new Date().toISOString().slice(0, 10), niche: painNiche })
+    const painItems = panelPain.entries.length ? painItemsForQuestions(panelPain) : painItemsFromMap((painRes as { data?: unknown[] | null }).data ?? [], painNiche, new Date().toISOString().slice(0, 10))
     const cards = pickAngles({ objective: b.objective, goal: b.goal, hasProduct: !!p, hasOffer: p ? !!offerText : undefined, material })
     const picked = typeof b.angle === 'string' && cards.some((c) => c.angle === b.angle) ? b.angle as keyof typeof ANGLE_SPECS : null
     let questions: Array<{ ask_id: string | null; key: string; piece: string; kind: string; source: string; text: string; skippable: true }> = []
@@ -7178,7 +7174,14 @@ async function handle(req: Request): Promise<Response> {
   // Paired test (owner 2026-10-06): the test account may switch the trial off
   // for one request (`trial_off: true`) so enforced and plain scripts are
   // compared from the same facts. Real creators never have the trial.
-  let trialOn = isHeartbeat
+  // 🐤 THE CANARY (Fast Path v1, Track B): ONE named real account (the owner's)
+  // gets exactly the test accounts' path. Server env only (CANARY_ACCOUNT_IDS),
+  // at most one id, kill switch CANARY_KILL=1 → the old flow for everyone.
+  // Its generations stay REAL data (is_heartbeat stays false). _shared/canary.ts.
+  const isCanary = !isHeartbeat && isCanaryAccount(user.id, Deno.env.get('CANARY_ACCOUNT_IDS'), Deno.env.get('CANARY_KILL'))
+  let trialOn = isHeartbeat || isCanary
+  // Realistic panel mode use report (counts only), recorded on the blueprint when set.
+  let realisticUse: RealisticContext | null = null
   // SOFTWARE (trial 2026-10-08): the ~25s target for app/software/course/community videos, set once the product is known.
   let softwareTargetSec: number | null = null
   const reqStartedAt = Date.now()
@@ -7211,6 +7214,17 @@ async function handle(req: Request): Promise<Response> {
   // story-hook dedupe off and no #1303 relevance filter. 'baseline_p10' = that
   // setup; 'refill_v2' = that setup + REFILL_V2, the only difference. REFILL V2
   // (trial, DEFAULT OFF): REFILL_V2=true turns it on for the trial, REFILL_V2=off kills it.
+  // ⚖️ THE QUALITY PROFILE (plan v6.8 §33; test and panel accounts ONLY):
+  // `quality_profile` = baseline_p10 | full_stack | ablate:<LEVER>, default
+  // full_stack. It sets REFILL_V2, SPINE_COMPLETE, POLISH_REORDER,
+  // BEST_OF_N_JUDGE (+ HOOK_GATE_V2, POLISH_CHECK_V2, VOICE_BARE_LINES once
+  // #1325/#1322 merge; OFF until then) and QUALITY_CONTROLLER as a group. A real
+  // creator gets null and every flag below reads the env exactly as before.
+  // Kill: QUALITY_PROFILE=off; an env 'off' on any one lever still wins.
+  let qualityProfileMemo: QualityProfile | null | undefined
+  const qualityProfile = (): QualityProfile | null => (qualityProfileMemo !== undefined ? qualityProfileMemo
+    : (qualityProfileMemo = resolveQualityProfile({ testAccount: isHeartbeat, requested: (body as { quality_profile?: unknown } | undefined)?.quality_profile, kill: Deno.env.get('QUALITY_PROFILE') })))
+  const qFlag = (l: QualityLever): string | undefined => qualityFlag(qualityProfile(), l, Deno.env.get(l))
   const refillArm = (): RefillArm | null => (isHeartbeat ? refillArmOf((body as { refill_arm?: unknown } | undefined)?.refill_arm) : null)
   const relevantRefillCtx = (): RefillContext | null => refillContextFor({ trialOn, arm: refillArm(), env: { RELEVANT_REFILL: Deno.env.get('RELEVANT_REFILL'), REFILL_V2: Deno.env.get('REFILL_V2') }, topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => x.trim()).join(' '), angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? ''), niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '), product: String((ownedEntity as { name?: unknown } | null)?.name ?? '') })
 
@@ -7263,6 +7277,15 @@ async function handle(req: Request): Promise<Response> {
   try {
     body = await req.json()
     if (isHeartbeat && (body as { trial_off?: unknown }).trial_off === true) trialOn = false
+    // QUALITY PROFILE → REFILL (test and panel accounts only; plan v6.8 §33): the
+    // profile's refill is applied as the request's refill arm, so the existing
+    // refill switch reads it unchanged. An explicit panel refill_arm wins.
+    // baseline_p10 → 'baseline_p10'; REFILL_V2 in effect → 'refill_v2'
+    // (REFILL_V2=off still kills it); ablate:REFILL_V2 → no arm (env decides).
+    if (isHeartbeat && qualityProfile() && refillArmOf((body as { refill_arm?: unknown }).refill_arm) == null) {
+      const qa = qualityRefillArm(qualityProfile(), null) ?? (qFlag('REFILL_V2') === 'true' ? 'refill_v2' : null)
+      if (qa) (body as { refill_arm?: unknown }).refill_arm = qa
+    }
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
@@ -7273,7 +7296,7 @@ async function handle(req: Request): Promise<Response> {
   // The registry is read only when RELEASE_REGISTRY_SOURCE=table (_shared/shadowRun.ts);
   // otherwise `releaseRegistry` is undefined and the default (S0) applies.
   // A shadow re-run serves the old path for everything except its one component.
-  const releaseAccount = { userId: user.id, isTestAccount: isHeartbeat, trialOff: isHeartbeat && !trialOn }
+  const releaseAccount = { userId: user.id, isTestAccount: isHeartbeat || isCanary, isCanary, trialOff: isHeartbeat && !trialOn }
   const releaseRegistry = isShadowRun ? undefined : await loadReleaseRegistry(adminRw, Deno.env)
   // Golden set (scripts/ops/goldenSet.mjs): a TEST account may send `release_off`
   // naming components to run on the old path for this request (the per-component
@@ -7704,13 +7727,6 @@ function objectiveProductIdInline(sourceRef: string, pickedId: string): string |
 
 /** "Nothing specific", "keep it general", "idk", "no": answered, but nothing to say. */
 /** A commercial claim heard in her videos that she has not confirmed (owner review, script D). */
-// ⚖️ ANSWERS MUST COUNT (plan v7.1 WP1, Q1). `answerFactRow` stores a non-story
-// answer as kind 'claim', and the item adapter calls every claim unconfirmed —
-// so a typed answer was saved, then skipped by the next angle plan, and the
-// same question came back. What she typed and confirmed is her fact.
-function answeredByHer(r: { source?: unknown; basis?: unknown; creator_confirmed_at?: unknown }): boolean {
-  return r.source === 'asked' && r.basis === 'stated' && typeof r.creator_confirmed_at === 'string' && r.creator_confirmed_at !== ''
-}
 // ⚖️ Q4: an angle answer (asked:mn:) she typed for THIS product's video.
 function answerForThisProduct(r: { source?: unknown; source_ref?: unknown; product_entity_id?: unknown }, productId: unknown): boolean {
   return r.source === 'asked' && String(r.source_ref ?? '').startsWith('asked:mn:')
@@ -7755,6 +7771,33 @@ function clipAtSentence(t: string, max = 240): string {
 }
 
 /** Her brand, her products and her stated facts: what she has already said is hers. */
+// ⚖️ THE ANGLE-ANSWER STORE (plan v5.1 M), one function for its two callers: the
+// angle_answer mode, and the Quality Controller's thin-material answer (plan
+// v6.8 §33, key 'mn:qc:*') arriving in a generate request's readiness_answers.
+// Same answer gate, same answerFactRow (source 'asked'), same question_asks row.
+async function storeAngleAnswer(sb: ReturnType<typeof createClient>, user: { id: string }, b: { key?: unknown; piece?: unknown; answer?: unknown; skip?: unknown; ask_id?: unknown }, pid: string | null): Promise<{ outcome: string; saved: boolean }> {
+      const key = String(b.key ?? '').slice(0, 160)
+      const piece = String(b.piece ?? '').slice(0, 40)
+      const herAnswer = b.skip === true || typeof b.answer !== 'string' ? '' : b.answer.trim().slice(0, 2000)
+      const gate = herAnswer ? gateAnswer(herAnswer, {}, { known: await knownForGate(sb, user.id) }) : null
+      const row = gate && gate.outcome !== 'filler' && gate.outcome !== 'direction'
+        ? answerFactRow({ ownerId: user.id, voiceId: gate ? await readyVoiceId(sb, user.id) : null, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
+      const outcome = !herAnswer || !row ? (gate ? 'filler' : 'skipped') : 'answered'
+      if (typeof b.ask_id === 'string' && /^[0-9a-f-]{36}$/.test(b.ask_id)) {
+        await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
+      } else {
+        await sb.from('question_asks').insert({ owner_id: user.id, entity_key: pid ? `product:${pid}` : 'none', option_id: 'mn', slot_id: key, angle: 'first', wording: '-', outcome })
+          .then(() => {}, () => {})
+      }
+      let saved = false
+      if (row) {
+        const { error } = await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true })
+        saved = !error || error.code === '23505'
+      }
+      console.log(JSON.stringify({ event: 'mn_answer', outcome, piece, saved }))
+      return { outcome, saved }
+}
+
 async function knownForGate(sb: ReturnType<typeof createClient>, ownerId: string): Promise<string> {
   const [{ data: br }, { data: en }, { data: kn }] = await Promise.all([
     sb.from('brands').select('name').eq('owner_id', ownerId),
@@ -12925,7 +12968,18 @@ This is the video's position. Every field below must serve it. If the reference'
       } catch { return '' }
     })() : ''
     const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
-    const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
+    // ⚖️ REALISTIC PANEL MODE (plan v6.8 §34): test/panel accounts only (isHeartbeat covers both,
+    // by identity). Real creators: the decision never applies, the block is empty and the brief
+    // is the same string, byte for byte (the retry brief too). Hooks and the reality check read the pain block.
+    const realisticReq = body as { cost_mode?: unknown; panel_pain_map?: unknown; panel_extras?: unknown }
+    const realisticDecision = resolveCostMode({ account: isHeartbeat ? 'test' : 'real', requested: realisticReq.cost_mode })
+    const realisticCtx = buildRealisticContext({
+      decision: realisticDecision,
+      pain: usablePainMap(realisticReq.panel_pain_map, { decision: realisticDecision, today: new Date().toISOString().slice(0, 10) }),
+      extras: realisticReq.panel_extras as PanelExtras | null,
+    })
+    realisticUse = realisticCtx
+    const buildWriterBrief = (hookRule: string) => withRealisticContext(`${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
 
@@ -12952,6 +13006,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include the cover frame shot, so the editor is never guessing. Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.
 - shot_list "shot" is the shot's NAME and it is what the creator reads as the heading on the card they are holding their phone against. Write what the shot IS, in three to six plain words — "Opening line, straight to camera", "The still for the thumbnail", "Close on your hands". NEVER write its position in the list: "1", "2", "Shot 3" are not names, and a card headed with a number tells the creator nothing about what to point the camera at.`
+    , realisticCtx)
     const userPrompt = buildWriterBrief(familyHookRule)
     // ⚖️ TEMPLATE RETRY FALLBACK: trial only, and only when a template block
     // was added. The retry gets today's brief, byte for byte without the block.
@@ -12959,7 +13014,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     writerDegradeOn = writerDeadline != null && (Deno.env.get('WRITER_DEGRADE') ?? 'on') !== 'off'
     asyncPolish = asyncPolishOn(trialOn, Deno.env.get('ASYNC_POLISH'))
     const deadlineFields = asyncPolish
-      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...(bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE')) ? { bestOfN: true, bestOfNCtx: {
+      ? { startedAt: reqStartedAt, async: true, hedge: writerHedgeOn(asyncPolish, Deno.env.get('WRITER_HEDGE')), ...((qualityProfile() ? bestOfNOn(isHeartbeat && trialOn, qFlag('BEST_OF_N_JUDGE')) : bestOfNOn(isHeartbeat && trialOn, Deno.env.get('BEST_OF_N_JUDGE'))) ? { bestOfN: true, bestOfNCtx: {
           items: templateLedger, products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })),
           v2: Deno.env.get('TARGETED_FLAGS_V2') !== 'false', wrongProduct: Deno.env.get('WRONG_PRODUCT_BLOCK') !== 'false' } } : {}) }
       : writerDeadline != null ? { startedAt: writerDeadline, degrade: writerDegradeOn } : {}
@@ -17636,6 +17691,23 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     const panelArmReq = (body as { panel_arm?: unknown }).panel_arm
     if (isHeartbeat && (panelArmReq === 'writer' || panelArmReq === 'plan_b') && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).panel_arm = panelArmReq
     if (refillArm() && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).refill_arm = refillArm()
+    // The quality profile in effect (test accounts only): profile name and lever names, no text.
+    if (qualityProfile() && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).quality_profile = qualityLevers(qualityProfile()!, Object.fromEntries((['REFILL_V2', 'SPINE_COMPLETE', 'POLISH_REORDER', 'BEST_OF_N_JUDGE', 'HOOK_GATE_V2', 'POLISH_CHECK_V2', 'VOICE_BARE_LINES', 'QUALITY_CONTROLLER'] as QualityLever[]).map((l) => [l, Deno.env.get(l)])))
+    // QC THIN-MATERIAL ANSWERS (plan v6.8 §33; test and panel accounts only):
+    // her answer to the QC's one question is saved through the EXISTING
+    // angle-answer store (storeAngleAnswer: answer gate, answerFactRow, source
+    // 'asked'), so the next request's ledger carries it as her fact.
+    if (qualityProfile()) {
+      for (const qa of qcAnswersToStore(body.readiness_answers as Record<string, unknown> | undefined)) {
+        try {
+          const pidQ = qa.product && (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const r = await storeAngleAnswer(admin, user, { key: qa.key, piece: qa.piece, answer: qa.answer }, pidQ)
+          console.log(JSON.stringify({ event: 'qc_answer_stored', piece: qa.piece, outcome: r.outcome, saved: r.saved }))
+        } catch { /* storing her answer never fails a build */ }
+      }
+    }
+    if (isHeartbeat && realisticUse?.block && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).realistic_use = realisticUse.used
+    let planBShipped = false
     const planBTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
     if (planBOn && planBTarget && blueprint && typeof blueprint === 'object') {
       try {
@@ -17680,6 +17752,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             console.log(JSON.stringify({ event: 'best_of_n', ...writerLadderForFailure!.bestOfNRecord }))
           }
           if (!keepWriter) {
+          planBShipped = true
           bpb2.script = out.script
           if (out.script[0]?.line) bpb2.hook_options = [out.script[0].line]
           if (Array.isArray(bpb2.shot_list)) bpb2.shot_list = syncShotListSpokenText(bpb2.shot_list as Array<{ spoken_text?: unknown }>, bpb2.script as unknown[]).shots
@@ -17705,7 +17778,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // problem/reality line is there, her on-topic problem item is placed after
     // the hook VERBATIM (never an invented line); exactly one CTA ends the
     // script (extras dropped, her offer appended when none). Never adds a claim.
-    if (spineCompleteOn(trialOn, isHeartbeat, Deno.env.get('SPINE_COMPLETE')) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+    if ((qualityProfile() ? spineCompleteOn(trialOn, isHeartbeat, qFlag('SPINE_COMPLETE')) : spineCompleteOn(trialOn, isHeartbeat, Deno.env.get('SPINE_COMPLETE'))) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       try {
         const bps = blueprint as Record<string, unknown>
         const tgtS = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
@@ -17805,15 +17878,63 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
-        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }
+        ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(qualityProfile() ? (polishReorderOn(trialOn, isHeartbeat, qFlag('POLISH_REORDER')) ? { reorder: true } : {}) : { ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }) }
         // The hedge's extra cost, visible on the row (counts only).
         if (writerLadderForFailure?.bestOfNRecord) bpg.best_of_n = writerLadderForFailure.bestOfNRecord
         if (writerLadderForFailure?.hedgeCalls != null) bpg.writer_hedge = { calls: writerLadderForFailure.hedgeCalls, hedged: writerLadderForFailure.hedged === true, aborted: writerLadderForFailure.hedgeAborted ?? 0 }
         bpg.polish_pending = { steps: polishDeferred.length ? [...polishDeferred] : ['self_review'], at: new Date().toISOString() }
         console.log(JSON.stringify({ event: 'async_polish_queued', deferred: polishDeferred.length, elapsed_ms: Date.now() - reqStartedAt }))
       }
+      // ⚖️ THE QUALITY CONTROLLER (plan v6.8 §33; lever QUALITY_CONTROLLER of the
+      // quality profile, test and panel accounts only): the worker runs it LAST,
+      // after the polish and the gate. Ids and the request's topic words only.
+      if (qFlag('QUALITY_CONTROLLER') === 'on') {
+        const answeredQ = [QC_STORY_KEY, QC_PRODUCT_KEY].filter((k) => typeof (body.readiness_answers as Record<string, unknown> | undefined)?.[k] === 'string')
+        ;(inventionRecheck.ledger as Record<string, unknown>).quality_controller = {
+          profile: qcProfileForSeconds(body.target_seconds),
+          topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => String(x ?? '').trim()).join(' ').slice(0, 300),
+          angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? '').slice(0, 200),
+          niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '),
+          product: String((ownedEntity as { name?: unknown } | null)?.name ?? ''),
+          plan_b: planBShipped,
+          goal: String((body as { goal?: unknown }).goal ?? '').slice(0, 40),
+          answered: answeredQ,
+        }
+      }
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
+    }
+    // ⚖️ QC WITH THE GATE OFF (plan v6.8 §33; full_stack on a test or panel
+    // account only). The gate job is also where the polish runs, so with the
+    // gate off there is no later stage: the QC runs here, last, on the edge.
+    // Same pure function as the worker; on any error the script stands.
+    else if (qualityProfile() === 'full_stack' && qFlag('QUALITY_CONTROLLER') === 'on' && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bpq = blueprint as Record<string, unknown>
+        const tgtQ = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+        const ledgerQ = buildInventionLedger({
+          knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: tgtQ, offer: typeof readyOffer === 'string' ? readyOffer : '', outside: [], now: Date.now(),
+        })
+        const qc = runQualityController({
+          script: bpq.script as Array<Record<string, unknown>>, ledger: ledgerQ, targetProductId: tgtQ, profile: qcProfileForSeconds(body.target_seconds),
+          topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => String(x ?? '').trim()).join(' '),
+          angle: String((body.readiness_answers as { angle?: unknown } | undefined)?.angle ?? ''),
+          niche: [(voice?.profile as { niche?: unknown } | null)?.niche, (voice?.profile as { sub_niche?: unknown } | null)?.sub_niche].filter((x) => typeof x === 'string' && x.trim()).join(' '),
+          product: String((ownedEntity as { name?: unknown } | null)?.name ?? ''), goal: String((body as { goal?: unknown }).goal ?? ''),
+          flagCtx: { items: ledgerQ, products: ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).filter((p) => p?.id).map((p) => ({ id: String(p.id), name: String(p.name ?? '') })), v2: true, wrongProduct: true },
+          planB: planBShipped,
+          answered: [QC_STORY_KEY, QC_PRODUCT_KEY].filter((k) => typeof (body.readiness_answers as Record<string, unknown> | undefined)?.[k] === 'string'),
+        })
+        if (qc.changed) {
+          bpq.script = qc.script
+          if (Array.isArray(bpq.shot_list)) bpq.shot_list = syncShotListSpokenText(bpq.shot_list as Array<{ spoken_text?: unknown }>, bpq.script as unknown[]).shots
+        }
+        if (qc.question) bpq.gate_questions = mergeQuestions(Array.isArray(bpq.gate_questions) ? (bpq.gate_questions as Array<{ text?: unknown; writes_to?: unknown }>) : [], [qc.question])
+        bpq.qc_report = qc.report
+        console.log(JSON.stringify({ event: 'quality_controller', where: 'edge', changed: qc.changed, ...qcLogRecord(qc.report) }))
+      } catch { /* the QC never fails a build */ }
     }
     // ⚖️ WHAT THE WRITER WAS SHOWN, ON EVERY GENERATION (owner, 13 Oct).
     // creator_knowledge_uses records her stored items (and records nothing when
@@ -17894,6 +18015,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           ...(blueprint as Record<string, unknown>),
           ...(referenceScopeNote ? { reference_scope_note: referenceScopeNote } : {}),
           ...(writerRaw ? { writer_raw: writerRaw } : {}),
+          // 🐤 Canary tag: the daily error and cost report finds canary scripts by it.
+          ...(isCanary ? { canary: true } : {}),
           // The voice card this script was written and cleaned against, and how
           // well the shipped lines match it (0-100, deterministic).
           ...(voiceCard ? (() => {
