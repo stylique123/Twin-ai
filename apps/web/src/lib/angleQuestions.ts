@@ -15,7 +15,7 @@ export interface AnglePlan { disabled: boolean; cards: AngleCardView[]; question
 
 const OFF: AnglePlan = { disabled: true, cards: [], questions: [] }
 
-export async function loadAnglePlan(input: { objective?: string; goal?: string; product_id?: string; angle?: string }): Promise<AnglePlan> {
+export async function loadAnglePlan(input: { objective?: string; goal?: string; product_id?: string; angle?: string; door?: string; idea?: string }): Promise<AnglePlan> {
   try {
     const { data, error } = await supabase.functions.invoke('generate-blueprint', { body: { mode: 'angle_plan', ...input } })
     if (error || !data || (data as { disabled?: unknown }).disabled === true) return OFF

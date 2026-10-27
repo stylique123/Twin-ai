@@ -1,0 +1,154 @@
+{
+  "schema_version": 2,
+  "entries": [
+    {
+      "id": "fictional-coach-landing",
+      "file": "fictional-coach-landing.html",
+      "kind": "service",
+      "creator_type": "coach",
+      "fictional": true,
+      "expected": {
+        "title": "Steady Start Coaching (fictional)",
+        "h1": "Five habits for a calmer & steadier week",
+        "cta_texts": [
+          "Book a free call"
+        ]
+      }
+    },
+    {
+      "id": "fictional-bakery-local",
+      "file": "fictional-bakery-local.html",
+      "kind": "physical",
+      "creator_type": "local_business",
+      "fictional": true,
+      "expected": {
+        "h1": "Fresh loaves every morning on Example Street",
+        "meta_description": "Invented neighbourhood bakery page for audit tests.",
+        "cta_texts": [
+          "Order for pickup",
+          "Plan your visit"
+        ]
+      }
+    },
+    {
+      "id": "fictional-ceramic-mug",
+      "file": "fictional-ceramic-mug.html",
+      "kind": "physical",
+      "creator_type": "maker",
+      "fictional": true,
+      "expected": {
+        "title": "Glazewell Studio (fictional)",
+        "h1": "The speckled morning mug, thrown by hand",
+        "price": "$34",
+        "cta_texts": [
+          "Add to basket"
+        ]
+      }
+    },
+    {
+      "id": "fictional-recipe-ebook",
+      "file": "fictional-recipe-ebook.html",
+      "kind": "digital",
+      "creator_type": "educator",
+      "fictional": true,
+      "expected": {
+        "title": "Weeknight Pantry (fictional)",
+        "h1": "Thirty dinners from ten pantry staples",
+        "price": "$12",
+        "cta_texts": [
+          "Download the book"
+        ]
+      }
+    },
+    {
+      "id": "fictional-planner-templates",
+      "file": "fictional-planner-templates.html",
+      "kind": "digital",
+      "creator_type": "maker",
+      "fictional": true,
+      "expected": {
+        "title": "Tidy Grid Templates (fictional)",
+        "h1": "Printable planner pages for a slower week",
+        "price": "$8",
+        "cta_texts": [
+          "Get the templates"
+        ]
+      }
+    },
+    {
+      "id": "fictional-invoice-app",
+      "file": "fictional-invoice-app.html",
+      "kind": "software",
+      "creator_type": "maker",
+      "fictional": true,
+      "expected": {
+        "title": "Ledgerleaf (fictional)",
+        "h1": "Send an invoice in under a minute",
+        "price": "$9",
+        "cta_texts": [
+          "Start free trial"
+        ]
+      }
+    },
+    {
+      "id": "fictional-habit-tracker",
+      "file": "fictional-habit-tracker.html",
+      "kind": "software",
+      "creator_type": "educator",
+      "fictional": true,
+      "expected": {
+        "title": "Streakbird (fictional)",
+        "h1": "A habit tracker that forgives missed days",
+        "price": "$4",
+        "cta_texts": [
+          "Try it free"
+        ]
+      }
+    },
+    {
+      "id": "fictional-dog-grooming",
+      "file": "fictional-dog-grooming.html",
+      "kind": "service",
+      "creator_type": "local_business",
+      "fictional": true,
+      "expected": {
+        "title": "Muddy Paws Grooming (fictional)",
+        "h1": "Gentle grooming for nervous dogs",
+        "price": "$45",
+        "cta_texts": [
+          "Book a groom"
+        ]
+      }
+    },
+    {
+      "id": "fictional-watercolour-course",
+      "file": "fictional-watercolour-course.html",
+      "kind": "course",
+      "creator_type": "educator",
+      "fictional": true,
+      "expected": {
+        "title": "Loose Wash Academy (fictional)",
+        "h1": "Learn loose watercolour in six weeks",
+        "price": "$89",
+        "cta_texts": [
+          "Enrol now"
+        ]
+      }
+    },
+    {
+      "id": "fictional-sourdough-course",
+      "file": "fictional-sourdough-course.html",
+      "kind": "course",
+      "creator_type": "coach",
+      "fictional": true,
+      "expected": {
+        "title": "Starter to Loaf (fictional)",
+        "h1": "Your first open-crumb loaf in four lessons",
+        "price": "$59",
+        "cta_texts": [
+          "Join the course"
+        ]
+      }
+    }
+  ]
+}

@@ -15,7 +15,10 @@ describe('the writer retry drops the template block', () => {
   it('builds the retry brief from the plain hook rule, not the one carrying the template block', () => {
     expect(EDGE).toMatch(/const familyHookRulePlain = renderFamilyHookRule\(family, trialOn \? \{ examples: false \} : \{\}\)\n/)
     // The retry keeps the hook-candidate block (panel-current-5) but never the template block.
-    expect(EDGE).toMatch(/const familyHookRuleRetry = familyHookRulePlain \+ \(hookCandidateBlock \? `\\n\\n\$\{hookCandidateBlock\}` : ''\)\n/)
+    // Plan v7.1 S4: the retry now keeps the short spine block too; it still
+    // carries no template skeleton (asserted below on the brief itself).
+    expect(EDGE).toMatch(/const familyHookRuleRetry = familyHookRulePlain \+ \(spinePlanBlock \? `\\n\\n\$\{spinePlanBlock\}` : ''\) \+ \(hookCandidateBlock \? `\\n\\n\$\{hookCandidateBlock\}` : ''\)\n/)
+    expect(EDGE).not.toMatch(/const familyHookRuleRetry = [^\n]*renderTemplate/)
     expect(EDGE).toMatch(/const familyHookRule = familyHookRulePlain \+ \(templatePlan \? `\\n\\n\$\{renderTemplate(?:Block|Skeleton)\(/)
     expect(EDGE).toMatch(/const userPrompt = buildWriterBrief\(familyHookRule\)/)
     expect(EDGE).toMatch(/retryPrompt: buildWriterBrief\(familyHookRuleRetry\)/)

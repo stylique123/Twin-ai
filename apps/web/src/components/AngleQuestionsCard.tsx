@@ -14,9 +14,12 @@ export function AngleQuestionsCard(props: {
   goal?: string
   objective?: string
   productId?: string
+  /** Plan v7.1 §3: the door and what she typed, so the questions fit this request. */
+  door?: string
+  idea?: string
   onAnswers: (answers: Record<string, string>) => void
 }) {
-  const { goal, objective, productId, onAnswers } = props
+  const { goal, objective, productId, door, idea, onAnswers } = props
   const [cards, setCards] = useState<AngleCardView[]>([])
   const [picked, setPicked] = useState<string | null>(null)
   const [questions, setQuestions] = useState<AngleQuestionView[]>([])
@@ -36,9 +39,9 @@ export function AngleQuestionsCard(props: {
   useEffect(() => {
     if (!picked) return
     let live = true
-    loadAnglePlan({ goal, objective, product_id: productId, angle: picked }).then((p) => { if (live) setQuestions(p.questions) })
+    loadAnglePlan({ goal, objective, product_id: productId, angle: picked, door, idea }).then((p) => { if (live) setQuestions(p.questions) })
     return () => { live = false }
-  }, [picked, goal, objective, productId])
+  }, [picked, goal, objective, productId, door, idea])
 
   useEffect(() => { onAnswers(answers) }, [answers, onAnswers])
 

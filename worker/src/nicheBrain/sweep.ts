@@ -15,6 +15,7 @@ import {
 import { runMomentWatcher } from './moments.js'
 import { runNicheResearch } from './nicheResearch.js'
 import { runNicheReddit } from './nicheReddit.js'
+import { runRedditScanV2Job } from './redditScanV2Job.js'
 import { isPrivate } from '../generated/privacyGuard.js'
 import { runIdeaWriter } from './ideas.js'
 import { runCorrectionApplier, runLessonLearner } from './lessons.js'
@@ -161,6 +162,8 @@ export function kickBrainSweep(log: Log): void {
     await step('moments', runMomentWatcher)
     await step('niche_research', runNicheResearch)
     await step('niche_reddit', runNicheReddit)
+    // Plan v7.1 WP5: the pain-map scan. OFF unless REDDIT_SCAN_V2=true.
+    await step('reddit_scan_v2', runRedditScanV2Job)
     await step('ideas', runIdeaWriter)
     await step('availability', runAvailabilitySweep)
     await step('shape', runShapeSweep)

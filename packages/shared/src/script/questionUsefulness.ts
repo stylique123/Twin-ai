@@ -6,7 +6,7 @@
 // or scarcity. Skip always works. Pure; records carry ids and counts, no text.
 
 import type { Slot } from './itemFormat.js'
-import { nextBeat, ladderTemplate, validateLadderQuestion, isDuplicateQuestion, LADDER, type LadderLevel } from './questionLadder.js'
+import { nextBeat, ladderTemplate, validateLadderQuestion, isDuplicateQuestion, LADDER, angleTemplate, type LadderLevel, type AngleKind } from './questionLadder.js'
 
 export type QuestionKind = 'story' | 'product_slot' | 'niche' | 'profile'
 const RANK: Record<QuestionKind, number> = { story: 0, product_slot: 1, niche: 2, profile: 3 }
@@ -153,6 +153,22 @@ export interface OutsideItem { id: string; text: string; origin?: string }
  * (e.g. automated Reddit items, Tier 2, OFF) yields nothing. Missing or empty
  * table → [] — that is fine.
  */
+/**
+ * Plan v7.1 WP5: the scan stores a niche KEY ("home coffee", "home-coffee"),
+ * her profile says it in her words ("Home coffee & roasting"). Exact equality
+ * matched neither, so her pains never reached her questions. Same niche when
+ * the normalised forms are equal, one contains the other, or they share a
+ * specific word (5+ letters).
+ */
+export function nicheMatches(a: string, b: string): boolean {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const x = norm(a); const y = norm(b)
+  if (!x || !y) return false
+  if (x === y || x.includes(y) || y.includes(x)) return true
+  const wy = new Set(y.split(' ').filter((w) => w.length >= 5))
+  return x.split(' ').some((w) => w.length >= 5 && wy.has(w))
+}
+
 export function painItemsFromMap(rows: readonly unknown[] | null | undefined, niche: string, today: string): OutsideItem[] {
   const n = niche.trim().toLowerCase()
   if (!n) return []
@@ -161,7 +177,7 @@ export function painItemsFromMap(rows: readonly unknown[] | null | undefined, ni
     const x = r as { id?: unknown; niche?: unknown; pain_sentence?: unknown; status?: unknown; origin?: unknown; expiry?: unknown }
     if (!x || x.origin !== 'audience_pain' || x.status !== 'active') continue
     if (typeof x.pain_sentence !== 'string' || !x.pain_sentence.trim()) continue
-    if (String(x.niche ?? '').trim().toLowerCase() !== n) continue
+    if (!nicheMatches(String(x.niche ?? ''), n)) continue
     if (typeof x.expiry === 'string' && x.expiry < today) continue
     out.push({ id: String(x.id ?? x.pain_sentence).slice(0, 40), text: x.pain_sentence.trim(), origin: 'audience_pain' })
     if (out.length === 3) break
@@ -204,6 +220,12 @@ export interface QuestionPlanInput {
    * Asked only when no problem line is on file and she has not skipped it.
    */
   problem?: { on: boolean; onFile: boolean }
+  /**
+   * ANGLE_TEMPLATES (default OFF, test and panel accounts only): word her
+   * missing-slot question with the picked angle's template (questionLadder
+   * angleTemplate) about this topic. Absent = today's slot wording.
+   */
+  angleWording?: { topic: string }
 }
 
 /** Key and wording of the pre-writing problem question (same words as spineComplete's MISSING_PROBLEM_QUESTION). */
@@ -227,6 +249,26 @@ const HER_SLOT_TEXT: Partial<Record<Slot, string>> = {
   objection: 'Is there a question people ask you about this? If so, what is it?',
   context: 'Is there a common belief about this you would want to correct?',
 }
+/** Which of her slots each angle template words, and with which template slot. */
+const ANGLE_TEMPLATE_SLOT: Partial<Record<AngleKind, Partial<Record<Slot, string>>>> = {
+  myth: { stance: 'truth', context: 'assumption' },
+  answer: { objection: '' },
+  stand: { stance: '' },
+  behind: { process: '' },
+  beforeafter: { proof: '' },
+  // 'offer' is left out: its template names a product detail ("roast") that
+  // is not hers, which the add-nothing rule forbids. 'moment' and 'show' have none.
+}
+
+/** The angle's own wording for her slot, or null to keep the slot text. */
+export function angleSlotText(angle: string, slot: Slot, topic: string | undefined): string | null {
+  const t = (topic ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
+  const m = ANGLE_TEMPLATE_SLOT[angle as AngleKind]
+  if (!t || !m || !(slot in m)) return null
+  const text = angleTemplate(angle as AngleKind, m[slot]!, t)
+  return text && !questionBreaksRules(text) ? text : null
+}
+
 const short = (t: string): string => {
   const s = t.replace(/\s+/g, ' ').trim()
   return s.length > 90 ? `${s.slice(0, 87).replace(/\s+\S*$/, '')}…` : s
@@ -280,7 +322,7 @@ export function questionCandidates(i: QuestionPlanInput): PlanQuestion[] {
     if (s === 'story' && lad) continue
     if (s === 'story') q('mn:story', 'story', 'her_material', 'story', HER_SLOT_TEXT.story!)
     else if (i.hasProduct && PRODUCT_SLOT_TEXT[s]) q(`mn:${ek}:${s}`, 'product_slot', 'product', s, PRODUCT_SLOT_TEXT[s]!)
-    else if (HER_SLOT_TEXT[s]) q(`mn:her:${s}`, 'niche', 'her_material', s, HER_SLOT_TEXT[s]!)
+    else if (HER_SLOT_TEXT[s]) q(`mn:her:${s}`, 'niche', 'her_material', s, (i.angleWording && angleSlotText(i.angle, s, i.angleWording.topic)) || HER_SLOT_TEXT[s]!)
   }
   // Outside sources answer a missing slot with her own experience of it.
   if (missing.includes('objection') || missing.includes('context')) {

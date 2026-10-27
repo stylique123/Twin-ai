@@ -70,3 +70,6 @@ assert.equal(old.questions_asked, 1)
 assert.equal(old.question_use.answered, 0)
 
 console.log('panelAnswers selftest ok')
+
+// Plan v7.1 WP12: the angle loop's self-test rides this CI step.
+await import('./panelAngleLoop.selftest.mjs')

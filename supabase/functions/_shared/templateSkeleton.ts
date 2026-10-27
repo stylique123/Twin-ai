@@ -38,6 +38,11 @@ export function skeletonLines(plan: TemplatePlan, ledger: readonly LedgerItem[])
   return out
 }
 
+const ROLE_PURPOSE: Record<string, string> = {
+  hook: 'stop the scroll', promise: 'why stay', build: 'one new piece', turn: 'the change',
+  anchor: 'her proof', offer: 'confirmed facts', close: 'one CTA, last',
+}
+
 /** The short writer brief: a numbered skeleton to polish, the hook shapes, the budget, the count. */
 export function renderTemplateSkeleton(plan: TemplatePlan, profile: DurationProfile, ledger: readonly LedgerItem[]): string {
   const t = plan.template
@@ -48,6 +53,14 @@ export function renderTemplateSkeleton(plan: TemplatePlan, profile: DurationProf
     ...lines.map((l, i) => `${i + 1}. ${l.role}: ${l.text}`),
   ]
   if (t.promise.kind === 'count' && builds > 0) out.push(`Hook promises exactly ${builds}; number the build lines out loud.`)
+  // ⚖️ Plan v7.1 S2/S3: the skeleton named roles but not what each is FOR, and
+  // none of the 13 templates had a re-hook. Each role used gets its purpose;
+  // past Sprint, one re-hook line is asked for before the offer or close. It
+  // re-uses a specific already in the lines above, so "add none" still holds.
+  const used = [...new Set(lines.map((l) => l.role))]
+  out.push(`Roles: ${used.map((r) => `${r} = ${ROLE_PURPOSE[r] ?? r}`).join('; ')}.`)
+  const rehook = profile !== 'sprint' && lines.length >= 4 ? ' Before offer/close add ONE rehook line reusing a specific above, no new fact.' : ''
+  out.push(`Each line pulls into the next.${rehook}`)
   out.push(`Hook shapes (hook_moves): ${t.hook_shapes.map((id) => `${id} (${HOOK_MOVES[id]?.how ?? id})`).join('; ')}.`)
   return out.join('\n')
 }

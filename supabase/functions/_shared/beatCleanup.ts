@@ -66,7 +66,11 @@ export function cleanBeats<T extends { line?: unknown }>(beats: readonly T[], go
   // middle beat that is only a bridge phrase, with nothing after it, is dropped.
   const STANDALONE = /^\s*(?:and |so |but )?(?:this is|here is|here'?s|that'?s) (?:where|when|how|what|why|the part|the moment)\b[^.!?]{0,40}[.!]?\s*$/i
   const standalone = (l: unknown) => typeof l === 'string' && (STANDALONE.test(l) || (BRIDGE.test(l) && l.replace(BRIDGE, '').replace(/[\s.!,—–-]+/g, '') === ''))
-  const kept = out.filter((b, i) => i === 0 || i === out.length - 1 || !standalone(b.line))
+  // ⚖️ Plan v7.1 S6: a beat labelled re-hook is never deleted here, even when
+  // it reads as a bare bridge: the teleprompter and the structure checks need
+  // the beat, and the QC repairs a thin one from her material instead.
+  const isRehook = (b: T) => /re-?hook/i.test(String((b as { section?: unknown; role?: unknown }).section ?? (b as { role?: unknown }).role ?? ''))
+  const kept = out.filter((b, i) => i === 0 || i === out.length - 1 || isRehook(b) || !standalone(b.line))
   if (kept.length !== out.length && kept.length >= 3) { changed += out.length - kept.length; out = kept }
   const follow = goal === 'followers' || goal === 'follow'
   if (!follow && out.length > 2) {

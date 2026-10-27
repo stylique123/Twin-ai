@@ -262,3 +262,17 @@ export function reorderCheck(before: readonly SpineBeat[], after: readonly Spine
   if (before.some((b) => isCtaLine(spokenText(b))) && !isCtaLine(last)) return { ok: false, reason: 'cta_not_last' }
   return { ok: true, reason: null }
 }
+
+/**
+ * Plan v7.1 S7: the call to action is the LAST line. Pure reorder: the last
+ * CTA line (by `isCtaLine`, or section 'cta') moves to the end; nothing is
+ * added or dropped. Returns the same array when already in order.
+ */
+export function moveCtaLast<T extends SpineBeat>(script: readonly T[]): { script: T[]; moved: boolean } {
+  const isCta = (b: T) => /^cta$/i.test(String(b.section ?? '')) || isCtaLine(String(b.line ?? ''))
+  let idx = -1
+  for (let i = script.length - 1; i >= 0; i--) if (isCta(script[i]!)) { idx = i; break }
+  if (idx < 0 || idx === script.length - 1 || script.length < 3) return { script: [...script], moved: false }
+  const out = [...script.slice(0, idx), ...script.slice(idx + 1), script[idx]!]
+  return { script: out, moved: true }
+}

@@ -79,6 +79,16 @@ export const SCREEN_DIRECTIONS: readonly DirectionOption[] = [
   { id: 'cut_face_screen_face', does: 'Cut face → screen → face', bestFor: 'Keeps a UGC feel; stops it becoming a flat screencast.' },
 ]
 
+/**
+ * Plan v7.1: a screen product with no section map still gets a REAL screen cue.
+ * These name no page, button or section (that would be the invention the gate
+ * below prevents): she films her own screen doing the step she is saying.
+ */
+export const GENERIC_SCREEN_DIRECTIONS: readonly DirectionOption[] = [
+  { id: 'film_your_screen', does: 'Point the back camera at your own phone or laptop screen and do the step you are saying, thumb or cursor visible', bestFor: 'Any "here is how it works" line, without naming a screen nobody confirmed.' },
+  { id: 'cut_face_screen_face', does: 'Cut face → screen → face', bestFor: 'Keeps a UGC feel; stops it becoming a flat screencast.' },
+]
+
 /** No product in shot at all. The ONLY set available when nothing can be shown.
  *  ⚠️ THIS LIST IS WHY THE GLASS OF WATER CANNOT COME BACK: a service beat now
  *  has real options, so the model is not choosing between inventing a prop and
@@ -243,6 +253,19 @@ export function directionsFor(ctx: DirectionContext): DirectionSet {
   }
 
   const onScreen = kind === 'SAAS' || kind === 'DIGITAL_PRODUCT' || kind === 'APP'
+  // ⚖️ Plan v7.1: UNKNOWN is not permission. A physical product nobody has said
+  // she can show gets the body-and-face set, the same rule productSceneGuidance
+  // already follows, so the two layers stop disagreeing.
+  if (!onScreen && (showability === 'UNKNOWN' || !showability) && kind) {
+    return {
+      format: 'Talking Review',
+      options: SELF_DIRECTIONS,
+      nameableSections: sections,
+      because: 'Nobody has said whether this product can be shown on camera, so no '
+        + 'handling cue is offered. Direct the body and the face; once she says she can '
+        + 'show it, the hold-up and open-it cues return.',
+    }
+  }
   if (onScreen) {
     // ⚠️ A SCREEN CUE THAT NAMES NOTHING REAL IS THE SAME BUG IN A DIFFERENT
     // COSTUME. Without a section map, "show the dashboard" is a guess about a
@@ -250,12 +273,12 @@ export function directionsFor(ctx: DirectionContext): DirectionSet {
     if (!sections.length) {
       return {
         format: 'Talking Review',
-        options: SELF_DIRECTIONS,
+        options: [...GENERIC_SCREEN_DIRECTIONS, ...SELF_DIRECTIONS],
         nameableSections: [],
         because: 'This is a screen product, but NO named sections were extracted from its '
           + 'own pages. Directing the creator to show a "dashboard" or a "pricing table" '
           + 'nobody confirmed exists is an invention. Direct the body and face only until '
-          + 'a section map exists.',
+          + 'a section map exists. She may still film her own screen doing the step she is saying (film_your_screen), naming no page.',
       }
     }
     return {
@@ -369,7 +392,7 @@ export const PRESENCE_RULES = [
 // it is one of the ids this module actually defines, is what keeps a legitimate
 // clause from being eaten.
 const DIRECTION_IDS: ReadonlySet<string> = new Set(
-  [...PHYSICAL_ACTIONS, ...SCREEN_DIRECTIONS, ...SELF_DIRECTIONS].map((d) => d.id),
+  [...PHYSICAL_ACTIONS, ...SCREEN_DIRECTIONS, ...GENERIC_SCREEN_DIRECTIONS, ...SELF_DIRECTIONS].map((d) => d.id),
 )
 
 /**

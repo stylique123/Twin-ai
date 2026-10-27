@@ -81,6 +81,9 @@ import { unconfirmedRoleClaims } from '../_shared/roleClaims.ts'
 import { gateAnswer } from '../_shared/answerGate.ts'
 import { cleanBeats, dropEchoCloser, stripProfileLabels, dropWriterNotes, dropStockCloser, capQuestions } from '../_shared/beatCleanup.ts'
 import { robotPass } from '../_shared/robotPhrases.ts'
+import { creatorTypeHookBlock, pickNichePack, nichePackBlock, nichePackReport } from '../_shared/writerGuidance.ts'
+import CREATOR_TYPE_RULES_DATA from '../_shared/creatorTypeRulesData.ts'
+import { NICHE_PACK_REGISTRY } from '../_shared/nichePackRegistry.ts'
 import { pickOutsideForWriter } from '../_shared/outsideSelect.ts'
 import { sanitizeNeverUse, neverUseEntryOf, addNeverUse, filterLedgerByNeverUse, knowledgeBlocked, outsideAllowed, removeUsingItem, type NeverUseEntry, type TracedRow, type UsingItemRef } from '../_shared/usingBlock.ts'
 import { dropInventedEvents } from '../_shared/noStoryEvents.ts'
@@ -100,6 +103,8 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 // PLANNER SPINE (Phase 4.1, trial only) — see _shared/spinePlanner.ts.
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
+import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
+import { writerLoopOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
@@ -115,7 +120,7 @@ import { blueprintCompliance } from '../_shared/blueprintCompliance.ts'
 import { restRepeatedLines } from '../_shared/lineRepeat.ts'
 import { budgetExtendDecision, budgetPromptLine } from '../_shared/scriptIntegrity.ts'
 import { assemblePlanB, applyPolish, planBScript, planBRecord, planBPolishPrompt, parsePolish, planBInputFromLedger, planBEligible } from '../_shared/planBAssembly.ts'
-import { completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY, isProblemLine } from '../_shared/spineComplete.ts'
+import { moveCtaLast, completeSpine, spineCompleteOn, polishReorderOn, missingProblemQuestion, problemAnswerItem, SPINE_PROBLEM_KEY, isProblemLine } from '../_shared/spineComplete.ts'
 import { filledProductSlots } from '../_shared/productSlots.ts'
 import { relevantToAsk } from '../_shared/askRelevance.ts'
 import { originConflict } from '../_shared/factConflicts.ts'
@@ -129,7 +134,7 @@ import {
 import { renderCustomerReviews } from '../_shared/customerReviews.ts'
 import { pacingFor, quietBeatNote, handsOnVerb, PACING_RULE } from '../_shared/actionPacing.ts'
 import { voiceRules, voiceViolations, vocabularyUsed, VOICE_REPAIR_SYSTEM, voiceRepairPrompt } from '../_shared/voiceGate.ts'
-import { voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, withManualVoiceCard, manualVoiceCardOn, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
+import { rhythmMisses, voiceRhythmRepairPrompt, voiceMaterial, voiceCardBrief, voiceCardMisses, voiceCardRepairPrompt, scoreVoiceMatch, voiceCardOn, buildCreatorVoiceCard, applyVoiceCardEdits, voiceSourceTexts, voiceCheck, voiceCardCleanupOptions, voiceCardView, sanitizeVoiceCardEdits, voicePolishOn, voicePolishBrief, voicePolishVerdict, withManualVoiceCard, manualVoiceCardOn, type VoiceSource, type CreatorVoiceCard } from '../_shared/voiceCard.ts'
 import {
   rebuttalPromptRule, repairRebuttalFraming, ctaGoalPromptRule, repairCtaForGoal,
   factReachesWriter, removeUnbackedPromotions, confirmedPromotionText,
@@ -6911,7 +6916,7 @@ async function handle(req: Request): Promise<Response> {
     const testAccount = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
     if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
     const sb = createClient(supabaseUrl, serviceKey)
-    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown }
+    const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown; door?: unknown; idea?: unknown }
     const pid = typeof b.product_id === 'string' && /^[0-9a-f-]{36}$/.test(b.product_id) ? b.product_id : null
     if (specMode === 'angle_answer') {
       const key = String(b.key ?? '').slice(0, 160)
@@ -6920,7 +6925,7 @@ async function handle(req: Request): Promise<Response> {
       const herAnswer = b.skip === true || typeof b.answer !== 'string' ? '' : b.answer.trim().slice(0, 2000)
       const gate = herAnswer ? gateAnswer(herAnswer, {}, { known: await knownForGate(sb, user.id) }) : null
       const row = gate && gate.outcome !== 'filler' && gate.outcome !== 'direction'
-        ? answerFactRow({ ownerId: user.id, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
+        ? answerFactRow({ ownerId: user.id, voiceId: gate ? await readyVoiceId(sb, user.id) : null, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
       const outcome = !herAnswer || !row ? (gate ? 'filler' : 'skipped') : 'answered'
       if (typeof b.ask_id === 'string' && /^[0-9a-f-]{36}$/.test(b.ask_id)) {
         await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
@@ -6943,15 +6948,15 @@ async function handle(req: Request): Promise<Response> {
         if (pid) q = q.or(`product_entity_id.eq.${pid},product_entity_id.is.null`)
         return q
       })(),
-      pid ? sb.from('product_entities').select('id,name,offer').eq('id', pid).eq('owner_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+      pid ? sb.from('product_entities').select('id,name,offer,type').eq('id', pid).eq('owner_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
       sb.from('question_asks').select('slot_id, outcome, wording').eq('owner_id', user.id).eq('option_id', 'mn').limit(500),
-      sb.from('brand_voices').select('profile').eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+      sb.from('brand_voices').select('profile, pre_script_brief').eq('owner_id', user.id).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     const material: AngleMaterial[] = []
     for (const r of (kRows ?? []) as Array<Record<string, unknown>>) {
       if (r.sensitive === true) continue
       const it = itemFromCreatorKnowledge(r)
-      if (!it || it.status === 'unconfirmed') continue
+      if (!it || (it.status === 'unconfirmed' && !answeredByHer(r))) continue
       material.push({ id: it.id, slot: it.slot_hint, text: it.text, source: r.product_entity_id ? 'product' : 'her_material' })
     }
     const p = prod as { id?: string; name?: unknown; knowledge?: unknown; offer?: unknown } | null
@@ -6974,11 +6979,32 @@ async function handle(req: Request): Promise<Response> {
       const rows = (hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown }>
       const ladderOn = Deno.env.get('ANGLE_LADDER_ON') === '1'
       const problemQOn = Deno.env.get('ANGLE_PROBLEM_Q_ON') === '1'
-      const plan = planQuestionsForAngle({
+
+      // ⚖️ THE QUESTION ENGINE (plan v7.1 §3; QUESTION_ENGINE=off is the kill
+      // switch): two questions about THIS request's gaps — a niche pain asking
+      // for her example, then the biggest missing slot worded for her door —
+      // never a closed key, never what she already answered in meaning.
+      const engineOn = questionEngineOn(Deno.env.get('QUESTION_ENGINE'))
+      const engineInput = engineOn ? {
+        door: b.door, angleNeeds: ANGLE_SPECS[picked].needs, ideaText: typeof b.idea === 'string' ? b.idea.slice(0, 400) : null,
+        productName: typeof p?.name === 'string' ? p.name : null,
+        productKind: typeof (p as { type?: unknown } | null)?.type === 'string' ? String((p as { type?: unknown }).type) : null,
+        material: material.map((m) => ({ slot: m.slot, text: m.text, source: m.source === 'product' ? 'product' as const : 'her_material' as const })),
+        pillars: pillarsFrom((v as { pre_script_brief?: unknown } | null)?.pre_script_brief ?? null),
+        painThemes: painItems.map((x) => ({ id: x.id, text: x.text })),
+        closedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler' || r.outcome === 'answered').map((r) => String(r.slot_id)),
+        savedAnswers: ((kRows ?? []) as Array<Record<string, unknown>>).filter((r) => r.source === 'asked').map((r) => String(r.text ?? '')),
+        profileMissing: !String(prof?.audience ?? '').trim() && !rows.some((r) => r.slot_id === 'mn:profile'),
+        voiceCard: false,
+      } : null
+      // The engine replaces the older planner; with QUESTION_ENGINE=off the
+      // planner (and its ladder / problem-question flags) asks instead.
+      const plan = engineInput ? pickTwo(engineInput) : planQuestionsForAngle({
         angle: picked, angleNeeds: ANGLE_SPECS[picked].needs, onFile: [...new Set(material.map((m) => m.slot))],
         hasProduct: !!p, entityKey: p ? `product:${p.id}` : 'none',
         audience: audienceItems, painMap: painItems,
-        skippedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler').map((r) => String(r.slot_id)),
+        // An ANSWERED key is closed too: her answer is on file under that key.
+        skippedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler' || r.outcome === 'answered').map((r) => String(r.slot_id)),
         profileAskedEver: rows.some((r) => r.slot_id === 'mn:profile'),
         profileMissing: !String(prof?.audience ?? '').trim(),
         // Story ladder (#1148) and the pre-writing problem question: both OFF
@@ -6994,13 +7020,16 @@ async function handle(req: Request): Promise<Response> {
           }
         })() : {}),
         ...(problemQOn ? { problem: { on: true, onFile: rows.some((r) => r.slot_id === PROBLEM_QUESTION_KEY && r.outcome === 'answered') || material.some((m) => isProblemLine(m.text)) } } : {}),
+        // ANGLE_TEMPLATES=on (default OFF; this path is test/panel accounts only):
+        // her missing-slot question uses the picked angle's template.
+        ...(Deno.env.get('ANGLE_TEMPLATES') === 'on' ? { angleWording: { topic: String(p?.name ?? prof?.niche ?? '').trim() } } : {}),
       })
       for (const q of plan) {
         const { data: ins } = await sb.from('question_asks').insert({ owner_id: user.id, entity_key: p ? `product:${p.id}` : 'none', option_id: 'mn', slot_id: q.key, angle: 'first', wording: q.text })
           .select('id').maybeSingle()
         questions.push({ ask_id: (ins as { id?: string } | null)?.id ?? null, ...q })
       }
-      console.log(JSON.stringify({ event: 'mn_questions', angle: picked, ...questionPlanRecord(plan) }))
+      console.log(JSON.stringify({ event: 'mn_questions', angle: picked, ...(engineInput ? { engine: enginePlanRecord(engineInput, plan) } : questionPlanRecord(plan)) }))
     } else questions = []
     console.log(JSON.stringify({ event: 'mn_angles', cards: anglePickRecord(cards) }))
     return json({ cards, questions })
@@ -7675,6 +7704,28 @@ function objectiveProductIdInline(sourceRef: string, pickedId: string): string |
 
 /** "Nothing specific", "keep it general", "idk", "no": answered, but nothing to say. */
 /** A commercial claim heard in her videos that she has not confirmed (owner review, script D). */
+// ⚖️ ANSWERS MUST COUNT (plan v7.1 WP1, Q1). `answerFactRow` stores a non-story
+// answer as kind 'claim', and the item adapter calls every claim unconfirmed —
+// so a typed answer was saved, then skipped by the next angle plan, and the
+// same question came back. What she typed and confirmed is her fact.
+function answeredByHer(r: { source?: unknown; basis?: unknown; creator_confirmed_at?: unknown }): boolean {
+  return r.source === 'asked' && r.basis === 'stated' && typeof r.creator_confirmed_at === 'string' && r.creator_confirmed_at !== ''
+}
+// ⚖️ Q4: an angle answer (asked:mn:) she typed for THIS product's video.
+function answerForThisProduct(r: { source?: unknown; source_ref?: unknown; product_entity_id?: unknown }, productId: unknown): boolean {
+  return r.source === 'asked' && String(r.source_ref ?? '').startsWith('asked:mn:')
+    && typeof productId === 'string' && productId !== '' && r.product_entity_id === productId
+}
+// ⚖️ Q3: answers saved with voice_id null are invisible to the writer's
+// voice-scoped read (`scopeToVoice`). Save them under her ready voice.
+async function readyVoiceId(sb: ReturnType<typeof createClient>, ownerId: string): Promise<string | null> {
+  try {
+    const { data } = await sb.from('brand_voices').select('id').eq('owner_id', ownerId).eq('status', 'ready')
+      .order('updated_at', { ascending: false }).limit(1).maybeSingle()
+    const id = (data as { id?: unknown } | null)?.id
+    return typeof id === 'string' ? id : null
+  } catch { return null }
+}
 function unconfirmedCommercial(r: { source?: unknown; source_ref?: unknown; creator_confirmed_at?: unknown; text?: unknown; evidence?: unknown }): boolean {
   if (r.creator_confirmed_at) return false
   // An answer she gave that claims a role or commercial terms waits for her tap (answerGate).
@@ -7826,6 +7877,28 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     .order('created_at', { ascending: false })
     .limit(20))
   const askedRows = askedRead.rows
+  // ⚖️ HER STORIES, VERBATIM (plan v7.1 WP4). The passage store held stories
+  // cut from her own videos and nothing read it, so the planner's "story first"
+  // had no stories. Her two newest COMPLETE story passages ride in with her
+  // answers as her own words (kind 'experience'); the same off-ask and purpose
+  // filters below decide whether they fit this video. WRITER_LOOP stage.
+  if (voice?.id && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)) {
+    try {
+      const { data: sp } = await admin.from('story_passages').select('id, text, created_at')
+        .eq('owner_id', ownerId).eq('voice_id', voice.id).eq('kind', 'story').eq('complete', true)
+        .order('created_at', { ascending: false }).limit(2)
+      const passages = ((sp ?? []) as Array<{ id?: unknown; text?: unknown; created_at?: unknown }>).filter((r) => typeof r.text === 'string' && r.text.trim())
+      for (const r of passages) {
+        const text = String(r.text).replace(/\s+/g, ' ').trim()
+        ;(askedRows as unknown as Array<Record<string, unknown>>).push({
+          id: String(r.id ?? ''), kind: 'experience', text: text.length <= 400 ? text : (text.slice(0, 400).match(/^.*[.!?](?=\s|$)/)?.[0] ?? text.slice(0, 400)),
+          basis: 'stated', times_seen: 1, confidence: 0.9, source: 'transcript', source_ref: `passage:${String(r.id ?? '')}`,
+          last_observed_at: String(r.created_at ?? ''), evidence: text.slice(0, 4000),
+        })
+      }
+      if (passages.length) console.log(JSON.stringify({ event: 'feature_fired', feature: 'story_passages_read', rows: passages.length }))
+    } catch { /* a missing table or failed read costs only the stories */ }
+  }
   // Her consent wins: a private fact she switched on for this video is read
   // from the table by id, and only those ids.
   // ⚠️ AUDIT 2026-10-01 (5.1): the screen and the writer rank the store
@@ -8209,7 +8282,10 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       // Blind set 3 #4, #17, T4: her typed cart answers reached Signature
       // Blend scripts because answers were exempt. With a product picked, her
       // answers are held to the same test; only what she switched on is exempt.
-      exempt: (r) => herOnIds.has(String(r.id ?? '')) || (!ownedEntity && ['asked', 'comment'].includes(String(r.source ?? ''))),
+      // An angle answer typed for THIS product (asked:mn:, same product id) is
+      // exempt: it was asked for this video, so a word match is the wrong test.
+      exempt: (r) => herOnIds.has(String(r.id ?? '')) || (!ownedEntity && ['asked', 'comment'].includes(String(r.source ?? '')))
+        || answerForThisProduct(r, (ownedEntity as { id?: unknown } | null)?.id),
     })
     if (rel.dropped.length) {
       const drop = new Set(rel.dropped)
@@ -8541,6 +8617,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   })()
   const voiceCard = voiceCardBuild?.card ?? null
   const voiceCardBlock = voiceCard ? `\n${voiceCardBrief(voiceCard)}` : ''
+  // V4 (plan v7.1): when the writer-loop block carries the card (first, highest
+  // priority), it is not repeated at the tail of the context line.
+  const writerLoopCarriesVoice = !!voiceCard && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)
   // ⚖️ THE VOICE AT THE POLISH STEP (panel-10; trial only, kill VOICE_POLISH=off):
   // her style note (brand_voices.profile.style_note) and verbatim samples ride
   // to the Plan B polish and the worker's async polish with the card.
@@ -11440,9 +11519,16 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         ? PURPOSE_SHAPE_BY_GOAL_INLINE[videoGoal] : undefined
       if (shapeKey) mentionLine += `\n- ${PURPOSE_SHAPE_INLINE[shapeKey]}`
     }
-    const showLine = !ownedEntity || !sceneGuidance
+    const showLineBase = !ownedEntity || !sceneGuidance
       ? ''
       : productSceneDirection(String(ownedEntity.name ?? 'the product'), sceneGuidance)
+    // ⚖️ HER OWN WAY TO SHOW IT (plan v7.1). The Product Library asks how she
+    // shows it on camera and stores the answer as a `show_action` fact; nothing
+    // read it. Her words lead the showing beat; the scene guidance follows.
+    const herShowAction = ownedEntity && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) ? (knowledgeFacts(chosenEntity).find((f) => f.field === 'show_action')?.value ?? '').slice(0, 240) : ''
+    const showLine = herShowAction
+      ? `${showLineBase}\n- HER OWN WAY TO SHOW IT (her words; use this for the showing beat and its direction): ${herShowAction}`
+      : showLineBase
 
     // ── THE WRITER MAY NOT ARGUE AGAINST THE PRODUCT THAT WAS SELECTED ──────
     //
@@ -11899,6 +11985,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         + ' the placeholder rule above applies to this input too, and a creator'
         + ' cannot read "[KEYWORD]" aloud.'
 
+    // W12.2 — per-type hook rules and the niche pack, from data. Both flags
+    // default OFF; off, each block is '' and the prompt is unchanged.
+    const creatorTypeBlock = creatorTypeHookBlock(
+      (vp as { creator_type?: unknown } | null)?.creator_type, Deno.env.get('CREATOR_TYPE_RULES'), CREATOR_TYPE_RULES_DATA)
+    const nichePackGuide = nichePackBlock(
+      pickNichePack(NICHE_PACK_REGISTRY, niche, (vp as { creator_type?: unknown } | null)?.creator_type),
+      Deno.env.get('NICHE_PACKS'))
+    if (creatorTypeBlock || nichePackGuide) console.log(JSON.stringify({ event: 'writer_guidance', creator_type: !!creatorTypeBlock, niche_pack: !!nichePackGuide }))
     const hookPatternsLine = hookPatterns.length
       ? hookPatterns.join(' | ')
       : 'NONE STORED. Use the moves listed under THIS VIDEO\'S FAMILY below.'
@@ -11943,7 +12037,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
 - Audience: ${trialOn ? 'on file. Owner 2026-10-05: her profile labels were said out loud ("everyday people and beginners"). Never name or label her audience; speak to one viewer as "you".' : `${audienceResolved}${prov('audience')}`}${audienceLevelLine}
 - Audience pain (the problem they feel): ${pain ? `${pain}${prov('audiencePain')}` : 'NONE STORED. ⚠️ Do NOT invent her audience\'s pain, a statistic about them, or a claim about what they feel (owner fabrication audit 2026-10-01). Speak only to the problem this video\'s own topic solves, in general words.'}
 - Dream outcome (what they want): ${dream ? `${dream}${prov('dreamOutcome')}` : 'NONE STORED. ⚠️ Do NOT invent an outcome her viewers get or a result she has delivered. Pay off only what this video itself shows or teaches.'}
-- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}${voiceCardBlock}
+- Product or offer the CTA should point at: ${offer}${prov('offer')}${promotesLine}${ownershipLine}${showLine}${ctaIntentLine}${ctaWordingLine}${claimRulesBlock}${doNotUseBlock}${referenceUseBlock}${workKindLine}${mentionLine}${productStanceLine}${evidenceBlock}${packagingBlock}${communityBlock}${knowledgeBlock}${lessonsBlock}${draftedBlock}${shapeSection}${writerLoopCarriesVoice ? '' : voiceCardBlock}
 - Goal: ${goal}${objectiveContract ? `\n- ${objectiveContract}` : ''}${pickedAngleLine ? `\n- ${pickedAngleLine}` : ''}
 - ${arcPrompt(videoArc, !!ownedEntity).split('\n').join('\n  ')}
 - ${knowledgeBoard.split('\n').join('\n  ')}${recentlySaidBlock ? `\n- ${recentlySaidBlock.split('\n').join('\n  ')}` : ''}${reference_url ? `
@@ -11952,7 +12046,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
 - Hook formula (A FILL-IN TEMPLATE, NOT A LINE TO COPY): ${vp.hook_style ?? ''}${hookFormulaRule}
-- Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${hookPatternsLine}
+- Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${hookPatternsLine}${creatorTypeBlock ? `
+- ${creatorTypeBlock.split('\n').join('\n  ')}` : ''}${nichePackGuide ? `
+- ${nichePackGuide.split('\n').join('\n  ')}` : ''}
 - Their video FORMATS (their real playbook — adapt ONE of these to the reference for the concept.premise): ${formatsLine}
 - Their TITLE style (follow this shape for the packaging.titles): ${titleStyleLine}
 - Their THUMBNAIL style (follow this for the packaging.thumbnail): ${thumbStyleLine}
@@ -12805,13 +12901,37 @@ This is the video's position. Every field below must serve it. If the reference'
     // the template block, so every fallback script returned candidates with no
     // shape id, 0 passing hooks and an empty pick. The retry drops ONLY the
     // template skeleton (the slow part); the candidate block is a few lines.
-    const familyHookRuleRetry = familyHookRulePlain + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
+    // ⚖️ S4 (plan v7.1): the retry kept the hook candidates but dropped the
+    // spine, so a timed-out script came back with no structure. The spine block
+    // is short; only the template skeleton (the slow part) stays out.
+    const familyHookRuleRetry = familyHookRulePlain + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
+    // ⚖️ THE WRITER RECEIVES THE LOOP (plan v7.1 Q5, Q6, V3, V4, S1). Her answers
+    // for this video, her pillars, her voice (card first, her note, her lines)
+    // and the house structure, in one block straight after the hook rule — in
+    // the first prompt AND the retry. WRITER_LOOP: unset = trial only, 'all' =
+    // every account, 'off' = nobody. Logs: counts only.
+    const writerLoopBlock = writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) ? (() => {
+      try {
+        const answers = answersForThisVideo((body as { mn_answers?: unknown }).mn_answers, body.readiness_answers)
+        const pillars = pillarsFrom(brief)
+        const pr = (vp ?? {}) as { style_note?: unknown; samples?: unknown; voice_samples?: unknown }
+        const sampleLines = sampleLinesFrom(pr.samples, pr.voice_samples ?? (dna as { voice_samples?: unknown } | null)?.voice_samples)
+        const block = renderWriterLoop({
+          answers, pillars, profile: loopProfileForSeconds(lengthTarget ?? body.target_seconds),
+          voice: { cardBlock: voiceCard ? voiceCardBrief(voiceCard) : null, styleNote: typeof pr.style_note === 'string' ? pr.style_note : null, sampleLines },
+        })
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'writer_loop', answers: answers.length, pillars: pillars.length, voice_card: !!voiceCard, samples: sampleLines.length }))
+        return block
+      } catch { return '' }
+    })() : ''
     const familyHookRule = familyHookRulePlain + (templatePlan ? `\n\n${renderTemplateSkeleton(templatePlan, templateProfile, templateLedger)}` : '') + (spinePlanBlock ? `\n\n${spinePlanBlock}` : '') + (hookCandidateBlock ? `\n\n${hookCandidateBlock}` : '')
     const buildWriterBrief = (hookRule: string) => `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
 
-${hookRule}
+${hookRule}${writerLoopBlock ? `
+
+${writerLoopBlock}` : ''}
 
 ${positionBlock}${referenceBlock}${historyBlock ? `
 
@@ -15577,6 +15697,36 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           }
         }
         voiceGateAudit.voice_card = { id: voiceCard.id, misses: misses.length, repaired: cardRepaired }
+        // ⚖️ V5 (plan v7.1): the voice check only logged. When it fails, the lines
+        // that break her rhythm are rewritten once; a rewrite is kept only when
+        // the whole script's voice score goes UP and it passes the same guards.
+        // WRITER_LOOP stage (unset = trial only). One model call, only on a fail.
+        if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn)) {
+          try {
+            const now = vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))
+            const before = voiceCheck(voiceCard, now)
+            const idx = before.pass ? [] : rhythmMisses(voiceCard, now).slice(0, 4)
+            let rhythmKept = 0
+            if (idx.length) {
+              const fixed = await callModel(apiKey, VOICE_REPAIR_SYSTEM, voiceRhythmRepairPrompt(voiceCard, vBeats, idx), REPAIR_SCHEMA)
+              const want = new Set(idx)
+              for (const r of parseRepairRewrites(fixed)) {
+                const i = typeof r?.index === 'number' ? r.index : -1
+                const line = typeof r?.line === 'string' ? r.line.trim() : ''
+                if (!want.has(i) || line === '') continue
+                if (voiceCardMisses(voiceCard, [line]).length > 0) continue
+                if (claimsPersonalUse(line) && !claimsPersonalUse(String(vBeats[i].line ?? ''))) continue
+                const trial = vBeats.map((b, j) => (j === i ? line : (typeof b?.line === 'string' ? b.line : '')))
+                if (voiceCheck(voiceCard, trial).score <= voiceCheck(voiceCard, vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))).score) continue
+                vBeats[i].line = line
+                rhythmKept++
+              }
+            }
+            voiceGateAudit.voice_rhythm = { pass_before: before.pass, flagged: idx.length, repaired: rhythmKept }
+          } catch (err) {
+            console.warn('voice_rhythm_repair_failed', err instanceof Error ? err.message : err)
+          }
+        }
       }
       if (flagged.length > 0) console.warn(JSON.stringify({ event: 'voice_gate', rules, flagged: flagged.length, repaired }))
     } catch { /* the voice gate never fails a generation */ }
@@ -17541,6 +17691,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
       } catch { /* Plan B never fails a build: the writer's script stays */ }
     }
+    // ⚖️ CTA LAST (plan v7.1 S7): one pure reorder, nothing added or dropped,
+    // on the WRITER_LOOP stage (unset = trial only, 'all' = every account).
+    if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bpc = blueprint as Record<string, unknown>
+        const r = moveCtaLast(bpc.script as Array<Record<string, unknown>>)
+        if (r.moved) { bpc.script = r.script; console.log(JSON.stringify({ event: 'feature_fired', feature: 'cta_last', moved: true })) }
+      } catch { /* a reorder never fails a build */ }
+    }
     // ⚖️ SPINE COMPLETENESS (craft rubric v1 item C; trial, test accounts only,
     // DEFAULT OFF: SPINE_COMPLETE=on turns it on). Deterministic: when no
     // problem/reality line is there, her on-topic problem item is placed after
@@ -17674,6 +17833,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       } catch { /* bookkeeping never fails a generation */ }
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
+    // W12.2 niche pack banned claims, REPORT ONLY (NICHE_PACKS, default OFF):
+    // the shipped script's lines are flagged, never edited. Indexes and reasons only.
+    try {
+      const npr = nichePackReport(
+        pickNichePack(NICHE_PACK_REGISTRY, niche, (vp as { creator_type?: unknown } | null)?.creator_type),
+        Deno.env.get('NICHE_PACKS'), (blueprint as { script?: unknown[] })?.script)
+      if (npr) {
+        ;(blueprint as Record<string, unknown>).niche_pack_flags = npr.flagged
+        console.log(JSON.stringify({ event: 'niche_pack_flags', flagged: npr.flagged.length, reasons: [...new Set(npr.flagged.map((f) => f.reason))] }))
+      }
+    } catch { /* a report never fails a build */ }
     ;(blueprint as Record<string, unknown>).beat_trace = beatTrace
     {
       const spoken = (((blueprint as { script?: unknown })?.script ?? []) as Array<{ line?: unknown }>)

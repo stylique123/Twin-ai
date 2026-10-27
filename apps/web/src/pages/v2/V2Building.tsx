@@ -2610,7 +2610,7 @@ export default function V2Building() {
           </div>
         </div>
       )}
-      <AngleQuestionsCard goal={answersRef.current.video_goal || undefined} onAnswers={onMnAnswers} />
+      <AngleQuestionsCard goal={answersRef.current.video_goal || undefined} productId={state.selected_product_id || undefined} door={state.door || undefined} idea={(state.reference_note || '').trim().slice(0, 400) || undefined} onAnswers={onMnAnswers} />
     </>
   )
   const renderAsk = (q: AskItem) => q.purpose ? renderPurpose(q) : renderAskInner(q)

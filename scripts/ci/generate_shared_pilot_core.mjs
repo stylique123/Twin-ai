@@ -153,7 +153,11 @@ const SOURCES = [
   // One item format + slot map (plan 0.1/0.2): edge and worker read facts the same way.
   ['packages/shared/src/script/itemFormat.ts', 'supabase/functions/_shared/itemFormat.ts'],
   ['packages/shared/src/script/angleFit.ts', 'supabase/functions/_shared/angleFit.ts'],
+  // ANGLE_TEMPLATES: the question plan words her slot with the angle's template.
+  ['packages/shared/src/script/questionLadder.ts', 'supabase/functions/_shared/questionLadder.ts'],
   ['packages/shared/src/script/questionUsefulness.ts', 'supabase/functions/_shared/questionUsefulness.ts'],
+  // The question engine (plan v7.1 §3): two questions about this request's gaps.
+  ['packages/shared/src/script/questionEngine.ts', 'supabase/functions/_shared/questionEngine.ts'],
   ['packages/shared/src/script/questionLadder.ts', 'supabase/functions/_shared/questionLadder.ts'],
   // Showability inferred from the product itself (trial, in memory only).
   ['packages/shared/src/script/inferShowability.ts', 'supabase/functions/_shared/inferShowability.ts'],
@@ -262,6 +266,8 @@ const SOURCES = [
   ['packages/shared/src/script/planner/spinePlanner.ts', 'supabase/functions/_shared/spinePlanner.ts'],
   // The spine contract (A6, trial only): spine beats, the objection move, title inherits the hook.
   ['packages/shared/src/script/planner/spineContract.ts', 'supabase/functions/_shared/spineContract.ts'],
+  // The writer receives the loop (plan v7.1 WP6-8): her answers, pillars, voice and the house structure.
+  ['packages/shared/src/script/planner/writerLoop.ts', 'supabase/functions/_shared/writerLoop.ts'],
   // Packaging keeps the promise (plan v5.1 item G, trial only): titles/captions inherit the shipped hook.
   ['packages/shared/src/script/planner/packagingPromise.ts', 'supabase/functions/_shared/packagingPromise.ts'],
   // Plan B (owner decision 5, trial only): the code-assembled, line-sourced script body.
@@ -280,6 +286,11 @@ const SOURCES = [
   // Craft + hook judges (craft rubric v1): deterministic, unpaid; best-of-N on the hedge drafts (BEST_OF_N_JUDGE, default off).
   ['packages/shared/src/script/hookJudge.ts', 'supabase/functions/_shared/hookJudge.ts'],
   ['packages/shared/src/script/craftJudge.ts', 'supabase/functions/_shared/craftJudge.ts'],
+  // W12.2 creator type rules and niche packs (CREATOR_TYPE_RULES, NICHE_PACKS; both default off).
+  // The rules JSON is rendered as a TS default export so the edge needs no JSON import.
+  ['packages/shared/src/creator/creatorTypeRules.json', 'supabase/functions/_shared/creatorTypeRulesData.ts'],
+  ['packages/shared/src/creator/writerGuidance.ts', 'supabase/functions/_shared/writerGuidance.ts'],
+  ['packages/shared/src/creator/nichePackRegistry.ts', 'supabase/functions/_shared/nichePackRegistry.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
@@ -293,7 +304,8 @@ const isWorkerDest = (to) => to.startsWith('worker/')
 const stripShebang = (src) => src.replace(/^#![^\n]*\n/, '')
 
 const render = (from, src0, to = '') => {
-  const src = stripShebang(src0)
+  // A JSON data source becomes a TS module whose default export is the data.
+  const src = from.endsWith('.json') ? `export default ${src0.trim()}\n` : stripShebang(src0)
   // ⚠️⚠️ THE WORKER IS NODE, NOT DENO, AND THE DEFAULT REWRITE IS BACKWARDS FOR
   // IT. Every rule below turns a relative specifier INTO `.ts`, which Node's ESM
   // resolver rejects outright. A worker copy therefore takes the opposite
