@@ -6909,7 +6909,7 @@ async function handle(req: Request): Promise<Response> {
       const herAnswer = b.skip === true || typeof b.answer !== 'string' ? '' : b.answer.trim().slice(0, 2000)
       const gate = herAnswer ? gateAnswer(herAnswer, {}, { known: await knownForGate(sb, user.id) }) : null
       const row = gate && gate.outcome !== 'filler' && gate.outcome !== 'direction'
-        ? answerFactRow({ ownerId: user.id, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
+        ? answerFactRow({ ownerId: user.id, voiceId: gate ? await readyVoiceId(sb, user.id) : null, productId: pid, key, piece, answer: herAnswer, now: new Date().toISOString() }) : null
       const outcome = !herAnswer || !row ? (gate ? 'filler' : 'skipped') : 'answered'
       if (typeof b.ask_id === 'string' && /^[0-9a-f-]{36}$/.test(b.ask_id)) {
         await sb.from('question_asks').update({ outcome, answered_at: new Date().toISOString() }).eq('id', b.ask_id).eq('owner_id', user.id)
@@ -6940,7 +6940,7 @@ async function handle(req: Request): Promise<Response> {
     for (const r of (kRows ?? []) as Array<Record<string, unknown>>) {
       if (r.sensitive === true) continue
       const it = itemFromCreatorKnowledge(r)
-      if (!it || it.status === 'unconfirmed') continue
+      if (!it || (it.status === 'unconfirmed' && !answeredByHer(r))) continue
       material.push({ id: it.id, slot: it.slot_hint, text: it.text, source: r.product_entity_id ? 'product' : 'her_material' })
     }
     const p = prod as { id?: string; name?: unknown; knowledge?: unknown; offer?: unknown } | null
@@ -6965,7 +6965,8 @@ async function handle(req: Request): Promise<Response> {
         angle: picked, angleNeeds: ANGLE_SPECS[picked].needs, onFile: [...new Set(material.map((m) => m.slot))],
         hasProduct: !!p, entityKey: p ? `product:${p.id}` : 'none',
         audience: audienceItems, painMap: painItems,
-        skippedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler').map((r) => String(r.slot_id)),
+        // An ANSWERED key is closed too: her answer is on file under that key.
+        skippedKeys: rows.filter((r) => r.outcome === 'skipped' || r.outcome === 'filler' || r.outcome === 'answered').map((r) => String(r.slot_id)),
         profileAskedEver: rows.some((r) => r.slot_id === 'mn:profile'),
         profileMissing: !String(prof?.audience ?? '').trim(),
       })
@@ -7649,6 +7650,28 @@ function objectiveProductIdInline(sourceRef: string, pickedId: string): string |
 
 /** "Nothing specific", "keep it general", "idk", "no": answered, but nothing to say. */
 /** A commercial claim heard in her videos that she has not confirmed (owner review, script D). */
+// ⚖️ ANSWERS MUST COUNT (plan v7.1 WP1, Q1). `answerFactRow` stores a non-story
+// answer as kind 'claim', and the item adapter calls every claim unconfirmed —
+// so a typed answer was saved, then skipped by the next angle plan, and the
+// same question came back. What she typed and confirmed is her fact.
+function answeredByHer(r: { source?: unknown; basis?: unknown; creator_confirmed_at?: unknown }): boolean {
+  return r.source === 'asked' && r.basis === 'stated' && typeof r.creator_confirmed_at === 'string' && r.creator_confirmed_at !== ''
+}
+// ⚖️ Q4: an angle answer (asked:mn:) she typed for THIS product's video.
+function answerForThisProduct(r: { source?: unknown; source_ref?: unknown; product_entity_id?: unknown }, productId: unknown): boolean {
+  return r.source === 'asked' && String(r.source_ref ?? '').startsWith('asked:mn:')
+    && typeof productId === 'string' && productId !== '' && r.product_entity_id === productId
+}
+// ⚖️ Q3: answers saved with voice_id null are invisible to the writer's
+// voice-scoped read (`scopeToVoice`). Save them under her ready voice.
+async function readyVoiceId(sb: ReturnType<typeof createClient>, ownerId: string): Promise<string | null> {
+  try {
+    const { data } = await sb.from('brand_voices').select('id').eq('owner_id', ownerId).eq('status', 'ready')
+      .order('updated_at', { ascending: false }).limit(1).maybeSingle()
+    const id = (data as { id?: unknown } | null)?.id
+    return typeof id === 'string' ? id : null
+  } catch { return null }
+}
 function unconfirmedCommercial(r: { source?: unknown; source_ref?: unknown; creator_confirmed_at?: unknown; text?: unknown; evidence?: unknown }): boolean {
   if (r.creator_confirmed_at) return false
   // An answer she gave that claims a role or commercial terms waits for her tap (answerGate).
@@ -8183,7 +8206,10 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       // Blind set 3 #4, #17, T4: her typed cart answers reached Signature
       // Blend scripts because answers were exempt. With a product picked, her
       // answers are held to the same test; only what she switched on is exempt.
-      exempt: (r) => herOnIds.has(String(r.id ?? '')) || (!ownedEntity && ['asked', 'comment'].includes(String(r.source ?? ''))),
+      // An angle answer typed for THIS product (asked:mn:, same product id) is
+      // exempt: it was asked for this video, so a word match is the wrong test.
+      exempt: (r) => herOnIds.has(String(r.id ?? '')) || (!ownedEntity && ['asked', 'comment'].includes(String(r.source ?? '')))
+        || answerForThisProduct(r, (ownedEntity as { id?: unknown } | null)?.id),
     })
     if (rel.dropped.length) {
       const drop = new Set(rel.dropped)
