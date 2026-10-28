@@ -39,7 +39,10 @@ describe('raw spoken filler (S-43EC68, S-EDE104)', () => {
   it('strips um, no wait and like, keeps the meaning', () => {
     expect(stripSpokenFiller('Our first paying customer, um, she found a bug in like the first hour, no wait, first forty minutes, and I fixed it on a call with her just, like, watching me type.'))
       .toBe('Our first paying customer, she found a bug in like the first forty minutes, and I fixed it on a call with her just watching me type.')
-    expect(stripSpokenFiller('My lower back was done for a week, no wait, more like ten days.')).toBe('My lower back was done for more like ten days.')
+    // Advisor review: a non-parallel correction or one around a figure is left as she said it.
+    expect(stripSpokenFiller('My lower back was done for a week, no wait, more like ten days.')).toBe('My lower back was done for a week, no wait, more like ten days.')
+    expect(stripSpokenFiller('I paid $50, no wait, $60 for the kiln.')).toBe('I paid $50, no wait, $60 for the kiln.')
+    expect(stripSpokenFiller('It took 3 hours, no wait, 4 hours.')).toBe('It took 3 hours, no wait, 4 hours.')
     expect(stripSpokenFiller('So yeah, um, the deadlift thing.')).toBe('The deadlift thing.')
   })
 })
@@ -68,5 +71,30 @@ describe('beat by beat (what the edge runs)', async () => {
     expect(r.filler).toBe(1)
     expect(r.beats.map((b) => b.section)).toEqual(['hook', 'story', 'cta'])
     expect(r.beats[1]!.line).toBe('When I asked, she kept them next to the onions.')
+  })
+})
+
+describe('advisor review: the hook and the CTA are never dropped or trimmed', async () => {
+  const { hygieneBeats } = await import('../scriptHygiene')
+  it('a copied hook stays; a CTA callback to the story stays', () => {
+    const beats = [
+      { section: 'hook', line: research },
+      { section: 'story', line: 'My first kiln load cracked down the middle, every single mug.' },
+      { section: 'cta', line: 'My first kiln load cracked down the middle, every single mug, so save this.' },
+    ]
+    const r = hygieneBeats(beats, { outside: [research], hers: [] })
+    expect(r.beats.map((b) => b.section)).toEqual(['hook', 'story', 'cta'])
+    expect(r.beats[0]!.line).toBe(research)
+    expect(r.beats[2]!.line).toBe(beats[2]!.line)
+  })
+})
+
+describe('advisor review: one bucket for the whole stack', async () => {
+  const { voiceCardBucket, voiceCardOn } = await import('../voice/voiceCard')
+  const { loopBucket, writerLoopOn } = await import('../planner/writerLoop')
+  it('the 5% on WRITER_LOOP and VOICE_CARD_ENABLED are the same creators', () => {
+    const ids = Array.from({ length: 500 }, (_, i) => `creator-${i}`)
+    for (const id of ids) expect(voiceCardBucket(id)).toBe(loopBucket(id))
+    expect(ids.filter((id) => writerLoopOn('5', false, id))).toEqual(ids.filter((id) => voiceCardOn(false, false, '5', id)))
   })
 })

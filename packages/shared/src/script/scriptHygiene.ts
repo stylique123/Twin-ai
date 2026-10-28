@@ -78,8 +78,12 @@ export function dropRepeatedSentences(lines: readonly string[], share = 0.6): { 
 /** Strips raw spoken filler; keeps her words and meaning. */
 export function stripSpokenFiller(line: string): string {
   let t = String(line ?? '')
-  // "a week, no wait, more like ten days" → "more like ten days"
-  t = t.replace(/\b(?:\w+\s){0,1}\w+,\s*no wait,\s*/gi, '')
+  // "the first hour, no wait, first forty minutes" → "the first forty minutes".
+  // Only a parallel correction (the fix restarts on the same word) and never
+  // around a figure: "$50, no wait, $60" or "a week, no wait, more like ten
+  // days" stay as she said them rather than come out mangled.
+  t = t.replace(/\b([A-Za-z]+)\s+([A-Za-z]+),\s*no wait,\s*([A-Za-z]+)\b/g, (m, w1: string, _w2: string, y: string) =>
+    w1.toLowerCase() === y.toLowerCase() ? y : m)
   t = t.replace(/(^|[\s,])(?:um+|uh+|erm+|uhm+)(?=[\s,.!?]|$),?/gi, '$1')
   t = t.replace(/,\s*like,\s*/gi, ' ').replace(/\bjust,\s*like,?\s*/gi, 'just ')
   t = t.replace(/\b(?:so yeah|you know),\s*/gi, '')
@@ -114,6 +118,15 @@ export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], 
   for (const b of beats) {
     const line = typeof b?.line === 'string' ? b.line : ''
     if (!line.trim()) { out.push(b); continue }
+    // The hook and the CTA are never dropped or trimmed (a callback in the CTA
+    // is deliberate); only their filler goes, and they count as said.
+    if (/^(?:hook|cta)\b/i.test(String((b as { section?: unknown }).section ?? ''))) {
+      for (const g of shingles(line, 4)) said.add(g)
+      const clean = stripSpokenFiller(line)
+      if (clean !== line) filler++
+      out.push(clean === line ? b : { ...b, line: clean })
+      continue
+    }
     if (o.size && runOverlap(line, o) >= 0.5 && runOverlap(line, h) < 0.5) { copied++; continue }
     const kept = clausesOf(line).filter((c) => {
       const rep = shingles(c, 4).size >= 2 && runOverlap(c, said, 4) >= 0.6

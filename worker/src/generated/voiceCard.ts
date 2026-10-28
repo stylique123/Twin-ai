@@ -634,10 +634,11 @@ export function voiceCardOn(trialOn: boolean, fictional: boolean, flag: string |
   return fictional
 }
 
-/** Stable 0-99 bucket (FNV-1a over 'voice_card:' + user id). */
+/** Stable 0-99 bucket: the same one as WRITER_LOOP's `loopBucket`, so a 5%
+ *  share on both switches is the same creators getting the whole stack. */
 export function voiceCardBucket(userId: string): number {
   let h = 0x811c9dc5
-  for (const ch of `voice_card:${userId}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0 }
+  for (const ch of `writer_loop:${userId}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0 }
   return h % 100
 }
 
