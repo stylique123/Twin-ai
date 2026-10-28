@@ -156,3 +156,22 @@ describe('advisor 28 Oct: script hygiene runs on the WRITER_LOOP stage', () => {
     expect(EDGE).toMatch(/const outside = \[reference_note \?\? '', [^\n]*brainBlock\]/)
   })
 })
+
+describe('plan v7.1 ramp: the question step and the voice card reach real creators', async () => {
+  const { voiceCardOn } = await import('../script/voice/voiceCard')
+  it('VOICE_CARD_ENABLED: all = everyone; a share = trial plus that share; unset and true stay trial-only', () => {
+    expect(voiceCardOn(false, false, 'all', 'u1')).toBe(true)
+    expect(voiceCardOn(false, false, undefined, 'u1')).toBe(false)
+    expect(voiceCardOn(false, false, 'true', 'u1')).toBe(false)
+    expect(voiceCardOn(true, false, '5', 'u1')).toBe(true)
+    expect(voiceCardOn(false, false, 'false', 'u1')).toBe(false)
+    const ids = Array.from({ length: 400 }, (_, i) => `u${i}`)
+    const share = ids.filter((id) => voiceCardOn(false, false, '25', id)).length / ids.length
+    expect(share).toBeGreaterThan(0.15)
+    expect(share).toBeLessThan(0.35)
+  })
+  it('the angle plan opens for the WRITER_LOOP share of real creators', () => {
+    expect(EDGE).toMatch(/const testAccount = sideDoorOpen\(\) \|\| writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), false, user\.id\)\n\s+if \(!testAccount \|\| Deno\.env\.get\('ANGLES_QUESTIONS_KILL'\)/)
+    expect(EDGE).toMatch(/voiceCardOn\(trialOn, fictional, Deno\.env\.get\('VOICE_CARD_ENABLED'\), user\.id\)/)
+  })
+})

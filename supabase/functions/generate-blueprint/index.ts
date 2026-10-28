@@ -6748,7 +6748,8 @@ async function handle(req: Request): Promise<Response> {
   // the heartbeat/panel test accounts AND the canary (CANARY_ACCOUNT_IDS, kill CANARY_KILL).
   const sideDoorOpen = () => trialSideDoorOpen({ userId: user.id, heartbeatUserId: Deno.env.get('HEARTBEAT_USER_ID'), isPanel: isPanelAccount(user), canaryAccountsRaw: Deno.env.get('CANARY_ACCOUNT_IDS'), canaryKillRaw: Deno.env.get('CANARY_KILL') })
   if (specMode === 'voice_card') {
-    const testAccount = sideDoorOpen()
+    // Plan v7.1 ramp: her voice card screen follows VOICE_CARD_ENABLED (all, or 1-99).
+    const testAccount = sideDoorOpen() || voiceCardOn(false, false, Deno.env.get('VOICE_CARD_ENABLED'), user.id)
     if (!testAccount || String(Deno.env.get('VOICE_CARD_ENABLED') ?? '').trim().toLowerCase() === 'false') return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { action?: unknown; edits?: unknown }
@@ -6921,7 +6922,8 @@ async function handle(req: Request): Promise<Response> {
   // source_ref 'asked:mn:…'); a skip is recorded in question_asks
   // (option_id 'mn') and that key is never asked again. Logs: counts and ids.
   if (specMode === 'angle_plan' || specMode === 'angle_answer') {
-    const testAccount = sideDoorOpen()
+    // Plan v7.1 ramp: the question step follows WRITER_LOOP (5/25/50/all) for real creators.
+    const testAccount = sideDoorOpen() || writerLoopOn(Deno.env.get('WRITER_LOOP'), false, user.id)
     if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown; door?: unknown; idea?: unknown; cost_mode?: unknown; panel_pain_map?: unknown }
@@ -8652,7 +8654,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   const voiceCardBuild: (CreatorVoiceCard & { source: VoiceSource }) | null = await (async () => {
     try {
       const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
-      if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'))) return null
+      if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'), user.id)) return null
       const source = await loadVoiceSourceInline(admin, ownerId, (voice as { id?: unknown } | null)?.id ?? null, askedRows, vp)
       const built = withManualVoiceCard(buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' }), voice?.profile, manualVoiceCardOn(Deno.env.get('MANUAL_VOICE_CARD')))
       const edits = (voice?.profile as { voice_card_edits?: unknown } | null)?.voice_card_edits

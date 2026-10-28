@@ -619,15 +619,27 @@ export function applyVoiceCardEdits(card: VoiceCard, edits: VoiceCardEdits | nul
   }
 }
 
-/** Kill-switch: real creators get the card only when `VOICE_CARD_ENABLED` is
- *  'true'; 'false' turns it off for everyone; unset = fictional creators only.
- *  Always behind the trial. */
-export function voiceCardOn(trialOn: boolean, fictional: boolean, flag: string | undefined | null): boolean {
-  if (!trialOn) return false
+/** Kill-switch: 'false' turns it off for everyone; unset = fictional trial
+ *  creators only; 'true' = every trial account; 'all' = every creator; 1-99 =
+ *  trial accounts plus that share of real creators (the ramp). */
+export function voiceCardOn(trialOn: boolean, fictional: boolean, flag: string | undefined | null, userId?: string | null): boolean {
   const f = String(flag ?? '').trim().toLowerCase()
-  if (f === 'false') return false
+  if (f === 'false' || f === 'off' || f === '0') return false
+  // Plan v7.1 ramp: 'all' (or 100) is every creator; 1-99 is trial accounts
+  // plus that share of real creators by a stable per-user bucket. Before
+  // this, every value sat behind the trial, so no real creator ever got a card.
+  if (f === 'all' || f === '100') return true
+  if (/^\d{1,2}$/.test(f)) return trialOn || (!!userId && voiceCardBucket(userId) < Number(f))
+  if (!trialOn) return false
   if (f === 'true') return true
   return fictional
+}
+
+/** Stable 0-99 bucket (FNV-1a over 'voice_card:' + user id). */
+export function voiceCardBucket(userId: string): number {
+  let h = 0x811c9dc5
+  for (const ch of `voice_card:${userId}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0 }
+  return h % 100
 }
 
 /** The cleanup step's ask: rewrite only lines carrying a phrase she never
