@@ -320,6 +320,17 @@ export async function runAudienceTests(log: Log): Promise<void> {
     const picked = (cur?.hook_choice as { source?: string } | null)?.source === 'creator'
     const want = ordered[0] ? defaultHookAfterTest(ordered, picked ? String(cur?.selected_hook ?? '') : null) : null
     let openingSwapped = false
+    // ⚖️ SHE IS ALREADY WORKING ON IT (advisor, 28 Oct): once she has edited,
+    // rated or started recording this script, the viewers' line rewrites are
+    // NOT applied. The words she has seen stay the words she works from; the
+    // test result is still stored. Hook order follows her pick, as before.
+    const herWork = await Promise.all(['script_edits', 'script_ratings', 'source_capture_intents'].map((t) =>
+      db.from(t).select('generation_id', { count: 'exact', head: true }).eq('generation_id', g.id).then((x) => x.count ?? 0, () => 0)))
+    if (herWork.some((n) => n > 0) && (lineChanges.length > 0 || lineAdds.length > 0)) {
+      log('info', 'audience_rewrite_held', { event: 'audience_rewrite_held', generation_id: g.id, changes: lineChanges.length, adds: lineAdds.length })
+      lineChanges.length = 0
+      lineAdds.length = 0
+    }
     if (reordered || lineChanges.length > 0 || lineAdds.length > 0 || promiseChanged || gapOutcomes.length > 0 || (want && !picked)) {
       // Only the version that tested best is what she sees: better lines
       // replace the old ones on the teleprompter AND on the shot card.

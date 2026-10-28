@@ -13,6 +13,9 @@
 import type { Slot } from './itemFormat.js'
 import type { PlanQuestion, QuestionKind, QuestionSource } from './questionUsefulness.js'
 
+/** QC thin-material question keys → the engine gap they fill (and back). */
+export const QC_KEY_ALIASES: Readonly<Record<string, string>> = { 'mn:qc:story': 'mn:gap:story', 'mn:qc:product_fact': 'mn:gap:what_it_is' }
+
 export type Door = 'product' | 'idea' | 'reference' | 'browse'
 export type GapSource = 'product' | 'voice' | 'onboarding' | 'story' | 'pain' | 'input'
 export type SlotStatus = 'filled' | 'missing'
@@ -164,7 +167,11 @@ export function pickTwo(i: EngineInput): PlanQuestion[] {
   const door = doorOf(i.door)
   const subject = String(i.productName || i.ideaText || '').replace(/\s+/g, ' ').trim().slice(0, 60)
   const topic = [i.ideaText, i.productName, ...(i.pillars ?? [])].filter(Boolean).join(' ')
+  // One asked-list with the Quality Controller's thin-material question
+  // (advisor, 28 Oct): its keys close the matching gap, and the reverse is
+  // read by the edge, so the same piece is never asked twice.
   const closed = new Set(i.closedKeys ?? [])
+  for (const [qcKey, gapKey] of Object.entries(QC_KEY_ALIASES)) if (closed.has(qcKey)) closed.add(gapKey)
   const saved = i.savedAnswers ?? []
   const said = (text: string) => saved.some((a) => overlap(a, text) >= 0.6)
   const out: PlanQuestion[] = []

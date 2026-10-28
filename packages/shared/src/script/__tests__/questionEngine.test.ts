@@ -84,3 +84,10 @@ describe('plan v7.1: the show-it question fits the product kind', () => {
     expect(gapQuestion('show_it', 'product', 'the tote', 'PHYSICAL')).toMatch(/open it, hold it up, use it/)
   })
 })
+
+describe('advisor 28 Oct: one asked-list with the Quality Controller', () => {
+  it('a closed QC story question closes the story gap', () => {
+    const qs = pickTwo({ door: 'idea', angleNeeds: ['story'], material: [], ideaText: 'x', closedKeys: ['mn:qc:story'] })
+    expect(qs.map((q) => q.key)).not.toContain('mn:gap:story')
+  })
+})
