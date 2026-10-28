@@ -17903,7 +17903,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // quality profile, test and panel accounts only): the worker runs it LAST,
       // after the polish and the gate. Ids and the request's topic words only.
       if (qFlag('QUALITY_CONTROLLER') === 'on') {
-        const answeredQ = [QC_STORY_KEY, QC_PRODUCT_KEY].filter((k) => typeof (body.readiness_answers as Record<string, unknown> | undefined)?.[k] === 'string')
+        // One asked-list (advisor, 28 Oct): an engine question answered for the
+        // same piece in THIS request counts as the QC question answered.
+        const mnA = ((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>
+        const engineFilled = (k: string) => typeof mnA[k] === 'string' && String(mnA[k]).trim() !== ''
+        const answeredQ = [QC_STORY_KEY, QC_PRODUCT_KEY].filter((k) => typeof (body.readiness_answers as Record<string, unknown> | undefined)?.[k] === 'string'
+          || (k === QC_STORY_KEY && (engineFilled('mn:gap:story') || Object.keys(mnA).some((x) => x.startsWith('mn:pain:') && engineFilled(x))))
+          || (k === QC_PRODUCT_KEY && engineFilled('mn:gap:what_it_is')))
         ;(inventionRecheck.ledger as Record<string, unknown>).quality_controller = {
           profile: qcProfileForSeconds(body.target_seconds),
           topic: [reference_note, String((ownedEntity as { name?: unknown } | null)?.name ?? '')].filter((x) => String(x ?? '').trim()).join(' ').slice(0, 300),
