@@ -10,12 +10,17 @@
 import { db } from '../db.js'
 import { env } from '../env.js'
 import { apifyDataset } from '../media.js'
+import { geminiJson } from '../gemini.js'
+import { modelForTask } from '../modelRouting.js'
+import { SUBREDDIT_SCHEMA, SUBREDDIT_SYSTEM, cleanSubreddits } from './nicheRedditParse.js'
 import { runRedditScanV2, redditScanV2Enabled, type NicheScanState } from './redditScanV2.js'
-import { nichesFromRedditRows, painSentence, threadsFromRows, topicOf } from './redditScanV2Parse.js'
+import { newProfileNiches, nichesFromRedditRows, painSentence, pickedCommunitiesRow, threadsFromRows, topicOf } from './redditScanV2Parse.js'
 
 type Log = (level: 'info' | 'error', msg: string, data?: Record<string, unknown>) => void
 
 const CHECK_MS = 6 * 3_600_000
+// Model picks per cycle for new creator niches: picked once, then stored.
+const PICKS_PER_CYCLE = 5
 let lastCheck = 0
 
 export async function runRedditScanV2Job(log: Log): Promise<void> {
@@ -25,16 +30,28 @@ export async function runRedditScanV2Job(log: Log): Promise<void> {
   try {
     const res = await runRedditScanV2({
       niches: async () => {
-        const [{ data: v1 }, { data: done }] = await Promise.all([
+        const [{ data: v1Rows }, { data: done }, { data: profiles }] = await Promise.all([
           db.from('niche_reddit').select('niche_key, threads').limit(500),
           db.from('audience_pain_map').select('niche, last_checked').limit(2000),
+          db.from('brand_voices').select('profile').not('profile->>niche', 'is', null).limit(2000),
         ])
+        const v1 = [...(v1Rows ?? [])] as Array<Record<string, unknown>>
+        const fresh = newProfileNiches((profiles ?? []) as Array<{ profile?: unknown }>, new Set(v1.map((r) => String(r.niche_key ?? ''))), PICKS_PER_CYCLE)
+        let picked = 0
+        for (const n of fresh) {
+          const subs = cleanSubreddits(await geminiJson(SUBREDDIT_SYSTEM, `Niche: ${n.niche}`, SUBREDDIT_SCHEMA, 30_000, 0, modelForTask('search')).catch(() => null))
+          if (subs.length < 2) continue
+          const row = pickedCommunitiesRow(n, subs)
+          const { error } = await db.from('niche_reddit').upsert(row, { onConflict: 'niche_key' })
+          if (!error) { v1.push(row); picked++ }
+        }
+        if (fresh.length) log('info', 'reddit_scan_v2_niches', { event: 'reddit_scan_v2_niches', new: fresh.length, picked })
         const last = new Map<string, string>()
         for (const d of (done ?? []) as Array<{ niche?: unknown; last_checked?: unknown }>) {
           const k = String(d.niche ?? ''); const at = String(d.last_checked ?? '')
           if (k && at && (!last.has(k) || at > (last.get(k) as string))) last.set(k, at)
         }
-        const niches = nichesFromRedditRows((v1 ?? []) as Array<Record<string, unknown>>, last)
+        const niches = nichesFromRedditRows(v1, last)
         nicheOfCommunity = new Map(niches.flatMap((n) => n.communities.map((c) => [c, n.niche_key] as [string, string])))
         return niches
       },

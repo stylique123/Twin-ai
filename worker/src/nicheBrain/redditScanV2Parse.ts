@@ -51,3 +51,25 @@ export function nichesFromRedditRows(rows: ReadonlyArray<Record<string, unknown>
   return out
 }
 
+
+/** Creator-profile niches with no stored communities yet (plan v7.1 gap 3).
+ * The v1 table covered 52 old niches; a creator in a new niche got no pain map. */
+export function newProfileNiches(profiles: ReadonlyArray<{ profile?: unknown }>, known: ReadonlySet<string>, max: number): Array<{ niche_key: string; niche: string }> {
+  const out = new Map<string, string>()
+  for (const r of profiles) {
+    const raw = String((r.profile as { niche?: unknown } | null)?.niche ?? '').trim().slice(0, 120)
+    const key = raw.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80)
+    if (key.length >= 3 && !known.has(key) && !out.has(key)) out.set(key, raw)
+    if (out.size >= max) break
+  }
+  return [...out.entries()].map(([niche_key, niche]) => ({ niche_key, niche }))
+}
+
+/** The stored pick: communities only, no thread text; researched_at stays at the
+ * epoch so the v1 researcher still treats the niche as due. */
+export function pickedCommunitiesRow(n: { niche_key: string; niche: string }, subs: readonly string[]): Record<string, unknown> {
+  return {
+    niche_key: n.niche_key, sub_niche: n.niche, researched_at: new Date(0).toISOString(),
+    items: [], threads: subs.map((c) => ({ community: c })), failure: 'communities_picked',
+  }
+}
