@@ -24,6 +24,7 @@ describe('the invention gate is queued after every late edit', () => {
     ['voice card repair', 'voiceCardRepairPrompt(voiceCard, vBeats, misses)'],
     ['rhythm repair (V5)', 'voiceRhythmRepairPrompt(voiceCard, vBeats, idx)'],
     ['CTA last (S7)', 'const r = moveCtaLast(bpc.script'],
+    ['script hygiene (copied text, repeats, filler)', 'const h = hygieneBeats(beats, { outside, hers })'],
     ['spine completion', 'const sc = completeSpine(bps.script'],
     ['placeholder block', 'const pb = blockSpokenPlaceholders(blueprint'],
   ])('%s runs before the gate', (_name, needle) => {

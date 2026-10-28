@@ -25,9 +25,16 @@ export function redditScanV2Enabled(v: string | undefined = process.env.REDDIT_S
 
 export interface NicheScanState { niche_key: string; communities: string[]; last_scan_at: string | null }
 
-/** Niches due: never scanned, or last scanned 30+ days ago. */
-export function dueForScan(niches: NicheScanState[], now = Date.now()): NicheScanState[] {
+/** One run's niche ceiling: the 52 v1 niches it was sized for. Creator-profile
+ * niches join the same run, so the Apify spend per run does not grow. */
+export const SCAN_V2_MAX_NICHES = 52
+
+/** Niches due: never scanned, or last scanned 30+ days ago; never-scanned and
+ * oldest first, at most SCAN_V2_MAX_NICHES. */
+export function dueForScan(niches: NicheScanState[], now = Date.now(), max = SCAN_V2_MAX_NICHES): NicheScanState[] {
   return niches.filter((n) => !n.last_scan_at || Date.parse(n.last_scan_at) <= now - SCAN_V2_TTL_DAYS * DAY)
+    .sort((a, b) => (a.last_scan_at ? Date.parse(a.last_scan_at) : 0) - (b.last_scan_at ? Date.parse(b.last_scan_at) : 0))
+    .slice(0, max)
 }
 
 /** One actor input covering every due niche. */

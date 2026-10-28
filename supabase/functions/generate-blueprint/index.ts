@@ -106,6 +106,7 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
 import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
+import { hygieneBeats } from '../_shared/scriptHygiene.ts'
 import { writerLoopOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
@@ -6747,7 +6748,8 @@ async function handle(req: Request): Promise<Response> {
   // the heartbeat/panel test accounts AND the canary (CANARY_ACCOUNT_IDS, kill CANARY_KILL).
   const sideDoorOpen = () => trialSideDoorOpen({ userId: user.id, heartbeatUserId: Deno.env.get('HEARTBEAT_USER_ID'), isPanel: isPanelAccount(user), canaryAccountsRaw: Deno.env.get('CANARY_ACCOUNT_IDS'), canaryKillRaw: Deno.env.get('CANARY_KILL') })
   if (specMode === 'voice_card') {
-    const testAccount = sideDoorOpen()
+    // Plan v7.1 ramp: her voice card screen follows VOICE_CARD_ENABLED (all, or 1-99).
+    const testAccount = sideDoorOpen() || voiceCardOn(false, false, Deno.env.get('VOICE_CARD_ENABLED'), user.id)
     if (!testAccount || String(Deno.env.get('VOICE_CARD_ENABLED') ?? '').trim().toLowerCase() === 'false') return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { action?: unknown; edits?: unknown }
@@ -6920,7 +6922,8 @@ async function handle(req: Request): Promise<Response> {
   // source_ref 'asked:mn:…'); a skip is recorded in question_asks
   // (option_id 'mn') and that key is never asked again. Logs: counts and ids.
   if (specMode === 'angle_plan' || specMode === 'angle_answer') {
-    const testAccount = sideDoorOpen()
+    // Plan v7.1 ramp: the question step follows WRITER_LOOP (5/25/50/all) for real creators.
+    const testAccount = sideDoorOpen() || writerLoopOn(Deno.env.get('WRITER_LOOP'), false, user.id)
     if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown; door?: unknown; idea?: unknown; cost_mode?: unknown; panel_pain_map?: unknown }
@@ -8651,7 +8654,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   const voiceCardBuild: (CreatorVoiceCard & { source: VoiceSource }) | null = await (async () => {
     try {
       const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
-      if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'))) return null
+      if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'), user.id)) return null
       const source = await loadVoiceSourceInline(admin, ownerId, (voice as { id?: unknown } | null)?.id ?? null, askedRows, vp)
       const built = withManualVoiceCard(buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' }), voice?.profile, manualVoiceCardOn(Deno.env.get('MANUAL_VOICE_CARD')))
       const edits = (voice?.profile as { voice_card_edits?: unknown } | null)?.voice_card_edits
@@ -17777,6 +17780,26 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           console.log(JSON.stringify({ event: 'plan_b_skipped', reason: 'no_material' }))
         }
       } catch { /* Plan B never fails a build: the writer's script stays */ }
+    }
+    // ⚖️ SCRIPT HYGIENE (advisor labels, 28 Oct; WRITER_LOOP stage, which
+    // covers test, panel and canary accounts): a line copied from the
+    // reference, niche research or Reddit is removed unless it is her own
+    // words; a story already told is cut from later lines; raw spoken filler
+    // is stripped. Lines are only removed or trimmed, never added. Counts only.
+    if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) && Deno.env.get('SCRIPT_HYGIENE') !== 'off' && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bph = blueprint as Record<string, unknown>
+        const beats = bph.script as Array<Record<string, unknown>>
+        const refText = (ref as { text?: unknown } | null)?.text
+        const outside = [reference_note ?? '', typeof refText === 'string' ? refText : '', brainBlock].filter((x) => typeof x === 'string' && x.trim())
+        const hers = (knowledgeRows as Array<{ text?: unknown; evidence?: unknown }>).flatMap((k) => [String(k.text ?? ''), String(k.evidence ?? '')])
+          .concat(Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String))
+        const h = hygieneBeats(beats, { outside, hers })
+        if (h.copied || h.repeats || h.filler) {
+          if (h.beats.length >= 2) bph.script = h.beats
+          console.log(JSON.stringify({ event: 'feature_fired', feature: 'script_hygiene', copied: h.copied, repeats: h.repeats, filler: h.filler, beats_before: beats.length, beats_after: h.beats.length }))
+        }
+      } catch { /* hygiene never fails a build */ }
     }
     // ⚖️ CTA LAST (plan v7.1 S7): one pure reorder, nothing added or dropped,
     // on the WRITER_LOOP stage (unset = trial only, 'all' = every account).
