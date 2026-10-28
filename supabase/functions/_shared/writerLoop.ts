@@ -117,6 +117,16 @@ export function writerLoopOn(stage: string | null | undefined, trialOn: boolean,
   return pct > 0 && !!userId && loopBucket(userId) < pct
 }
 
+/**
+ * The invention gate for this request (advisor review of #1350): served by its
+ * own release stage, AND for every creator in the WRITER_LOOP share, so no
+ * creator gets the new writer without the honesty gate. Its kill switch wins.
+ */
+export function inventionGateOn(servedByRelease: boolean, killed: boolean, flag: string | undefined | null, userId: string | null | undefined): boolean {
+  if (killed) return false
+  return servedByRelease || writerLoopOn(flag, false, userId)
+}
+
 /** Stable 0–99 bucket (FNV-1a over 'writer_loop:' + user id). */
 export function loopBucket(userId: string): number {
   let h = 0x811c9dc5

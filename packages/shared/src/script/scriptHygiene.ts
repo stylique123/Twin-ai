@@ -91,6 +91,9 @@ export function stripSpokenFiller(line: string): string {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : t
 }
 
+/** Hook and CTA section names the writer and the templates use. */
+export const PROTECTED_SECTION = /^(?:hook|cta|call to action|close|closing|outro|sign ?off)\b/i
+
 export interface HygieneResult { lines: string[]; copied: number; repeats: number; filler: number }
 
 /** All three, in order: drop copied lines, cut repeated sentences, strip filler. */
@@ -115,12 +118,17 @@ export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], 
   const said = new Set<string>()
   const out: T[] = []
   let copied = 0, repeats = 0, filler = 0
-  for (const b of beats) {
+  // The writer's section names are free text ("Hook", "CTA", "Close", ...), so
+  // the hook and the CTA are found by name OR by place: the first and the last
+  // spoken beat.
+  const spoken = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
+  const ends = new Set([spoken[0], spoken[spoken.length - 1]])
+  for (const [i, b] of beats.entries()) {
     const line = typeof b?.line === 'string' ? b.line : ''
     if (!line.trim()) { out.push(b); continue }
     // The hook and the CTA are never dropped or trimmed (a callback in the CTA
     // is deliberate); only their filler goes, and they count as said.
-    if (/^(?:hook|cta)\b/i.test(String((b as { section?: unknown }).section ?? ''))) {
+    if (ends.has(i) || PROTECTED_SECTION.test(String((b as { section?: unknown }).section ?? '').trim())) {
       for (const g of shingles(line, 4)) said.add(g)
       const clean = stripSpokenFiller(line)
       if (clean !== line) filler++

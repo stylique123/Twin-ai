@@ -107,7 +107,7 @@ import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuesti
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
 import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
 import { hygieneBeats } from '../_shared/scriptHygiene.ts'
-import { writerLoopOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
+import { writerLoopOn, inventionGateOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
@@ -7310,6 +7310,9 @@ async function handle(req: Request): Promise<Response> {
     isShadowRun ? c === shadowComponent || componentOn(c, releaseAccount, releaseRegistry)
     : releaseOff.has(c) ? false
     : componentOn(c, releaseAccount, releaseRegistry)
+  // The invention gate also covers the WRITER_LOOP share of real creators, so
+  // the new writer never ships without it; its kill switch still wins.
+  const inventionOn = inventionGateOn(newOn('invention_gate'), releaseOff.has('invention_gate') || releaseRegistry?.invention_gate?.killed === true, Deno.env.get('WRITER_LOOP'), user.id)
   // ANGLE-FIT and QUESTION-USEFULNESS (Master Prompt v3, 15 Oct): trial only,
   // each with its own kill switch (request flag or env). Real creators never reach them.
   // SPINE FILL (Twin plan v5.1 item H): trial only, kill switch SPINE_FILL_KILL=1.
@@ -17884,7 +17887,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       } catch { /* the packaging check never fails a build */ }
     }
     let inventionRecheck: { reason: UncheckedReason; ledger: Record<string, unknown> } | null = null
-    if (newOn('invention_gate') && blueprint && typeof blueprint === 'object') {
+    if (inventionOn && blueprint && typeof blueprint === 'object') {
       const gateEntity = ownedEntity as { id?: unknown } | null
       const gateTarget = gateEntity?.id ? String(gateEntity.id) : null
       let gateAnswers: Record<string, unknown> = {}
@@ -18243,7 +18246,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // Same as the success path: check_status 'unchecked', record 'queued',
         // the worker's `invention_recheck` enqueued after the save.
         let rescueRecheck: { ledger: Record<string, unknown> } | null = null
-        if (newOn('invention_gate') && rescuedBp && typeof rescuedBp === 'object') {
+        if (inventionOn && rescuedBp && typeof rescuedBp === 'object') {
           try {
             const rbp = rescuedBp as Record<string, unknown>
             const gateEntity = ownedEntity as { id?: unknown } | null
