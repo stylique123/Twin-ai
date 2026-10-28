@@ -106,6 +106,7 @@ import { renderTemplateSkeleton, TEMPLATE_SKELETON_MODE } from '../_shared/templ
 import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuestions, type SpinePlan } from '../_shared/spinePlanner.ts'
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
 import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
+import { hygieneBeats } from '../_shared/scriptHygiene.ts'
 import { writerLoopOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
@@ -17777,6 +17778,26 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           console.log(JSON.stringify({ event: 'plan_b_skipped', reason: 'no_material' }))
         }
       } catch { /* Plan B never fails a build: the writer's script stays */ }
+    }
+    // ⚖️ SCRIPT HYGIENE (advisor labels, 28 Oct; WRITER_LOOP stage, which
+    // covers test, panel and canary accounts): a line copied from the
+    // reference, niche research or Reddit is removed unless it is her own
+    // words; a story already told is cut from later lines; raw spoken filler
+    // is stripped. Lines are only removed or trimmed, never added. Counts only.
+    if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) && Deno.env.get('SCRIPT_HYGIENE') !== 'off' && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bph = blueprint as Record<string, unknown>
+        const beats = bph.script as Array<Record<string, unknown>>
+        const refText = (ref as { text?: unknown } | null)?.text
+        const outside = [reference_note ?? '', typeof refText === 'string' ? refText : '', brainBlock].filter((x) => typeof x === 'string' && x.trim())
+        const hers = (knowledgeRows as Array<{ text?: unknown; evidence?: unknown }>).flatMap((k) => [String(k.text ?? ''), String(k.evidence ?? '')])
+          .concat(Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String))
+        const h = hygieneBeats(beats, { outside, hers })
+        if (h.copied || h.repeats || h.filler) {
+          if (h.beats.length >= 2) bph.script = h.beats
+          console.log(JSON.stringify({ event: 'feature_fired', feature: 'script_hygiene', copied: h.copied, repeats: h.repeats, filler: h.filler, beats_before: beats.length, beats_after: h.beats.length }))
+        }
+      } catch { /* hygiene never fails a build */ }
     }
     // ⚖️ CTA LAST (plan v7.1 S7): one pure reorder, nothing added or dropped,
     // on the WRITER_LOOP stage (unset = trial only, 'all' = every account).

@@ -149,3 +149,10 @@ describe('plan v7.1 WP14: the WRITER_LOOP ramp', async () => {
     expect(loopBucket('a')).toBe(loopBucket('a'))
   })
 })
+
+describe('advisor 28 Oct: script hygiene runs on the WRITER_LOOP stage', () => {
+  it('outside text includes the reference and the niche brain block; her words include knowledge and answers', () => {
+    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\) && Deno\.env\.get\('SCRIPT_HYGIENE'\) !== 'off'/)
+    expect(EDGE).toMatch(/const outside = \[reference_note \?\? '', [^\n]*brainBlock\]/)
+  })
+})
