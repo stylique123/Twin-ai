@@ -107,6 +107,7 @@ import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuesti
 // SPINE CONTRACT (A6, trial only) — spine beats, objection move, title inherits the hook.
 import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
 import { hygieneBeats } from '../_shared/scriptHygiene.ts'
+import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { writerLoopOn, inventionGateOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
@@ -17801,6 +17802,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (h.copied || h.repeats || h.filler) {
           if (h.beats.length >= 2) bph.script = h.beats
           console.log(JSON.stringify({ event: 'feature_fired', feature: 'script_hygiene', copied: h.copied, repeats: h.repeats, filler: h.filler, beats_before: beats.length, beats_after: h.beats.length }))
+        }
+        // ⚖️ AN INVENTED PRODUCT FEATURE (S-AFD7DC): a sentence naming the
+        // product with a capability nothing the writer was given backs is cut.
+        // The invention gate judges this by model; this is the no-quota backstop.
+        const productName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+        if (productName && Array.isArray(bph.script)) {
+          const f = dropUnbackedFeatures(bph.script as Array<Record<string, unknown>>, productName, [lateAllowedText, ...hers].join('\n'))
+          if (f.cut.sentences) {
+            bph.script = f.beats
+            console.log(JSON.stringify({ event: 'feature_fired', feature: 'unbacked_product_feature', sentences: f.cut.sentences, beats_dropped: f.cut.beats, stems: f.cut.stems }))
+          }
         }
       } catch { /* hygiene never fails a build */ }
     }
