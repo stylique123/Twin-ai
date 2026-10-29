@@ -175,3 +175,30 @@ describe('plan v7.1 ramp: the question step and the voice card reach real creato
     expect(EDGE).toMatch(/voiceCardOn\(trialOn, fictional, Deno\.env\.get\('VOICE_CARD_ENABLED'\), user\.id\)/)
   })
 })
+
+describe('advisor review: a real creator in the 5% share goes through the honesty checks', async () => {
+  const { inventionGateOn, writerLoopOn } = await import('../script/planner/writerLoop')
+  const { componentOn } = await import('../script/releaseFlags')
+  const ids = Array.from({ length: 1000 }, (_, i) => `real-${i}`)
+  const inShare = ids.filter((id) => writerLoopOn('5', false, id))
+  it('every real creator in the WRITER_LOOP share gets the invention gate, with the release registry at its default (S0)', () => {
+    expect(inShare.length).toBeGreaterThan(20)
+    for (const id of inShare) {
+      const release = componentOn('invention_gate', { userId: id, isTestAccount: false })
+      expect(release).toBe(false)
+      expect(inventionGateOn(release, false, '5', id)).toBe(true)
+    }
+  })
+  it('outside the share and with WRITER_LOOP unset, a real creator is unchanged; the kill switch wins', () => {
+    const outside = ids.find((id) => !writerLoopOn('5', false, id))!
+    expect(inventionGateOn(false, false, '5', outside)).toBe(false)
+    expect(inventionGateOn(false, false, undefined, inShare[0])).toBe(false)
+    expect(inventionGateOn(true, true, '5', inShare[0])).toBe(false)
+  })
+  it('the edge uses it at both invention-gate sites, and the novel-detail check is not trial-gated', () => {
+    expect(EDGE).toMatch(/const inventionOn = inventionGateOn\(newOn\('invention_gate'\), [^\n]*Deno\.env\.get\('WRITER_LOOP'\), user\.id\)/)
+    expect(EDGE.match(/if \(inventionOn && /g)?.length).toBe(2)
+    expect(EDGE).not.toMatch(/if \(newOn\('invention_gate'\)/)
+    expect(EDGE).toMatch(/\n {8}const novel = dropNovelSentences\(|\n\s+const novel = /)
+  })
+})

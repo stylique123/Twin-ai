@@ -19,12 +19,13 @@ const at = (needle: string) => {
 }
 
 describe('the invention gate is queued after every late edit', () => {
-  const gate = () => at("if (newOn('invention_gate') && blueprint && typeof blueprint === 'object') {")
+  const gate = () => at("if (inventionOn && blueprint && typeof blueprint === 'object') {")
   it.each([
     ['voice card repair', 'voiceCardRepairPrompt(voiceCard, vBeats, misses)'],
     ['rhythm repair (V5)', 'voiceRhythmRepairPrompt(voiceCard, vBeats, idx)'],
     ['CTA last (S7)', 'const r = moveCtaLast(bpc.script'],
     ['script hygiene (copied text, repeats, filler)', 'const h = hygieneBeats(beats, { outside, hers })'],
+    ['the unbacked product-feature cut (S-AFD7DC)', 'const f = dropUnbackedFeatures(bph.script'],
     ['spine completion', 'const sc = completeSpine(bps.script'],
     ['placeholder block', 'const pb = blockSpokenPlaceholders(blueprint'],
   ])('%s runs before the gate', (_name, needle) => {
