@@ -137,6 +137,17 @@ export function lateChecksOn(trialOn: boolean, flag: string | undefined | null, 
   return trialOn || writerLoopOn(flag, false, userId)
 }
 
+/**
+ * WRITER_LOOP_ACCOUNTS (panel 13, owner 5 Nov): a comma list of user ids that
+ * get the whole stack ('all') on the REAL path, whatever the share says.
+ * Default empty: nobody is added. Every other user gets the flag unchanged.
+ */
+export function loopFlagFor(flag: string | undefined | null, accountsRaw: string | undefined | null, userId: string | null | undefined): string | undefined {
+  const id = String(userId ?? '').trim().toLowerCase()
+  const listed = !!id && String(accountsRaw ?? '').split(',').map((x) => x.trim().toLowerCase()).includes(id)
+  return listed ? 'all' : (flag ?? undefined)
+}
+
 /** Stable 0–99 bucket (FNV-1a over 'writer_loop:' + user id). */
 export function loopBucket(userId: string): number {
   let h = 0x811c9dc5

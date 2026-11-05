@@ -23,7 +23,7 @@ export const FEATURE_STEMS = [
 ] as const
 
 const words = (t: string) => String(t ?? '').toLowerCase().match(/[a-z][a-z-]*/g) ?? []
-const sentencesOf = (l: string) => (String(l ?? '').match(/[^.!?]+[.!?]*/g) ?? []).map((s) => s.trim()).filter(Boolean)
+const sentencesOf = (l: string) => String(l ?? '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean)
 
 /** Stems a sentence claims for the product: none when the product is not named in it. */
 export function claimedFeatures(sentence: string, productName: string): string[] {
@@ -60,6 +60,7 @@ export function dropUnbackedFeatures<T extends { line?: unknown }>(beats: readon
       bad.forEach((st) => stems.add(st)); sentences++
       return false
     })
+    if (kept.length === sentencesOf(line).length) { out.push(b); continue }
     let text = kept.join(' ').trim().replace(/^(?:and|so|but)\s+/i, '')
     if (text) text = text.charAt(0).toUpperCase() + text.slice(1)
     if (!text || !/[a-z0-9]/i.test(text)) { emptied++; continue }

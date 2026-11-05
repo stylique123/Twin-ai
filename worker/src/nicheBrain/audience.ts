@@ -108,6 +108,15 @@ export async function runPanelBuilder(log: Log): Promise<void> {
 // answer now pushes the next ask out (15s → 5min), and a hit makes it due again.
 export const untestedGate = createEmptyProbeGate(AUDIENCE_INTERVAL_MS, 5 * 60 * 1000)
 
+/** AUDIENCE_REWRITE: unset/off → nobody; 'all' (or 'on'/'true') → everyone; a comma list → those user ids. */
+export function audienceRewriteOn(flag: string | undefined | null, userId: string | null | undefined): boolean {
+  const f = String(flag ?? '').trim().toLowerCase()
+  if (!f || f === 'off' || f === 'false' || f === '0') return false
+  if (f === 'all' || f === 'on' || f === 'true') return true
+  const id = String(userId ?? '').trim().toLowerCase()
+  return !!id && f.split(',').map((x) => x.trim()).includes(id)
+}
+
 export async function runAudienceTests(log: Log): Promise<void> {
   if (!untestedGate.due()) return
   const { data, error } = await db.rpc('audience_untested', { p_limit: 1 })
@@ -326,6 +335,14 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // test result is still stored. Hook order follows her pick, as before.
     const herWork = await Promise.all(['script_edits', 'script_ratings', 'source_capture_intents'].map((t) =>
       db.from(t).select('generation_id', { count: 'exact', head: true }).eq('generation_id', g.id).then((x) => x.count ?? 0, () => 0)))
+    // ⚖️ AUDIENCE_REWRITE (owner, 5 Nov): default OFF. The viewers still run
+    // and their result is stored, but their line rewrites reach a script only
+    // when this is 'all', or lists the owner's id (the panel's viewers-on arm).
+    if (!audienceRewriteOn(process.env.AUDIENCE_REWRITE, g.user_id) && (lineChanges.length > 0 || lineAdds.length > 0)) {
+      log('info', 'audience_rewrite_off', { event: 'audience_rewrite_off', generation_id: g.id, changes: lineChanges.length, adds: lineAdds.length })
+      lineChanges.length = 0
+      lineAdds.length = 0
+    }
     if (herWork.some((n) => n > 0) && (lineChanges.length > 0 || lineAdds.length > 0)) {
       log('info', 'audience_rewrite_held', { event: 'audience_rewrite_held', generation_id: g.id, changes: lineChanges.length, adds: lineAdds.length })
       lineChanges.length = 0
