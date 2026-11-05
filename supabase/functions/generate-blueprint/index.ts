@@ -13301,7 +13301,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
     // to catch, because a beat could cite something the writer never saw.
-    const declared = (templated.bp as { script?: unknown })?.script
+    let declared = (templated.bp as { script?: unknown })?.script
 
     // ⚠️ COMPUTED HERE, ABOVE THE `beatAudit` LITERAL, AND THAT PLACEMENT IS
     // THE POINT. `check_counter_written_before_read.mjs` exists because a
@@ -14925,7 +14925,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             + ' creator\'s. Rewrite ONLY the lines listed so they express the same idea in different'
             + ' words — do not invent a new fact, number or experience, and do not shorten the line'
             + ' into a fragment. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
-            + overlaps.map((o) => `index ${o.beatIndex}\nLINE: ${(declared[o.beatIndex] as { line?: unknown })?.line}\nCOPIED PHRASE: ${o.run}`).join('\n\n')
+            + overlaps.map((o) => `index ${o.beatIndex}\nLINE: ${((declared as unknown[])[o.beatIndex] as { line?: unknown })?.line}\nCOPIED PHRASE: ${o.run}`).join('\n\n')
           const fixed = await callModel(
             apiKey,
             'You rewrite single script lines to remove wording copied from a reference video\'s'
@@ -15608,6 +15608,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       templated.bp,
       linkAllow,
     )
+    // ⚠️ THE STALE SCRIPT ARRAY (lane 1, 5 Nov). The line above returns a DEEP
+    // CLONE, and `blueprint` is what is saved. Every repair below (personal-use
+    // gate, voice gate, pacing, repetition repair, final audit) works through
+    // `declared`, which still pointed at the pre-clone array: a repair logged
+    // "repaired" while the saved script kept the claim. Re-point it here.
+    declared = (blueprint as { script?: unknown }).script
     if (linkRemovals.length) {
       // Loud on purpose. A non-zero count here is either a model that wandered
       // or an injection that got through the fence, and both are things we
