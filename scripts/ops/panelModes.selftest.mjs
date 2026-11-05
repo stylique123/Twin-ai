@@ -15,16 +15,16 @@ assert.equal(modeOf({ mode: 'reference' }), 'reference')
 const all = panelSelection(fixture)
 assert.equal(all.length, fixture.requests.length, 'no filter = every request')
 const modes = panelSelection(fixture, { modes: ['reference', 'idea'] })
-assert.equal(modes.length, 16, 'reference+idea = the sixteen mode requests')
-assert.deepEqual(modes.map((n) => fixture.requests[n].id), Array.from({ length: 16 }, (_, i) => `panel-${48 + i}`))
-assert.equal(panelSelection(fixture, { modes: ['reference'] }).length, 8)
+assert.equal(modes.length, 24, 'reference+idea = the sixteen mode requests + the eight panel-13 reference requests')
+assert.deepEqual(modes.filter((n) => n < 63).map((n) => fixture.requests[n].id), Array.from({ length: 16 }, (_, i) => `panel-${48 + i}`))
+assert.equal(panelSelection(fixture, { modes: ['reference'] }).length, 16)
 assert.equal(panelSelection(fixture, { modes: ['idea'] }).length, 8)
-assert.equal(panelSelection(fixture, { modes: ['panel'] }).length, 71, 'panel = the 47 pre-modes requests + the 24 panel-13 requests (64-87)')
+assert.equal(panelSelection(fixture, { modes: ['panel'] }).length, 63, 'panel = the 47 pre-modes requests + the 16 panel-13 idea/product requests')
 // Panel 13 (owner 5 Nov): 24 fresh requests, run as PANEL_RANGE=64-87.
 assert.deepEqual(panelSelection(fixture, { range: '64-87' }).map((n) => fixture.requests[n].id), Array.from({ length: 24 }, (_, i) => `panel-${64 + i}`))
 assert.throws(() => panelSelection(fixture, { modes: ['remix'] }), /unknown mode/)
 // Range: 1-based request numbers, as in panel-NN.
-assert.deepEqual(panelSelection(fixture, { range: '48-63' }), modes)
+assert.deepEqual(panelSelection(fixture, { range: '48-63' }), modes.filter((n) => n < 63))
 assert.deepEqual(panelSelection(fixture, { range: '1,3-4' }), [0, 2, 3])
 assert.deepEqual(panelSelection(fixture, { range: '40-50', modes: ['reference'] }).map((n) => n + 1), [48, 49, 50])
 for (const bad of ['a-b', '5-2', '0']) assert.throws(() => panelSelection(fixture, { range: bad }), /PANEL_RANGE/)
@@ -43,7 +43,7 @@ assert.deepEqual(panelFilterFromEnv({ PANEL_MODES: 'reference, idea', PANEL_RANG
 
 // Scenarios keep the fixture index as n (so idempotency keys never move) and apply limit after the filter.
 const sc = panelScenarios(fixture, accounts, Infinity, { modes: ['reference', 'idea'] })
-assert.equal(sc.length, 16)
+assert.equal(sc.length, 24, 'the sixteen mode requests + the eight panel-13 reference requests')
 assert.equal(sc[0].n, 47)
 assert.equal(panelScenarios(fixture, accounts, 3, { modes: ['idea'] }).map((s) => s.id).join(), 'panel-56,panel-57,panel-58')
 // A limited mode run needs only its own creators seeded.

@@ -118,8 +118,17 @@ assert.ok(reqs.some((r) => r.goal === 'leads' && r.creator === 'pip-sprocket'), 
 
 // Modes harness: eight Reference-mode and eight Idea-mode requests, appended after panel-47, one of each per creator.
 const byMode = count((r) => r.mode ?? 'panel')
-assert.equal(byMode.reference, 8, 'eight reference-mode requests')
+assert.equal(byMode.reference, 16, 'eight reference-mode requests (panel-48..55) plus eight for panel 13')
 assert.equal(byMode.idea, 8, 'eight idea-mode requests')
+// Panel 13 (advisor, 5 Nov): panel-64..87 = 8 reference (one per creator) + 16 idea or product.
+const p13 = reqs.slice(63, 87)
+assert.equal(p13.length, 24, 'panel 13 has 24 requests')
+assert.equal(p13.filter((r) => r.mode === 'reference').length, 8, 'panel 13: eight reference requests')
+assert.deepEqual(new Set(p13.filter((r) => r.mode === 'reference').map((r) => r.creator)), new Set(fixture.creators.map((c) => c.key)), 'panel 13: one reference per creator')
+assert.equal(p13.filter((r) => r.mode !== 'reference' && ['idea', 'product'].includes(r.door)).length, 16, 'panel 13: sixteen idea or product')
+// A panel 13 reference transcript is fresh: it repeats no earlier reference's text.
+const earlier = new Set(reqs.slice(0, 63).filter((r) => r.reference).map((r) => r.reference.text))
+for (const r of p13.filter((x) => x.reference)) assert.ok(!earlier.has(r.reference.text), `${r.id}: fresh reference text`)
 assert.ok(reqs.slice(0, 47).every((r) => !('mode' in r)), 'the first 47 requests are unchanged')
 for (const m of ['reference', 'idea']) assert.deepEqual(new Set(reqs.filter((r) => r.mode === m).map((r) => r.creator)), new Set(fixture.creators.map((c) => c.key)), `${m}: every creator`)
 
