@@ -108,7 +108,7 @@ import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuesti
 import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
 import { hygieneBeats } from '../_shared/scriptHygiene.ts'
 import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
-import { writerLoopOn, inventionGateOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
+import { writerLoopOn, inventionGateOn, lateChecksOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
@@ -17058,7 +17058,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
       // ⚖️ BLIND SET 1 LEFTOVERS (owner 2026-10-05; trial first): an empty
       // bridge opening a beat and a "stick around" closer on a non-follow video.
-      if (trialOn && Array.isArray(bp.script)) {
+      if (lateChecksOn(trialOn, Deno.env.get('WRITER_LOOP'), user.id) && Array.isArray(bp.script)) {
         const cleaned = cleanBeats(bp.script as Array<{ line?: unknown }>, String(intent.goal ?? body.goal ?? ''))
         // Blind set 2: her profile labels and scan topics said out loud, and
         // the "So remember: <echo>" closer.
@@ -17803,6 +17803,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           if (h.beats.length >= 2) bph.script = h.beats
           console.log(JSON.stringify({ event: 'feature_fired', feature: 'script_hygiene', copied: h.copied, repeats: h.repeats, filler: h.filler, beats_before: beats.length, beats_after: h.beats.length }))
         }
+        // The hook is kept even when copied; it is counted so panel 13 can report it.
+        if (h.hookCopied) console.log(JSON.stringify({ event: 'hook_copied', count: h.hookCopied }))
         // ⚖️ AN INVENTED PRODUCT FEATURE (S-AFD7DC): a sentence naming the
         // product with a capability nothing the writer was given backs is cut.
         // The invention gate judges this by model; this is the no-quota backstop.

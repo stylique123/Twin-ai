@@ -116,12 +116,12 @@ export function scriptHygiene(lines: readonly string[], ctx: { outside: readonly
  * is dropped); filler is stripped. Beats with no spoken line pass through.
  * Never adds a beat or a word.
  */
-export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], ctx: { outside: readonly string[]; hers: readonly string[] }): { beats: T[]; copied: number; repeats: number; filler: number } {
+export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], ctx: { outside: readonly string[]; hers: readonly string[] }): { beats: T[]; copied: number; repeats: number; filler: number; hookCopied: number } {
   const o = poolOf(ctx.outside.filter(Boolean), 5)
   const h = poolOf(ctx.hers.filter(Boolean), 5)
   const said = new Set<string>()
   const out: T[] = []
-  let copied = 0, repeats = 0, filler = 0
+  let copied = 0, repeats = 0, filler = 0, hookCopied = 0
   // The writer's section names are free text ("Hook", "CTA", "Close", ...), so
   // the hook and the CTA are found by name OR by place: the first and the last
   // spoken beat.
@@ -133,6 +133,9 @@ export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], 
     // The hook and the CTA are never dropped or trimmed (a callback in the CTA
     // is deliberate); only their filler goes, and they count as said.
     if (ends.has(i) || PROTECTED_SECTION.test(String((b as { section?: unknown }).section ?? '').trim())) {
+      // Kept by design, but counted (advisor review of #1351): a copied hook
+      // is reported as hook_copied so panels can measure it.
+      if (i === spoken[0] && o.size && runOverlap(line, o) >= 0.5 && runOverlap(line, h) < 0.5) hookCopied++
       for (const g of shingles(line, 4)) said.add(g)
       const clean = stripSpokenFiller(line)
       if (clean !== line) filler++
@@ -153,5 +156,5 @@ export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], 
     if (clean !== text) filler++
     out.push(clean === line ? b : { ...b, line: clean })
   }
-  return { beats: out, copied, repeats, filler }
+  return { beats: out, copied, repeats, filler, hookCopied }
 }

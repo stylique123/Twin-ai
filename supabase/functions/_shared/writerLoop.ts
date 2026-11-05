@@ -127,6 +127,16 @@ export function inventionGateOn(servedByRelease: boolean, killed: boolean, flag:
   return servedByRelease || writerLoopOn(flag, false, userId)
 }
 
+/**
+ * The late cleanup and honesty checks (leftover cleanup, invented causes, no
+ * story → no narrated event, novel details): trial accounts, AND every creator
+ * in the WRITER_LOOP share (advisor review of #1351: they were trial-only, so a
+ * real creator in the share got the new writer without them).
+ */
+export function lateChecksOn(trialOn: boolean, flag: string | undefined | null, userId: string | null | undefined): boolean {
+  return trialOn || writerLoopOn(flag, false, userId)
+}
+
 /** Stable 0–99 bucket (FNV-1a over 'writer_loop:' + user id). */
 export function loopBucket(userId: string): number {
   let h = 0x811c9dc5

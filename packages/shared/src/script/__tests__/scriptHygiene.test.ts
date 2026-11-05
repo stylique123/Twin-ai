@@ -86,6 +86,7 @@ describe('advisor review: the hook and the CTA are never dropped or trimmed', as
     expect(r.beats.map((b) => b.section)).toEqual(['hook', 'story', 'cta'])
     expect(r.beats[0]!.line).toBe(research)
     expect(r.beats[2]!.line).toBe(beats[2]!.line)
+    expect(r.hookCopied).toBe(1)
   })
 })
 

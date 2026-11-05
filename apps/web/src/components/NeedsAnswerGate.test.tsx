@@ -71,8 +71,22 @@ describe('needs one answer screen', () => {
   it('non-trial users see nothing and are never blocked', () => {
     const { container } = render(<NeedsAnswerCard userId={OTHER} blueprint={needsAnswers} onSubmit={async () => {}} />)
     expect(container.innerHTML).toBe('')
-    expect(gateStatusFor(OTHER, needsAnswers)).toBe('checked')
-    expect(recordBlocked(gateStatusFor(OTHER, { check_status: 'unchecked' }))).toBe(false)
+    expect(gateStatusFor(OTHER, { invention_gate: { outcome: 'needs_answers' } })).toBe('checked')
+    expect(recordBlocked(gateStatusFor(OTHER, {}))).toBe(false)
+  })
+
+  it('advisor review of #1351: a creator the server checked sees that status, never a false "checked"', () => {
+    expect(gateStatusFor(OTHER, { check_status: 'unchecked' })).toBe('unchecked')
+    expect(recordBlocked(gateStatusFor(OTHER, { check_status: 'unchecked' }))).toBe(true)
+  })
+
+  it('advisor review of #1351: not fully checked opens recording with an honest line', () => {
+    const bp = { check_status: 'not_fully_checked' }
+    expect(recordBlocked(gateStatusFor(OTHER, bp))).toBe(false)
+    expect(recordBlocked(gateStatusFor(TRIAL, bp))).toBe(false)
+    const { getByTestId } = render(<NeedsAnswerCard userId={OTHER} blueprint={bp} onSubmit={async () => {}} />)
+    expect(getByTestId('gate-not-fully-checked').textContent).toMatch(/Not fully checked/)
+    expect(getByTestId('gate-not-fully-checked').textContent).not.toMatch(/\bchecked every fact\b|ready/i)
   })
 
   it('unchecked: neutral banner, record disabled, polls for 3 minutes then stops', () => {

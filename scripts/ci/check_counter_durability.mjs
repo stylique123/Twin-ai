@@ -874,6 +874,8 @@ const EVENTS = {
   software_close_audit: { kind: 'counter_ephemeral', why: 'Trial, measure only: whether a software-kind script\'s last line answers cost, sign-up or time (ok + which). Recomputable from blueprint.script.' },
   product_read_failed: { kind: 'counter_ephemeral', why: 'A link she gave could not be read (product not on her shop); no name search runs. Durable trace: product_entities.lookup_candidates and the job result lookup.read_failed.' },
   feature_fired: { kind: 'counter_ephemeral', why: 'Plan Part 0 fire counter: one line per wired plan feature per generation (feature + counts only). Batch reports count it per feature; the durable record is the wiring ledger.' },
+  hook_copied: { kind: 'counter_ephemeral', why: 'Advisor review of #1351: a hook kept by hygiene although it copies outside text (count only); panel reports sum it.' },
+  invention_recheck_gave_up: { kind: 'counter_ephemeral', why: 'Advisor review of #1351: the invention re-check could not finish on its last attempt; durable as blueprint.check_status = not_fully_checked.' },
   shown_script_audit_final: { kind: 'counter_ephemeral', why: 'The shown audit re-measured on the script that ships (after late guards); showsInUse is stored on blueprint.shown_audit.' },
   software_target_applied: { kind: 'counter_ephemeral', why: 'Trial: the 25s target applied to an app/software/course/community video with no picked length; the target lands in duration_contract.' },
   beat_camera_decided: { kind: 'counter_ephemeral', why: 'How many spoken beats the deterministic camera rule put on the back camera, and how many writer labels it changed or filled in (audit 2026-10-03 Part 12); the decided label itself is stored on blueprint.script[].camera and shot_list[].camera.' },
