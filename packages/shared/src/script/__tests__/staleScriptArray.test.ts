@@ -42,3 +42,35 @@ describe('a late repair reaches the saved script', () => {
     expect(EDGE.indexOf('declared = (blueprint as { script?: unknown }).script', at)).toBeGreaterThan(next)
   })
 })
+
+describe('advisor review of #1353 (2): the camera step also swaps in a new script array', async () => {
+  const { decideBeatCameras } = await import('../beatCamera')
+  /** What the edge runs right after `blueprint.script = cams.script`, if it re-points `declared`. */
+  function afterCameras(): string {
+    const at = EDGE.indexOf(';(blueprint as { script?: unknown }).script = cams.script')
+    const line = EDGE.slice(at, EDGE.indexOf('\n', EDGE.indexOf('\n', at) + 1))
+    return line.split('\n').filter((l) => /^\s*declared = /.test(l)).join('\n')
+  }
+  it('a repair through `declared` after the camera step reaches the saved script', () => {
+    const blueprint = { script: [{ line: 'Watch me open the bag.', camera: 'front' }, { line: 'I use Harbor Blend daily.' }, { line: 'Save this.' }] as Array<Record<string, unknown>> }
+    let declared: unknown = blueprint.script
+    const cams = decideBeatCameras(blueprint.script, { jobFirst: true })
+    blueprint.script = cams.script
+    // eslint-disable-next-line no-new-func
+    declared = new Function('cams', 'declared', `${afterCameras().replace(/ as [A-Za-z<>{}\[\]?:;, ]+/g, '')}\nreturn declared`)(cams, declared)
+    const beats = declared as Array<{ line?: unknown }>
+    beats[1]!.line = 'Harbor Blend is roasted daily.'
+    ;(declared as unknown[]).splice(2, 1)
+    expect(blueprint.script.map((b) => b.line)).toEqual(['Watch me open the bag.', 'Harbor Blend is roasted daily.'])
+  })
+  it('between the clone and the save, no other new script array is assigned while `declared` is still read', () => {
+    const lines = EDGE.split('\n')
+    const clone = lines.findIndex((l) => l.includes('const { blueprint, removals: linkRemovals } = sanitizeBlueprintLinks('))
+    const save = lines.findIndex((l, i) => i > clone && l.includes('.insert({') && lines[i - 1]?.includes(".from('generations')"))
+    const lastRead = lines.reduce((m, l, i) => (i > clone && i < save && /\bdeclared\b/.test(l) ? i : m), -1)
+    const swaps = lines.flatMap((l, i) => (i > clone && i < lastRead && /\.script = /.test(l) ? [i] : []))
+    // Each swap inside the window must be followed by a re-point of `declared`.
+    for (const i of swaps) expect(lines.slice(i + 1, i + 3).some((l) => /^\s*declared = /.test(l))).toBe(true)
+    expect(swaps.length).toBeGreaterThan(0)
+  })
+})

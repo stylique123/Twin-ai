@@ -205,9 +205,14 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // hook stops fewer than HOOK_TARGET of 10, write new hooks from what the
     // viewers said and test them on the same viewers (at most HOOK_ROUNDS).
     let tested = s
+    // ⚖️ AUDIENCE_REWRITE (owner 5 Nov; advisor review of #1353): default OFF.
+    // Off = the ONE grading call above and the audience_tests row only: no
+    // rewrite rounds, and nothing written to the generation (script, shot list,
+    // hook order, opening line, selected hook, promise, gaps).
+    const rewriteOn = audienceRewriteOn(process.env.AUDIENCE_REWRITE, g.user_id)
     let rounds = 0
     const scoreOf = (x: NonNullable<typeof r>) => Math.round((Math.max(0, ...x.hooks.map((h) => h.stopped)) / Math.max(1, x.viewers.length)) * 10)
-    while (rounds < HOOK_ROUNDS && scoreOf(r) < HOOK_TARGET && tested.hooks.length < MAX_TESTED_HOOKS) {
+    while (rewriteOn && rounds < HOOK_ROUNDS && scoreOf(r) < HOOK_TARGET && tested.hooks.length < MAX_TESTED_HOOKS) {
       rounds += 1
       const drafted = cleanNewHooks(await geminiJson(HOOK_REWRITE_SYSTEM, hookRewritePrompt(tested, r.hooks, r.viewers), HOOK_REWRITE_SCHEMA, 30_000, 0, model), tested.hooks)
       const fresh = drafted.filter(safe).slice(0, MAX_TESTED_HOOKS - tested.hooks.length)
@@ -244,7 +249,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
     const fixedBy = new Set<number>()
     const attempts = new Map<number, 'refused' | 'tested_worse'>()
     const cannot = new Map<number, { reason: string; question: string | null }>()
-    while (lineRounds < SCRIPT_ROUNDS && (watchedToEnd(r.viewers) < SCRIPT_TARGET || r.promise_kept === false || gaps.some((g) => !fixedBy.has(g.id) && !cannot.has(g.id)))) {
+    while (rewriteOn && lineRounds < SCRIPT_ROUNDS && (watchedToEnd(r.viewers) < SCRIPT_TARGET || r.promise_kept === false || gaps.some((g) => !fixedBy.has(g.id) && !cannot.has(g.id)))) {
       lineRounds += 1
       const open = gaps.filter((g) => !fixedBy.has(g.id) && !cannot.has(g.id))
         .map((g) => ({ ...g, beat: g.beat >= 0 ? origin.indexOf(g.beat) : -1 }))
@@ -335,20 +340,13 @@ export async function runAudienceTests(log: Log): Promise<void> {
     // test result is still stored. Hook order follows her pick, as before.
     const herWork = await Promise.all(['script_edits', 'script_ratings', 'source_capture_intents'].map((t) =>
       db.from(t).select('generation_id', { count: 'exact', head: true }).eq('generation_id', g.id).then((x) => x.count ?? 0, () => 0)))
-    // ⚖️ AUDIENCE_REWRITE (owner, 5 Nov): default OFF. The viewers still run
-    // and their result is stored, but their line rewrites reach a script only
-    // when this is 'all', or lists the owner's id (the panel's viewers-on arm).
-    if (!audienceRewriteOn(process.env.AUDIENCE_REWRITE, g.user_id) && (lineChanges.length > 0 || lineAdds.length > 0)) {
-      log('info', 'audience_rewrite_off', { event: 'audience_rewrite_off', generation_id: g.id, changes: lineChanges.length, adds: lineAdds.length })
-      lineChanges.length = 0
-      lineAdds.length = 0
-    }
+    if (!rewriteOn) log('info', 'audience_rewrite_off', { event: 'audience_rewrite_off', generation_id: g.id, reordered, promise_changed: promiseChanged, gaps: gapOutcomes.length, top_hook: !!want })
     if (herWork.some((n) => n > 0) && (lineChanges.length > 0 || lineAdds.length > 0)) {
       log('info', 'audience_rewrite_held', { event: 'audience_rewrite_held', generation_id: g.id, changes: lineChanges.length, adds: lineAdds.length })
       lineChanges.length = 0
       lineAdds.length = 0
     }
-    if (reordered || lineChanges.length > 0 || lineAdds.length > 0 || promiseChanged || gapOutcomes.length > 0 || (want && !picked)) {
+    if (rewriteOn && (reordered || lineChanges.length > 0 || lineAdds.length > 0 || promiseChanged || gapOutcomes.length > 0 || (want && !picked))) {
       // Only the version that tested best is what she sees: better lines
       // replace the old ones on the teleprompter AND on the shot card.
       const next: Record<string, unknown> = { ...bp }
@@ -450,7 +448,7 @@ export async function runAudienceTests(log: Log): Promise<void> {
       if (JSON.stringify(next) !== JSON.stringify(bp)) await db.from('generations').update({ blueprint: next }).eq('id', g.id)
     }
     log('info', 'audience_opening_hook', { event: 'audience_opening_hook', generation_id: g.id, swapped: openingSwapped, creator_picked: picked, has_top: !!ordered[0] })
-    if (ordered[0] && want) {
+    if (rewriteOn && ordered[0] && want) {
       if (!picked && cur?.selected_hook !== want) {
         await db.from('generations').update({ selected_hook: want, hook_choice: { source: 'default', index: 0 } }).eq('id', g.id)
       }

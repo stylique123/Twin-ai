@@ -16,10 +16,12 @@ describe('AUDIENCE_REWRITE', async () => {
     expect(audienceRewriteOn('p-1,p-2', 'u-1')).toBe(false)
     expect(audienceRewriteOn('p-1', null)).toBe(false)
   })
-  it('the switch sits before the line rewrites are applied', () => {
+  it('one switch gates both rewrite loops and both writes to generations', () => {
     const src = readFileSync(new URL('../nicheBrain/audience.ts', import.meta.url), 'utf8')
-    const at = src.indexOf('if (!audienceRewriteOn(process.env.AUDIENCE_REWRITE, g.user_id)')
-    expect(at).toBeGreaterThan(0)
-    expect(at).toBeLessThan(src.indexOf("if (reordered || lineChanges.length > 0 || lineAdds.length > 0"))
+    expect(src).toContain('const rewriteOn = audienceRewriteOn(process.env.AUDIENCE_REWRITE, g.user_id)')
+    expect(src).toContain('while (rewriteOn && rounds < HOOK_ROUNDS')
+    expect(src).toContain('while (rewriteOn && lineRounds < SCRIPT_ROUNDS')
+    expect(src).toMatch(/if \(rewriteOn && \(reordered \|\|/)
+    expect(src).toContain('if (rewriteOn && ordered[0] && want) {')
   })
 })

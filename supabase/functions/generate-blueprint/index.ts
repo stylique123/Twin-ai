@@ -15887,6 +15887,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       if (Array.isArray(script)) {
         const cams = decideBeatCameras(script as Array<Record<string, unknown>>, { jobFirst: trialOn })
         ;(blueprint as { script?: unknown }).script = cams.script
+        declared = cams.script // a new array: the repairs below must edit what is saved (advisor review of #1353)
         console.log(JSON.stringify({ event: 'beat_camera_decided', beats: cams.front + cams.back, back: cams.back, changed: cams.changed, missing: cams.missing }))
       }
       const scriptNow = (blueprint as { script?: unknown })?.script
