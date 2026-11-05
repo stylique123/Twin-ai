@@ -18,19 +18,29 @@ export function backgroundPending(bp) {
   return true
 }
 
+/** Final check states (worker FINAL_CHECK). No check_status = never sent to the check. */
+export const FINAL_CHECK = ['checked', 'general', 'needs_answers', 'not_fully_checked']
+/** Panel 13 (advisor): still pending until the check is FINAL. A 'failed' step is
+ *  only one attempt failing while the worker retries, so it is still pending. */
+export function checkUnsettled(bp) {
+  if (!bp || typeof bp !== 'object') return false
+  const cs = bp.check_status
+  return !(cs === undefined || cs === null || FINAL_CHECK.includes(cs))
+}
+
 /**
  * Polls `load(id)` (returns the saved blueprint) until it is no longer pending
  * or `timeoutMs` passes. Returns { blueprint, waited_ms, timed_out, polls }.
  */
-export async function awaitChecked(load, id, { timeoutMs = 240_000, pollMs = 5_000, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), initial = null } = {}) {
+export async function awaitChecked(load, id, { timeoutMs = 240_000, pollMs = 5_000, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), initial = null, pending = backgroundPending } = {}) {
   const t0 = now()
   let bp = initial
   let polls = 0
-  if (bp && !backgroundPending(bp)) return { blueprint: bp, waited_ms: 0, timed_out: false, polls }
+  if (bp && !pending(bp)) return { blueprint: bp, waited_ms: 0, timed_out: false, polls }
   for (;;) {
     bp = (await load(id)) ?? bp
     polls += 1
-    if (!backgroundPending(bp)) return { blueprint: bp, waited_ms: now() - t0, timed_out: false, polls }
+    if (!pending(bp)) return { blueprint: bp, waited_ms: now() - t0, timed_out: false, polls }
     if (now() - t0 >= timeoutMs) return { blueprint: bp, waited_ms: now() - t0, timed_out: true, polls }
     await sleep(pollMs)
   }

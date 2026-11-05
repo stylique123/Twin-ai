@@ -29,7 +29,7 @@
 import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 import { templateOf } from './templateOf.mjs'
-import { awaitChecked, backgroundPending, blueprintLoader } from './awaitChecked.mjs'
+import { awaitChecked, backgroundPending, blueprintLoader, checkUnsettled } from './awaitChecked.mjs'
 import { realisticPlan, planSummary, realisticBody, realisticCostReport } from './realisticPanelPlan.mjs'
 
 export const PANEL_SKIP_ANSWER = 'Nothing specific, keep it general.'
@@ -70,9 +70,15 @@ export function panelSelection(fixture, { modes = [], range = '' } = {}) {
 /** Modes and range from the environment and a `--group=` value. `panel:reference` tokens in the
  * group (the script-batch workflow's free-text `group` input) add to PANEL_MODES. */
 export function panelFilterFromEnv(env = process.env, group = '') {
-  const fromGroup = String(group ?? '').split(',').map((x) => x.trim()).filter((x) => x.startsWith('panel:')).map((x) => x.slice(6))
+  const tokens = String(group ?? '').split(',').map((x) => x.trim())
+  const fromGroup = tokens.filter((x) => x.startsWith('panel:')).map((x) => x.slice(6))
   const fromEnv = String(env.PANEL_MODES ?? '').split(',').map((x) => x.trim()).filter(Boolean)
-  return { modes: [...new Set([...fromEnv, ...fromGroup])], range: String(env.PANEL_RANGE ?? '').trim() }
+  // Panel 13: the workflow's free-text group carries the range and the viewer arms
+  // (`panel-range:64-87`, `panel-viewer-arms`), so no workflow input is needed. Env wins.
+  const rangeTok = tokens.find((x) => x.startsWith('panel-range:'))?.slice('panel-range:'.length) ?? ''
+  const out = { modes: [...new Set([...fromEnv, ...fromGroup])], range: String(env.PANEL_RANGE ?? '').trim() || rangeTok.trim() }
+  if (tokens.includes('panel-viewer-arms')) out.viewerArms = true
+  return out
 }
 
 /** Does a `--group=` value ask for the panel (`panel` or any `panel:<mode>` token)? */
@@ -222,6 +228,20 @@ export function panelAnswerMode(env = process.env) {
  * applies the viewers' line rewrites only for owners listed in AUDIENCE_REWRITE,
  * so the panel ids must be listed there. Default off: runs are unchanged.
  */
+/** Panel 13 per-arm counts: the gate's invented (I) sentences after repair, the
+ *  copied hook kept by hygiene, and the final check state. Counts only. */
+export function armMetrics(bp) {
+  const g = bp?.invention_gate
+  const invented = g?.after?.I ?? g?.before?.I ?? null
+  return {
+    check_status: bp?.check_status ?? null,
+    gate_outcome: g?.outcome ?? null,
+    invented_after: typeof invented === 'number' ? invented : null,
+    hook_copied: Number(bp?.script_hygiene?.hook_copied ?? 0),
+    beats: Array.isArray(bp?.script) ? bp.script.filter((b) => typeof b?.line === 'string' && b.line.trim()).length : 0,
+  }
+}
+
 export function panelViewerArmsOn(env = process.env) {
   return env.PANEL_VIEWER_ARMS === 'on'
 }
@@ -337,6 +357,7 @@ async function signInAs(url, anon, admin, email) {
 }
 
 export async function runPanel({ url, anon, service, batch, limit = Infinity, paceMs = 15000, filter = panelFilterFromEnv() }) {
+  const viewerArmsOn = panelViewerArmsOn() || filter.viewerArms === true
   const admin = createClient(url, service, { auth: { persistSession: false } })
   const fileId = Number(process.env.PANEL_FILE_ID || 0)
   if (!fileId) throw new Error('panel: PANEL_FILE_ID (the private test_run_files row from seedFictionalPanel.mjs) is required')
@@ -437,7 +458,17 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     }
     // Async polish (trial): read the script only after the worker has polished and checked it.
     let bp = r.json?.blueprint ?? null
-    if (r.json?.id && backgroundPending(bp)) {
+    // Panel 13 (advisor): with the viewer arms on, the OFF arm is captured only
+    // once the honesty check is FINAL; a request that never settles is reported
+    // as a failure, not scored.
+    let checkTimedOut = false
+    if (r.json?.id && viewerArmsOn && checkUnsettled(bp)) {
+      const w = await awaitChecked(blueprintLoader(admin), r.json.id, { initial: bp, pending: checkUnsettled, timeoutMs: 1000 * Number(process.env.PANEL_CHECK_WAIT_S ?? 900) })
+      bp = w.blueprint
+      checkTimedOut = w.timed_out
+      if (r.json) r.json.blueprint = bp
+      console.log(JSON.stringify({ event: 'await_check_final', waited_ms: w.waited_ms, polls: w.polls, timed_out: w.timed_out, check_status: bp?.check_status ?? null }))
+    } else if (r.json?.id && backgroundPending(bp)) {
       const w = await awaitChecked(blueprintLoader(admin), r.json.id, { initial: bp, timeoutMs: 1000 * Number(process.env.POLISH_WAIT_S ?? 240) })
       bp = w.blueprint
       if (r.json) r.json.blueprint = bp
@@ -450,7 +481,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     records.push(qrec)
     // No viewer panel on a measure run: claim the script before the worker's poll can.
     // With the viewer arms on, the viewers must run, so nothing is claimed.
-    const viewerArms = panelViewerArmsOn()
+    const viewerArms = viewerArmsOn
     if (r.json?.id && !viewerArms) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     const row = (arm, armBp, armLines, extra = {}) => ({
       batch, n: sc.n,
@@ -460,7 +491,9 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
       findings: [
         ...(bp ? [{ k: `template_${templateOf(bp)}`, d: bp?.word_budget ? `${bp.word_budget.action} ${bp.word_budget.words_before}->${bp.word_budget.words_after}/${bp.word_budget.budget}` : '' }] : []),
         ...(asked.length ? [{ k: 'asked_first', d: asked.join(' | ').slice(0, 300) }] : []),
-        ...(bp?.invention_gate ? [{ k: `gate_${bp.invention_gate.outcome}`, d: JSON.stringify(bp.invention_gate.before ?? {}) }] : bp ? [{ k: 'gate_missing', d: '' }] : []),
+        ...(armBp?.invention_gate ? [{ k: `gate_${armBp.invention_gate.outcome}`, d: JSON.stringify(armBp.invention_gate.before ?? {}) }] : armBp ? [{ k: 'gate_missing', d: '' }] : []),
+        // Panel 13: per-arm counts the report reads (counts only).
+        ...(arm ? [{ k: 'arm_metrics', d: JSON.stringify(armMetrics(armBp)) }] : []),
       ],
       script_text: armLines.length ? armLines.map((l, i) => `${i + 1}. ${l}`).join('\n') : null,
       hooks: Array.isArray(armBp?.hook_options) ? armBp.hook_options : null,
@@ -468,6 +501,10 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     })
     if (!viewerArms || !r.json?.id) {
       await admin.from('script_batch_results').insert(row(null, bp, lines))
+    } else if (checkTimedOut) {
+      // Never scored: the check did not finish, so neither arm is final.
+      await admin.from('script_batch_results').insert(row('off', bp, [], { failure: 'check_not_final', check_status: bp?.check_status ?? null }))
+      console.log(JSON.stringify({ event: 'panel_viewer_arms', n: sc.n, failure: 'check_not_final' }))
     } else {
       await admin.from('script_batch_results').insert(row('off', bp, lines))
       const v = await awaitViewers(async (id) => (await admin.from('audience_tests').select('status').eq('generation_id', id).maybeSingle()).data?.status ?? null,

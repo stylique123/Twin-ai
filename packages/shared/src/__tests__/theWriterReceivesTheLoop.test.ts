@@ -259,3 +259,25 @@ describe('panel 13 (owner 5 Nov): WRITER_LOOP_ACCOUNTS', async () => {
     expect(EDGE.match(/Deno\.env\.get\('VOICE_CARD_ENABLED'\)/g)?.length).toBe(1)
   })
 })
+
+describe('panel 13 (advisor): a fictional voice listed in WRITER_LOOP_ACCOUNTS gets the voice card and the stack', async () => {
+  const { loopFlagFor, writerLoopOn, lateChecksOn, inventionGateOn } = await import('../script/planner/writerLoop')
+  const { voiceCardOn } = await import('../script/voice/voiceCard')
+  const id = 'panel-1'
+  it('real path (trialOn=false), fictional voice, env unset: every switch is on for the listed account only', () => {
+    for (const fictional of [true, false]) expect(voiceCardOn(false, fictional, loopFlagFor(undefined, id, id), id)).toBe(true)
+    const wl = loopFlagFor(undefined, id, id)
+    expect(writerLoopOn(wl, false, id)).toBe(true)
+    expect(lateChecksOn(false, wl, id)).toBe(true)
+    expect(inventionGateOn(false, false, wl, id)).toBe(true)
+    expect(voiceCardOn(false, true, loopFlagFor(undefined, id, 'other'), 'other')).toBe(false)
+  })
+  it('the kill switch still wins over the list', () => {
+    expect(voiceCardOn(false, true, loopFlagFor('false', id, id), id)).toBe(false)
+    expect(writerLoopOn(loopFlagFor('off', id, id), false, id)).toBe(false)
+  })
+  it('the edge passes the listed flag to the voice card at generation and on its screen', () => {
+    expect(EDGE).toContain("if (!voiceCardOn(trialOn, fictional, voiceCardFlag, user.id)) return null")
+    expect(EDGE).toMatch(/voiceCardOn\(false, false, voiceCardFlag, user\.id\)/)
+  })
+})

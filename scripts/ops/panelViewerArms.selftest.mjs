@@ -25,3 +25,23 @@ const clock = () => { let t = 0; return { now: () => t, sleep: async (ms) => { t
   assert.equal(r.status, 'timeout'); assert.equal(r.waited_ms, 30_000)
 }
 console.log('panel viewer arms selftest: ok')
+
+// Panel 13 (advisor): the OFF arm is captured only once the check is FINAL.
+{
+  const { awaitChecked, checkUnsettled, backgroundPending } = await import('./awaitChecked.mjs')
+  for (const cs of ['checked', 'general', 'needs_answers', 'not_fully_checked']) assert.equal(checkUnsettled({ check_status: cs }), false)
+  assert.equal(checkUnsettled({}), false)
+  assert.equal(checkUnsettled({ check_status: 'unchecked' }), true)
+  // A failed ATTEMPT (worker retrying) is still pending here, though backgroundPending lets it through.
+  const retrying = { check_status: 'unchecked', gate_progress: { step: 'failed' } }
+  assert.equal(checkUnsettled(retrying), true)
+  assert.equal(backgroundPending(retrying), false)
+  const seq = [retrying, { check_status: 'unchecked', gate_progress: { step: 'judging' } }, { check_status: 'checked', script: [{ line: 'final' }] }]
+  const c = clock()
+  const w = await awaitChecked(async () => seq.shift(), 'g', { initial: { check_status: 'unchecked' }, pending: checkUnsettled, pollMs: 5_000, timeoutMs: 60_000, ...c })
+  assert.equal(w.blueprint.check_status, 'checked'); assert.equal(w.timed_out, false)
+  const never = await awaitChecked(async () => retrying, 'g', { initial: retrying, pending: checkUnsettled, pollMs: 5_000, timeoutMs: 20_000, ...clock() })
+  assert.equal(never.timed_out, true)
+  console.log('panel check-final selftest: ok')
+}
+await import('./panelArmsBlind.selftest.mjs')

@@ -17816,6 +17816,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
         // The hook is kept even when copied; it is counted so panel 13 can report it.
         if (h.hookCopied) console.log(JSON.stringify({ event: 'hook_copied', count: h.hookCopied }))
+        // Counts only, on the saved blueprint, so a panel reads them per script.
+        bph.script_hygiene = { copied: h.copied, repeats: h.repeats, filler: h.filler, hook_copied: h.hookCopied }
         // ⚖️ AN INVENTED PRODUCT FEATURE (S-AFD7DC): a sentence naming the
         // product with a capability nothing the writer was given backs is cut.
         // The invention gate judges this by model; this is the no-quota backstop.

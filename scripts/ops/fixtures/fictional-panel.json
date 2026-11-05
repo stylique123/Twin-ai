@@ -894,6 +894,30 @@
         "creator_truth"
       ],
       "id": "panel-63"
-    }
+    },
+    { "creator": "mayas-coffee", "kind": "educate", "goal": "educate", "door": "idea", "note": "why your pour over tastes sour and the one grind change that fixes it", "template": "T1", "profile": "standard", "lacks": [], "id": "panel-64" },
+    { "creator":  "mayas-coffee", "kind":  "sell", "goal":  "sell", "door":  "product", "product":  "nightowl", "note":  "Night Owl Espresso", "template":  "T4", "profile":  "sprint", "lacks":  [], "id":  "panel-65" },
+    { "creator": "mayas-coffee", "kind": "story", "goal": "personal_brand", "door": "idea", "note": "the morning I almost closed the roastery", "template": "T3", "profile": "deep", "lacks": [], "id": "panel-66" },
+    { "creator":  "glow-lab", "kind":  "educate", "goal":  "educate", "door":  "idea", "note":  "what a patch test actually tells you and what it does not", "template":  "T1", "profile":  "standard", "lacks":  [], "id":  "panel-67" },
+    { "creator": "glow-lab", "kind": "sell", "goal": "sell", "door": "product", "product": "melt-balm", "note": "Melt Balm", "template": "T3", "profile": "standard", "lacks": [], "id": "panel-68" },
+    { "creator":  "glow-lab", "kind":  "educate", "goal":  "followers", "door":  "idea", "note":  "three ingredient label words that mean nothing", "template":  "T1", "profile":  "sprint", "lacks":  [], "id":  "panel-69" },
+    { "creator": "flowdesk", "kind": "leads", "goal": "leads", "door": "product", "product": "flowdesk", "note": "FlowDesk", "template": "T1", "profile": "standard", "lacks": [], "id": "panel-70" },
+    { "creator":  "flowdesk", "kind":  "educate", "goal":  "authority", "door":  "idea", "note":  "why small teams should not buy a help desk yet", "template":  "T1", "profile":  "deep", "lacks":  [], "id":  "panel-71" },
+    { "creator": "flowdesk", "kind": "educate", "goal": "educate", "door": "idea", "note": "how to write a saved reply that does not sound robotic", "template": "T1", "profile": "sprint", "lacks": [], "id": "panel-72" },
+    { "creator":  "coach-ana", "kind":  "educate", "goal":  "educate", "door":  "idea", "note":  "how to know if a weight is too heavy for you", "template":  "T1", "profile":  "sprint", "lacks":  [], "id":  "panel-73" },
+    { "creator": "coach-ana", "kind": "leads", "goal": "leads", "door": "product", "product": "starter", "note": "Home Strength Starter", "template": "T1", "profile": "standard", "lacks": [], "id": "panel-74" },
+    { "creator":  "coach-ana", "kind":  "story", "goal":  "personal_brand", "door":  "idea", "note":  "the client who taught me to stop counting reps", "template":  "T3", "profile":  "standard", "lacks":  [], "id":  "panel-75" },
+    { "creator": "clay-kiln", "kind": "entertain", "goal": "entertain", "door": "idea", "note": "things only potters say out loud in the studio", "template": "T12", "profile": "sprint", "lacks": [], "id": "panel-76" },
+    { "creator":  "clay-kiln", "kind":  "sell", "goal":  "sell", "door":  "product", "product":  "bowl", "note":  "Moss Bowl", "template":  "T3", "profile":  "standard", "lacks":  [], "id":  "panel-77" },
+    { "creator": "clay-kiln", "kind": "educate", "goal": "educate", "door": "idea", "note": "why your glaze crawls and how to stop it", "template": "T1", "profile": "deep", "lacks": [], "id": "panel-78" },
+    { "creator":  "signal-daily", "kind":  "educate", "goal":  "authority", "door":  "idea", "note":  "how I decide which story leads the newsletter", "template":  "T1", "profile":  "standard", "lacks":  [], "id":  "panel-79" },
+    { "creator": "signal-daily", "kind": "leads", "goal": "leads", "door": "product", "product": "newsletter", "note": "Signal Daily Newsletter", "template": "T1", "profile": "sprint", "lacks": [], "id": "panel-80" },
+    { "creator": "signal-daily", "kind": "thin", "goal": "conversations", "door": "idea", "note": "is a five minute daily read still too long", "template": "T11", "profile": "sprint", "lacks": [], "id": "panel-81" },
+    { "creator": "pip-sprocket", "kind": "entertain", "goal": "entertain", "door": "idea", "note": "the worst thing that went wrong live on air", "template": "T12", "profile": "standard", "lacks": [], "id": "panel-82" },
+    { "creator":  "pip-sprocket", "kind":  "sell", "goal":  "sell", "door":  "product", "product":  "live-show", "note":  "Pip and Sprocket Live", "template":  "T4", "profile":  "sprint", "lacks":  [], "id":  "panel-83" },
+    { "creator": "pip-sprocket", "kind": "educate", "goal": "followers", "door": "idea", "note": "what kids actually laugh at versus what parents think", "template": "T1", "profile": "standard", "lacks": [], "id": "panel-84" },
+    { "creator":  "quiet-loom", "kind":  "story", "goal":  "personal_brand", "door":  "idea", "note":  "why I weave in silence", "template":  "T3", "profile":  "standard", "lacks":  ["creator_truth"], "id":  "panel-85" },
+    { "creator": "quiet-loom", "kind": "sell", "goal": "sell", "door": "product", "product": "scarf", "note": "Harbor Fog Scarf", "template": "T3", "profile": "standard", "lacks": ["creator_truth"], "id": "panel-86" },
+    { "creator":  "quiet-loom", "kind":  "educate", "goal":  "educate", "door":  "idea", "note":  "how to wash a wool scarf without ruining it", "template":  "T1", "profile":  "sprint", "lacks":  ["creator_truth"], "id":  "panel-87" }
   ]
 }

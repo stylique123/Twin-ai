@@ -139,6 +139,9 @@ export function lateChecksOn(trialOn: boolean, flag: string | undefined | null, 
  * Default empty: nobody is added. Every other user gets the flag unchanged.
  */
 export function loopFlagFor(flag: string | undefined | null, accountsRaw: string | undefined | null, userId: string | null | undefined): string | undefined {
+  // The kill switch still wins: 'off' / 'false' / '0' stops listed accounts too.
+  const f = String(flag ?? '').trim().toLowerCase()
+  if (f === 'off' || f === 'false' || f === '0') return flag ?? undefined
   const id = String(userId ?? '').trim().toLowerCase()
   const listed = !!id && String(accountsRaw ?? '').split(',').map((x) => x.trim().toLowerCase()).includes(id)
   return listed ? 'all' : (flag ?? undefined)

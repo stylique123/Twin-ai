@@ -19,7 +19,9 @@ assert.equal(modes.length, 16, 'reference+idea = the sixteen mode requests')
 assert.deepEqual(modes.map((n) => fixture.requests[n].id), Array.from({ length: 16 }, (_, i) => `panel-${48 + i}`))
 assert.equal(panelSelection(fixture, { modes: ['reference'] }).length, 8)
 assert.equal(panelSelection(fixture, { modes: ['idea'] }).length, 8)
-assert.equal(panelSelection(fixture, { modes: ['panel'] }).length, 47, 'panel = the pre-modes requests')
+assert.equal(panelSelection(fixture, { modes: ['panel'] }).length, 71, 'panel = the 47 pre-modes requests + the 24 panel-13 requests (64-87)')
+// Panel 13 (owner 5 Nov): 24 fresh requests, run as PANEL_RANGE=64-87.
+assert.deepEqual(panelSelection(fixture, { range: '64-87' }).map((n) => fixture.requests[n].id), Array.from({ length: 24 }, (_, i) => `panel-${64 + i}`))
 assert.throws(() => panelSelection(fixture, { modes: ['remix'] }), /unknown mode/)
 // Range: 1-based request numbers, as in panel-NN.
 assert.deepEqual(panelSelection(fixture, { range: '48-63' }), modes)
@@ -32,6 +34,10 @@ assert.equal(isPanelGroup('panel'), true)
 assert.equal(isPanelGroup('panel:reference,panel:idea'), true)
 assert.equal(isPanelGroup('product,idea'), false, 'the heartbeat idea group is not the panel')
 assert.deepEqual(panelFilterFromEnv({}, 'panel'), { modes: [], range: '' })
+// Panel 13: range and viewer arms ride the free-text group; env still wins on range.
+assert.deepEqual(panelFilterFromEnv({}, 'panel,panel-range:64-87,panel-viewer-arms'), { modes: [], range: '64-87', viewerArms: true })
+assert.equal(panelFilterFromEnv({ PANEL_RANGE: '1-2' }, 'panel,panel-range:64-87').range, '1-2')
+assert.equal(isPanelGroup('panel,panel-range:64-87,panel-viewer-arms'), true)
 assert.deepEqual(panelFilterFromEnv({}, 'panel:reference,panel:idea'), { modes: ['reference', 'idea'], range: '' })
 assert.deepEqual(panelFilterFromEnv({ PANEL_MODES: 'reference, idea', PANEL_RANGE: ' 48-63 ' }, 'panel'), { modes: ['reference', 'idea'], range: '48-63' })
 
