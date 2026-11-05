@@ -14,7 +14,7 @@ import { trialUser } from './ProductDetailsByKind'
  * Every other account gets `null` / "not blocked" — no change at all.
  */
 
-export type CheckStatus = 'checked' | 'needs_answers' | 'general' | 'unchecked'
+export type CheckStatus = 'checked' | 'needs_answers' | 'general' | 'unchecked' | 'not_fully_checked'
 export interface GateQuestionView { scope: 'script'; kind: string; text: string; writes_to: string }
 
 interface GateBlueprintLike {
@@ -25,7 +25,7 @@ interface GateBlueprintLike {
   script?: Array<{ line?: unknown } | null> | null
 }
 
-const STATUSES: CheckStatus[] = ['checked', 'needs_answers', 'general', 'unchecked']
+const STATUSES: CheckStatus[] = ['checked', 'needs_answers', 'general', 'unchecked', 'not_fully_checked']
 
 /** `check_status` when present, else derived from `invention_gate.outcome`. */
 export function checkStatusOf(bp: GateBlueprintLike | null | undefined): CheckStatus {
@@ -45,10 +45,20 @@ export function gateQuestionsOf(bp: GateBlueprintLike | null | undefined): GateQ
     .slice(0, 3)
 }
 
-/** Which status the trial user sees; `checked` for everyone else. */
+/**
+ * Which status this user sees. Trial users: always the gate's status. Anyone
+ * else: the status the server wrote, when it ran the check for them (the
+ * WRITER_LOOP share); a script never checked reads `checked` as before, so a
+ * creator in the share is never shown "checked" while the check is running.
+ */
 export function gateStatusFor(userId: string | null | undefined, bp: GateBlueprintLike | null | undefined): CheckStatus {
-  return trialUser(userId) ? checkStatusOf(bp) : 'checked'
+  if (trialUser(userId)) return checkStatusOf(bp)
+  const cs = bp?.check_status
+  return typeof cs === 'string' && (STATUSES as string[]).includes(cs) ? cs as CheckStatus : 'checked'
 }
+
+/** The honest line for a script whose check could not finish (advisor review of #1351). */
+export const NOT_FULLY_CHECKED_TEXT = 'Not fully checked: Twin could not finish checking every fact in this script. Read it through before you record.'
 
 /** The durable worker step's progress (`blueprint.gate_progress`), written as the job runs. */
 export type GateStep = 'queued' | 'polishing' | 'judging' | 'repairing' | 'done' | 'failed'
@@ -176,6 +186,17 @@ export function NeedsAnswerCard({ userId, blueprint, onSubmit, onRefresh, pollMs
   }, [status, onRefresh, pollMs, pollForMs])
 
   if (status === 'checked') return null
+
+  // The check gave up (the worker's last attempt): recording opens, and it
+  // says plainly that the script was not fully checked.
+  if (status === 'not_fully_checked') {
+    return (
+      <div role="status" data-testid="gate-not-fully-checked"
+        className="rounded-card border border-amber/40 bg-amber/5 p-4 text-sm text-cream">
+        {NOT_FULLY_CHECKED_TEXT}
+      </div>
+    )
+  }
 
   if (status === 'unchecked') {
     return (

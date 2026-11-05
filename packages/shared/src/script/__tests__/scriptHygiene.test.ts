@@ -86,6 +86,7 @@ describe('advisor review: the hook and the CTA are never dropped or trimmed', as
     expect(r.beats.map((b) => b.section)).toEqual(['hook', 'story', 'cta'])
     expect(r.beats[0]!.line).toBe(research)
     expect(r.beats[2]!.line).toBe(beats[2]!.line)
+    expect(r.hookCopied).toBe(1)
   })
 })
 
@@ -96,5 +97,23 @@ describe('advisor review: one bucket for the whole stack', async () => {
     const ids = Array.from({ length: 500 }, (_, i) => `creator-${i}`)
     for (const id of ids) expect(voiceCardBucket(id)).toBe(loopBucket(id))
     expect(ids.filter((id) => writerLoopOn('5', false, id))).toEqual(ids.filter((id) => voiceCardOn(false, false, '5', id)))
+  })
+})
+
+describe('advisor review: the protection holds for the names the writer really uses', async () => {
+  const { hygieneBeats, PROTECTED_SECTION } = await import('../scriptHygiene')
+  it('Hook, CTA, Close, close and outro are protected; Re-hook and Story are not', () => {
+    for (const n of ['Hook', 'hook', 'CTA', 'cta', 'Close', 'close', 'Outro', 'Call to action']) expect(PROTECTED_SECTION.test(n)).toBe(true)
+    for (const n of ['Re-hook', 'Story', 'Body', 'Payoff', 'build']) expect(PROTECTED_SECTION.test(n)).toBe(false)
+  })
+  it('an unnamed or oddly named first and last beat are still kept', () => {
+    const beats = [
+      { section: 'Opener', line: research },
+      { section: 'Body', line: research },
+      { section: 'Wrap', line: research },
+    ]
+    const r = hygieneBeats(beats, { outside: [research], hers: [] })
+    expect(r.beats.map((b) => b.section)).toEqual(['Opener', 'Wrap'])
+    expect(r.copied).toBe(1)
   })
 })

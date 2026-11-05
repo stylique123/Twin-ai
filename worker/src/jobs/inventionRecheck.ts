@@ -207,7 +207,32 @@ export function onboardingRows(knowledge: ReadonlyArray<{ id?: unknown; kind?: u
   return out
 }
 
+/** Advisor review of #1351: the state a script takes when the check cannot
+ *  finish. Recording opens, and the screen says plainly it was not fully checked. */
+export const NOT_FULLY_CHECKED = 'not_fully_checked'
+
+/**
+ * ⚠️ A CHECK THAT NEVER FINISHES MUST NOT LOCK THE SCRIPT FOREVER. Every
+ * attempt but the last throws as before (the retry policy owns it). On the
+ * last attempt the script is marked `not_fully_checked` instead: recording
+ * opens with an honest line, never a claim that it was checked.
+ */
 export async function runInventionRecheck(job: Job, deps: RecheckDeps): Promise<Record<string, unknown>> {
+  try {
+    return await runInventionRecheckOnce(job, deps)
+  } catch (e) {
+    if (e instanceof PermanentJobError || job.attempts < job.max_attempts) throw e
+    const generationId = String(rec(job.payload).generation_id ?? '')
+    const gen = await deps.loadGeneration(generationId).catch(() => null)
+    if (!gen?.blueprint || (gen.blueprint.check_status && gen.blueprint.check_status !== 'unchecked')) throw e
+    const bp: Record<string, unknown> = { ...gen.blueprint, check_status: NOT_FULLY_CHECKED, gate_progress: gateProgress('failed', 0, 0, (deps.now ?? Date.now)()) }
+    await deps.saveBlueprint(generationId, bp)
+    console.warn(JSON.stringify({ event: 'invention_recheck_gave_up', generation_id: generationId, attempt: job.attempts, check_status: NOT_FULLY_CHECKED, error: String((e as Error)?.message ?? e).slice(0, 120) }))
+    return { generation_id: generationId, check_status: NOT_FULLY_CHECKED, gave_up: true }
+  }
+}
+
+async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Record<string, unknown>> {
   const payload = rec(job.payload)
   const generationId = typeof payload.generation_id === 'string' ? payload.generation_id : ''
   if (!generationId) throw new PermanentJobError('invention_recheck: payload has no generation_id', 'generation_missing')

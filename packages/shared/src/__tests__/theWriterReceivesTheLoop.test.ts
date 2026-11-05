@@ -175,3 +175,66 @@ describe('plan v7.1 ramp: the question step and the voice card reach real creato
     expect(EDGE).toMatch(/voiceCardOn\(trialOn, fictional, Deno\.env\.get\('VOICE_CARD_ENABLED'\), user\.id\)/)
   })
 })
+
+describe('advisor review: a real creator in the 5% share goes through the honesty checks', async () => {
+  const { inventionGateOn, writerLoopOn } = await import('../script/planner/writerLoop')
+  const { componentOn } = await import('../script/releaseFlags')
+  const ids = Array.from({ length: 1000 }, (_, i) => `real-${i}`)
+  const inShare = ids.filter((id) => writerLoopOn('5', false, id))
+  it('every real creator in the WRITER_LOOP share gets the invention gate, with the release registry at its default (S0)', () => {
+    expect(inShare.length).toBeGreaterThan(20)
+    for (const id of inShare) {
+      const release = componentOn('invention_gate', { userId: id, isTestAccount: false })
+      expect(release).toBe(false)
+      expect(inventionGateOn(release, false, '5', id)).toBe(true)
+    }
+  })
+  it('outside the share and with WRITER_LOOP unset, a real creator is unchanged; the kill switch wins', () => {
+    const outside = ids.find((id) => !writerLoopOn('5', false, id))!
+    expect(inventionGateOn(false, false, '5', outside)).toBe(false)
+    expect(inventionGateOn(false, false, undefined, inShare[0])).toBe(false)
+    expect(inventionGateOn(true, true, '5', inShare[0])).toBe(false)
+  })
+  it('the edge uses it at both invention-gate sites', () => {
+    expect(EDGE).toMatch(/const inventionOn = inventionGateOn\(newOn\('invention_gate'\), [^\n]*Deno\.env\.get\('WRITER_LOOP'\), user\.id\)/)
+    expect(EDGE.match(/if \(inventionOn && /g)?.length).toBe(2)
+    expect(EDGE).not.toMatch(/if \(newOn\('invention_gate'\)/)
+  })
+})
+
+describe('advisor review of #1351 (a): the novel-detail and invented-cause checks run for a real creator (trialOn=false) in the share', async () => {
+  const { lateChecksOn, writerLoopOn } = await import('../script/planner/writerLoop')
+  const { dropInventedCauses } = await import('../script/inventedCause')
+  const { dropNovelSentences } = await import('../script/novelDetail')
+  const ids = Array.from({ length: 1000 }, (_, i) => `real-${i}`)
+  const inShare = ids.filter((id) => writerLoopOn('5', false, id))
+  it('the switch: on for every real creator in the share, off outside it and with WRITER_LOOP unset', () => {
+    for (const id of inShare) expect(lateChecksOn(false, '5', id)).toBe(true)
+    expect(lateChecksOn(false, '5', ids.find((id) => !writerLoopOn('5', false, id)))).toBe(false)
+    expect(lateChecksOn(false, undefined, inShare[0])).toBe(false)
+    expect(lateChecksOn(true, undefined, 'x')).toBe(true)
+  })
+  it('the checks themselves cut on a real creator\'s script: they take no trial argument', () => {
+    const script = [
+      { section: 'hook', line: 'Most people store coffee beans wrong.' },
+      { section: 'body', line: 'Beans go stale fast because the weather shifts every week.' },
+      { section: 'body', line: 'Keep them in an airtight tin away from light.' },
+      { section: 'body', line: 'I use equal parts sealed jar and dark cupboard, and the dread of a flat cup keeps me honest.' },
+      { section: 'cta', line: 'Save this for your next bag.' },
+    ]
+    const support = 'Keep beans in an airtight tin away from light. Most people store coffee beans wrong. Save this for your next bag.'
+    const causes = dropInventedCauses(script, support)
+    expect(causes.cut).toBeGreaterThan(0)
+    const novel = dropNovelSentences(script, support)
+    expect(novel.removed.length).toBeGreaterThan(0)
+    expect(dropInventedCauses.length).toBe(2)
+  })
+  it('the edge gates the whole late block on lateChecksOn, and the three checks sit inside it', () => {
+    const at = EDGE.indexOf("if (lateChecksOn(trialOn, Deno.env.get('WRITER_LOOP'), user.id) && Array.isArray(bp.script)) {")
+    expect(at).toBeGreaterThan(0)
+    let depth = 0, end = at
+    for (let i = EDGE.indexOf('{', at); i < EDGE.length; i++) { const c = EDGE[i]; if (c === '{') depth++; else if (c === '}' && --depth === 0) { end = i; break } }
+    const block = EDGE.slice(at, end)
+    for (const call of ['dropInventedCauses(', 'dropInventedEvents(', 'dropNovelSentences(']) expect(block).toContain(call)
+  })
+})

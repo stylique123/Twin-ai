@@ -201,3 +201,22 @@ describe('invention_recheck', () => {
     expect(modelForTask(INVENTION_RECHECK_STRONG_TASK)).toBeTruthy()
   })
 })
+
+describe('advisor review of #1351: a check that cannot finish unlocks honestly', async () => {
+  const { runInventionRecheck, NOT_FULLY_CHECKED } = await import('../jobs/inventionRecheck.js')
+  const failing = () => deps({ callModel: async () => { throw new Error('Gemini 429: quota') } })
+  it('an attempt before the last still throws and writes nothing', async () => {
+    const { d, saved } = failing()
+    await expect(runInventionRecheck(job(), d)).rejects.toThrow()
+    expect(saved).toEqual([])
+  })
+  it('the last attempt marks the script not_fully_checked and keeps the script as written', async () => {
+    const { d, saved } = failing()
+    const last = { ...job(), attempts: 3, max_attempts: 3 }
+    const r = await runInventionRecheck(last, d)
+    expect(r.check_status).toBe(NOT_FULLY_CHECKED)
+    expect(saved).toHaveLength(1)
+    expect(saved[0]!.blueprint.check_status).toBe('not_fully_checked')
+    expect(saved[0]!.blueprint.script).toEqual(unchecked().blueprint!.script)
+  })
+})
