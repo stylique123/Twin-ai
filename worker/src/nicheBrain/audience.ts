@@ -108,6 +108,14 @@ export async function runPanelBuilder(log: Log): Promise<void> {
 // answer now pushes the next ask out (15s → 5min), and a hit makes it due again.
 export const untestedGate = createEmptyProbeGate(AUDIENCE_INTERVAL_MS, 5 * 60 * 1000)
 
+/** Final check states. A blueprint with no check_status was never sent to the
+ *  check, so nothing is pending; 'unchecked' means it is still running. */
+export const FINAL_CHECK = ['checked', 'general', 'needs_answers', 'not_fully_checked'] as const
+export function checkSettled(bp: unknown): boolean {
+  const cs = (bp && typeof bp === 'object' ? (bp as { check_status?: unknown }).check_status : undefined)
+  return cs === undefined || cs === null || (FINAL_CHECK as readonly unknown[]).includes(cs)
+}
+
 /** AUDIENCE_REWRITE: unset/off → nobody; 'all' (or 'on'/'true') → everyone; a comma list → those user ids. */
 export function audienceRewriteOn(flag: string | undefined | null, userId: string | null | undefined): boolean {
   const f = String(flag ?? '').trim().toLowerCase()
@@ -119,9 +127,16 @@ export function audienceRewriteOn(flag: string | undefined | null, userId: strin
 
 export async function runAudienceTests(log: Log): Promise<void> {
   if (!untestedGate.due()) return
-  const { data, error } = await db.rpc('audience_untested', { p_limit: 1 })
+  // ⚠️ THE HONESTY CHECK RUNS AFTER THE SAVE, IN THE BACKGROUND (advisor,
+  // panel 13). Viewers that read and write the blueprint while it is still
+  // 'unchecked' race the check and can overwrite its repairs. So a script is
+  // taken only once its check has settled; the rest wait for a later poll.
+  const { data, error } = await db.rpc('audience_untested', { p_limit: 10 })
   if (error) { untestedGate.empty(); log('error', 'audience_untested_failed', { error: error.message }); return }
-  const g = (Array.isArray(data) ? data[0] : null) as
+  const rows = Array.isArray(data) ? data as Array<{ blueprint: unknown }> : []
+  const waiting = rows.filter((x) => !checkSettled(x.blueprint)).length
+  if (waiting) log('info', 'audience_waits_for_check', { event: 'audience_waits_for_check', waiting })
+  const g = (rows.find((x) => checkSettled(x.blueprint)) ?? null) as
     { id: string; user_id: string; blueprint: unknown; reference_note: string | null; profile: Record<string, unknown> | null; voice_id: string | null } | null
   if (!g) { untestedGate.empty(); return }
   untestedGate.found()
