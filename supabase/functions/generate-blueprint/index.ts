@@ -108,7 +108,7 @@ import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuesti
 import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
 import { hygieneBeats } from '../_shared/scriptHygiene.ts'
 import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
-import { writerLoopOn, inventionGateOn, lateChecksOn, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
+import { writerLoopOn, inventionGateOn, lateChecksOn, loopFlagFor, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
 import type { DurationProfile as TemplateProfile } from '../_shared/templateData.ts'
@@ -6692,6 +6692,10 @@ async function handle(req: Request): Promise<Response> {
     })()
     : (await userClient.auth.getUser()).data.user
   if (!user) return json({ error: 'Not authenticated' }, 401)
+  // Panel 13 (owner 5 Nov): WRITER_LOOP_ACCOUNTS lists the accounts that get
+  // the whole stack on the real path. Default empty; everyone else reads the env.
+  const writerLoopFlag = loopFlagFor(Deno.env.get('WRITER_LOOP'), Deno.env.get('WRITER_LOOP_ACCOUNTS'), user.id)
+  const voiceCardFlag = loopFlagFor(Deno.env.get('VOICE_CARD_ENABLED'), Deno.env.get('WRITER_LOOP_ACCOUNTS'), user.id)
   if (!isShadowRun) {
     const testTraffic = ((Deno.env.get('HEARTBEAT_USER_ID') ?? '') !== '' && user.id === Deno.env.get('HEARTBEAT_USER_ID')) || isPanelAccount(user)
     setLedgerContext({ ownerId: user.id, traffic: testTraffic ? 'test' : 'real' })
@@ -6750,8 +6754,8 @@ async function handle(req: Request): Promise<Response> {
   const sideDoorOpen = () => trialSideDoorOpen({ userId: user.id, heartbeatUserId: Deno.env.get('HEARTBEAT_USER_ID'), isPanel: isPanelAccount(user), canaryAccountsRaw: Deno.env.get('CANARY_ACCOUNT_IDS'), canaryKillRaw: Deno.env.get('CANARY_KILL') })
   if (specMode === 'voice_card') {
     // Plan v7.1 ramp: her voice card screen follows VOICE_CARD_ENABLED (all, or 1-99).
-    const testAccount = sideDoorOpen() || voiceCardOn(false, false, Deno.env.get('VOICE_CARD_ENABLED'), user.id)
-    if (!testAccount || String(Deno.env.get('VOICE_CARD_ENABLED') ?? '').trim().toLowerCase() === 'false') return json({ disabled: true })
+    const testAccount = sideDoorOpen() || voiceCardOn(false, false, voiceCardFlag, user.id)
+    if (!testAccount || String(voiceCardFlag ?? '').trim().toLowerCase() === 'false') return json({ disabled: true })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { action?: unknown; edits?: unknown }
     const { data: v } = await sb.from('brand_voices').select('id, profile').eq('owner_id', user.id).eq('status', 'ready')
@@ -6924,7 +6928,7 @@ async function handle(req: Request): Promise<Response> {
   // (option_id 'mn') and that key is never asked again. Logs: counts and ids.
   if (specMode === 'angle_plan' || specMode === 'angle_answer') {
     // Plan v7.1 ramp: the question step follows WRITER_LOOP (5/25/50/all) for real creators.
-    const testAccount = sideDoorOpen() || writerLoopOn(Deno.env.get('WRITER_LOOP'), false, user.id)
+    const testAccount = sideDoorOpen() || writerLoopOn(writerLoopFlag, false, user.id)
     if (!testAccount || Deno.env.get('ANGLES_QUESTIONS_KILL') === '1') return json({ disabled: true, cards: [], questions: [] })
     const sb = createClient(supabaseUrl, serviceKey)
     const b = (peek ?? {}) as { objective?: unknown; goal?: unknown; product_id?: unknown; angle?: unknown; key?: unknown; piece?: unknown; ask_id?: unknown; answer?: unknown; skip?: unknown; door?: unknown; idea?: unknown; cost_mode?: unknown; panel_pain_map?: unknown }
@@ -7313,7 +7317,7 @@ async function handle(req: Request): Promise<Response> {
     : componentOn(c, releaseAccount, releaseRegistry)
   // The invention gate also covers the WRITER_LOOP share of real creators, so
   // the new writer never ships without it; its kill switch still wins.
-  const inventionOn = inventionGateOn(newOn('invention_gate'), releaseOff.has('invention_gate') || releaseRegistry?.invention_gate?.killed === true, Deno.env.get('WRITER_LOOP'), user.id)
+  const inventionOn = inventionGateOn(newOn('invention_gate'), releaseOff.has('invention_gate') || releaseRegistry?.invention_gate?.killed === true, writerLoopFlag, user.id)
   // ANGLE-FIT and QUESTION-USEFULNESS (Master Prompt v3, 15 Oct): trial only,
   // each with its own kill switch (request flag or env). Real creators never reach them.
   // SPINE FILL (Twin plan v5.1 item H): trial only, kill switch SPINE_FILL_KILL=1.
@@ -7932,7 +7936,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // had no stories. Her two newest COMPLETE story passages ride in with her
   // answers as her own words (kind 'experience'); the same off-ask and purpose
   // filters below decide whether they fit this video. WRITER_LOOP stage.
-  if (voice?.id && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id)) {
+  if (voice?.id && writerLoopOn(writerLoopFlag, trialOn, user.id)) {
     try {
       const { data: sp } = await admin.from('story_passages').select('id, text, created_at')
         .eq('owner_id', ownerId).eq('voice_id', voice.id).eq('kind', 'story').eq('complete', true)
@@ -8658,7 +8662,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   const voiceCardBuild: (CreatorVoiceCard & { source: VoiceSource }) | null = await (async () => {
     try {
       const fictional = (voice?.profile as { fictional?: unknown } | null)?.fictional === true
-      if (!voiceCardOn(trialOn, fictional, Deno.env.get('VOICE_CARD_ENABLED'), user.id)) return null
+      if (!voiceCardOn(trialOn, fictional, voiceCardFlag, user.id)) return null
       const source = await loadVoiceSourceInline(admin, ownerId, (voice as { id?: unknown } | null)?.id ?? null, askedRows, vp)
       const built = withManualVoiceCard(buildCreatorVoiceCard(source, { thinFloor: Deno.env.get('VOICE_CARD_THIN_FLOOR') !== 'off', richSamples: Deno.env.get('VOICE_CARD_RICH_SAMPLES') !== 'off' }), voice?.profile, manualVoiceCardOn(Deno.env.get('MANUAL_VOICE_CARD')))
       const edits = (voice?.profile as { voice_card_edits?: unknown } | null)?.voice_card_edits
@@ -8671,7 +8675,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // (audience_pain_map, matched by nicheMatches). WRITER_LOOP stage; a failed
   // read costs only the themes.
   const loopPainThemes: string[] = await (async () => {
-    if (!writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id)) return []
+    if (!writerLoopOn(writerLoopFlag, trialOn, user.id)) return []
     const niche = String((vp as { niche?: unknown } | null)?.niche ?? '').trim()
     if (!niche) return []
     try {
@@ -8681,7 +8685,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   })()
   // V4 (plan v7.1): when the writer-loop block carries the card (first, highest
   // priority), it is not repeated at the tail of the context line.
-  const writerLoopCarriesVoice = !!voiceCard && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id)
+  const writerLoopCarriesVoice = !!voiceCard && writerLoopOn(writerLoopFlag, trialOn, user.id)
   // ⚖️ THE VOICE AT THE POLISH STEP (panel-10; trial only, kill VOICE_POLISH=off):
   // her style note (brand_voices.profile.style_note) and verbatim samples ride
   // to the Plan B polish and the worker's async polish with the card.
@@ -11587,7 +11591,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // ⚖️ HER OWN WAY TO SHOW IT (plan v7.1). The Product Library asks how she
     // shows it on camera and stores the answer as a `show_action` fact; nothing
     // read it. Her words lead the showing beat; the scene guidance follows.
-    const herShowAction = ownedEntity && writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) ? (knowledgeFacts(chosenEntity).find((f) => f.field === 'show_action')?.value ?? '').slice(0, 240) : ''
+    const herShowAction = ownedEntity && writerLoopOn(writerLoopFlag, trialOn, user.id) ? (knowledgeFacts(chosenEntity).find((f) => f.field === 'show_action')?.value ?? '').slice(0, 240) : ''
     const showLine = herShowAction
       ? `${showLineBase}\n- HER OWN WAY TO SHOW IT (her words; use this for the showing beat and its direction): ${herShowAction}`
       : showLineBase
@@ -12974,7 +12978,7 @@ This is the video's position. Every field below must serve it. If the reference'
     // and the house structure, in one block straight after the hook rule — in
     // the first prompt AND the retry. WRITER_LOOP: unset = trial only, 'all' =
     // every account, 'off' = nobody. Logs: counts only.
-    const writerLoopBlock = writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) ? (() => {
+    const writerLoopBlock = writerLoopOn(writerLoopFlag, trialOn, user.id) ? (() => {
       try {
         const answers = answersForThisVideo((body as { mn_answers?: unknown }).mn_answers, body.readiness_answers)
         const pillars = pillarsFrom(brief)
@@ -13297,7 +13301,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
     // against the fuller store would excuse exactly the fabrication this exists
     // to catch, because a beat could cite something the writer never saw.
-    const declared = (templated.bp as { script?: unknown })?.script
+    let declared = (templated.bp as { script?: unknown })?.script
 
     // ⚠️ COMPUTED HERE, ABOVE THE `beatAudit` LITERAL, AND THAT PLACEMENT IS
     // THE POINT. `check_counter_written_before_read.mjs` exists because a
@@ -14921,7 +14925,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             + ' creator\'s. Rewrite ONLY the lines listed so they express the same idea in different'
             + ' words — do not invent a new fact, number or experience, and do not shorten the line'
             + ' into a fragment. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
-            + overlaps.map((o) => `index ${o.beatIndex}\nLINE: ${(declared[o.beatIndex] as { line?: unknown })?.line}\nCOPIED PHRASE: ${o.run}`).join('\n\n')
+            + overlaps.map((o) => `index ${o.beatIndex}\nLINE: ${((declared as unknown[])[o.beatIndex] as { line?: unknown })?.line}\nCOPIED PHRASE: ${o.run}`).join('\n\n')
           const fixed = await callModel(
             apiKey,
             'You rewrite single script lines to remove wording copied from a reference video\'s'
@@ -15604,6 +15608,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       templated.bp,
       linkAllow,
     )
+    // ⚠️ THE STALE SCRIPT ARRAY (lane 1, 5 Nov). The line above returns a DEEP
+    // CLONE, and `blueprint` is what is saved. Every repair below (personal-use
+    // gate, voice gate, pacing, repetition repair, final audit) works through
+    // `declared`, which still pointed at the pre-clone array: a repair logged
+    // "repaired" while the saved script kept the claim. Re-point it here.
+    declared = (blueprint as { script?: unknown }).script
     if (linkRemovals.length) {
       // Loud on purpose. A non-zero count here is either a model that wandered
       // or an injection that got through the fence, and both are things we
@@ -15777,7 +15787,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // that break her rhythm are rewritten once; a rewrite is kept only when
         // the whole script's voice score goes UP and it passes the same guards.
         // WRITER_LOOP stage (unset = trial only). One model call, only on a fail.
-        if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id)) {
+        if (writerLoopOn(writerLoopFlag, trialOn, user.id)) {
           try {
             const now = vBeats.map((b) => (typeof b?.line === 'string' ? b.line : ''))
             const before = voiceCheck(voiceCard, now)
@@ -15877,6 +15887,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       if (Array.isArray(script)) {
         const cams = decideBeatCameras(script as Array<Record<string, unknown>>, { jobFirst: trialOn })
         ;(blueprint as { script?: unknown }).script = cams.script
+        declared = cams.script // a new array: the repairs below must edit what is saved (advisor review of #1353)
         console.log(JSON.stringify({ event: 'beat_camera_decided', beats: cams.front + cams.back, back: cams.back, changed: cams.changed, missing: cams.missing }))
       }
       const scriptNow = (blueprint as { script?: unknown })?.script
@@ -17058,7 +17069,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
       // ⚖️ BLIND SET 1 LEFTOVERS (owner 2026-10-05; trial first): an empty
       // bridge opening a beat and a "stick around" closer on a non-follow video.
-      if (lateChecksOn(trialOn, Deno.env.get('WRITER_LOOP'), user.id) && Array.isArray(bp.script)) {
+      if (lateChecksOn(trialOn, writerLoopFlag, user.id) && Array.isArray(bp.script)) {
         const cleaned = cleanBeats(bp.script as Array<{ line?: unknown }>, String(intent.goal ?? body.goal ?? ''))
         // Blind set 2: her profile labels and scan topics said out loud, and
         // the "So remember: <echo>" closer.
@@ -17790,7 +17801,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // reference, niche research or Reddit is removed unless it is her own
     // words; a story already told is cut from later lines; raw spoken filler
     // is stripped. Lines are only removed or trimmed, never added. Counts only.
-    if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) && Deno.env.get('SCRIPT_HYGIENE') !== 'off' && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+    if (writerLoopOn(writerLoopFlag, trialOn, user.id) && Deno.env.get('SCRIPT_HYGIENE') !== 'off' && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       try {
         const bph = blueprint as Record<string, unknown>
         const beats = bph.script as Array<Record<string, unknown>>
@@ -17816,15 +17827,24 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             console.log(JSON.stringify({ event: 'feature_fired', feature: 'unbacked_product_feature', sentences: f.cut.sentences, beats_dropped: f.cut.beats, stems: f.cut.stems }))
           }
         }
+        // Lane 1 (5 Nov): the shot list follows the script, or it keeps spoken
+        // text for beats hygiene or the feature cut removed.
+        if (bph.script !== beats && Array.isArray(bph.shot_list) && Array.isArray(bph.script)) {
+          bph.shot_list = syncShotListSpokenText(bph.shot_list as Array<{ spoken_text?: unknown }>, bph.script as Array<{ line?: unknown }>).shots
+        }
       } catch { /* hygiene never fails a build */ }
     }
     // ⚖️ CTA LAST (plan v7.1 S7): one pure reorder, nothing added or dropped,
     // on the WRITER_LOOP stage (unset = trial only, 'all' = every account).
-    if (writerLoopOn(Deno.env.get('WRITER_LOOP'), trialOn, user.id) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+    if (writerLoopOn(writerLoopFlag, trialOn, user.id) && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       try {
         const bpc = blueprint as Record<string, unknown>
         const r = moveCtaLast(bpc.script as Array<Record<string, unknown>>)
-        if (r.moved) { bpc.script = r.script; console.log(JSON.stringify({ event: 'feature_fired', feature: 'cta_last', moved: true })) }
+        if (r.moved) {
+          bpc.script = r.script
+          if (Array.isArray(bpc.shot_list)) bpc.shot_list = syncShotListSpokenText(bpc.shot_list as Array<{ spoken_text?: unknown }>, bpc.script as Array<{ line?: unknown }>).shots
+          console.log(JSON.stringify({ event: 'feature_fired', feature: 'cta_last', moved: true }))
+        }
       } catch { /* a reorder never fails a build */ }
     }
     // ⚖️ SPINE COMPLETENESS (craft rubric v1 item C; trial, test accounts only,

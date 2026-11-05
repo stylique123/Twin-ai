@@ -54,7 +54,9 @@ export function copiedOutsideLines(lines: readonly string[], outside: readonly s
   return out
 }
 
-const clausesOf = (l: string) => (String(l ?? '').match(/[^,;.!?]+[,;.!?]*/g) ?? []).map((s) => s.trim()).filter(Boolean)
+// Split only where punctuation is followed by a space (or ends the line), so
+// "$4.99", "3.5x" and "shop.example.com/kit" stay whole (lane 1, 5 Nov).
+const clausesOf = (l: string) => String(l ?? '').split(/(?<=[,;.!?])\s+/).map((s) => s.trim()).filter(Boolean)
 
 /**
  * Removes, from each line, any clause that repeats something already said
@@ -66,12 +68,15 @@ export function dropRepeatedSentences(lines: readonly string[], share = 0.6): { 
   const out: string[] = []
   let cut = 0
   for (const l of lines) {
-    const kept = clausesOf(l).filter((c) => {
+    const clauses = clausesOf(l)
+    const kept = clauses.filter((c) => {
       const rep = shingles(c, 4).size >= 2 && runOverlap(c, said, 4) >= share
       if (rep) cut++
       return !rep
     })
     for (const g of shingles(l, 4)) said.add(g)
+    // Nothing cut: the line comes out exactly as it went in.
+    if (kept.length === clauses.length) { if (/[a-z0-9]/i.test(l)) out.push(l); continue }
     let text = kept.join(' ').replace(/\s+/g, ' ').trim().replace(/^(?:and|so|but)\s+/i, '').replace(/^[,;\s]+/, '').replace(/,$/, '.')
     if (text) text = text.charAt(0).toUpperCase() + text.slice(1)
     if (text && /[a-z0-9]/i.test(text)) out.push(text)
@@ -92,6 +97,9 @@ export function stripSpokenFiller(line: string): string {
   t = t.replace(/,\s*like,\s*/gi, ' ').replace(/\bjust,\s*like,?\s*/gi, 'just ')
   t = t.replace(/\b(?:so yeah|you know),\s*/gi, '')
   t = t.replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').replace(/^\s*,\s*/, '').trim()
+  // No filler found: the line comes out exactly as it went in.
+  const orig = String(line ?? '')
+  if (t === orig.replace(/\s+,/g, ',').replace(/\s{2,}/g, ' ').trim()) return orig
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : t
 }
 
@@ -143,15 +151,19 @@ export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], 
       continue
     }
     if (o.size && runOverlap(line, o) >= 0.5 && runOverlap(line, h) < 0.5) { copied++; continue }
-    const kept = clausesOf(line).filter((c) => {
+    const clauses = clausesOf(line)
+    const kept = clauses.filter((c) => {
       const rep = shingles(c, 4).size >= 2 && runOverlap(c, said, 4) >= 0.6
       if (rep) repeats++
       return !rep
     })
     for (const g of shingles(line, 4)) said.add(g)
-    let text = kept.join(' ').replace(/\s+/g, ' ').trim().replace(/^(?:and|so|but)\s+/i, '').replace(/^[,;\s]+/, '').replace(/,$/, '.')
-    if (!text || !/[a-z0-9]/i.test(text)) continue
-    text = text.charAt(0).toUpperCase() + text.slice(1)
+    let text = line
+    if (kept.length !== clauses.length) {
+      text = kept.join(' ').replace(/\s+/g, ' ').trim().replace(/^(?:and|so|but)\s+/i, '').replace(/^[,;\s]+/, '').replace(/,$/, '.')
+      if (!text || !/[a-z0-9]/i.test(text)) continue
+      text = text.charAt(0).toUpperCase() + text.slice(1)
+    }
     const clean = stripSpokenFiller(text)
     if (clean !== text) filler++
     out.push(clean === line ? b : { ...b, line: clean })

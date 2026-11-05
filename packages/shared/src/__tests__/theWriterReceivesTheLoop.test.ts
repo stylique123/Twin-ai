@@ -78,7 +78,7 @@ describe('the edge wiring', () => {
     expect(EDGE).toMatch(/\$\{writerLoopCarriesVoice \? '' : voiceCardBlock\}/)
   })
   it('reads WRITER_LOOP for the stage', () => {
-    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\)/)
+    expect(EDGE).toMatch(/writerLoopOn\(writerLoopFlag, trialOn, user\.id\)/)
   })
 })
 
@@ -92,7 +92,7 @@ describe('plan v7.1 S7: the CTA is last', () => {
     expect(moveCtaLast(r.script).moved).toBe(false)
   })
   it('the edge runs it on the WRITER_LOOP stage', () => {
-    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\) && blueprint[\s\S]{0,300}moveCtaLast\(/)
+    expect(EDGE).toMatch(/writerLoopOn\(writerLoopFlag, trialOn, user\.id\) && blueprint[\s\S]{0,300}moveCtaLast\(/)
   })
 })
 
@@ -118,7 +118,7 @@ describe('plan v7.1 WP4: her stored stories reach the pile', () => {
 
 describe('plan v7.1: her own way to show the product reaches the writer', () => {
   it('the show_action fact rides the show line on the WRITER_LOOP stage', () => {
-    expect(EDGE).toMatch(/const herShowAction = ownedEntity && writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\)[^\n]*f\.field === 'show_action'/)
+    expect(EDGE).toMatch(/const herShowAction = ownedEntity && writerLoopOn\(writerLoopFlag, trialOn, user\.id\)[^\n]*f\.field === 'show_action'/)
     expect(EDGE).toMatch(/HER OWN WAY TO SHOW IT/)
   })
 })
@@ -131,7 +131,7 @@ describe('plan v7.1 WP6: her audience pain themes reach the writer, labelled out
     expect(out.indexOf('outside research')).toBeLessThan(out.indexOf('THE HOUSE STRUCTURE'))
   })
   it('the edge reads the pain map for her niche on the WRITER_LOOP stage', () => {
-    expect(EDGE).toMatch(/const loopPainThemes: string\[\] = await[\s\S]{0,300}writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\)[\s\S]{0,400}painItemsFromMap\(/)
+    expect(EDGE).toMatch(/const loopPainThemes: string\[\] = await[\s\S]{0,300}writerLoopOn\(writerLoopFlag, trialOn, user\.id\)[\s\S]{0,400}painItemsFromMap\(/)
     expect(EDGE).toMatch(/painThemes: loopPainThemes/)
   })
 })
@@ -152,7 +152,7 @@ describe('plan v7.1 WP14: the WRITER_LOOP ramp', async () => {
 
 describe('advisor 28 Oct: script hygiene runs on the WRITER_LOOP stage', () => {
   it('outside text includes the reference and the niche brain block; her words include knowledge and answers', () => {
-    expect(EDGE).toMatch(/writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), trialOn, user\.id\) && Deno\.env\.get\('SCRIPT_HYGIENE'\) !== 'off'/)
+    expect(EDGE).toMatch(/writerLoopOn\(writerLoopFlag, trialOn, user\.id\) && Deno\.env\.get\('SCRIPT_HYGIENE'\) !== 'off'/)
     expect(EDGE).toMatch(/const outside = \[reference_note \?\? '', [^\n]*brainBlock\]/)
   })
 })
@@ -171,8 +171,8 @@ describe('plan v7.1 ramp: the question step and the voice card reach real creato
     expect(share).toBeLessThan(0.35)
   })
   it('the angle plan opens for the WRITER_LOOP share of real creators', () => {
-    expect(EDGE).toMatch(/const testAccount = sideDoorOpen\(\) \|\| writerLoopOn\(Deno\.env\.get\('WRITER_LOOP'\), false, user\.id\)\n\s+if \(!testAccount \|\| Deno\.env\.get\('ANGLES_QUESTIONS_KILL'\)/)
-    expect(EDGE).toMatch(/voiceCardOn\(trialOn, fictional, Deno\.env\.get\('VOICE_CARD_ENABLED'\), user\.id\)/)
+    expect(EDGE).toMatch(/const testAccount = sideDoorOpen\(\) \|\| writerLoopOn\(writerLoopFlag, false, user\.id\)\n\s+if \(!testAccount \|\| Deno\.env\.get\('ANGLES_QUESTIONS_KILL'\)/)
+    expect(EDGE).toMatch(/voiceCardOn\(trialOn, fictional, voiceCardFlag, user\.id\)/)
   })
 })
 
@@ -196,7 +196,7 @@ describe('advisor review: a real creator in the 5% share goes through the honest
     expect(inventionGateOn(true, true, '5', inShare[0])).toBe(false)
   })
   it('the edge uses it at both invention-gate sites', () => {
-    expect(EDGE).toMatch(/const inventionOn = inventionGateOn\(newOn\('invention_gate'\), [^\n]*Deno\.env\.get\('WRITER_LOOP'\), user\.id\)/)
+    expect(EDGE).toMatch(/const inventionOn = inventionGateOn\(newOn\('invention_gate'\), [^\n]*writerLoopFlag, user\.id\)/)
     expect(EDGE.match(/if \(inventionOn && /g)?.length).toBe(2)
     expect(EDGE).not.toMatch(/if \(newOn\('invention_gate'\)/)
   })
@@ -230,11 +230,32 @@ describe('advisor review of #1351 (a): the novel-detail and invented-cause check
     expect(dropInventedCauses.length).toBe(2)
   })
   it('the edge gates the whole late block on lateChecksOn, and the three checks sit inside it', () => {
-    const at = EDGE.indexOf("if (lateChecksOn(trialOn, Deno.env.get('WRITER_LOOP'), user.id) && Array.isArray(bp.script)) {")
+    const at = EDGE.indexOf("if (lateChecksOn(trialOn, writerLoopFlag, user.id) && Array.isArray(bp.script)) {")
     expect(at).toBeGreaterThan(0)
     let depth = 0, end = at
     for (let i = EDGE.indexOf('{', at); i < EDGE.length; i++) { const c = EDGE[i]; if (c === '{') depth++; else if (c === '}' && --depth === 0) { end = i; break } }
     const block = EDGE.slice(at, end)
     for (const call of ['dropInventedCauses(', 'dropInventedEvents(', 'dropNovelSentences(']) expect(block).toContain(call)
+  })
+})
+
+describe('panel 13 (owner 5 Nov): WRITER_LOOP_ACCOUNTS', async () => {
+  const { loopFlagFor, writerLoopOn, lateChecksOn, inventionGateOn } = await import('../script/planner/writerLoop')
+  const { voiceCardOn } = await import('../script/voice/voiceCard')
+  it('a listed account gets the whole stack on the real path; empty list changes nobody', () => {
+    const f = loopFlagFor(undefined, ' p-1 , P-2 ', 'p-2')
+    expect(f).toBe('all')
+    expect(writerLoopOn(f, false, 'p-2')).toBe(true)
+    expect(lateChecksOn(false, f, 'p-2')).toBe(true)
+    expect(inventionGateOn(false, false, f, 'p-2')).toBe(true)
+    expect(voiceCardOn(false, false, loopFlagFor(undefined, 'p-2', 'p-2'), 'p-2')).toBe(true)
+    expect(loopFlagFor(undefined, '', 'p-2')).toBeUndefined()
+    expect(loopFlagFor('5', 'p-1', 'someone-else')).toBe('5')
+    expect(loopFlagFor('off', 'p-1', null)).toBe('off')
+  })
+  it('the edge reads both switches through it, once, and nowhere directly', () => {
+    expect(EDGE).toMatch(/const writerLoopFlag = loopFlagFor\(Deno\.env\.get\('WRITER_LOOP'\), Deno\.env\.get\('WRITER_LOOP_ACCOUNTS'\), user\.id\)/)
+    expect(EDGE.match(/Deno\.env\.get\('WRITER_LOOP'\)/g)?.length).toBe(1)
+    expect(EDGE.match(/Deno\.env\.get\('VOICE_CARD_ENABLED'\)/g)?.length).toBe(1)
   })
 })

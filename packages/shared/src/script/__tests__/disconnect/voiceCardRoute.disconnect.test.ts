@@ -14,7 +14,7 @@ function routeDisabled(env: Record<string, string>, testAccount = true): boolean
   const block = edgeAfter("if (specMode === 'voice_card') {", 600)
   const line = block.split('\n').find((l) => l.includes('return json({ disabled: true })'))!
   const cond = /if \((.*)\) return json\(\{ disabled: true \}\)/.exec(line)![1]!
-  return evalEdge(cond, { testAccount }, env) as boolean
+  return evalEdge(cond, { testAccount, voiceCardFlag: env.VOICE_CARD_ENABLED }, env) as boolean
 }
 /** The route's response (index.ts ~6705): disabled, or her card view after her edits. */
 function routeResponse(env: Record<string, string>, testAccount = true): Record<string, unknown> {

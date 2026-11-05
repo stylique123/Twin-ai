@@ -215,6 +215,28 @@ export function panelAnswerMode(env = process.env) {
  * else a skip. Returns the mn_answers the request carries and the per-question
  * outcomes to send back as angle_answer. Default off: existing runs unchanged.
  */
+/**
+ * Panel 13 (owner 5 Nov): VIEWERS ON vs OFF (PANEL_VIEWER_ARMS=on). Paired on
+ * the same generation: the OFF arm is the script as the writer saved it; the ON
+ * arm is the same generation after the test viewers have run. The worker
+ * applies the viewers' line rewrites only for owners listed in AUDIENCE_REWRITE,
+ * so the panel ids must be listed there. Default off: runs are unchanged.
+ */
+export function panelViewerArmsOn(env = process.env) {
+  return env.PANEL_VIEWER_ARMS === 'on'
+}
+
+/** Waits for the viewers' result on one generation: 'done' | 'failed' | 'timeout'. */
+export async function awaitViewers(load, id, { timeoutMs = 600_000, pollMs = 10_000, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  const start = now()
+  for (;;) {
+    const status = await load(id).catch(() => null)
+    if (status === 'done' || status === 'failed') return { status, waited_ms: now() - start }
+    if (now() - start >= timeoutMs) return { status: 'timeout', waited_ms: now() - start }
+    await sleep(pollMs)
+  }
+}
+
 export function panelAngleLoopOn(env = process.env) {
   return env.PANEL_ANGLE_LOOP === 'on'
 }
@@ -427,10 +449,12 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (panelAngleLoopOn()) Object.assign(qrec, { angle_asked: angleAsked, angle_answered: angleAnswered, angle_use: panelQuestionUse(body.mn_answers ?? {}, lines) })
     records.push(qrec)
     // No viewer panel on a measure run: claim the script before the worker's poll can.
-    if (r.json?.id) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
-    await admin.from('script_batch_results').insert({
+    // With the viewer arms on, the viewers must run, so nothing is claimed.
+    const viewerArms = panelViewerArmsOn()
+    if (r.json?.id && !viewerArms) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
+    const row = (arm, armBp, armLines, extra = {}) => ({
       batch, n: sc.n,
-      scenario: { group: 'panel', mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
+      scenario: { group: 'panel', ...(arm ? { viewer_arm: arm, ...extra } : {}), mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [
@@ -438,10 +462,22 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
         ...(asked.length ? [{ k: 'asked_first', d: asked.join(' | ').slice(0, 300) }] : []),
         ...(bp?.invention_gate ? [{ k: `gate_${bp.invention_gate.outcome}`, d: JSON.stringify(bp.invention_gate.before ?? {}) }] : bp ? [{ k: 'gate_missing', d: '' }] : []),
       ],
-      script_text: lines.length ? lines.map((l, i) => `${i + 1}. ${l}`).join('\n') : null,
-      hooks: Array.isArray(bp?.hook_options) ? bp.hook_options : null,
+      script_text: armLines.length ? armLines.map((l, i) => `${i + 1}. ${l}`).join('\n') : null,
+      hooks: Array.isArray(armBp?.hook_options) ? armBp.hook_options : null,
       judge: null,
     })
+    if (!viewerArms || !r.json?.id) {
+      await admin.from('script_batch_results').insert(row(null, bp, lines))
+    } else {
+      await admin.from('script_batch_results').insert(row('off', bp, lines))
+      const v = await awaitViewers(async (id) => (await admin.from('audience_tests').select('status').eq('generation_id', id).maybeSingle()).data?.status ?? null,
+        r.json.id, { timeoutMs: 1000 * Number(process.env.PANEL_VIEWER_WAIT_S ?? 600) })
+      const after = v.status === 'done' ? await blueprintLoader(admin)(r.json.id).catch(() => null) : null
+      const onBp = after ?? bp
+      const onLines = Array.isArray(onBp?.script) ? onBp.script.map((b) => String(b?.line ?? '')).filter(Boolean) : []
+      await admin.from('script_batch_results').insert(row('on', onBp, onLines, { viewers: v.status, viewers_changed: onLines.join('\n') !== lines.join('\n') }))
+      console.log(JSON.stringify({ event: 'panel_viewer_arms', n: sc.n, viewers: v.status, waited_ms: v.waited_ms, changed: onLines.join('\n') !== lines.join('\n') }))
+    }
     console.log(`#${sc.n} panel/${sc.mode}/${sc.label}/${sc.body.goal} → ${r.status} gate=${bp?.invention_gate?.outcome ?? '-'} I=${bp?.invention_gate?.before?.I ?? '-'} asked=${qrec.questions_asked} used=${qrec.question_use.used}/${qrec.question_use.answered}`)
   }
   console.log(`::notice title=panel-questions::${JSON.stringify(questionSummary(records))}`)

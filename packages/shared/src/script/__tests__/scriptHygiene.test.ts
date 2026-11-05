@@ -117,3 +117,33 @@ describe('advisor review: the protection holds for the names the writer really u
     expect(r.copied).toBe(1)
   })
 })
+
+describe('lane 1 (5 Nov): the splitter keeps URLs, prices and decimals; a clean line is unchanged', () => {
+  const clean = [
+    'It costs $4.99 a month, see twin.ai/start for 3.5x faster replies.',
+    'Grab it at shop.example.com/kit today, only $12.50.',
+    'plain line with no punctuation',
+    'Ends with comma,',
+    'Version 2.0.1 shipped at 9.30am, v3 is next.',
+  ]
+  it('dropRepeatedSentences returns every clean line byte for byte', () => {
+    expect(dropRepeatedSentences(clean).lines).toEqual(clean)
+  })
+  it('hygieneBeats returns every clean beat as the same object', async () => {
+    const { hygieneBeats } = await import('../scriptHygiene')
+    const beats = clean.map((line, i) => ({ section: i ? 'body' : 'hook', line }))
+    const r = hygieneBeats(beats, { outside: [], hers: [] })
+    expect(r.beats).toEqual(beats)
+    r.beats.forEach((b, i) => expect(b).toBe(beats[i]))
+    expect(r.repeats + r.filler + r.copied).toBe(0)
+  })
+  it('stripSpokenFiller leaves a line with no filler alone, and keeps figures when it does cut', () => {
+    for (const l of clean) expect(stripSpokenFiller(l)).toBe(l)
+    expect(stripSpokenFiller('It was, um, $4.99 at shop.example.com/kit.')).toBe('It was, $4.99 at shop.example.com/kit.')
+  })
+  it('a repeat is still trimmed, and the price in the kept clause survives', () => {
+    const r = dropRepeatedSentences(['My first kiln load cracked down the middle, every mug.', 'My first kiln load cracked down the middle, and the fix cost $12.50.'])
+    expect(r.cut).toBe(1)
+    expect(r.lines[1]).toBe('The fix cost $12.50.')
+  })
+})
