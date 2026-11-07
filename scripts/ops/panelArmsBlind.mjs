@@ -36,6 +36,8 @@ export function buildArmsPack(rows, rand = (n) => randomBytes(n)) {
   const scored = []
   for (const r of arms) {
     const a = report[r.scenario.viewer_arm]
+    // Asked her instead of writing (7 Nov): not a failure and not a script.
+    if (r.scenario?.asked_instead) { a.asked_instead++; a.check_status.needs_answers = (a.check_status.needs_answers ?? 0) + 1; continue }
     const fail = failureOf(r)
     if (fail) { a.failures.push({ n: r.n, reason: fail }); continue }
     const m = metricsOf(r) ?? {}
@@ -44,6 +46,8 @@ export function buildArmsPack(rows, rand = (n) => randomBytes(n)) {
     a.hook_copied += Number(m.hook_copied ?? 0)
     a.check_status[m.check_status ?? 'none'] = (a.check_status[m.check_status ?? 'none'] ?? 0) + 1
     if (r.scenario.viewer_arm === 'on' && r.scenario.viewers_changed === false) a.unchanged_by_viewers++
+    a.wrong_product_cut += Number(m.wrong_product ?? 0)
+    a.mixed_products_cut += Number(m.mixed_products ?? 0)
     scored.push(r)
   }
   const ids = new Set()
@@ -55,9 +59,9 @@ export function buildArmsPack(rows, rand = (n) => randomBytes(n)) {
   }).sort((x, y) => x.sort - y.sort)
   const blind = withId.map(({ id, r }) => [`## ${id}`, `**Goal:** ${r.scenario?.body?.goal ?? ''} · **Request:** ${r.scenario?.body?.reference_note ?? r.scenario?.body?.note ?? ''}`, r.script_text, '', `Hooks: ${(r.hooks ?? []).join(' · ')}`, ''].join('\n')).join('\n')
   const key = Object.fromEntries(withId.map(({ id, r }) => [id, { n: r.n, request_id: r.scenario?.label ?? null, creator: r.scenario?.creator ?? null, arm: r.scenario.viewer_arm, generation_id: r.generation_id }]))
-  return { blind: `# Panel 13 — blind scripts (${withId.length})\n\n${blind}`, key, report }
+  return { blind: `# Panel — blind scripts (${withId.length})\n\n${blind}`, key, report }
 }
-function blankArm() { return { scripts: 0, invented_lines: 0, scripts_with_invented: 0, invented_unknown: 0, hook_copied: 0, check_status: {}, unchanged_by_viewers: 0, failures: [] } }
+function blankArm() { return { scripts: 0, invented_lines: 0, scripts_with_invented: 0, invented_unknown: 0, hook_copied: 0, check_status: {}, unchanged_by_viewers: 0, asked_instead: 0, wrong_product_cut: 0, mixed_products_cut: 0, failures: [] } }
 
 async function main() {
   const batch = process.argv[2]

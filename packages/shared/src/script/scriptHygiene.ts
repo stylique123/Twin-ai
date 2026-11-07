@@ -80,9 +80,20 @@ export function dropRepeatedSentences(lines: readonly string[], share = 0.6): { 
   return { lines: out, cut }
 }
 
-/** Strips raw spoken filler; keeps her words and meaning. */
-export function stripSpokenFiller(line: string): string {
+/** Strips raw spoken filler; keeps her words and meaning. `strict` (panel
+ *  accounts, 7 Nov) also takes "I mean", "so yeah" and a filler "like"
+ *  wherever they stand, not only between commas. */
+export function stripSpokenFiller(line: string, strict = false): string {
   let t = String(line ?? '')
+  if (strict) {
+    t = t.replace(/,\s*like,\s*/gi, ' ')
+    t = t.replace(/(^|[\s,.!?])(?:so,?\s+yeah|yeah,?\s+so)(?=[\s,.!?]|$),?/gi, '$1')
+    t = t.replace(/(^|[\s,.!?])I mean(?=[\s,.!?]|$),?/gi, '$1')
+    // "like" as filler: at the start, after a comma, or before a comma. "I like
+    // it" and "looks like rain" stay (a verb or a comparison).
+    t = t.replace(/(^|[.!?]\s+)like,?\s+/gi, '$1').replace(/,\s*like\s+/gi, ', ').replace(/\s+like,\s*/gi, ' ')
+    t = t.replace(/(^|[.!?]\s+|,\s*)so\s+yeah\b[,.]?/gi, '$1')
+  }
   // "the first hour, no wait, first forty minutes" → "the first forty minutes".
   // Only a parallel correction (the fix restarts on the same word) and never
   // around a figure: "$50, no wait, $60" or "a week, no wait, more like ten
@@ -93,10 +104,27 @@ export function stripSpokenFiller(line: string): string {
   t = t.replace(/,\s*like,\s*/gi, ' ').replace(/\bjust,\s*like,?\s*/gi, 'just ')
   t = t.replace(/\b(?:so yeah|you know),\s*/gi, '')
   t = t.replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').replace(/^\s*,\s*/, '').trim()
+  if (strict) t = t.replace(/,\s*([.!?])/g, '$1').replace(/^[,.\s]+/, '').replace(/([.!?])\s+([a-z])/g, (_m, p: string, c: string) => `${p} ${c.toUpperCase()}`).trim()
   // No filler found: the line comes out exactly as it went in.
   const orig = String(line ?? '')
   if (t === orig.replace(/\s+,/g, ',').replace(/\s{2,}/g, ' ').trim()) return orig
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : t
+}
+
+// THE SAME IDEA TWICE (panel 13, 7 Nov; strict mode, panel accounts only).
+// The 4-word-run check above catches a line said again word for word; a
+// reader also marked a line that says an earlier line's point in new words.
+// A clause that shares 4 or more content words (5-letter stems) with ONE
+// earlier line, and at least 60% of the shorter of the two, repeats its idea.
+const IDEA_STOP = new Set(['about', 'after', 'again', 'because', 'before', 'being', 'could', 'every', 'going', 'never', 'other', 'really', 'should', 'still', 'their', 'there', 'these', 'thing', 'think', 'those', 'though', 'through', 'where', 'which', 'while', 'would', 'actually', 'something', 'anything', 'everything', 'with', 'from', 'that', 'this', 'then', 'them', 'what', 'when', 'your', 'have', 'just', 'like', 'into', 'over', 'only', 'more', 'most', 'very', 'much', 'they', 'were', 'will', 'want'])
+export function ideaStems(t: string): Set<string> {
+  return new Set((norm(t).split(' ').filter((w) => w.length >= 4 && !IDEA_STOP.has(w))).map((w) => w.replace(/'/g, '').slice(0, 5)))
+}
+/** True when `clause` restates one of `earlier`'s ideas. */
+export function repeatsIdea(clause: string, earlier: readonly Set<string>[], share = 0.6): boolean {
+  const c = ideaStems(clause)
+  if (c.size < 4) return false
+  return earlier.some((e) => { let hit = 0; for (const w of c) if (e.has(w)) hit++; return hit >= 4 && hit / Math.min(c.size, e.size) >= share })
 }
 
 /** Hook and CTA section names the writer and the templates use. */
@@ -120,7 +148,9 @@ export function scriptHygiene(lines: readonly string[], ctx: { outside: readonly
  * is dropped); filler is stripped. Beats with no spoken line pass through.
  * Never adds a beat or a word.
  */
-export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], ctx: { outside: readonly string[]; hers: readonly string[] }): { beats: T[]; copied: number; repeats: number; filler: number; hookCopied: number } {
+export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], ctx: { outside: readonly string[]; hers: readonly string[]; strict?: boolean }): { beats: T[]; copied: number; repeats: number; filler: number; hookCopied: number } {
+  const strict = ctx.strict === true
+  const earlierIdeas: Set<string>[] = []
   const o = poolOf(ctx.outside.filter(Boolean), 5)
   const h = poolOf(ctx.hers.filter(Boolean), 5)
   const said = new Set<string>()
@@ -141,7 +171,8 @@ export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], 
       // is reported as hook_copied so panels can measure it.
       if (i === spoken[0] && o.size && runOverlap(line, o) >= 0.5 && runOverlap(line, h) < 0.5) hookCopied++
       for (const g of shingles(line, 4)) said.add(g)
-      const clean = stripSpokenFiller(line)
+      earlierIdeas.push(ideaStems(line))
+      const clean = stripSpokenFiller(line, strict)
       if (clean !== line) filler++
       out.push(clean === line ? b : { ...b, line: clean })
       continue
@@ -149,18 +180,19 @@ export function hygieneBeats<T extends { line?: unknown }>(beats: readonly T[], 
     if (o.size && runOverlap(line, o) >= 0.5 && runOverlap(line, h) < 0.5) { copied++; continue }
     const clauses = clausesOf(line)
     const kept = clauses.filter((c) => {
-      const rep = shingles(c, 4).size >= 2 && runOverlap(c, said, 4) >= 0.6
+      const rep = (shingles(c, 4).size >= 2 && runOverlap(c, said, 4) >= 0.6) || (strict && repeatsIdea(c, earlierIdeas))
       if (rep) repeats++
       return !rep
     })
     for (const g of shingles(line, 4)) said.add(g)
+    earlierIdeas.push(ideaStems(kept.join(' ')))
     let text = line
     if (kept.length !== clauses.length) {
       text = kept.join(' ').replace(/\s+/g, ' ').trim().replace(/^(?:and|so|but)\s+/i, '').replace(/^[,;\s]+/, '').replace(/,$/, '.')
       if (!text || !/[a-z0-9]/i.test(text)) continue
       text = text.charAt(0).toUpperCase() + text.slice(1)
     }
-    const clean = stripSpokenFiller(text)
+    const clean = stripSpokenFiller(text, strict)
     if (clean !== text) filler++
     out.push(clean === line ? b : { ...b, line: clean })
   }

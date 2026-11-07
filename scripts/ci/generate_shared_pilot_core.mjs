@@ -165,6 +165,7 @@ const SOURCES = [
   // Advisor labels 28 Oct: copied outside text, repeated stories, spoken filler.
   ['packages/shared/src/script/scriptHygiene.ts', 'supabase/functions/_shared/scriptHygiene.ts'],
   ['packages/shared/src/script/featureClaims.ts', 'supabase/functions/_shared/featureClaims.ts'],
+  ['packages/shared/src/script/productFactScope.ts', 'supabase/functions/_shared/productFactScope.ts'],
   ['packages/shared/src/script/questionLadder.ts', 'supabase/functions/_shared/questionLadder.ts'],
   // Realistic panel mode (plan v6.8 §34): cost_mode, pain-map validation, page-read policy. Test/panel only.
   ['packages/shared/src/script/realisticPanel.ts', 'supabase/functions/_shared/realisticPanel.ts'],
