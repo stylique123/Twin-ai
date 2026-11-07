@@ -238,6 +238,8 @@ export function armMetrics(bp) {
     gate_outcome: g?.outcome ?? null,
     invented_after: typeof invented === 'number' ? invented : null,
     hook_copied: Number(bp?.script_hygiene?.hook_copied ?? 0),
+    wrong_product: Number(bp?.script_hygiene?.wrong_product ?? 0),
+    mixed_products: Number(bp?.script_hygiene?.mixed_products ?? 0),
     beats: Array.isArray(bp?.script) ? bp.script.filter((b) => typeof b?.line === 'string' && b.line.trim()).length : 0,
   }
 }
@@ -499,7 +501,12 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
       hooks: Array.isArray(armBp?.hook_options) ? armBp.hook_options : null,
       judge: null,
     })
-    if (!viewerArms || !r.json?.id) {
+    if (viewerArms && r.status === 409 && r.json?.code === 'NEEDS_STORY') {
+      // Asked her instead of writing (7 Nov): recorded once per arm as
+      // needs_answers with no script, never scored and never a failure.
+      for (const arm of ['off', 'on']) await admin.from('script_batch_results').insert({ ...row(arm, null, [], { asked_instead: true, check_status: 'needs_answers', question: String(r.json.questions?.[0]?.question ?? '').slice(0, 300) }), status: 200 })
+      console.log(JSON.stringify({ event: 'panel_viewer_arms', n: sc.n, asked_instead: true }))
+    } else if (!viewerArms || !r.json?.id) {
       await admin.from('script_batch_results').insert(row(null, bp, lines))
     } else if (checkTimedOut) {
       // Never scored: the check did not finish, so neither arm is final.

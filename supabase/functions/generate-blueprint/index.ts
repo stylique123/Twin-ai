@@ -108,6 +108,7 @@ import { planSpine, renderPlanBlock, planRecord, checkPlanAdherence, mergeQuesti
 import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/questionEngine.ts'
 import { hygieneBeats } from '../_shared/scriptHygiene.ts'
 import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
+import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { writerLoopOn, inventionGateOn, lateChecksOn, loopFlagFor, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
@@ -9309,6 +9310,21 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const nm = String((ownedEntity as { name?: unknown }).name ?? 'it').trim() || 'it'
     readyMissing.push({ field: 'screen', question: `I couldn't find a screen or page of ${nm} to show (like a pricing page, the dashboard or a lesson list). Which one can you show on camera, and what's on it? Say "none" and the video stays on your face.` })
   }
+  // ⚖️ ASK, DON'T WRITE FROM NOTHING (panel 13, 7 Nov; panel accounts only).
+  // A request that asks WHY or for THE DAY I… needs her own truth. When none of
+  // her stories or answers touches its topic, she is asked first and nothing
+  // is written; the panel records the request as needs_answers.
+  if (isPanel) {
+    const askNote = String(reference_note ?? '')
+    const storyAnswer = String((body.readiness_answers as Record<string, unknown> | undefined)?.story ?? '')
+    const material = [...knowledgeRows, ...entitlementPool].flatMap((k) => [String((k as { text?: unknown }).text ?? ''), String((k as { evidence?: unknown }).evidence ?? '')])
+      .concat(Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String), storyAnswer)
+    const nsa = needsStoryAsk(askNote, material)
+    if (nsa.ask) {
+      console.log(JSON.stringify({ event: 'feature_fired', feature: 'needs_story_ask', topic: nsa.topic, material_rows: material.filter((m) => m.trim()).length }))
+      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', error: 'One question first: nothing you have told Twin covers this yet.', questions: [{ field: 'story', question: storyQuestion(askNote) }] }, 409)
+    }
+  }
   if (readyMissing.length) {
     // ⚖️ ORDERED BY WHAT UNBLOCKS THE MOST, capped at three. A creator asked
     // eight questions abandons; a creator asked two answers them.
@@ -17809,7 +17825,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const outside = [reference_note ?? '', typeof refText === 'string' ? refText : '', brainBlock].filter((x) => typeof x === 'string' && x.trim())
         const hers = (knowledgeRows as Array<{ text?: unknown; evidence?: unknown }>).flatMap((k) => [String(k.text ?? ''), String(k.evidence ?? '')])
           .concat(Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String))
-        const h = hygieneBeats(beats, { outside, hers })
+        // Panel accounts (7 Nov): also the same idea in new words, and "I mean",
+        // "so yeah", a filler "like" wherever they stand.
+        const h = hygieneBeats(beats, { outside, hers, strict: isPanel })
         if (h.copied || h.repeats || h.filler) {
           if (h.beats.length >= 2) bph.script = h.beats
           console.log(JSON.stringify({ event: 'feature_fired', feature: 'script_hygiene', copied: h.copied, repeats: h.repeats, filler: h.filler, beats_before: beats.length, beats_after: h.beats.length }))
@@ -17828,6 +17846,24 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             bph.script = f.beats
             console.log(JSON.stringify({ event: 'feature_fired', feature: 'unbacked_product_feature', sentences: f.cut.sentences, beats_dropped: f.cut.beats, stems: f.cut.stems }))
           }
+        }
+        // ⚖️ A REAL FACT ABOUT THE WRONG PRODUCT (panel 13, 7 Nov; panel accounts
+        // only): each product fact belongs to one product. A sentence about
+        // product A that says product B's fact, or mixes two products' facts,
+        // is cut. The honesty check passed these: every fact was true.
+        if (isPanel && Array.isArray(bph.script)) {
+          const scoped = ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; knowledge?: unknown }>).map((r) => ({
+            id: String(r.id ?? ''), name: String(r.name ?? ''),
+            facts: (Array.isArray(r.knowledge) ? r.knowledge : []).map((f) => String((f as { value?: unknown })?.value ?? '')).filter((v) => v.trim()),
+          })).filter((p) => p.id && p.facts.length)
+          const subjectId = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const w = dropWrongProductFacts(bph.script as Array<Record<string, unknown>>, scoped, subjectId)
+          if (w.cut.sentences) {
+            bph.script = w.beats
+            console.log(JSON.stringify({ event: 'feature_fired', feature: 'wrong_product_fact', wrong: w.cut.wrong, mixed: w.cut.mixed, beats_dropped: w.cut.beats }))
+          }
+          ;(bph.script_hygiene as Record<string, unknown>).wrong_product = w.cut.wrong
+          ;(bph.script_hygiene as Record<string, unknown>).mixed_products = w.cut.mixed
         }
         // Lane 1 (5 Nov): the shot list follows the script, or it keeps spoken
         // text for beats hygiene or the feature cut removed.

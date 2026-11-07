@@ -26,4 +26,12 @@ assert.equal(Object.keys(p.key).length, 3)
 assert.ok(!/\b(off|on)\b arm|viewer_arm|panel-6\d|g6\d/.test(p.blind.replace(/line 6\d (off|on)/g, '')), 'blind file carries no arm key')
 for (const [id, k] of Object.entries(p.key)) { assert.match(id, /^S-[0-9A-F]{6}$/); assert.ok(['off', 'on'].includes(k.arm)) }
 assert.equal(failureOf({ status: 200, script_text: '', scenario: { viewer_arm: 'off' } }), 'no_script')
+// Asked her instead of writing (7 Nov): counted as needs_answers, never scored, never a failure.
+{
+  const q = buildArmsPack([{ n: 85, status: 200, script_text: null, scenario: { viewer_arm: 'off', asked_instead: true, check_status: 'needs_answers' } }], rand)
+  assert.equal(q.report.off.asked_instead, 1)
+  assert.equal(q.report.off.check_status.needs_answers, 1)
+  assert.equal(q.report.off.failures.length, 0)
+  assert.equal(Object.keys(q.key).length, 0)
+}
 console.log('panel arms blind selftest: ok')
