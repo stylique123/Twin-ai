@@ -156,3 +156,19 @@ describe('7. repeat check', () => {
     expect(text(r.beats)).toMatch(/link in bio/)
   })
 })
+
+describe('CTA protection (review of #1356)', () => {
+  const harbor = { id: 'harbor', name: 'Harbor Blend', facts: ['$17 for a 12 oz bag', '12 oz whole-bean bag', 'Roasted on Tuesdays and shipped within two days of roasting'] }
+  const ctx = { request: 'Harbor Blend', material: harbor.facts.join('\n'), stories: [], products: [harbor], subjectId: 'harbor', offers: ['Harbor Blend, 12 oz bags at https://example.com/harbor'] }
+  it('keeps a CTA sentence that repeats an earlier fact, with its link', () => {
+    const cta = 'Grab a 12 oz bag of Harbor Blend at https://example.com/harbor.'
+    const r = panelFinalPass(beats('Fresh beans change everything.', 'Harbor Blend is a 12 oz whole-bean bag.', 'I roast it on Tuesdays and ship within two days.', cta), ctx)
+    expect(r.beats[r.beats.length - 1].line).toBe(cta)
+    expect(r.cut.fact_repeat).toBe(0)
+  })
+  it('keeps "link in bio" and offer-text sentences under the pressure, result and false-cause cuts', () => {
+    const r = panelFinalPass(beats('Fresh beans change everything.', 'It is roasted on Tuesdays.', 'It ships in two days.', 'Hurry, link in bio. Harbor Blend, 12 oz bags at https://example.com/harbor, so it\'s always fresh.'), ctx)
+    expect(r.beats[r.beats.length - 1].line).toBe('Hurry, link in bio. Harbor Blend, 12 oz bags at https://example.com/harbor, so it\'s always fresh.')
+    expect(r.cut.pressure + r.cut.false_cause).toBe(0)
+  })
+})

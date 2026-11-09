@@ -52,6 +52,7 @@ export function applyPanelFinalPass(bp: Record<string, unknown>, extra: Record<s
       stories: items.filter((it) => PANEL_STORY_ORIGINS.has(String(it.origin))).map((it) => String(it.text)),
       products: products.map((p) => ({ id: p.id, name: p.name, facts: items.filter((it) => it.origin === 'product_fact' && String(it.product_id ?? '') === p.id).map((it) => String(it.text)) })),
       subjectId: target,
+      offers: items.filter((it) => it.origin === 'offer').map((it) => String(it.text)),
     })
     const n = Object.values(r.cut).reduce((a, b) => a + b, 0)
     if (n) { bp.script = r.beats; resyncShotListToScript(bp) }

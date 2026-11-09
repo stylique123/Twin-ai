@@ -9351,6 +9351,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       stories: [...rows.filter((k) => PANEL_STORY_KINDS.has(String(k.kind ?? ''))).map((k) => String(k.text ?? '')), ...ans],
       products: products.map(({ id, name, facts }) => ({ id, name, facts })),
       subjectId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
+      offers: [...products.map((p) => p.offer), String(readyOffer ?? '')].filter((o) => o.trim()),
     }
   }
   if (readyMissing.length) {

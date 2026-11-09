@@ -83,6 +83,14 @@ function causeBacked(left: string, right: string, matSentences: readonly string[
   })
 }
 
+const URL_RE = /\bhttps?:\/\/\S+|\bwww\.\S+|\b[a-z0-9-]+\.(?:com|co|io|net|org|shop|store|app)\/\S*/i
+/** A CTA sentence: a URL, "link in bio", or a product's offer text (or its URL). */
+export function isCtaSentence(s: string, offers: readonly string[] = []): boolean {
+  if (URL_RE.test(s) || /\blink in (?:my |the )?bio\b/i.test(s)) return true
+  const low = s.toLowerCase()
+  return offers.some((o) => low.includes(o.toLowerCase()) || (o.match(URL_RE)?.[0] ? low.includes(o.match(URL_RE)![0].toLowerCase().replace(/[.,]$/, '')) : false))
+}
+
 export interface FinalPassCtx {
   request: string
   /** Everything she has given, one text (stories, answers, product facts, offer). */
@@ -91,6 +99,8 @@ export interface FinalPassCtx {
   stories: readonly string[]
   products: readonly ScopedProduct[]
   subjectId?: string | null
+  /** The products' offer lines; a sentence carrying one is a CTA (protected). */
+  offers?: readonly string[]
 }
 export interface FinalPassCut { wrong_story: number; filler: number; pressure: number; false_cause: number; change_added: number; unbacked_result: number; story_repeat: number; fact_repeat: number }
 
@@ -99,6 +109,7 @@ export function panelFinalPass<T extends { line?: unknown; section?: unknown }>(
   const material = String(ctx.material ?? '')
   const matSentences = material.split(/(?<=[.!?;])\s+|\n+/).map((s) => s.trim()).filter(Boolean)
   const stories = ctx.stories.filter((s) => String(s ?? '').trim())
+  const offers = (ctx.offers ?? []).map((o) => String(o ?? '').trim()).filter((o) => o.length >= 6)
 
   // Story phrases owned by a product other than the subject (2).
   const foreign: Array<Set<string>> = []
@@ -135,10 +146,13 @@ export function panelFinalPass<T extends { line?: unknown; section?: unknown }>(
       // Facts this sentence states (a fact: half its words, at least two).
       const states = facts.map((f, k) => [...f].filter((w) => ss.has(w)).length >= Math.max(2, Math.ceil(f.size / 2)) ? k : -1).filter((k) => k >= 0)
       if (isHook) { for (const k of states) factSaid[k] = true; kept.push(s); continue }
+      // A CTA sentence (a URL, "link in bio", or a product's offer text) is
+      // never cut by the pressure, result, fact-repeat or false-cause rules.
+      const isCta = isCtaSentence(s, offers)
       const p = s.match(PRESSURE)?.[0] ?? s.match(BEHAVIOUR)?.[0]
-      if (p && !inMaterial(p, material)) { cut.pressure++; continue }
+      if (!isCta && p && !inMaterial(p, material)) { cut.pressure++; continue }
       const r = s.match(RESULT)?.[0]
-      if (r && !inMaterial(r, material)) { cut.unbacked_result++; continue }
+      if (!isCta && r && !inMaterial(r, material)) { cut.unbacked_result++; continue }
       if (foreign.length) { const g = runs(s); if (foreign.some((f) => [...f].filter((x) => g.has(x)).length >= 2)) { cut.wrong_story++; continue } }
       // A story told again: two of its words already said, one unique to it.
       let retold = false
@@ -149,11 +163,11 @@ export function panelFinalPass<T extends { line?: unknown; section?: unknown }>(
         if (again.length >= 2 && again.some((w) => wc.get(w) === 1)) { retold = true; break }
       }
       if (retold) { cut.story_repeat++; continue }
-      if (states.length && states.every((k) => factSaid[k])) { cut.fact_repeat++; continue }
+      if (!isCta && states.length && states.every((k) => factSaid[k])) { cut.fact_repeat++; continue }
       for (const [k, st] of storyWords.entries()) for (const w of sw) if (st.has(w)) storySaid[k].add(w)
       for (const k of states) factSaid[k] = true
       const m = s.match(CAUSE)
-      if (m && !causeBacked(m[1], m[3], matSentences)) {
+      if (!isCta && m && !causeBacked(m[1], m[3], matSentences)) {
         cut.false_cause++
         const conn = m[2].toLowerCase()
         s = /^so /.test(conn) ? `${m[1]}. ${cap(conn.replace(/^so\s+/, '').replace(/’/g, "'"))} ${m[3]}` : `${m[1]}.`
