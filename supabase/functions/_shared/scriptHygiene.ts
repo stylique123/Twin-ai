@@ -108,6 +108,9 @@ export function stripSpokenFiller(line: string, strict = false): string {
   t = t.replace(/,\s*like,\s*/gi, ' ').replace(/\bjust,\s*like,?\s*/gi, 'just ')
   t = t.replace(/\b(?:so yeah|you know),\s*/gi, '')
   t = t.replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').replace(/^\s*,\s*/, '').trim()
+  // Panel 13b: a lone "…" left where filler stood, and "I think," whose comma
+  // only fenced off an "um" ("I think, um, … so yeah, I mean, most shops…").
+  if (strict) t = t.replace(/(^|[\s,])(?:…|\.\.\.)(?=[\s,]|$),?/g, '$1').replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').replace(/\bI think,\s+(?=[a-z])/g, 'I think ')
   if (strict) t = t.replace(/,\s*([.!?])/g, '$1').replace(/^[,.\s]+/, '').replace(/([.!?])\s+([a-z])/g, (_m, p: string, c: string) => `${p} ${c.toUpperCase()}`).trim()
   // No filler found: the line comes out exactly as it went in.
   const orig = String(line ?? '')

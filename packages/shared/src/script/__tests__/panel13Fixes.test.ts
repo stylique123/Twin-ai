@@ -44,8 +44,10 @@ describe('ask when there is no material', () => {
   it('does not ask when her material touches the topic', () => {
     expect(needsStoryAsk('why I weave in silence', ['I weave in the early morning when the house is silent.']).ask).toBe(false)
   })
-  it('does not ask for a request without why / the day I', () => {
-    expect(needsStoryAsk('how to wash wool gently', []).ask).toBe(false)
+  // Panel 13b (9 Nov) widened the rule: any request her material does not touch
+  // asks. A non-trigger request that her material touches still writes.
+  it('does not ask for a request without why / the day I when her material touches it', () => {
+    expect(needsStoryAsk('how to wash wool gently', ['Hand-woven from undyed wool']).ask).toBe(false)
   })
   it('asks for "the day I nearly quit" with nothing on quitting', () => {
     expect(needsStoryAsk('use the shape of this video for the day I nearly quit', ['My first batch of coffee was sour.']).ask).toBe(true)

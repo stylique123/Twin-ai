@@ -318,6 +318,11 @@ const SOURCES = [
   ['packages/shared/src/script/hookJudge.ts', 'worker/src/generated/hookJudge.ts'],
   ['packages/shared/src/script/craftJudge.ts', 'worker/src/generated/craftJudge.ts'],
   ['packages/shared/src/script/planner/qualityController.ts', 'worker/src/generated/qualityController.ts'],
+  // Panel 13b (9 Nov): the panel-only final pass, last on the edge and after the QC in the worker.
+  ['packages/shared/src/script/panelFinalPass.ts', 'supabase/functions/_shared/panelFinalPass.ts'],
+  ['packages/shared/src/script/panelFinalPass.ts', 'worker/src/generated/panelFinalPass.ts'],
+  ['packages/shared/src/script/scriptHygiene.ts', 'worker/src/generated/scriptHygiene.ts'],
+  ['packages/shared/src/script/productFactScope.ts', 'worker/src/generated/productFactScope.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

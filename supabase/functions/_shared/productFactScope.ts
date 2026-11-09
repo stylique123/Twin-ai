@@ -100,25 +100,53 @@ export function dropWrongProductFacts<T extends { line?: unknown }>(beats: reado
 // from nothing. A request that asks WHY or for THE DAY I… needs her own truth;
 // when nothing she has said touches the request's topic, she is asked first.
 
-const ASK_TRIGGER = /\bwhy\b|\bthe day (?:i|we)\b/i
-const TOPIC_STOP = new Set([...STOP, 'why', 'day', 'how', 'what', 'when', 'should', 'yet', 'do', 'does', 'did', 'nearly', 'about', 'video', 'use', 'shape', 'copy', 'stay', 'close', 'remix', 'structure', 'pacing', 'format', 'quiet', 'confession', 'actually', 'just', 'really', 'thing', 'things', 'only', 'one', 'there', 'their', 'them', 'they', 'me', 'have', 'has'])
+// Panel 13b (9 Nov): also "things only X say", "how I decide…", a client or
+// customer story, and "the one change that fixes it". These need ONE of her
+// stories or frameworks that covers the topic (two topic words in the same
+// item); a "one grind change" request also needs her change ("grind").
+// Any other request asks when nothing she has given (stories, answers,
+// product names and facts) shares a single topic word with it.
+const ASK_TRIGGER = /\bwhy\b|\bthe day (?:i|we)\b|\bthings only \w+ (?:say|do|know)\b|\bhow (?:i|we) (?:decide|choose|pick)\b|\b(?:client|customer|student) stor(?:y|ies)\b|\bchange that fixes\b|\bone \w+ (?:change|tweak|fix)\b/i
+const TOPIC_STOP = new Set([...STOP, 'why', 'day', 'how', 'what', 'when', 'should', 'yet', 'do', 'does', 'did', 'nearly', 'about', 'video', 'use', 'shape', 'copy', 'stay', 'close', 'remix', 'structure', 'pacing', 'format', 'quiet', 'confession', 'actually', 'just', 'really', 'thing', 'things', 'only', 'one', 'there', 'their', 'them', 'they', 'me', 'have', 'has', 'which', 'this', 'that', 'follow', 'your', 'from'])
 const stem = (w: string) => w.slice(0, 5)
+const CHANGE_KEY = /\b(?:one|a|the|single)\s+(\w+)\s+(?:change|tweak|fix)\b/i
+const VAGUE = new Set(['simple', 'small', 'quick', 'big', 'easy', 'little', 'tiny', 'single'])
 
 /** The request's topic stems (content words, 4+ letters). */
 export function topicStems(request: string): string[] {
   return [...new Set(toks(request).flatMap((w) => w.split('-')).filter((w) => w.length >= 4 && !TOPIC_STOP.has(w)).map(stem))]
 }
 
+const stemsOf = (t: string) => new Set(toks(t).flatMap((w) => w.split('-')).map(stem))
+
+/** The change word of "the one grind change that fixes it" ("grind"), or null. */
+export function changeKey(request: string): string | null {
+  const m = String(request ?? '').match(CHANGE_KEY)
+  const k = m?.[1]?.toLowerCase()
+  return k && !VAGUE.has(k) && k.length >= 3 ? k : null
+}
+
 /**
- * True when the request asks why / for "the day I…" and NONE of her material
- * (her stories, her answers) shares a topic word with it. Empty material asks.
+ * True when nothing of hers covers the request. Trigger requests (why, the
+ * day I…, things only X say, how I decide…, a client story, the one change)
+ * need one story or framework (`opts.stories`, else `material`) with two
+ * topic words; any other request needs one topic word anywhere in `material`.
+ * Empty material asks; a request with no topic word never does.
  */
-export function needsStoryAsk(request: string, material: readonly string[]): { ask: boolean; topic: string[] } {
-  if (!ASK_TRIGGER.test(String(request ?? ''))) return { ask: false, topic: [] }
-  const topic = topicStems(request)
-  const have = new Set(material.flatMap((m) => toks(m).flatMap((w) => w.split('-')).map(stem)))
-  const hit = topic.some((t) => have.has(t))
-  return { ask: !hit, topic }
+export function needsStoryAsk(request: string, material: readonly string[], opts: { stories?: readonly string[] } = {}): { ask: boolean; topic: string[] } {
+  const req = String(request ?? '')
+  const topic = topicStems(req)
+  if (!topic.length) return { ask: false, topic }
+  if (!ASK_TRIGGER.test(req)) {
+    const have = new Set(material.flatMap((m) => [...stemsOf(m)]))
+    return { ask: !topic.some((t) => have.has(t)), topic }
+  }
+  const pool = (opts.stories ?? material).filter((m) => String(m ?? '').trim())
+  const need = Math.min(2, topic.length)
+  const covered = pool.some((m) => { const s = stemsOf(m); return topic.filter((t) => s.has(t)).length >= need })
+  const key = changeKey(req)
+  const hasChange = !key || pool.some((m) => stemsOf(m).has(stem(key)))
+  return { ask: !covered || !hasChange, topic }
 }
 
 /** The one question she is asked instead. */

@@ -109,6 +109,9 @@ import { pickTwo, enginePlanRecord, questionEngineOn } from '../_shared/question
 import { hygieneBeats } from '../_shared/scriptHygiene.ts'
 import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
+import { panelFinalPass } from '../_shared/panelFinalPass.ts'
+// Her items that are stories or frameworks (panel 13b ask rule and final pass).
+const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
 import { writerLoopOn, inventionGateOn, lateChecksOn, loopFlagFor, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
 import { planSpineBeats, renderSpineBeatsBlock, checkSpineBeatAdherence, spineBeatsRecord, enforceTitlePromise, fillSpineBeats, type SpineBeats } from '../_shared/spineContract.ts'
 import { enforcePackagingPromise, packagingPromiseOn } from '../_shared/packagingPromise.ts'
@@ -9317,12 +9320,37 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   if (isPanel) {
     const askNote = String(reference_note ?? '')
     const storyAnswer = String((body.readiness_answers as Record<string, unknown> | undefined)?.story ?? '')
+    const answerTexts = Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String).concat(storyAnswer)
+    // Panel 13b: product names, offers and facts count as material for a
+    // plain request; a story-shaped request needs one of her stories or
+    // frameworks (or a story answer) that covers it.
+    const productTexts = ((libraryRows ?? []) as Array<{ name?: unknown; offer?: unknown; knowledge?: unknown }>).flatMap((r) => [String(r.name ?? ''), String(r.offer ?? ''),
+      ...(Array.isArray(r.knowledge) ? r.knowledge : []).map((f) => String((f as { value?: unknown })?.value ?? ''))])
     const material = [...knowledgeRows, ...entitlementPool].flatMap((k) => [String((k as { text?: unknown }).text ?? ''), String((k as { evidence?: unknown }).evidence ?? '')])
-      .concat(Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String), storyAnswer)
-    const nsa = needsStoryAsk(askNote, material)
+      .concat(answerTexts, productTexts)
+    const storyRows = [...knowledgeRows, ...entitlementPool].filter((k) => PANEL_STORY_KINDS.has(String((k as { kind?: unknown }).kind ?? ''))).map((k) => String((k as { text?: unknown }).text ?? ''))
+    const nsa = needsStoryAsk(askNote, material, { stories: [...storyRows, ...answerTexts] })
     if (nsa.ask) {
       console.log(JSON.stringify({ event: 'feature_fired', feature: 'needs_story_ask', topic: nsa.topic, material_rows: material.filter((m) => m.trim()).length }))
       return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', error: 'One question first: nothing you have told Twin covers this yet.', questions: [{ field: 'story', question: storyQuestion(askNote) }] }, 409)
+    }
+  }
+  // The panel final pass's view of her material (panel 13b; read at the end).
+  const panelFinalCtx = () => {
+    const ans = Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String)
+      .concat(Object.values((body.readiness_answers ?? {}) as Record<string, unknown>).map(String))
+    const rows = [...knowledgeRows, ...entitlementPool] as Array<{ kind?: unknown; text?: unknown }>
+    const products = ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>).map((r) => ({
+      id: String(r.id ?? ''), name: String(r.name ?? ''),
+      facts: (Array.isArray(r.knowledge) ? r.knowledge : []).map((f) => String((f as { value?: unknown })?.value ?? '')).filter((v) => v.trim()),
+      offer: String(r.offer ?? ''),
+    })).filter((p) => p.id)
+    return {
+      request: String(reference_note ?? ''),
+      material: [...rows.map((k) => String(k.text ?? '')), ...ans, ...products.flatMap((p) => [p.name, p.offer, ...p.facts])].filter((x) => x.trim()).join('\n'),
+      stories: [...rows.filter((k) => PANEL_STORY_KINDS.has(String(k.kind ?? ''))).map((k) => String(k.text ?? '')), ...ans],
+      products: products.map(({ id, name, facts }) => ({ id, name, facts })),
+      subjectId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null,
     }
   }
   if (readyMissing.length) {
@@ -18019,6 +18047,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           answered: answeredQ,
         }
       }
+      // Panel 13b: the worker re-runs the panel final pass after its QC and polish.
+      if (isPanel) (inventionRecheck.ledger as Record<string, unknown>).panel_final_pass = { request: String(reference_note ?? '').slice(0, 300) }
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
@@ -18070,6 +18100,24 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         ;(blueprint as Record<string, unknown>).writer_supply = supply
         console.log(JSON.stringify({ event: 'writer_supply_recorded', knowledge: supply.knowledge_ids.length, product_facts: supply.product_fact_ids.length, answers: supply.answer_keys.length, note: supply.note }))
       } catch { /* bookkeeping never fails a generation */ }
+    }
+    // ⚖️ PANEL FINAL PASS (panel 13b, 9 Nov; panel accounts only), LAST, after
+    // every stage that can add a line: wrong-product stories, filler on every
+    // line, invented pressure / customer behaviour / false cause, the "one
+    // change" request carries her change, a story or fact said again. Cuts and
+    // splits only (plus her own change sentence). Counts only in logs.
+    if (isPanel && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bpf = blueprint as Record<string, unknown>
+        const fp = panelFinalPass(bpf.script as Array<Record<string, unknown>>, panelFinalCtx())
+        const n = Object.values(fp.cut).reduce((a, b) => a + b, 0)
+        if (n) {
+          bpf.script = fp.beats
+          if (Array.isArray(bpf.shot_list)) bpf.shot_list = syncShotListSpokenText(bpf.shot_list as Array<{ spoken_text?: unknown }>, bpf.script as Array<{ line?: unknown }>).shots
+        }
+        bpf.panel_final_pass = fp.cut
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'panel_final_pass', where: 'edge', ...fp.cut }))
+      } catch { /* the final pass never fails a build */ }
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
     // W12.2 niche pack banned claims, REPORT ONLY (NICHE_PACKS, default OFF):
