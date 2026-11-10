@@ -172,3 +172,55 @@ describe('CTA protection (review of #1356)', () => {
     expect(r.cut.pressure + r.cut.false_cause).toBe(0)
   })
 })
+
+describe('replay review (10 Nov): protect CTAs and questions, narrower rules, a cap', () => {
+  const arm = 'The first time I performed Sprocket live, his arm fell off mid-joke and the crowd laughed harder at that than at anything I wrote.'
+  const pipOpinion = 'I think puppets let people laugh at things they would never laugh at if a person said them.'
+  const pip = { request: 'Pip and Sprocket Live', material: [arm, pipOpinion].join('\n'), stories: [arm, pipOpinion], products: [{ id: 'live', name: 'Pip and Sprocket Live', facts: ['A live puppet comedy show with an audience sing-along at the end'] }], subjectId: 'live', offers: ['Tickets for Pip and Sprocket Live at https://example.com/pip-live'] }
+  it('never cuts a CTA sentence under story-repeat (S-6E5D56) and cuts only the pressure', () => {
+    const r = panelFinalPass(beats('The first time I performed Sprocket live, his arm fell off.', 'The crowd laughed harder at that than at anything I wrote.', 'People worry a puppet show is meant for kids; the live show is written for adults.', 'Tickets for Pip and Sprocket Live are at the link in my bio. Grab yours before they\'re gone!'), pip)
+    expect(r.beats[3].line).toBe('Tickets for Pip and Sprocket Live are at the link in my bio.')
+    expect(r.cut.story_repeat).toBe(0)
+  })
+  it('repairs a split URL and keeps the CTA (S-BDFFB8)', () => {
+    const r = panelFinalPass(beats('The first time I performed Sprocket live, his arm fell off.', 'Our backstage check: spare arm, spare eyes, the lighting cue sheet.', 'People worry a puppet show is meant for kids; the live show is written for adults.', 'Pip and Sprocket Live: Tickets for Pip and Sprocket Live at https://example. Com/pip-live. Send me a message if you want it.'), pip)
+    expect(r.beats[3].line).toBe('Pip and Sprocket Live: Tickets for Pip and Sprocket Live at https://example.com/pip-live. Send me a message if you want it.')
+    expect(r.cut.url_fixed).toBe(1)
+  })
+  it('never cuts a question (S-BA3E20) or a restated opinion that is not a retelling (S-EAB69D)', () => {
+    const r = panelFinalPass(beats('Stop trying to say the quiet part without a puppet.', 'If I call out the room, it is awkward. When Sprocket says it, everyone laughs.', 'Puppets let people laugh at things they would never laugh at if a person said them.', 'Would you rather laugh at a puppet or a person? Tell me below.'), { ...pip, request: 'what makes children laugh', subjectId: null })
+    expect(text(r.beats)).toMatch(/Puppets let people laugh/)
+    expect(text(r.beats)).toMatch(/Would you rather laugh at a puppet or a person\?/)
+    expect(Object.values(r.cut).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+  it('leaves "because" alone; only "so it\'s / so they\'re / so the X stays" is a false cause', () => {
+    const b = beats('How heavy is too heavy?', 'Legit, keep that broomstick touching your head, back, and tailbone, because you\'ve got this!', 'The second step is shrinking your volume because people do not quit from being lazy.', 'Book a call, link in bio.')
+    expect(panelFinalPass(b, { request: 'weights', material: 'hip hinge', stories: [], products: [] }).beats).toEqual(b)
+    const moss = { id: 'bowl', name: 'Moss Bowl', facts: ['Holds about 20 oz', 'Dishwasher safe, with an unglazed foot'] }
+    const fw = 'Before glazing I wax the foot, wipe a finger\'s width above it with a damp sponge, dip for three seconds, and let it dry overnight before it goes in the kiln.'
+    const r = panelFinalPass(beats('Can a handmade bowl survive your kitchen?', 'Before glazing I wax the foot and wipe a finger\'s width above it with a damp sponge, so the bare clay stays clean in the dishwasher.', 'Holds about 20 oz.', 'Get the Moss Bowl, link in bio.'), { request: 'Moss Bowl', material: `${fw}\nDishwasher safe, with an unglazed foot`, stories: [fw], products: [moss], subjectId: 'bowl' })
+    expect(r.beats[1].line).toBe('Before glazing I wax the foot and wipe a finger\'s width above it with a damp sponge. The bare clay stays clean in the dishwasher.')
+    expect(r.cut.false_cause).toBe(1)
+  })
+  it('the hook does not count as having said a fact (S-EB9757)', () => {
+    const owl = { id: 'owl', name: 'Night Owl Espresso', facts: ['12 oz whole-bean bag', 'Each bag has the roast date written on the label by hand'] }
+    const b = beats('Stop buying coffee beans if there is no roast date on the bag.', 'Honestly, the roast date on the bag matters more than the country on the label.', 'This is Night Owl Espresso, with the roast date written right on the bag by hand.', 'Grab a 12 oz whole bean bag of Night Owl Espresso at the link in bio.')
+    expect(panelFinalPass(b, { request: 'Night Owl Espresso', material: owl.facts.join('\n'), stories: [], products: [owl], subjectId: 'owl' }).beats).toEqual(b)
+  })
+  it('a fact said across earlier lines counts as said (scarf lines 8 and 9)', () => {
+    const scarf = { id: 'scarf', name: 'Harbor Fog Scarf', facts: ['Hand-woven from undyed wool', 'About 180 cm long and 30 cm wide', 'Woven by hand on a floor loom, then washed and pressed', '$85 per scarf'] }
+    const r = panelFinalPass(beats('I weave the Harbor Fog Scarf slowly. Thread by thread.', 'This is undyed wool. It is soft grey.', 'I work on a floor loom. Cloth grows thread by thread.', 'After weaving, I wash the wool. Then I press it flat.', 'Eighty-five dollars. It is at https://example.com/quiet-loom.', 'Hand-woven from undyed wool.', 'Woven by hand on a floor loom, then washed and pressed.'), { request: 'Harbor Fog Scarf', material: scarf.facts.join('\n'), stories: [], products: [scarf], subjectId: 'scarf' })
+    expect(r.cut.fact_repeat).toBe(2)
+    expect(text(r.beats)).not.toMatch(/Hand-woven from undyed wool|then washed and pressed/)
+  })
+  it('caps a script at 2 sentence cuts and logs the rest', () => {
+    const r = panelFinalPass(beats('New mugs today.', 'Hurry, they are going fast.', 'Last chance to get one.', 'Act now before they are all gone.', 'They are $38.', 'Link in bio.'), { request: 'mugs', material: 'mugs', stories: [], products: [] })
+    expect(r.cut.pressure).toBe(2)
+    expect(r.cut.capped).toBe(1)
+    expect(text(r.beats)).toMatch(/Act now/)
+  })
+  it('keeps "like" where it carries the sentence (FlowDesk line 7)', () => {
+    expect(stripSpokenFiller("I think, um, most small shops don't actually need a help desk, it's more like, they need fewer repeat emails, so yeah, I mean that's kind of the whole point of FlowDesk honestly.", true))
+      .toBe("I think most small shops don't actually need a help desk, it's more like they need fewer repeat emails, that's kind of the whole point of FlowDesk honestly.")
+  })
+})

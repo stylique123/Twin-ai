@@ -89,6 +89,8 @@ export function dropRepeatedSentences(lines: readonly string[], share = 0.6): { 
 export function stripSpokenFiller(line: string, strict = false): string {
   let t = String(line ?? '')
   if (strict) {
+    // "it's more like, they need…": that "like" carries the sentence (replay, 10 Nov).
+    t = t.replace(/\b(more|just|exactly|something|kind of|sort of),?\s+like,\s*/gi, '$1 like ')
     t = t.replace(/,\s*like,\s*/gi, ' ')
     t = t.replace(/(^|[\s,.!?])(?:so,?\s+yeah|yeah,?\s+so)(?=[\s,.!?]|$),?/gi, '$1')
     t = t.replace(/(^|[\s,.!?])I mean(?=[\s,.!?]|$),?/gi, '$1')

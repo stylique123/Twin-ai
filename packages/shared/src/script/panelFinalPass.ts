@@ -68,7 +68,11 @@ function runs(t: string): Set<string> {
 const PRESSURE = /\b(?:before (?:they(?:'| a)re|it(?:'| i)s|they are|it is) (?:all )?gone|while (?:supplies|stocks?) lasts?|sell(?:s|ing)? out (?:fast|quickly)|won'?t last|limited (?:stock|time|run|spots?)|last chance|don'?t miss (?:out|it)|hurry|going fast|almost gone|only a few (?:left|remain)|act now)\b/i
 const BEHAVIOUR = /\b(?:(?:people|everyone|everybody|customers|clients|folks|followers|you all|y'?all) (?:always|keep|constantly|often|all|regularly) (?:ask|asking|tell|telling|say|saying|love|loving|rave|raving|message|dm)\w*|everyone (?:asks|loves|says|wants|tells)|my (?:customers|followers|dms?|inbox) (?:keep|always|are full)|(?:most|number one|top) (?:asked|requested) (?:question|thing))\b/i
 const RESULT = /\b(?:disappears?|disappeared|vanish(?:es|ed)?|goes away|gone for good|never again|instantly|guaranteed|every single time|fixed for good|problem solved|completely (?:fixes|gone|solved))\b/i
-const CAUSE = /^(.*?\w)\s*,?\s+(so (?:it(?:'|’)s|it is|they(?:'|’)re|they are)|which (?:is why|means)|that(?:'|’)s why|because)\s+(.+)$/i
+// A false cause is only "X, so it's / so they're / so it stays / so the X
+// stays Y" (replay review, 10 Nov): "because" clauses are left alone.
+const CAUSE = /^(.*?\w)\s*,?\s+so\s+((?:it|they)(?:(?:'|’)s|(?:'|’)re| is| are| stays?| remains?)|the (?:\w+ ){0,2}(?:stays?|is|are|remains?))\s+(.+)$/i
+// "https://example. Com/pip-live" (a split made upstream) is put back together.
+const BROKEN_URL = /\b(https?:\/\/[\w-]+(?:\.[\w-]+)*)\. (Com|Co|Org|Net|Io|Shop|Store|App)(?=\/|\b)/g
 
 const inMaterial = (phrase: string, material: string) => material.toLowerCase().replace(/[’]/g, "'").includes(phrase.toLowerCase().replace(/[’]/g, "'"))
 
@@ -102,10 +106,10 @@ export interface FinalPassCtx {
   /** The products' offer lines; a sentence carrying one is a CTA (protected). */
   offers?: readonly string[]
 }
-export interface FinalPassCut { wrong_story: number; filler: number; pressure: number; false_cause: number; change_added: number; unbacked_result: number; story_repeat: number; fact_repeat: number }
+export interface FinalPassCut { wrong_story: number; filler: number; pressure: number; false_cause: number; change_added: number; unbacked_result: number; story_repeat: number; fact_repeat: number; url_fixed: number; capped: number }
 
 export function panelFinalPass<T extends { line?: unknown; section?: unknown }>(beats: readonly T[], ctx: FinalPassCtx, floor = 3): { beats: T[]; cut: FinalPassCut } {
-  const cut: FinalPassCut = { wrong_story: 0, filler: 0, pressure: 0, false_cause: 0, change_added: 0, unbacked_result: 0, story_repeat: 0, fact_repeat: 0 }
+  const cut: FinalPassCut = { wrong_story: 0, filler: 0, pressure: 0, false_cause: 0, change_added: 0, unbacked_result: 0, story_repeat: 0, fact_repeat: 0, url_fixed: 0, capped: 0 }
   const material = String(ctx.material ?? '')
   const matSentences = material.split(/(?<=[.!?;])\s+|\n+/).map((s) => s.trim()).filter(Boolean)
   const stories = ctx.stories.filter((s) => String(s ?? '').trim())
@@ -123,10 +127,23 @@ export function panelFinalPass<T extends { line?: unknown; section?: unknown }>(
   const storyWords = stories.map((s) => new Set(words(s)))
   const wc = new Map<string, number>()
   for (const s of storyWords) for (const w of s) wc.set(w, (wc.get(w) ?? 0) + 1)
-  const storySaid = stories.map(() => new Set<string>())
-  // Product facts as stem sets (7).
+  /** Every earlier line's words (hook included), for the told-three-times check. */
+  const earlier: Array<Set<string>> = []
+  const mostlyStory = (sw: Set<string>, k: number) => sw.size >= 2 && [...sw].filter((w) => storyWords[k].has(w)).length / sw.size >= 0.5
+  // Product facts as stem sets (7), and the fact stems said so far (the hook not counted).
   const facts = ctx.products.flatMap((p) => p.facts.map((f) => new Set(words(f).map(stem4)))).filter((f) => f.size >= 2)
-  const factSaid = facts.map(() => false)
+  const factSeen = facts.map(() => new Set<string>())
+  const share = (f: Set<string>, ss: Set<string>) => ({ hit: [...f].filter((w) => ss.has(w)).length, of: ss.size })
+
+  // The cap: at most 2 sentence cuts or rewrites, and about a quarter (30% at most) of the words.
+  const totalWords = beats.reduce((n, b) => n + String(b?.line ?? '').split(/\s+/).filter(Boolean).length, 0)
+  let cuts = 0, cutWords = 0
+  // A rewrite (the false-cause split) removes no words, so only its count is capped.
+  const allow = (s: string, removes = true) => {
+    const n = removes ? s.split(/\s+/).filter(Boolean).length : 0
+    if (cuts + 1 > 2 || cutWords + n > Math.max(20, Math.round(totalWords * 0.3))) { cut.capped++; return false }
+    cuts++; cutWords += n; return true
+  }
 
   const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
   const hookAt = spokenIdx[0]
@@ -136,44 +153,47 @@ export function panelFinalPass<T extends { line?: unknown; section?: unknown }>(
     const line = typeof b?.line === 'string' ? b.line : ''
     if (!line.trim()) { out.push(b); continue }
     const isHook = i === hookAt || PROTECTED.test(String(b?.section ?? '').trim())
-    let text = stripSpokenFiller(line, true)
-    if (text !== line) cut.filler++
+    let text = line.replace(BROKEN_URL, (_m, a: string, tld: string) => `${a}.${tld.toLowerCase()}`)
+    if (text !== line) cut.url_fixed++
     const kept: string[] = []
+    let filled = false
     for (const s0 of sentencesOf(text)) {
       let s = s0
+      // Never touched by any rule: the hook, a CTA sentence, a question.
+      if (isHook || isCtaSentence(s, offers) || /\?["”’)]?$/.test(s)) {
+        kept.push(s); continue
+      }
+      const f0 = stripSpokenFiller(s, true)
+      if (f0 !== s) { filled = true; s = f0 }
+      if (!s.trim()) continue
       const sw = new Set(words(s))
       const ss = new Set([...sw].map(stem4))
-      // Facts this sentence states (a fact: half its words, at least two).
-      const states = facts.map((f, k) => [...f].filter((w) => ss.has(w)).length >= Math.max(2, Math.ceil(f.size / 2)) ? k : -1).filter((k) => k >= 0)
-      if (isHook) { for (const k of states) factSaid[k] = true; kept.push(s); continue }
-      // A CTA sentence (a URL, "link in bio", or a product's offer text) is
-      // never cut by the pressure, result, fact-repeat or false-cause rules.
-      const isCta = isCtaSentence(s, offers)
       const p = s.match(PRESSURE)?.[0] ?? s.match(BEHAVIOUR)?.[0]
-      if (!isCta && p && !inMaterial(p, material)) { cut.pressure++; continue }
+      if (p && !inMaterial(p, material) && allow(s)) { cut.pressure++; continue }
       const r = s.match(RESULT)?.[0]
-      if (!isCta && r && !inMaterial(r, material)) { cut.unbacked_result++; continue }
-      if (foreign.length) { const g = runs(s); if (foreign.some((f) => [...f].filter((x) => g.has(x)).length >= 2)) { cut.wrong_story++; continue } }
-      // A story told again: two of its words already said, one unique to it.
-      let retold = false
-      for (const [k, st] of storyWords.entries()) {
-        const shared = [...sw].filter((w) => st.has(w))
-        if (shared.length < 2 || !shared.some((w) => wc.get(w) === 1)) continue
-        const again = shared.filter((w) => storySaid[k].has(w))
-        if (again.length >= 2 && again.some((w) => wc.get(w) === 1)) { retold = true; break }
-      }
-      if (retold) { cut.story_repeat++; continue }
-      if (!isCta && states.length && states.every((k) => factSaid[k])) { cut.fact_repeat++; continue }
-      for (const [k, st] of storyWords.entries()) for (const w of sw) if (st.has(w)) storySaid[k].add(w)
-      for (const k of states) factSaid[k] = true
+      if (r && !inMaterial(r, material) && allow(s)) { cut.unbacked_result++; continue }
+      if (foreign.length) { const g = runs(s); if (foreign.some((f) => [...f].filter((x) => g.has(x)).length >= 2) && allow(s)) { cut.wrong_story++; continue } }
+      // Told three times: two earlier lines (the hook included) each already said
+      // two of this sentence's story words, one of them unique to the story.
+      const retold = stories.some((_, k) => mostlyStory(sw, k) && earlier.filter((t) => {
+        const both = [...sw].filter((w) => t.has(w) && storyWords[k].has(w))
+        return both.length >= 2 && both.some((w) => wc.get(w) === 1)
+      }).length >= 2)
+      if (retold && allow(s)) { cut.story_repeat++; continue }
+      // A fact said again: about two-thirds of this sentence is the fact, and half the
+      // fact's words were already said in earlier lines (not the hook).
+      const states = facts.map((f, k) => { const { hit, of } = share(f, ss); return hit >= Math.max(2, Math.ceil(f.size / 2)) && hit / Math.max(1, of) >= 0.65 ? k : -1 }).filter((k) => k >= 0)
+      if (states.length && states.every((k) => factSeen[k].size >= Math.max(2, Math.ceil(facts[k].size / 2))) && allow(s)) { cut.fact_repeat++; continue }
+      facts.forEach((f, k) => { const { hit, of } = share(f, ss); if (hit && hit / Math.max(1, of) >= 0.5) for (const w of f) if (ss.has(w)) factSeen[k].add(w) })
       const m = s.match(CAUSE)
-      if (!isCta && m && !causeBacked(m[1], m[3], matSentences)) {
+      if (m && !causeBacked(m[1], m[3], matSentences) && allow(s, false)) {
         cut.false_cause++
-        const conn = m[2].toLowerCase()
-        s = /^so /.test(conn) ? `${m[1]}. ${cap(conn.replace(/^so\s+/, '').replace(/’/g, "'"))} ${m[3]}` : `${m[1]}.`
+        s = `${m[1]}. ${cap(m[2].replace(/’/g, "'"))} ${m[3]}`
       }
       kept.push(s)
     }
+    if (filled) cut.filler++
+    earlier.push(new Set(words(kept.join(' '))))
     const joined = kept.join(' ').trim()
     if (!joined || !/[a-z0-9]/i.test(joined)) {
       if (spoken - 1 >= floor) { spoken--; continue }
