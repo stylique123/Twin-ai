@@ -1,6 +1,6 @@
 // Self-test for the single-arm panel blind pack. No network, no database.
 import assert from 'node:assert/strict'
-import { buildBlindPack, outcomeOf, buildTrace, lineOrigin } from './panelBlindPack.mjs'
+import { buildBlindPack, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems } from './panelBlindPack.mjs'
 
 let seed = 7
 const rand = (n) => { const b = Buffer.alloc(n); for (let i = 0; i < n; i++) b[i] = (seed = (seed * 1103515245 + 12345) & 0xff); return b }
@@ -46,4 +46,11 @@ assert.deepEqual(tr[0].lines.map((l) => l.origin), ['first_draft', 'added_later'
 assert.deepEqual(tr[0].handed, { knowledge: 2, product_facts: 1, answers: 0, note: false })
 assert.equal(tr[0].stored.total, 9)
 assert.equal(tr[0].word_budget.action, 'lengthened')
+// Line-level support against the fixture: her own line scores 1, a new line low.
+const coach = { stories: [{ text: 'I skipped warm-ups for a year and pulled a hamstring sprinting for a bus.' }], answers: {}, products: [] }
+assert.equal(supportScore('I skipped warm-ups for a year and pulled a hamstring sprinting for a bus.', fixtureItems(coach)), 1)
+assert.ok(supportScore('Two of them simply swapped digits and fabricated totals.', fixtureItems(coach)) < 0.3)
+assert.equal(supportScore('Hi.', []), null)
+const tr2 = buildTrace([row(1)], { g1: { script: [{ line: 'I skipped warm-ups for a year.' }] } }, {}, {}, { 'clay-kiln': coach })
+assert.equal(typeof tr2[0].lines[0].support, 'number')
 console.log('panelBlindPack selftest: ok')
