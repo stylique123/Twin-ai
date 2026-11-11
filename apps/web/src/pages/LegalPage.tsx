@@ -1,104 +1,106 @@
-// Public legal page (Privacy Policy / Terms of Use) from the Privacy and Terms
-// boards: centred column, a switcher between the two, an "At a glance" row, and
-// numbered sections that open and close. Public: NOT in App.tsx's inApp list.
-import { useEffect, useId, useState } from 'react'
+// Public legal page, built one for one from Privacy.dc.html / Terms.dc.html.
+// Board column is 880px; below that it keeps 16px gutters (rule B). Public:
+// NOT in App.tsx's inApp list.
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus } from 'lucide-react'
 import { LogoMark } from '../components/Logo'
 import SiteFooter from '../components/SiteFooter'
+import { useReveal } from '../hooks/useReveal'
 import { cn } from '../lib/cn'
-import { LEGAL_CONTACT_EMAIL, LEGAL_LAST_UPDATED } from '../content/legal/types'
+import {
+  LEGAL_CONTACT_EMAIL, LEGAL_DELETION_WINDOW, LEGAL_GOVERNING_LAW, LEGAL_LAST_UPDATED,
+} from '../content/legal/types'
 import type { LegalDoc, LegalRun } from '../content/legal/types'
 
-const TONE = { teal: 'bg-teal', amber: 'bg-amber', coral: 'bg-coral' } as const
+const DOT = { teal: 'bg-teal', amber: 'bg-amber', coral: 'bg-coral', 'teal-soft': 'bg-teal-soft' } as const
 
-function Placeholder({ children }: { children: string }) {
-  return <span className="rounded-md bg-amber/15 px-1.5 py-0.5 text-amber-soft">{children}</span>
+/** Board placeholder pill: amber on amber/12, radius 6, .92em. */
+function Ph({ children }: { children: ReactNode }) {
+  return <span className="rounded-[6px] bg-[rgba(255,179,71,.12)] px-[7px] py-[1px] text-[max(12px,.92em)] text-amber">{children}</span>
+}
+
+function filled(t: string): string | null {
+  if (/timeframe/i.test(t)) return LEGAL_DELETION_WINDOW
+  if (/jurisdiction/i.test(t)) return LEGAL_GOVERNING_LAW
+  return null
 }
 
 function Run({ r }: { r: LegalRun }) {
   if (r.contact) {
-    return (
-      <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-coral-soft underline-offset-2 hover:underline">
-        {LEGAL_CONTACT_EMAIL}
-      </a>
-    )
+    return LEGAL_CONTACT_EMAIL
+      ? <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-coral-soft no-underline">{LEGAL_CONTACT_EMAIL}</a>
+      : <Ph>[contact email]</Ph>
   }
-  if (r.placeholder) return <Placeholder>{r.t}</Placeholder>
-  return r.b ? <strong className="font-semibold text-cream">{r.t}</strong> : <>{r.t}</>
+  if (r.placeholder) return <>{filled(r.t) ?? <Ph>{r.t}</Ph>}</>
+  return r.b ? <b className="font-semibold text-cream">{r.t}</b> : <>{r.t}</>
 }
 
 function Section({ s, open, onToggle }: { s: LegalDoc['sections'][number]; open: boolean; onToggle: () => void }) {
-  const bodyId = useId()
-  const items = s.blocks
+  const id = `legal-sec-${s.n}`
   return (
-    <section
+    <div
       className={cn(
-        'rounded-card border bg-ink2 transition-colors',
-        open ? 'border-coral/35' : 'border-white/[0.07]',
+        'overflow-hidden rounded-[18px] border bg-card transition-[border-color,background] duration-[250ms] ease-in-out',
+        open ? 'border-[rgba(255,91,123,0.35)]' : 'border-white/[0.07] hover:border-white/[.14]',
       )}
     >
-      <h3>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          aria-controls={bodyId}
-          className="flex w-full items-center gap-4 rounded-card px-4 py-5 text-left sm:px-6"
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={id}
+        className="flex w-full cursor-pointer items-center gap-[18px] border-0 bg-transparent px-4 py-5 text-left font-[inherit] text-cream sm:px-6"
+      >
+        <span
+          className={cn(
+            'flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] text-[13.5px] font-extrabold',
+            open ? 'bg-[linear-gradient(135deg,#FFB347,#FF5B7B)] text-ink' : 'bg-white/[0.06] text-sand-muted',
+          )}
+          aria-hidden="true"
         >
-          <span
-            className={cn(
-              'flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-9 text-sm font-bold',
-              open ? 'bg-signature text-ink' : 'bg-white/[0.06] text-sand-muted',
-            )}
-            aria-hidden="true"
-          >
-            {s.n}
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-[17px] font-semibold text-cream">{s.h}</span>
-            <span className="text-sm text-stone">{s.sum}</span>
-          </span>
-          <span
-            className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border border-white/10 text-cream"
-            aria-hidden="true"
-          >
-            <Plus className={cn('h-4 w-4 transition-transform duration-200', open && 'rotate-45')} />
-          </span>
-        </button>
-      </h3>
-      <div id={bodyId} hidden={!open} className="space-y-3 px-4 pb-6 text-[15px] leading-relaxed text-sand sm:pl-[78px] sm:pr-8">
-        {items.map((b, i) => {
-          if (b.kind === 'li') {
-            // Group consecutive list items into one <ul>.
-            if (items[i - 1]?.kind === 'li') return null
-            const run: typeof items = []
-            for (let j = i; j < items.length && items[j].kind === 'li'; j++) run.push(items[j])
-            return (
-              <ul key={i} className="list-disc space-y-2 pl-5 marker:text-stone">
-                {run.map((li, k) => (
-                  <li key={k}>{li.runs.map((r, m) => <Run key={m} r={r} />)}</li>
-                ))}
-              </ul>
-            )
-          }
-          return (
-            <p
-              key={i}
-              className={cn(b.kind === 'key' && 'rounded-xl border-l-2 border-teal/60 bg-teal/[0.06] px-4 py-3')}
-            >
-              {b.runs.map((r, m) => <Run key={m} r={r} />)}
-            </p>
-          )
-        })}
-      </div>
-    </section>
+          {s.n}
+        </span>
+        <span className="flex flex-grow flex-col gap-[3px]">
+          <span className="text-[17px] font-[650]">{s.h}</span>
+          <span className="text-[14px] text-label">{s.sum}</span>
+        </span>
+        <span
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/[0.12] text-[18px] text-sand-soft transition-transform duration-300 ease-in-out"
+          style={{ transform: `rotate(${open ? 45 : 0}deg)` }}
+          aria-hidden="true"
+        >
+          +
+        </span>
+      </button>
+      {open && (
+        <div id={id} className="mx-4 flex animate-popin flex-col gap-[14px] pb-6 pt-1 sm:mx-6 sm:pl-[52px]">
+          {s.blocks.map((b, i) => {
+            const runs = b.runs.map((r, k) => <Run key={k} r={r} />)
+            if (b.kind === 'key') {
+              return <p key={i} className="m-0 rounded-[12px] border border-[rgba(101,229,216,0.2)] bg-[rgba(101,229,216,0.06)] px-4 py-[13px] text-[15px] leading-[1.65] text-key-text">{runs}</p>
+            }
+            if (b.kind === 'li') {
+              return (
+                <p key={i} className="m-0 flex gap-3 text-[15px] leading-[1.65] text-sand">
+                  <span className="mt-[10px] h-[5px] w-[5px] shrink-0 rounded-[9px] bg-coral" aria-hidden="true" />
+                  <span>{runs}</span>
+                </p>
+              )
+            }
+            return <p key={i} className="m-0 text-[15px] leading-[1.7] text-sand">{runs}</p>
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
 export default function LegalPage({ doc, kind }: { doc: LegalDoc; kind: 'privacy' | 'terms' }) {
   const [open, setOpen] = useState<Record<number, boolean>>({ 0: true })
   const all = doc.sections.every((_, i) => open[i])
+  const root = useRef<HTMLDivElement>(null)
+  useReveal(root)
 
   useEffect(() => {
     document.title = `${doc.title} · TwinAI`
@@ -106,86 +108,89 @@ export default function LegalPage({ doc, kind }: { doc: LegalDoc; kind: 'privacy
   }, [doc.title])
 
   const other = kind === 'privacy' ? { to: '/terms', label: 'Terms of Use' } : { to: '/privacy', label: 'Privacy Policy' }
+  const col = 'relative mx-auto w-full max-w-[912px] px-4'
 
   return (
-    <div className="page-glow min-h-screen">
-      <main className="mx-auto w-full max-w-[880px] px-4 pt-28 sm:px-5 sm:pt-32">
-        <nav aria-label="Legal pages" className="flex justify-center">
-          <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-1">
-            {(['privacy', 'terms'] as const).map((k) => (
-              <Link
-                key={k}
-                to={`/${k}`}
-                aria-current={k === kind ? 'page' : undefined}
-                className={cn(
-                  'flex min-h-11 items-center rounded-full px-4 text-sm font-semibold transition-colors sm:min-h-9',
-                  k === kind ? 'bg-cream text-ink' : 'text-sand hover:text-cream',
-                )}
-              >
-                {k === 'privacy' ? 'Privacy Policy' : 'Terms of Use'}
-              </Link>
-            ))}
-          </div>
-        </nav>
+    <div ref={root} className="page-glow relative flex min-h-[100dvh] flex-col overflow-x-clip bg-ink leading-[normal] text-cream">
+      <div
+        className="pointer-events-none absolute left-1/2 top-[-360px] -ml-[500px] h-[760px] w-[1000px] rounded-full bg-[radial-gradient(ellipse,rgba(255,91,123,0.10),rgba(255,91,123,0)_65%)]"
+        aria-hidden="true"
+      />
 
-        <header className="mt-9 text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber">{doc.eyebrow}</p>
-          <h1 className="mt-3 font-display text-[44px] leading-[1.05] tracking-tight text-cream sm:text-6xl">{doc.title}</h1>
-          <p className="mx-auto mt-4 max-w-xl text-[17px] text-sand">{doc.lede}</p>
-          <p className="mt-4 text-[13px] text-stone">
-            Twin Studios LLC · Last updated{' '}
-            {LEGAL_LAST_UPDATED ?? <Placeholder>[date]</Placeholder>}
-          </p>
-        </header>
-
-        <section aria-labelledby="glance" className="mt-14">
-          <h2 id="glance" className="text-center text-xs font-bold uppercase tracking-[0.18em] text-stone">At a glance</h2>
-          <ul className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {doc.glance.map((g) => (
-              <li key={g.title} className="rounded-card border border-white/[0.07] bg-ink2 p-5">
-                <span className={cn('block h-2 w-2 rounded-full', TONE[g.tone])} aria-hidden="true" />
-                <p className="mt-3 text-base font-semibold leading-snug text-cream">{g.title}</p>
-                <p className="mt-2 text-[13.5px] leading-relaxed text-stone">{g.body}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section aria-labelledby="full" className="mt-14">
-          <div className="flex items-center justify-between gap-3">
-            <h2 id="full" className="text-xs font-bold uppercase tracking-[0.18em] text-stone">
-              {doc.full} · {doc.sections.length} sections
-            </h2>
-            <button
-              type="button"
-              onClick={() =>
-                setOpen(all ? {} : Object.fromEntries(doc.sections.map((_, i) => [i, true])))
-              }
-              className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-white/10 px-4 text-[13px] text-cream transition-colors hover:border-white/20 sm:min-h-9"
+      <div className="relative flex flex-col items-center gap-4 px-4 pt-[110px] text-center md:pt-[150px]">
+        <nav aria-label="Legal pages" className="pin d1 flex gap-1 rounded-full border border-white/[0.08] bg-card p-1">
+          {(['privacy', 'terms'] as const).map((k) => (
+            <Link
+              key={k}
+              to={`/${k}`}
+              aria-current={k === kind ? 'page' : undefined}
+              className={cn(
+                'rounded-full px-[18px] py-[9px] text-[14px] font-semibold no-underline [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center',
+                k === kind ? 'bg-cream text-ink' : 'text-sand-muted',
+              )}
             >
-              {all ? 'Collapse all' : 'Expand all'}
-            </button>
-          </div>
-          <div className="mt-4 space-y-2.5">
-            {doc.sections.map((s, i) => (
-              <Section key={s.n} s={s} open={!!open[i]} onToggle={() => setOpen((o) => ({ ...o, [i]: !o[i] }))} />
-            ))}
-          </div>
-        </section>
+              {k === 'privacy' ? 'Privacy Policy' : 'Terms of Use'}
+            </Link>
+          ))}
+        </nav>
+        <span className="pin d1 mt-[14px] text-[12px] font-bold tracking-[.14em] text-amber">{doc.eyebrow.toUpperCase()}</span>
+        <h1 className="pin d2 m-0 text-[44px] font-bold leading-[1.02] tracking-[-0.045em] md:text-[60px]">{doc.title}</h1>
+        <p className="pin d3 m-0 max-w-[640px] text-[18px] leading-[1.6] text-sand-muted">{doc.lede}</p>
+        <span className="pin d4 text-[13px] text-stone-dim">
+          Twin Studios LLC · Last updated {LEGAL_LAST_UPDATED ?? <Ph>[date]</Ph>}
+        </span>
+      </div>
 
-        <aside className="mb-20 mt-10 flex flex-col gap-4 rounded-[20px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(255,179,71,0.08),rgba(255,91,123,0.06)_50%,rgba(101,229,216,0.05))] p-6 sm:flex-row sm:items-center sm:gap-5">
+      <section aria-labelledby="glance" className={cn(col, 'mt-[50px] flex flex-col gap-[14px]')}>
+        <h2 id="glance" className="m-0 text-center text-[12px] font-bold tracking-[.14em] text-stone-dim">AT A GLANCE</h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {doc.glance.map((g, i) => (
+            <div key={g.title} className={`rv-up rv-d${i} flex flex-col gap-2 rounded-[18px] border border-white/[0.07] bg-card p-5`}>
+              <span className={cn('h-2 w-2 rounded-[9px]', DOT[g.tone])} aria-hidden="true" />
+              <span className="text-[16px] font-[650] leading-[1.3]">{g.title}</span>
+              <span className="text-[13.5px] leading-[1.5] text-label">{g.body}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="full" className={cn(col, 'mt-14 flex flex-col gap-[10px]')}>
+        <div className="flex items-center justify-between gap-3 px-1 pb-[6px]">
+          <h2 id="full" className="m-0 text-[12px] font-bold tracking-[.14em] text-stone-dim">
+            {doc.full.toUpperCase()} · {doc.sections.length} SECTIONS
+          </h2>
+          <button
+            type="button"
+            onClick={() => setOpen(all ? {} : Object.fromEntries(doc.sections.map((_, i) => [i, true])))}
+            className="shrink-0 cursor-pointer rounded-full border border-white/[0.12] bg-transparent px-[14px] py-[7px] font-[inherit] text-[13px] text-sand-soft [@media(pointer:coarse)]:min-h-11"
+          >
+            {all ? 'Collapse all' : 'Expand all'}
+          </button>
+        </div>
+        {doc.sections.map((s, i) => (
+          <Section key={s.n} s={s} open={!!open[i]} onToggle={() => setOpen((o) => ({ ...o, [i]: !o[i] }))} />
+        ))}
+      </section>
+
+      <div className={cn(col, 'mb-20 mt-10')}>
+        <aside className="flex flex-col items-start gap-[18px] rounded-[20px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(255,179,71,0.08),rgba(255,91,123,0.06)_50%,rgba(101,229,216,0.05))] px-7 py-[26px] sm:flex-row sm:items-center">
           <LogoMark size={34} />
-          <div className="flex-1">
-            <p className="text-[17px] font-semibold text-cream">Questions about this page?</p>
-            <p className="mt-1 text-sm text-sand-muted">
+          <span className="flex flex-grow flex-col gap-1">
+            <span className="text-[17px] font-[650]">Questions about this page?</span>
+            <span className="text-[14px] text-sand-muted">
               Write to us and a real person will answer. Or read our{' '}
-              <Link to={other.to} className="text-coral-soft hover:underline">{other.label}</Link>.
-            </p>
-          </div>
-          <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="btn-primary w-full sm:w-auto">Contact us</a>
+              <Link to={other.to} className="text-coral-soft no-underline">{other.label}</Link>.
+            </span>
+          </span>
+          {LEGAL_CONTACT_EMAIL ? (
+            <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="btn-light no-underline">Contact us</a>
+          ) : (
+            <span className="btn-light cursor-not-allowed opacity-60" title="Contact email not set yet">Contact us</span>
+          )}
         </aside>
-      </main>
-      <SiteFooter />
+      </div>
+
+      <SiteFooter longTagline />
     </div>
   )
 }

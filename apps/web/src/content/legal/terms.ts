@@ -25,7 +25,7 @@ export const TERMS: LegalDoc = {
       "body": "You need to be 18 or older to use Twin."
     },
     {
-      "tone": "teal",
+      "tone": "teal-soft",
       "title": "Leave anytime",
       "body": "Close your account whenever you like."
     }

@@ -11,11 +11,17 @@ export type LegalDoc = {
   title: string
   lede: string
   full: string
-  glance: { tone: 'teal' | 'amber' | 'coral'; title: string; body: string }[]
+  glance: { tone: 'teal' | 'amber' | 'coral' | 'teal-soft'; title: string; body: string }[]
   sections: LegalSection[]
 }
 
-/** Contact address shown in the legal pages (from the design boards' mailto). */
-export const LEGAL_CONTACT_EMAIL = 'hello@twinai.studio'
-/** Set to e.g. 'November 11, 2026' once counsel signs off. null renders a visible [date]. */
+// ⚠️ OWNER TO FILL IN. Each null renders as a visible amber [placeholder] on the
+// page, exactly as the boards show it, until a real value is set here.
+/** Effective / last-updated date, e.g. 'November 11, 2026'. */
 export const LEGAL_LAST_UPDATED: string | null = null
+/** Real contact address for privacy and legal requests. */
+export const LEGAL_CONTACT_EMAIL: string | null = null
+/** How soon data is deleted after a deletion request, e.g. '30 days'. */
+export const LEGAL_DELETION_WINDOW: string | null = null
+/** Governing law: the state/country where Twin Studios LLC is registered. */
+export const LEGAL_GOVERNING_LAW: string | null = null

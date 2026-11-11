@@ -1,9 +1,10 @@
-import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { ArrowRight } from 'lucide-react'
+// Public-site header, built one for one from the <header> in Landing.dc.html,
+// Privacy/Terms.dc.html (>=768) and MLanding.dc.html (<768).
+// Desktop: floating pill, 858px on Landing and 768px on the legal pages.
+// Phone: sticky text bar, wordmark + Sign in + Start free, no menu.
+import { Link, useLocation } from 'react-router-dom'
 import { LogoMark } from './Logo'
 import { useAuth } from '../context/AuthContext'
-import { EASE } from './motion'
 
 const LINKS = [
   { href: '/#how', label: 'How it works' },
@@ -11,78 +12,58 @@ const LINKS = [
   { href: '/#pricing', label: 'Pricing' },
 ]
 
-// Navigation. On md+ it's the floating "bubble" pill lifted off the page,
-// kreate.ai-style. On phones a floating pill reads as broken — page content
-// visibly scrolls around/behind its rounded corners and the gaps beside it —
-// so mobile gets a normal edge-to-edge solid bar that content scrolls UNDER.
-// The dashboard has its own AppShell; app links never leak here.
+const CTA_BG = 'bg-[linear-gradient(110deg,#FFB347,#FF5B7B_55%,#65E5D8)]'
+const TAP = '[@media(pointer:coarse)]:min-h-11'
+
 export function Nav() {
   const { session } = useAuth()
+  const { pathname } = useLocation()
+  const wide = pathname === '/'
+  const pill = 'rounded-full px-[14px] py-[6px] text-[14px] text-sand no-underline'
 
   return (
-    <motion.header
-      initial={{ y: -28, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.6, ease: EASE }}
-      className="pointer-events-none fixed inset-x-0 top-0 z-50 md:top-5 md:px-4"
-    >
-      <div className="pointer-events-auto mx-auto flex max-w-[860px] items-center justify-between gap-2 border-b border-white/10 bg-ink/90 py-2 pl-4 pr-3 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-xl md:rounded-full md:border md:bg-ink2/70 md:pl-2.5 md:pr-2.5 md:pt-2 md:shadow-[0_8px_40px_-12px_rgba(0,0,0,.7)]">
-        {/* Brand */}
-        <Link to="/" className="flex items-center gap-2 rounded-full px-2 py-1 transition-opacity hover:opacity-90">
-          <LogoMark size={26} />
-          <span className="font-bold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
+    <>
+      {/* Phone (<768): MLanding.dc.html */}
+      <header className="sticky top-0 z-50 flex items-center justify-between bg-[rgba(7,7,10,0.85)] px-5 pb-[10px] pt-[max(10px,env(safe-area-inset-top))] leading-[normal] text-cream backdrop-blur-[14px] md:hidden">
+        <Link to="/" className="text-[17px] font-bold text-cream no-underline">
+          Twin<span className="text-amber">AI</span>
         </Link>
-
-        {/* Center links */}
-        <nav className="hidden items-center md:flex">
-          {LINKS.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className="rounded-full px-3.5 py-1.5 text-sm text-sand transition-colors hover:bg-white/5 hover:text-cream"
-            >
-              {l.label}
-            </a>
-          ))}
-        </nav>
-
-        {/* CTA */}
-        <div className="hidden items-center gap-1 md:flex">
+        <span className="flex items-center gap-[14px] text-[14px]">
           {session ? (
-            <Link to="/app" className="btn-gradient !rounded-full !py-2 text-sm">
-              Open studio <ArrowRight className="h-4 w-4" />
-            </Link>
+            <Link to="/app" className={`rounded-full px-4 py-2 font-bold text-ink no-underline ${CTA_BG}`}>Open studio</Link>
           ) : (
             <>
-              <Link to="/auth?mode=signin" className="rounded-full px-3.5 py-1.5 text-sm text-sand transition-colors hover:text-cream">
-                Sign in
-              </Link>
-              <Link to="/auth?mode=signup" className="btn-gradient !rounded-full !py-2 text-sm">
-                Start free
-              </Link>
+              <Link to="/auth?mode=signin" className={`flex items-center text-sand no-underline ${TAP}`}>Sign in</Link>
+              <Link to="/auth?mode=signup" className={`flex items-center rounded-full px-4 py-2 font-bold text-ink no-underline ${CTA_BG} ${TAP}`}>Start free</Link>
             </>
           )}
-        </div>
+        </span>
+      </header>
 
-        {/* Phone (MLanding board): Sign in + Start free right in the bar, no menu.
-            The section links live in the footer. */}
-        <div className="flex items-center gap-1 md:hidden">
-          {session ? (
-            <Link to="/app" className="btn-gradient !rounded-full !px-4 !py-2 text-sm">
-              Open studio
-            </Link>
-          ) : (
-            <>
-              <Link to="/auth?mode=signin" className="flex min-h-11 items-center rounded-full px-3 text-sm text-sand hover:text-cream">
-                Sign in
-              </Link>
-              <Link to="/auth?mode=signup" className="btn-gradient !rounded-full !px-4 !py-2 text-sm">
-                Start free
-              </Link>
-            </>
-          )}
+      {/* >=768: Landing / Privacy / Terms boards */}
+      <header className="fixed inset-x-0 top-5 z-50 hidden justify-center px-4 leading-[normal] md:flex">
+        <div
+          className={`box-border flex w-full items-center justify-between rounded-full border border-white/10 bg-[rgba(12,12,17,0.70)] px-[10px] py-2 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.7)] backdrop-blur-[20px] ${wide ? 'max-w-[858px]' : 'max-w-[768px]'}`}
+        >
+          <Link to="/" className="flex items-center gap-2 rounded-full px-2 py-1 no-underline">
+            <LogoMark size={26} />
+            <span className="font-bold tracking-[-0.01em] text-cream">Twin<span className="text-amber">AI</span></span>
+          </Link>
+          <nav className="flex items-center">
+            {LINKS.map((l) => <a key={l.href} href={l.href} className={`${pill} hover:text-cream`}>{l.label}</a>)}
+          </nav>
+          <div className="flex items-center gap-1">
+            {session ? (
+              <Link to="/app" className={`inline-flex items-center rounded-full px-[22px] py-2 text-[14px] font-bold text-ink no-underline ${CTA_BG}`}>Open studio</Link>
+            ) : (
+              <>
+                <Link to="/auth?mode=signin" className={`${pill} hover:text-cream`}>Sign in</Link>
+                <Link to="/auth?mode=signup" className={`inline-flex items-center rounded-full px-[22px] py-2 text-[14px] font-bold text-ink no-underline ${CTA_BG}`}>Start free</Link>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </motion.header>
+      </header>
+    </>
   )
 }

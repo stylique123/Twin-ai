@@ -25,7 +25,7 @@ export const PRIVACY: LegalDoc = {
       "body": "Edit, export or delete anything, anytime."
     },
     {
-      "tone": "teal",
+      "tone": "teal-soft",
       "title": "Only what’s needed",
       "body": "We read public posts to learn your voice. Nothing more."
     }
