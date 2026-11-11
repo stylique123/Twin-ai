@@ -33,8 +33,11 @@ export default {
         drawer: '#121217', // side panel surface (Edit what Twin knows)
         row: '#0E0E12', // choice-row surface
         footer: '#09090C', // site footer
+<<<<<<< HEAD
         card: '#111115', // board .card surface
         'key-text': '#DCEFEC', // text inside teal key-point boxes (legal)
+=======
+>>>>>>> origin/main
       },
       fontFamily: {
         sans: ['Geist', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],

@@ -294,8 +294,11 @@ body {
   }
 }
 
+<<<<<<< HEAD
 @keyframes pin { from { opacity: 0; transform: translateY(18px) scale(0.98); } to { opacity: 1; transform: none; } }
 
+=======
+>>>>>>> origin/main
 /* Rule C: no double-tap zoom delay on controls. */
 button, [role='button'], a, input, select, textarea { touch-action: manipulation; }
 
@@ -325,11 +328,16 @@ button, [role='button'], a, input, select, textarea { touch-action: manipulation
   }
   /* The page's ONE ambient glow (redesign boards): faint amber / coral / teal
      shading in the corners. Use instead of <Aurora>, never alongside it. */
+<<<<<<< HEAD
   .page-glow { /* board .brandbg, verbatim */
+=======
+  .page-glow {
+>>>>>>> origin/main
     background-image:
       radial-gradient(ellipse 50% 20% at 4% 22%, rgba(255, 179, 71, 0.085), rgba(255, 179, 71, 0) 100%),
       radial-gradient(ellipse 46% 19% at 96% 52%, rgba(255, 91, 123, 0.075), rgba(255, 91, 123, 0) 100%),
       radial-gradient(ellipse 50% 20% at 14% 79%, rgba(101, 229, 216, 0.06), rgba(101, 229, 216, 0) 100%);
+<<<<<<< HEAD
     background-repeat: repeat-y;
     background-size: 100% 1500px;
   }
@@ -340,6 +348,10 @@ button, [role='button'], a, input, select, textarea { touch-action: manipulation
   .rv-up { transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), transform 1.1s cubic-bezier(0.22, 1, 0.36, 1), filter 0.9s ease; }
   .rv-up:not(.in) { opacity: 0; transform: translateY(70px); }
   .rv-d1 { transition-delay: 0.12s; } .rv-d2 { transition-delay: 0.24s; } .rv-d3 { transition-delay: 0.36s; } .rv-d4 { transition-delay: 0.48s; }
+=======
+    background-attachment: fixed;
+  }
+>>>>>>> origin/main
   .text-balance {
     text-wrap: balance;
   }
