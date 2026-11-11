@@ -17,6 +17,7 @@ const PROPS = ['display','position','width','height','paddingTop','paddingRight'
     await p.waitForTimeout(400)
   }
   await p.waitForTimeout(800)
+  if (targetJS === 'PAGE') { await p.screenshot({ path: out + '.png', fullPage: true }); console.log(out, 'full page'); await b.close(); return }
   const el = await p.evaluateHandle(`(${targetJS})`)
   const box = await el.asElement().boundingBox()
   await el.asElement().screenshot({ path: out + '.png' })

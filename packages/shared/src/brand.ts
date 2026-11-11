@@ -63,7 +63,7 @@ export const PLANS: PlanTier[] = [
     brandVoices: 1,
     hidden: true, // not shown on the pricing grid — reached via "Get started for free"
     blurb: 'See it work, free.',
-    features: ['3 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
+    features: ['3 free videos', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
     id: 'aspiring',
