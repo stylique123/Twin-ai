@@ -1,6 +1,6 @@
 // Self-test for the single-arm panel blind pack. No network, no database.
 import assert from 'node:assert/strict'
-import { buildBlindPack, outcomeOf } from './panelBlindPack.mjs'
+import { buildBlindPack, outcomeOf, buildTrace, lineOrigin } from './panelBlindPack.mjs'
 
 let seed = 7
 const rand = (n) => { const b = Buffer.alloc(n); for (let i = 0; i < n; i++) b[i] = (seed = (seed * 1103515245 + 12345) & 0xff); return b }
@@ -36,4 +36,14 @@ assert.equal(Object.keys(p.key).length, 3)
 assert.ok(Object.values(p.key).every((k) => k.creator === 'clay-kiln' && /^panel-\d$/.test(k.label)))
 // The report carries no ids that map back to the key.
 assert.doesNotMatch(JSON.stringify(p.report), /S-[0-9A-F]{6}|g\d|clay-kiln/)
+// Trace (read-only): where each shipped line came from, and what was handed.
+assert.equal(lineOrigin('I sold 400 mugs.', null), 'no_draft')
+assert.equal(lineOrigin('Hand-thrown and fired twice.', ['Hand-thrown and fired twice.']), 'first_draft')
+assert.equal(lineOrigin('I pulled a hamstring sprinting for a bus.', ['Warm up first.', 'Then lift.']), 'added_later')
+const tr = buildTrace([row(1)], { g1: { script: [{ line: 'Line one for 1' }, { line: 'A brand new line' }], writer_raw: { lines: [{ line: 'Line one for 1' }] }, writer_supply: { knowledge_ids: ['k1', 'k2'], product_fact_ids: ['p1'], answer_keys: [] }, word_budget: { action: 'lengthened', added: ['k9'] } } }, { g1: 'u1' }, { u1: { total: 9 } })
+assert.equal(tr.length, 1)
+assert.deepEqual(tr[0].lines.map((l) => l.origin), ['first_draft', 'added_later'])
+assert.deepEqual(tr[0].handed, { knowledge: 2, product_facts: 1, answers: 0, note: false })
+assert.equal(tr[0].stored.total, 9)
+assert.equal(tr[0].word_budget.action, 'lengthened')
 console.log('panelBlindPack selftest: ok')
