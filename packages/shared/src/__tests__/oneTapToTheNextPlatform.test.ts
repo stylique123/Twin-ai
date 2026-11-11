@@ -37,8 +37,10 @@ describe('the handle is kept', () => {
 
 describe('one tap goes somewhere else', () => {
   it('the failure screen offers a button per remaining platform', () => {
-    expect(onboarding).toMatch(/otherPlatforms\(draft\.platform\)\.map/)
-    expect(onboarding).toMatch(/onTryPlatform\(p\)/)
+    // ⚖️ PART 2: the failure is shown on the handle screen itself (Connect
+    // board), so one tap picks the platform with the handle still in the box.
+    expect(onboarding).toMatch(/const others = otherPlatforms\(platform\)/)
+    expect(onboarding).toMatch(/others\.map\(\(p\) => \(\s*<button[^>]*onClick=\{\(\) => pick\(p\)\}/)
   })
 
   it('the handle screen is seeded from the retry', () => {
@@ -51,21 +53,22 @@ describe('one tap goes somewhere else', () => {
   // draft is what used to resume straight back into the scan that already
   // failed — the trap #504 fixed, and it would return through this new door.
   it('the failed scan is forgotten before going back', () => {
-    const at = onboarding.indexOf('setMode(\'handle\')')
+    const fn = onboarding.slice(onboarding.indexOf('const scanFailed = useCallback'))
+    const at = fn.indexOf('setMode(\'handle\')')
     expect(at).toBeGreaterThan(-1)
-    expect(onboarding.slice(Math.max(0, at - 200), at)).toMatch(/forgetDeadScan\(\)/)
+    expect(fn.slice(0, at)).toMatch(/forgetDeadScan\(\)/)
   })
 })
 
 describe('no handle means no button, and that is deliberate', () => {
   // ⚖️ AN OLDER DRAFT PREDATES THE FIELD AND CARRIES ''. A one-tap retry that
   // silently lands on an empty box is worse than the sentence it replaced.
-  it('the buttons are gated on the handle being present', () => {
-    expect(onboarding).toMatch(/draft\.handle !== '' && \(/)
-  })
-
-  it('and the sentence is still there for that case', () => {
-    expect(onboarding).toMatch(/otherPlatformsSentence\(draft\.platform\)/)
+  // ⚖️ PART 2: there is no separate failure screen to land on empty any more.
+  // The failure shows on the handle screen, seeded from the draft's handle, so
+  // an old draft with '' lands on an empty box the creator can see and fill.
+  it('the failure goes back to the handle screen seeded from the draft', () => {
+    expect(onboarding).toMatch(/setRetrySeed\(\{ handle: draft\?\.handle \?\? '', platform: draft\?\.platform \?\? 'instagram' \}\)/)
+    expect(onboarding).toMatch(/failure=\{scanFailureShown\}/)
   })
 })
 

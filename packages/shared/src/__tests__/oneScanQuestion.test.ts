@@ -33,7 +33,10 @@ describe('the scan screen asks one question', () => {
   it('the onboarding header carries no count, and the story screen keeps its own', () => {
     const onb = read('apps', 'web', 'src', 'pages', 'Onboarding.tsx')
     const block = onb.slice(onb.indexOf('questionIds={DEPTH_QUESTION_IDS}'), onb.indexOf('questionIds={DEPTH_QUESTION_IDS}') + 300)
-    expect(block).toMatch(/heading="One thing only you know"/)
+    // ⚖️ PART 2: Reading's third tab ("Only you know") renders the depth
+    // question in the board's own look, which carries its title in the tabs.
+    expect(block).toMatch(/look="reading"/)
+    expect(block).not.toMatch(/\d+ of \d+/)
     expect(read('apps', 'web', 'src', 'components', 'StoryInterview.tsx')).toMatch(/heading = 'Three things only you know'/)
   })
 })

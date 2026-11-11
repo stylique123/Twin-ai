@@ -158,6 +158,7 @@ import { cn } from '../lib/cn'
 import type { SellsKind } from '@twinai/shared'
 import { loadProductEntities, sellsAnswerWithLibrary, type LibraryProductView } from '@twinai/shared'
 import { manualVoiceCardOn, sanitizeManualVoiceAnswers, MANUAL_VOICE_KEY } from '@twinai/shared'
+import { otherPlatforms } from '@twinai/shared'
 import { StoryInterview } from '../components/StoryInterview'
 import { loadSellsFacet } from '../lib/ownSellsLoad'
 import { clearStoryDraft } from '../lib/storyDraft'
@@ -341,10 +342,13 @@ export default function Onboarding() {
   // platform, or describe it myself). The answers given while it ran are kept.
   const [scanFailureShown, setScanFailureShown] = useState<ScanFailure | null>(null)
   const scanFailed = useCallback((f: ScanFailure) => {
+    // The failed scan is forgotten before going back, so a reload cannot
+    // resume into the same dead job.
+    forgetDeadScan()
     setScanFailureShown(f)
     setRetrySeed({ handle: draft?.handle ?? '', platform: draft?.platform ?? 'instagram' })
     setMode('handle')
-  }, [draft?.handle, draft?.platform])
+  }, [draft?.handle, draft?.platform, forgetDeadScan])
   // THE SCAN MUST NOT OVERWRITE WHAT THE CREATOR JUST TYPED.
   //
   // This used to hand the scan's own reading straight in — `profile.audience`
@@ -572,13 +576,13 @@ function HandleStep({
   const ok = !!handle.trim() && !shownErr && !failure
   const pick = (p: Platform) => { setPlatform(p); setErr(null); onClearFailure?.() }
   const fail = failure ? failureCopy(failure, platform) : null
-  const others = (['tiktok', 'instagram', 'youtube'] as const).filter((p) => p !== platform)
+  const others = otherPlatforms(platform)
   const failureCard = fail && (
     <div role="alert" className={`ob-pop flex flex-col border border-[rgba(255,91,123,0.35)] bg-[rgba(255,91,123,0.08)] ${wide ? 'gap-2 rounded-[14px] px-4 py-[14px]' : 'gap-[6px] rounded-[14px] px-[14px] py-[13px]'}`}>
       <span className={`font-bold text-coral-soft ${wide ? 'text-[15px]' : 'text-[14.5px]'}`}>{fail.title}</span>
       <span className={`text-sand-soft ${wide ? 'text-[13.5px] leading-[1.5]' : 'text-[13px] leading-[1.45]'}`}>{fail.body}</span>
       <span className={`flex flex-wrap ${wide ? 'gap-2' : 'mt-1 gap-[6px]'}`}>
-        {failure?.tryAnotherPlatform && others.map((p) => (
+        {failure?.tryAnotherPlatform && others.length > 0 && others.map((p) => (
           <button key={p} type="button" onClick={() => pick(p)} className={`btn-outline ${wide ? '!px-3 !py-2 !text-[13px]' : '!px-[11px] !py-[7px] !text-[12.5px]'}`}>Try on {PLATFORM_LABEL[p]}</button>
         ))}
         <button type="button" onClick={goManual} disabled={busy || manualBusy} className={`btn-outline ${wide ? '!px-3 !py-2 !text-[13px]' : '!px-[11px] !py-[7px] !text-[12.5px]'}`}>

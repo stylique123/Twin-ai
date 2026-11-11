@@ -54,15 +54,20 @@ describe('the blame is conditional, which was the whole point', () => {
   // ⚠️ THE ORIGINAL HARM: a hardcoded tip telling the creator to "pick a public
   // account" appeared under EVERY failure, including ours. It sent the owner to
   // check a privacy setting that was never the problem.
-  it('the public-account tip is gated on the failure being theirs to fix', () => {
-    const at = code.indexOf('Tip: pick a')
+  // ⚖️ PART 2 (Connect board): the "make it public" advice is now tied to the
+  // ACCOUNT_PRIVATE cause itself, which is stricter than creatorCanFix, and
+  // never appears for a failure that is ours.
+  it('the public-account advice only appears for a private account', () => {
+    const at = code.indexOf('Make it public')
     expect(at).toBeGreaterThan(-1)
-    const before = code.slice(Math.max(0, at - 260), at)
-    expect(before).toMatch(/creatorCanFix/)
+    expect(code.slice(Math.max(0, at - 260), at)).toMatch(/case 'ACCOUNT_PRIVATE'/)
+    expect(code.split('Make it public').length).toBe(2)
   })
 
-  it('offers another platform when the failure is ours', () => {
-    expect(code).toMatch(/!failure\.creatorCanFix && failure\.tryAnotherPlatform/)
+  // ⚖️ The owner's Part 2 rule: every named failure offers another platform,
+  // so the buttons follow `tryAnotherPlatform` alone.
+  it('offers another platform whenever the cause allows it', () => {
+    expect(code).toMatch(/failure\?\.tryAnotherPlatform && others\.length > 0/)
   })
 })
 
