@@ -54,7 +54,10 @@ export function Sheet({
           'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
         ) ?? [],
       )
-    ;(focusables()[0] ?? panel)?.focus()
+    // Move focus in without forcing a visible ring: the global :focus-visible
+    // rule still shows it for keyboard users (Tab), but not after a mouse/touch
+    // open. `focusVisible` is supported in Chromium and Firefox; others ignore it.
+    ;(focusables()[0] ?? panel)?.focus({ focusVisible: false } as FocusOptions)
 
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
