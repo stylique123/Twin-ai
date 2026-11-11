@@ -16,6 +16,9 @@ import { SignOutCorner } from './components/SignOutCorner'
 // chunk → slow parse, the "big lag / blank page" on load + login) only ships the
 // page you're actually on.
 const Onboarding = lazy(() => import('./pages/Onboarding'))
+// Public legal pages. NOT in `inApp` below: they live outside the app shell.
+const Privacy = lazy(() => import('./pages/Privacy'))
+const Terms = lazy(() => import('./pages/Terms'))
 const Result = lazy(() => import('./pages/Result'))
 const History = lazy(() => import('./pages/History'))
 const Gallery = lazy(() => import('./pages/Gallery'))
@@ -227,14 +230,16 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      {/* Marketing chrome only on the landing page, never over /auth, /onboarding, or the app. */}
-      {location.pathname === '/' && <Nav />}
+      {/* Marketing chrome only on the public site (landing + legal), never over /auth, /onboarding, or the app. */}
+      {(location.pathname === '/' || location.pathname === '/privacy' || location.pathname === '/terms') && <Nav />}
       <ErrorBoundary resetKey={location.pathname}>
       <Suspense fallback={<BootScreen />}>
       <AnimatePresence mode="wait">
         <Routes location={location} key={inApp ? 'app' : location.pathname}>
           <Route path="/" element={<Page><Landing /></Page>} />
           <Route path="/auth" element={<Page><Auth /></Page>} />
+          <Route path="/privacy" element={<Page><Privacy /></Page>} />
+          <Route path="/terms" element={<Page><Terms /></Page>} />
           {/* Public, login-free white-label client report (agency → client). */}
           <Route path="/r/:token" element={<Page><ClientReport /></Page>} />
           {/* Public, login-free client APPROVAL of a finished video (agency → client). */}
