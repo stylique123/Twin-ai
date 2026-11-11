@@ -89,3 +89,22 @@ describe('3. repeated facts and stories', () => {
     expect(r.cut.capped).toBeGreaterThanOrEqual(1)
   })
 })
+
+describe('review of #1360 (11 Nov)', () => {
+  it('keeps a real payoff last line ("You\'ll never go back to dishwasher tabs.")', () => {
+    const b = beats('This mug holds the tide.', 'It is hand-thrown and fired twice.', 'It holds about 12 oz.', 'You\'ll never go back to dishwasher tabs.')
+    expect(scriptCleanupV1(b, ctx).beats).toEqual(b)
+  })
+  it('cuts do not stack: cuts already made by the final pass count against the cap of 2', () => {
+    const b = beats('Morning coffee, but slower.', 'The Tide Mug holds about 12 oz, costs $38 and is fired twice.', 'Holds about 12 oz.', '$38 per mug.', 'Tide Mug, link in bio.', 'Here is the part everyone forgets.')
+    const fresh = scriptCleanupV1(b, ctx)
+    expect(fresh.cut.fact_repeat + fresh.cut.dangling_last).toBe(2)
+    const after1 = scriptCleanupV1(b, ctx, 3, { priorCuts: 1 })
+    expect(after1.cut.fact_repeat + after1.cut.dangling_last).toBe(1)
+    expect(after1.cut.total).toBe(2)
+    const after2 = scriptCleanupV1(b, ctx, 3, { priorCuts: 2 })
+    expect(after2.beats).toEqual(b)
+    expect(after2.cut.total).toBe(2)
+    expect(after2.cut.capped).toBeGreaterThanOrEqual(1)
+  })
+})

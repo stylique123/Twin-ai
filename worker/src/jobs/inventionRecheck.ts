@@ -36,7 +36,7 @@ import { reorderEnding, reorderCheck } from '../generated/spineComplete.js'
 import { runQualityController, qcLogRecord, type QcProfile } from '../generated/qualityController.js'
 import { panelFinalPass } from '../generated/panelFinalPass.js'
 import { setUrlSafeSplitting } from '../generated/urlSafe.js'
-import { scriptCleanupV1 } from '../generated/scriptCleanupV1.js'
+import { scriptCleanupV1, finalPassCuts } from '../generated/scriptCleanupV1.js'
 
 const PANEL_STORY_ORIGINS = new Set(['her_story', 'her_answer'])
 /** ⚖️ PANEL FINAL PASS (panel 13b, 9 Nov). Runs right after the QC, only when
@@ -77,7 +77,12 @@ export function applyScriptCleanupV1(bp: Record<string, unknown>, extra: Record<
       stories: items.filter((it) => PANEL_STORY_ORIGINS.has(String(it.origin))).map((it) => String(it.text)),
       products: products.map((p) => ({ id: p.id, name: p.name, facts: items.filter((it) => it.origin === 'product_fact' && String(it.product_id ?? '') === p.id).map((it) => String(it.text)) })),
       offers: items.filter((it) => it.origin === 'offer').map((it) => String(it.text)),
+    }, 3, {
+      // Cuts never stack: the edge's running total (its final pass and cleanup)
+      // plus this job's final pass count against the same cap of 2.
+      priorCuts: (Number(bp.script_cuts_total) || 0) + (extra.panel_final_pass ? finalPassCuts(bp.panel_final_pass) : 0),
     })
+    bp.script_cuts_total = r.cut.total
     if (r.cut.dangling_last + r.cut.fact_repeat + r.cut.story_repeat) { bp.script = r.beats; resyncShotListToScript(bp) }
     bp.script_cleanup_v1 = r.cut
     console.log(JSON.stringify({ event: 'script_cleanup_v1', where: 'worker', generation_id: generationId, ...r.cut }))

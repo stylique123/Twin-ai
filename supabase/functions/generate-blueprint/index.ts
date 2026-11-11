@@ -111,7 +111,7 @@ import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
 import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
-import { scriptCleanupV1 } from '../_shared/scriptCleanupV1.ts'
+import { scriptCleanupV1, finalPassCuts } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
 import { writerLoopOn, inventionGateOn, lateChecksOn, loopFlagFor, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
@@ -18135,12 +18135,15 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       try {
         const bpc = blueprint as Record<string, unknown>
         const c = panelFinalCtx()
-        const r = scriptCleanupV1(bpc.script as Array<Record<string, unknown>>, { products: c.products, stories: c.stories, offers: c.offers })
+        // Cuts never stack: the final pass's cuts on this script count against the same cap.
+        const r = scriptCleanupV1(bpc.script as Array<Record<string, unknown>>, { products: c.products, stories: c.stories, offers: c.offers }, 3, { priorCuts: finalPassCuts(bpc.panel_final_pass) })
         if (r.cut.dangling_last + r.cut.fact_repeat + r.cut.story_repeat) {
           bpc.script = r.beats
           if (Array.isArray(bpc.shot_list)) bpc.shot_list = syncShotListSpokenText(bpc.shot_list as Array<{ spoken_text?: unknown }>, bpc.script as Array<{ line?: unknown }>).shots
         }
         bpc.script_cleanup_v1 = r.cut
+        // The running total, read by the worker's pass so the cap holds across both.
+        bpc.script_cuts_total = r.cut.total
         console.log(JSON.stringify({ event: 'feature_fired', feature: 'script_cleanup_v1', where: 'edge', ...r.cut }))
       } catch { /* a cleanup never fails a build */ }
     }

@@ -37,4 +37,12 @@ describe('worker: script cleanup v1', () => {
     const lines = (bp.script as Array<{ line: string }>).map((b) => b.line)
     expect(lines).toEqual(['Morning coffee, but slower.', 'The Tide Mug is hand-thrown and holds about 12 oz of coffee.', 'Tide Mug, link in bio.'])
   })
+  it('cuts do not stack: the edge already made 2 cuts, so the worker makes none and logs the total', async () => {
+    const { applyScriptCleanupV1 } = await import('../jobs/inventionRecheck.js')
+    const bp: Record<string, unknown> = { script: script(), script_cuts_total: 2 }
+    applyScriptCleanupV1(bp, { script_cleanup_v1: true }, ledger, products, 'gen-x')
+    expect(bp.script).toEqual(script())
+    expect(bp.script_cuts_total).toBe(2)
+    expect((bp.script_cleanup_v1 as { capped: number }).capped).toBeGreaterThanOrEqual(1)
+  })
 })

@@ -7,6 +7,13 @@
 // byte-for-byte the old `text.match(re)`. Pure apart from the one switch the
 // edge and the worker set from the env at start-up.
 
+// ⚠️ ONE MODULE-LEVEL VALUE (review of #1360). The edge sets it per request
+// and the worker per job. If one process ran two jobs at once with DIFFERENT
+// flag values, one job could split with the other's setting. That can only
+// happen while SCRIPT_CLEANUP_V1 is being switched; with the flag the same for
+// every job (off today) it cannot differ. Passing it per call would mean
+// threading a parameter through every splitter's callers, so it is noted here
+// instead.
 let urlSafe = false
 /** Set once from SCRIPT_CLEANUP_V1 by the edge and the worker. */
 export function setUrlSafeSplitting(on: boolean): void { urlSafe = on === true }

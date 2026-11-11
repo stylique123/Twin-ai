@@ -39,7 +39,7 @@ export function isCtaText(s: string, offers: readonly string[] = []): boolean {
 }
 
 // A line that only promises: a set-up phrase with nothing after it.
-const PROMISE = /^(?:(?:and|so|now|but)\s+)?(?:here(?:'s|’s| is) (?:the|what|why|how|where|my)\b|this is (?:the|where|why|how)\b|that(?:'s|’s| is) (?:the|where|why) \b|(?:let me|i(?:'ll|’ll| will)) (?:show|tell)\b|(?:wait|watch|stay) (?:for|until|till|to the end)\b|(?:the|one) (?:part|thing|step|secret|trick|detail|mistake) (?:everyone|nobody|no one|most people|people)\b|(?:you(?:'ll|’ll| will) (?:never|want to) )|more on (?:that|this) (?:soon|next)\b)/i
+const PROMISE = /^(?:(?:and|so|now|but)\s+)?(?:here(?:'s|’s| is) (?:the|what|why|how|where|my)\b|this is (?:the|where|why|how)\b|that(?:'s|’s| is) (?:the|where|why) \b|(?:let me|i(?:'ll|’ll| will)) (?:show|tell)\b|(?:wait|watch|stay) (?:for|until|till|to the end)\b|(?:the|one) (?:part|thing|step|secret|trick|detail|mistake) (?:everyone|nobody|no one|most people|people)\b|more on (?:that|this) (?:soon|next)\b)/i
 /** True when the line only promises something and gives nothing. */
 export function isDanglingPromise(line: string): boolean {
   const t = String(line ?? '').trim()
@@ -47,11 +47,24 @@ export function isDanglingPromise(line: string): boolean {
   return PROMISE.test(t) && wordCount(t) <= 12
 }
 
-export interface CleanupCtx { products?: readonly ScopedProduct[]; stories?: readonly string[]; offers?: readonly string[] }
-export interface CleanupCut { dangling_last: number; fact_repeat: number; story_repeat: number; capped: number }
+/** Sentence cuts the panel final pass recorded (its added change line is not a cut). */
+export function finalPassCuts(fp: unknown): number {
+  const r = (fp && typeof fp === 'object' ? fp : {}) as Record<string, unknown>
+  return ['pressure', 'unbacked_result', 'wrong_story', 'story_repeat', 'fact_repeat', 'false_cause'].reduce((n, k) => n + (Number(r[k]) || 0), 0)
+}
 
-export function scriptCleanupV1<T extends { line?: unknown; section?: unknown }>(beats: readonly T[], ctx: CleanupCtx = {}, floor = 3): { beats: T[]; cut: CleanupCut } {
-  const cut: CleanupCut = { dangling_last: 0, fact_repeat: 0, story_repeat: 0, capped: 0 }
+export interface CleanupCtx { products?: readonly ScopedProduct[]; stories?: readonly string[]; offers?: readonly string[] }
+export interface CleanupCut { dangling_last: number; fact_repeat: number; story_repeat: number; capped: number; /** Sentence cuts in this script so far, prior passes included. */ total: number }
+
+/**
+ * `opts.priorCuts`: sentence cuts already made in this script by earlier
+ * passes (the panel final pass, the edge run before the worker's). They count
+ * against the same cap of 2, so cuts never stack across passes (review of
+ * #1360). `cut.total` is the running total to carry to the next pass.
+ */
+export function scriptCleanupV1<T extends { line?: unknown; section?: unknown }>(beats: readonly T[], ctx: CleanupCtx = {}, floor = 3, opts: { priorCuts?: number } = {}): { beats: T[]; cut: CleanupCut } {
+  const prior = Math.max(0, Math.floor(Number(opts.priorCuts ?? 0)) || 0)
+  const cut: CleanupCut = { dangling_last: 0, fact_repeat: 0, story_repeat: 0, capped: 0, total: prior }
   const offers = (ctx.offers ?? []).filter((o) => String(o ?? '').trim())
   const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
   if (spokenIdx.length <= floor) return { beats: [...beats], cut }
@@ -59,11 +72,11 @@ export function scriptCleanupV1<T extends { line?: unknown; section?: unknown }>
   const lastAt = spokenIdx[spokenIdx.length - 1]
   const totalWords = spokenIdx.reduce((n, i) => n + wordCount(String(beats[i].line)), 0)
   const wordCap = Math.max(20, Math.round(totalWords * 0.3))
-  let cuts = 0, cutWords = 0, spoken = spokenIdx.length
+  let cuts = prior, cutWords = 0, spoken = spokenIdx.length
   const allow = (s: string) => {
     const n = wordCount(s)
     if (cuts + 1 > 2 || cutWords + n > wordCap) { cut.capped++; return false }
-    cuts++; cutWords += n; return true
+    cuts++; cutWords += n; cut.total = cuts; return true
   }
   // The CTA: the last spoken line, unless the last line is a dangling promise,
   // then the last CTA-shaped line before it. Never cut.
