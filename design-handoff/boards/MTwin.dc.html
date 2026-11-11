@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Twin · mobile</title>
+<script src="./support.js"></script>
+<script data-rv>(function(){var d=document.documentElement;d.classList.add('rv-js');function show(el){el.classList.add('in')}function vis(el){var r=el.getBoundingClientRect();return r.top<innerHeight&&r.bottom>0}var io=null;if('IntersectionObserver' in window){try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){show(e.target);io.unobserve(e.target)}})},{root:document,threshold:0.08})}catch(x){io=null}}function scan(){var n=document.querySelectorAll('body [class*="rv-"]:not([data-rvo])');for(var i=0;i<n.length;i++){n[i].setAttribute('data-rvo','');if(io)io.observe(n[i]);else show(n[i])}var m=document.querySelectorAll('[data-rvo]:not(.in)');for(var j=0;j<m.length;j++){if(vis(m[j]))show(m[j])}}new MutationObserver(scan).observe(d,{childList:true,subtree:true});document.addEventListener('DOMContentLoaded',scan);addEventListener('scroll',scan,{passive:true,capture:true});addEventListener('resize',scan);setInterval(scan,500);setTimeout(function(){if(window.self!==window.top&&innerHeight>1400){var m=document.querySelectorAll('[data-rvo]');for(var k=0;k<m.length;k++)show(m[k])}},2500)})();</script>
+<style data-bg>.brandbg{background-image:radial-gradient(ellipse 50% 20% at 4% 22%,rgba(255,179,71,.085),rgba(255,179,71,0) 100%),radial-gradient(ellipse 46% 19% at 96% 52%,rgba(255,91,123,.075),rgba(255,91,123,0) 100%),radial-gradient(ellipse 50% 20% at 14% 79%,rgba(101,229,216,.06),rgba(101,229,216,0) 100%)!important;background-repeat:repeat-y!important;background-size:100% 1500px!important}
+.brandbg.bgm{background-size:100% 1000px!important}</style>
+<style data-vt>@media (prefers-reduced-motion: no-preference){::view-transition-old(root){animation:vtMbOut .45s cubic-bezier(.65,0,.35,1) both}::view-transition-new(root){animation:vtMbIn .55s cubic-bezier(.22,1,.36,1) both}@keyframes vtMbOut{to{transform:translateX(-30%);opacity:.3}}@keyframes vtMbIn{from{transform:translateX(100%)}}}</style>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0;background:#0B0B0E;-webkit-text-size-adjust:100%}a{color:inherit}</style>
+<style>
+@keyframes pin{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(80px,40px) scale(1.15)}}
+@keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-70px,-50px) scale(1.1)}}
+@keyframes shine{0%{transform:translateX(-120%) skewX(-20deg)}60%,100%{transform:translateX(260%) skewX(-20deg)}}
+@keyframes recp{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}100%{box-shadow:0 0 0 8px rgba(255,255,255,0)}}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,91,123,.45)}100%{box-shadow:0 0 0 14px rgba(255,91,123,0)}}
+@keyframes spinb{to{transform:rotate(360deg)}}
+@keyframes hue{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+@keyframes wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(16deg)}20%,40%{transform:rotate(-8deg)}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes seg{from{opacity:.15}to{opacity:1}}
+.pin{opacity:0;animation:pin .7s cubic-bezier(.22,1,.36,1) forwards}
+.d1{animation-delay:.05s}.d2{animation-delay:.15s}.d3{animation-delay:.25s}.d4{animation-delay:.35s}.d5{animation-delay:.45s}.d6{animation-delay:.55s}.d7{animation-delay:.65s}.d8{animation-delay:.75s}
+.lv{position:relative}.lv>*{position:relative;z-index:1}.lv>.aur{position:absolute;z-index:0}
+.lift{transition:transform .25s cubic-bezier(.22,1,.36,1),box-shadow .25s ease,border-color .25s ease}
+.lift:hover{transform:translateY(-4px);box-shadow:0 18px 40px -18px rgba(0,0,0,.9);border-color:rgba(255,255,255,.18)!important}
+.row{transition:background .2s ease,padding .2s ease}.row:hover{background:rgba(255,255,255,.04);padding-left:24px!important}
+.cta{position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease}
+.cta::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:shine 3.2s ease-in-out infinite}
+.cta:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 16px 40px -12px rgba(255,91,123,.7)}
+.recdot{animation:recp 1.4s ease-out infinite}
+.ringp{animation:ring 1.8s ease-out infinite}
+.grad{background:linear-gradient(110deg,#FFB347,#FF5B7B,#65E5D8,#FFB347);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:hue 6s ease infinite}
+.gbtn{background:linear-gradient(110deg,#FFB347,#FF5B7B 55%,#65E5D8);background-size:200% 100%;animation:hue 5s ease infinite}
+.bob{animation:bob 3s ease-in-out infinite}
+.wave{display:inline-block;transform-origin:70% 80%;animation:wave 2.4s ease-in-out 1s infinite}
+.dots span{display:inline-block;width:5px;height:5px;border-radius:9px;background:#FF8FA4;animation:dot 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+.grow{transform-origin:left;animation:grow 1.2s cubic-bezier(.22,1,.36,1) .4s both}
+.seg{opacity:.15;animation:seg .3s ease forwards}
+@keyframes blink{50%{opacity:0}}
+@keyframes popin{0%{opacity:0;transform:translateY(10px) scale(.94)}100%{opacity:1;transform:none}}
+@keyframes scan{0%{top:-30%}100%{top:110%}}
+@keyframes floaty{0%,100%{transform:translateY(0) rotate(var(--r,0deg))}50%{transform:translateY(-10px) rotate(var(--r,0deg))}}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:#FF5B7B;animation:blink 1s steps(1) infinite}
+.pop{animation:popin .5s cubic-bezier(.22,1,.36,1) both}
+.floaty{animation:floaty 5s ease-in-out infinite}
+.chip{transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease;cursor:pointer}
+.chip:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.28)!important}
+.inp{transition:border-color .2s ease,box-shadow .2s ease}.inp:focus{border-color:rgba(255,91,123,.6)!important;box-shadow:0 0 0 4px rgba(255,91,123,.14)}
+@keyframes wv{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+.wv{display:inline-flex;align-items:center;gap:3px;height:20px}.wv span{display:block;width:3px;height:20px;border-radius:2px;background:#FF5B7B;transform-origin:center;animation:wv .9s ease-in-out infinite}
+.wv span:nth-child(2){animation-delay:.12s}.wv span:nth-child(3){animation-delay:.24s}.wv span:nth-child(4){animation-delay:.36s}.wv span:nth-child(5){animation-delay:.48s}.wv span:nth-child(6){animation-delay:.2s}.wv span:nth-child(7){animation-delay:.05s}
+.sel{transition:transform .18s ease,border-color .2s ease,background .2s ease,box-shadow .2s ease;cursor:pointer}.sel:hover{transform:translateY(-3px)}
+.card{border-radius:18px;background:#111115;border:1px solid rgba(255,255,255,0.07)}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.12em;color:#8D8475}
+.btnL{white-space:nowrap;flex-shrink:0;padding:12px 18px;border-radius:12px;border:0;background:#F6F1E9;color:#0B0B0E;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btnG{white-space:nowrap;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#D8CFC2;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.opt{padding:13px 15px;border-radius:12px;border-width:1px;border-style:solid;font-family:inherit;font-size:14.5px;font-weight:500;text-align:left;cursor:pointer;transition:all .15s ease}
+.opt:hover{transform:translateY(-1px)}
+.fld{min-width:0;box-sizing:border-box;padding:12px 14px;border-radius:11px;border:1px solid rgba(255,255,255,0.1);background:#0B0B0E;color:#F6F1E9;font-family:inherit;font-size:15px;outline:none}
+.fld:focus{border-color:rgba(255,91,123,.6);box-shadow:0 0 0 4px rgba(255,91,123,.12)}
+.guess{padding:2px 8px;border-radius:99px;background:rgba(255,179,71,.14);color:#FFB347;font-size:10.5px;font-weight:700;letter-spacing:.05em}
+.cam{position:absolute;inset:0;background-color:#141015;background-position:center 30%;background-size:cover;background-repeat:no-repeat;background-image:url(../assets/images/maya-talking-kitchen.jpg);animation:kb 22s ease-in-out infinite alternate;will-change:transform}
+@keyframes kb{0%{transform:scale(1.02) translate(0,0)}50%{transform:scale(1.07) translate(-1%,1%)}100%{transform:scale(1.04) translate(1%,-.5%)}}
+.cam .who{display:none}
+.cam::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.08) 45%,rgba(0,0,0,.4))}
+.who{position:absolute;left:50%;bottom:0;width:62%;transform:translateX(-50%)}
+.who i{display:block;margin:0 auto;width:44%;aspect-ratio:1/1.18;border-radius:999px;border:1.5px dashed rgba(246,241,233,.28);box-sizing:border-box}
+.who b{display:block;margin-top:10px;height:260px;border-radius:140px 140px 0 0;border:1.5px dashed rgba(246,241,233,.2);border-bottom:0;box-sizing:border-box}
+.fade{-webkit-mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent)}
+.ctl{white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:5px;padding:0;border:0;background:transparent;color:#F6F1E9;font-family:inherit;font-size:11.5px;font-weight:600}
+.ctl span.ic{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center}
+.big{font-variant-numeric:tabular-nums}
+@keyframes cdz{0%{transform:scale(1.4);opacity:0}25%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.85}}
+.cdz{animation:cdz 1s ease-out infinite}
+@keyframes lvl{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+.lvl span{display:inline-block;width:4px;height:16px;border-radius:3px;background:#65E5D8;transform-origin:bottom;animation:lvl .9s ease-in-out infinite}
+.lvl span:nth-child(2){animation-delay:.12s}.lvl span:nth-child(3){animation-delay:.24s}.lvl span:nth-child(4){animation-delay:.36s}.lvl span:nth-child(5){animation-delay:.48s}
+@keyframes bar{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.indet{position:relative;overflow:hidden}.indet::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:bar 1.4s linear infinite}
+.scene{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 30%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55))}
+@view-transition{navigation:auto}
+@keyframes vtOut{to{opacity:0;transform:perspective(1600px) translateZ(-60px) rotateX(2deg)}}
+@keyframes vtIn{from{opacity:0;transform:perspective(1600px) translateY(18px) translateZ(40px) rotateX(-2deg)}}
+@keyframes pageIn{from{opacity:0}to{opacity:1}}
+.lv{animation:pageIn .45s ease-out both}
+a,button{transition:transform .15s ease,opacity .2s ease,background-color .2s ease,border-color .2s ease}
+button:active,a.cta:active,a.btnL:active,a.btnG:active{transform:scale(.97)}
+.ph{background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat}
+.phfill{position:absolute;inset:0;background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat;animation:kb 26s ease-in-out infinite alternate}
+.ph-coach{background-image:url(../assets/images/creator-coach-home.jpg)}
+.ph-local{background-image:url(../assets/images/maya-talking-kitchen.jpg)}
+.ph-realestate{background-image:url(../assets/images/creator-realestate-outdoors.jpg)}
+.ph-agency{background-image:url(../assets/images/creator-agency-desk.jpg)}
+.ph-g1{background-image:url(../assets/images/gallery-01-market-roaster.jpg)}
+.ph-g2{background-image:url(../assets/images/gallery-02-cafe-tasting.jpg)}
+.ph-g3{background-image:url(../assets/images/gallery-03-roasting-on-stove.jpg)}
+.ph-g4{background-image:url(../assets/images/gallery-04-beans-on-tray.jpg)}
+.ph-g5{background-image:url(../assets/images/gallery-05-cart-owner-on-phone.jpg)}
+.ph-g6{background-image:url(../assets/images/gallery-06-late-night-latte.jpg)}
+.ph-s_window{background-image:url(../assets/images/maya-holding-mug.jpg)}
+.ph-s_tray{background-image:url(../assets/images/maya-holding-beans.jpg)}
+.camv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;display:block}
+.rv-up,.rv-left,.rv-right,.rv-zoom,.rv-tilt,.rv-flip,.rv-rise{transition:opacity .9s cubic-bezier(.22,1,.36,1),transform 1.1s cubic-bezier(.22,1,.36,1),filter .9s ease}
+.rv-js .rv-up:not(.in){opacity:0;transform:translateY(70px)}
+.rv-js .rv-left:not(.in){opacity:0;transform:translateX(-90px)}
+.rv-js .rv-right:not(.in){opacity:0;transform:translateX(90px)}
+.rv-js .rv-zoom:not(.in){opacity:0;transform:scale(.88);filter:blur(10px)}
+.rv-js .rv-tilt:not(.in){opacity:0;transform:perspective(1200px) rotateX(16deg) translateY(60px)}
+.rv-js .rv-flip:not(.in){opacity:0;transform:perspective(1200px) rotateY(-14deg) translateX(-40px)}
+.rv-js .rv-rise:not(.in){opacity:0;transform:translateY(40px) scale(.97)}
+.rv-d1{transition-delay:.12s}.rv-d2{transition-delay:.24s}.rv-d3{transition-delay:.36s}.rv-d4{transition-delay:.48s}
+@media (prefers-reduced-motion: reduce){.rv-js [class*="rv-"]{opacity:1!important;transform:none!important;filter:none!important}}
+@keyframes wsRise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes wsSlide{from{opacity:0;transform:translateX(-40px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@keyframes wsCard{0%{opacity:0;transform:translateY(16px) scale(.96)}100%{opacity:1;transform:none}}
+@keyframes wsFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.wsRise{animation:wsRise .7s cubic-bezier(.22,1,.36,1) both}.wsSlide{animation:wsSlide .7s cubic-bezier(.22,1,.36,1) both}.wsCard{animation:wsCard .6s cubic-bezier(.22,1,.36,1) both}.wsFade{animation:wsFade .45s ease both}
+@keyframes lpop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.lpop{animation:lpop .6s cubic-bezier(.22,1,.36,1) both}
+@keyframes lshrink{from{width:100%}to{width:0%}}
+.lshrink{animation:lshrink 6s linear infinite}
+@keyframes spinr{to{transform:rotate(360deg)}}
+@keyframes floaty2{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.fl2{animation:floaty2 6s ease-in-out infinite}
+@keyframes sheen{from{background-position:-200% 0}to{background-position:200% 0}}
+.sheen{background:linear-gradient(110deg,#F6F1E9 30%,#FFCB85 45%,#FF8FA4 52%,#F6F1E9 65%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sheen 6s linear infinite}
+@keyframes tprog{from{width:0}to{width:100%}}
+.tprog{animation:tprog 4.8s linear both}
+@keyframes tcur{0%{transform:translate(700px,440px);opacity:0}12%{opacity:1}45%{transform:translate(430px,330px)}52%{transform:translate(430px,330px) scale(.85)}58%{transform:translate(430px,330px) scale(1)}85%{transform:translate(560px,180px);opacity:1}100%{transform:translate(560px,180px);opacity:0}}
+.tcur{animation:tcur 4.8s cubic-bezier(.45,0,.2,1) infinite}
+@keyframes tshr{0%,18%{width:100%}60%,100%{width:var(--to)}}
+.tshr{width:100%;animation:tshr 7s cubic-bezier(.7,0,.2,1) infinite}
+@keyframes tnew{0%,40%{opacity:0;transform:translateY(6px)}60%,100%{opacity:1;transform:none}}
+.tnew{animation:tnew 7s ease infinite}
+@keyframes ctaglow{0%,100%{box-shadow:0 0 0 0 rgba(255,91,123,.55),0 16px 50px -16px rgba(255,91,123,.8)}50%{box-shadow:0 0 0 10px rgba(255,91,123,0),0 18px 60px -10px rgba(255,179,71,.9)}}
+@keyframes ctapop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08);opacity:1}80%{transform:scale(.97)}100%{transform:scale(1)}}
+@keyframes ctanudge{0%,86%,100%{transform:scale(1)}90%{transform:scale(1.06)}94%{transform:scale(.98)}}
+.glowcta{display:inline-block;animation:ctapop .8s cubic-bezier(.22,1.6,.36,1) .5s both,ctaglow 2.4s ease-in-out 1.3s infinite,ctanudge 5s ease-in-out 2s infinite !important}
+.glowcta:hover{filter:brightness(1.08)}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;opacity:1!important;transition:none!important}}
+</style>
+</helmet>
+<div class="brandbg bgm lv" style="width: 390px; min-height: 844px; display: flex; flex-direction: column; background: #0B0B0E; font-family: Geist, system-ui, sans-serif; color: #F6F1E9; overflow: hidden">
+<div class="aur" aria-hidden="true" style="left: -160px; top: -160px; width: 440px; height: 440px; border-radius: 999px; background: radial-gradient(circle, rgba(255,179,71,0.15), rgba(255,179,71,0) 65%); animation: drift1 16s ease-in-out infinite; pointer-events: none"></div>
+<div aria-hidden="true" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 26px 6px; font-size: 14px; font-weight: 600"><span>9:41</span><span style="display: flex; gap: 6px; align-items: center"><span style="width: 17px; height: 10px; border-radius: 2px; border: 1.5px solid #F6F1E9; opacity: .9"></span></span></div>
+<div style="padding: 14px 20px 30px; display: flex; flex-direction: column; gap: 30px">
+<header class="pin d1" style="display: flex; flex-direction: column; gap: 8px">
+<span style="display: flex; justify-content: space-between; align-items: center"><span style="font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: #8D8475">WHAT TWIN KNOWS</span><a href="MSettings.dc.html" style="font-size: 12.5px; color: #B7AE9F">Edit voice</a></span>
+<h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.03em">My Twin</h1>
+<p style="margin: 0; font-size: 14px; line-height: 1.5; color: #B7AE9F">First, what Twin learned from your own posts and answers — <span style="color: #F6F1E9">this is you.</span> Further down, what’s happening around you: <span style="color: #F6F1E9">ideas, never facts about you.</span></p>
+<div style="display: flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 8px; border: 1px dashed rgba(255,255,255,0.14); font-size: 10.5px; color: #6E675C; align-self: flex-start"><b>PREVIEW</b><sc-for list="{{ previews }}" as="f" hint-placeholder-count="3"><button type="button" onClick="{{ f.pick }}" style="padding: 3px 6px; border-radius: 6px; border: 0; background: {{ f.bg }}; color: {{ f.fg }}; font-family: inherit; font-size: 10.5px">{{ f.t }}</button></sc-for></div>
+</header>
+<sc-if value="{{ load }}" hint-placeholder-val="{{ false }}"><div class="pop" style="display: flex; flex-direction: column; gap: 10px"><span style="font-size: 14px; color: #B7AE9F">Loading…</span><div style="height: 120px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); opacity: .6"></div><div style="height: 120px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); opacity: .4"></div><div style="height: 120px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); opacity: .25"></div></div></sc-if>
+<sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}"><div class="pop" style="padding: 30px 20px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center"><span class="dots" style="display: inline-flex; gap: 5px"><span></span><span></span><span></span></span><h2 style="margin: 0; font-size: 20px; font-weight: 700">Twin is still reading.</h2><p style="margin: 0; font-size: 14px; color: #B7AE9F">Check back soon — or make a script now.</p><a href="MCreate.dc.html" class="cta gbtn" style="margin-top: 4px; padding: 12px 20px; border-radius: 12px; color: #0B0B0E; font-size: 14.5px; font-weight: 700; text-decoration: none">Make a script now</a></div></sc-if>
+<sc-if value="{{ ok }}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 30px">
+
+<div style="display: flex; align-items: center; gap: 10px"><span style="font-size: 11px; font-weight: 800; letter-spacing: 0.14em; color: #8FEDE3">PART 1 · ABOUT YOU</span><span style="flex-grow: 1; height: 1px; background: linear-gradient(90deg, rgba(101,229,216,0.4), rgba(101,229,216,0))"></span></div>
+
+<section class="rv-up" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; align-items: center; gap: 9px"><b style="font-size: 12px; color: #8FEDE3">1</b><h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.015em">What Twin learned from you</h2></span><span style="font-size: 12.5px; line-height: 1.45; color: #8D8475">From your ratings, test viewers and opening picks. <span style="color: #B7AE9F">Every rule that’s on goes into every new script.</span></span></div>
+<sc-for list="{{ rules }}" as="g" hint-placeholder-count="4"><div style="padding: 14px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 10px"><span style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700"><span style="width: 7px; height: 7px; border-radius: 9px; background: {{ g.c }}"></span>{{ g.h }}</span>
+<sc-for list="{{ g.items }}" as="r" hint-placeholder-count="2"><div style="display: flex; flex-direction: column; gap: 5px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05)"><span style="font-size: 14px; line-height: 1.45; opacity: {{ r.op }}; text-decoration: {{ r.deco }}">{{ r.t }}</span><span style="display: flex; gap: 10px; align-items: flex-start; font-size: 11.5px; line-height: 1.4; color: #6E675C"><span style="flex-grow: 1">{{ r.src }}</span><button type="button" onClick="{{ r.tog }}" style="flex-shrink: 0; padding: 0; border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 12.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px">{{ r.link }}</button></span></div></sc-for>
+</div></sc-for>
+<span style="font-size: 12px; line-height: 1.45; color: #8D8475"><b style="color: #D8CFC2">Twin’s own rules</b> — never invent a detail, a number or a quote you did not give — always apply and are not listed here.</span>
+</section>
+
+<section class="rv-rise" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; align-items: center; gap: 9px"><b style="font-size: 12px; color: #8FEDE3">2</b><h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.015em">What you talk about</h2></span><span style="font-size: 12.5px; line-height: 1.45; color: #8D8475">From your own videos. <span style="color: #B7AE9F">Steers ideas toward your topics, away from repeats.</span></span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 7px"><sc-for list="{{ topics }}" as="t" hint-placeholder-count="8"><span style="display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 99px; border: 1px solid {{ t.bd }}; background: {{ t.bg }}; font-size: 13.5px; font-weight: 600">{{ t.t }}<span style="font-size: 11px; font-weight: 500; color: #8D8475">{{ t.n }}</span><sc-if value="{{ t.made }}" hint-placeholder-val="{{ false }}"><span style="font-size: 10.5px; font-weight: 600; color: #6E675C">· made</span></sc-if></span></sc-for></div>
+</section>
+
+<section class="rv-zoom" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; align-items: center; gap: 9px"><b style="font-size: 12px; color: #8FEDE3">3</b><h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.015em">Asked under your posts</h2></span><span style="font-size: 12.5px; line-height: 1.45; color: #8D8475">Not answered yet. <span style="color: #B7AE9F">Your next scripts answer them where they fit.</span></span></div>
+<div style="border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); overflow: hidden"><sc-for list="{{ qs }}" as="q" hint-placeholder-count="4"><div style="padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.05)"><sc-if value="{{ q.live }}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 14px; line-height: 1.45">“{{ q.q }}”</span><span style="display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: #6E675C"><span style="flex-grow: 1">{{ q.meta }}</span><button type="button" onClick="{{ q.hide }}" style="border: 0; background: transparent; color: #8D8475; font-family: inherit; font-size: 12px">Skip</button><a href="MCreate.dc.html" style="color: #F6F1E9; font-size: 12.5px; font-weight: 600">Answer it →</a></span></div></sc-if><sc-if value="{{ q.gone }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #6E675C">Skipped. <button type="button" onClick="{{ q.undo }}" style="border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 12.5px; text-decoration: underline">Undo</button></span></sc-if></div></sc-for>
+<span style="display: block; padding: 10px 14px; font-size: 11.5px; color: #8D8475; background: rgba(255,255,255,0.02)">Private questions are never listed.</span></div>
+</section>
+
+<section class="rv-up" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; align-items: center; gap: 9px"><b style="font-size: 12px; color: #8FEDE3">4</b><h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.015em">Did your view change?</h2></span><span style="font-size: 12.5px; line-height: 1.45; color: #8D8475">Older videos vs newer ones. <span style="color: #B7AE9F">Only a yes is used, as a story.</span></span></div>
+<sc-for list="{{ views }}" as="v" hint-placeholder-count="2"><div style="padding: 14px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 10px"><span style="font-size: 13px; line-height: 1.45; color: #8D8475"><b style="font-weight: 600; color: #6E675C">{{ v.d1 }} ·</b> “{{ v.a }}”</span><span style="font-size: 14px; line-height: 1.45"><b style="font-weight: 600; color: #FFB347">→ {{ v.d2 }} ·</b> “{{ v.b }}”</span>
+<sc-if value="{{ v.ask }}" hint-placeholder-val="{{ true }}"><span style="display: flex; gap: 8px"><button type="button" onClick="{{ v.y }}" style="flex: 2; padding: 9px; border-radius: 9px; border: 0; background: #F6F1E9; color: #0B0B0E; font-family: inherit; font-size: 13px; font-weight: 700">Yes, I changed my mind</button><button type="button" onClick="{{ v.n }}" style="flex: 1; padding: 9px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.12); background: transparent; color: #D8CFC2; font-family: inherit; font-size: 13px">No</button></span></sc-if>
+<sc-if value="{{ v.yes }}" hint-placeholder-val="{{ false }}"><span class="pop" style="font-size: 12.5px; line-height: 1.45; color: #8FEDE3">✓ Twin may tell it as a story. <button type="button" onClick="{{ v.u }}" style="border: 0; background: transparent; color: #8D8475; font-family: inherit; font-size: 12px">Undo</button></span></sc-if>
+<sc-if value="{{ v.no }}" hint-placeholder-val="{{ false }}"><span class="pop" style="font-size: 12.5px; color: #8D8475">Not used. <button type="button" onClick="{{ v.u }}" style="border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 12px">Undo</button></span></sc-if></div></sc-for>
+</section>
+
+<section class="rv-tilt" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; align-items: center; gap: 9px"><b style="font-size: 12px; color: #8FEDE3">5</b><h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.015em">Is this you?</h2></span><span style="font-size: 12.5px; line-height: 1.45; color: #8D8475">Found online. <span style="color: #B7AE9F">A yes is kept as about you, never as your words.</span></span></div>
+<div style="display: flex; gap: 10px; overflow-x: auto; margin: 0 -20px; padding: 0 0 4px; scroll-snap-type: x mandatory; scroll-padding-left: 20px; scrollbar-width: none"><span aria-hidden="true" style="flex-shrink: 0; width: 10px"></span><sc-for list="{{ mentions }}" as="m" hint-placeholder-count="3"><div style="flex-shrink: 0; width: 270px; scroll-snap-align: start; padding: 14px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 6px"><span style="font-size: 11px; color: #6E675C"><b style="color: #8D8475; letter-spacing: .06em">{{ m.kind }}</b> · {{ m.src }}</span><span style="flex-grow: 1; font-size: 14.5px; line-height: 1.4; font-weight: 600">{{ m.t }}</span>
+<sc-if value="{{ m.ask }}" hint-placeholder-val="{{ true }}"><span style="display: flex; gap: 6px; margin-top: 4px"><button type="button" onClick="{{ m.y }}" style="flex: 1; padding: 8px; border-radius: 9px; border: 0; background: #F6F1E9; color: #0B0B0E; font-family: inherit; font-size: 12.5px; font-weight: 700">Yes, that’s me</button><button type="button" onClick="{{ m.n }}" style="flex: 1; padding: 8px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.12); background: transparent; color: #D8CFC2; font-family: inherit; font-size: 12.5px">Not me</button></span></sc-if>
+<sc-if value="{{ m.yes }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8FEDE3">✓ Kept as about you <button type="button" onClick="{{ m.u }}" style="border: 0; background: transparent; color: #8D8475; font-family: inherit; font-size: 12px">Undo</button></span></sc-if>
+<sc-if value="{{ m.no }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8D8475">Ignored <button type="button" onClick="{{ m.u }}" style="border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 12px">Undo</button></span></sc-if></div></sc-for><span aria-hidden="true" style="flex-shrink: 0; width: 10px"></span></div>
+</section>
+
+<section class="rv-flip" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; align-items: center; gap: 9px"><b style="font-size: 12px; color: #8FEDE3">6</b><h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.015em">Your patterns</h2></span><span style="font-size: 12.5px; line-height: 1.45; color: #8D8475">What works in your own posts. <span style="color: #B7AE9F">Twin builds on these first.</span></span></div>
+<div style="display: flex; gap: 10px; overflow-x: auto; margin: 0 -20px; padding: 0 0 4px; scroll-snap-type: x mandatory; scroll-padding-left: 20px; scrollbar-width: none"><span aria-hidden="true" style="flex-shrink: 0; width: 10px"></span><sc-for list="{{ pats }}" as="p" hint-placeholder-count="6"><div style="flex-shrink: 0; width: 260px; scroll-snap-align: start; padding: 14px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 7px; opacity: {{ p.op }}"><span style="display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: {{ p.c }}">{{ p.k }}<sc-if value="{{ p.weak }}" hint-placeholder-val="{{ false }}"><span style="color: #FFB347">Seen once</span></sc-if></span><span style="font-size: 14.5px; line-height: 1.4; font-weight: 600">{{ p.t }}</span><span style="font-size: 11.5px; color: #8D8475">{{ p.n }} · {{ p.v }}</span><span style="margin-top: auto; padding: 9px 10px; border-radius: 9px; background: #0B0B0E; font-size: 12.5px; line-height: 1.45; color: #D8CFC2"><span style="color: #6E675C">You wrote: </span>“{{ p.q }}”</span></div></sc-for><span aria-hidden="true" style="flex-shrink: 0; width: 10px"></span></div>
+</section>
+
+<div style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px">
+<div style="display: flex; align-items: center; gap: 10px"><span style="font-size: 11px; font-weight: 800; letter-spacing: 0.14em; color: #FFCB85">PART 2 · AROUND YOU</span><span style="flex-grow: 1; height: 1px; background: linear-gradient(90deg, rgba(255,179,71,0.45), rgba(255,179,71,0))"></span></div>
+<h2 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.025em">Around you</h2>
+<p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #B7AE9F">What other creators in <span style="color: #F6F1E9">micro coffee roasting</span> and the world are doing. Ideas for your scripts — never facts about you or your business.</p>
+</div>
+
+<section class="rv-rise" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; align-items: center; gap: 9px"><b style="font-size: 12px; color: #FFCB85">7</b><h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.015em">Happening now</h2></span><span style="font-size: 12.5px; line-height: 1.45; color: #8D8475">Refreshed every morning. <span style="color: #B7AE9F">Tap one to start a script.</span></span></div>
+<div style="display: flex; gap: 10px; overflow-x: auto; margin: 0 -20px; padding: 0 0 4px; scroll-snap-type: x mandatory; scroll-padding-left: 20px; scrollbar-width: none"><span aria-hidden="true" style="flex-shrink: 0; width: 10px"></span><sc-for list="{{ now }}" as="x" hint-placeholder-count="6"><a href="MCreate.dc.html" style="flex-shrink: 0; width: 230px; scroll-snap-align: start; padding: 14px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 6px; color: #F6F1E9; text-decoration: none"><span style="display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #8D8475"><span style="width: 6px; height: 6px; border-radius: 9px; background: {{ x.c }}"></span>{{ x.when }}</span><span style="font-size: 15px; font-weight: 700; line-height: 1.3">{{ x.t }}</span><span style="font-size: 13px; line-height: 1.45; color: #B7AE9F">{{ x.angle }}</span><span style="margin-top: auto; font-size: 12.5px; font-weight: 600; color: #FFCB85">Write this →</span></a></sc-for><span aria-hidden="true" style="flex-shrink: 0; width: 10px"></span></div>
+</section>
+
+<section class="rv-up" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="display: flex; align-items: center; gap: 9px"><b style="font-size: 12px; color: #FFCB85">8</b><h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.015em">What works for others</h2></span><span style="font-size: 12.5px; line-height: 1.45; color: #8D8475">Same six kinds of pattern, from other creators. <span style="color: #B7AE9F">Twin borrows the shape only, never their words or results.</span></span></div>
+<div style="display: flex; gap: 10px; overflow-x: auto; margin: 0 -20px; padding: 0 0 4px; scroll-snap-type: x mandatory; scroll-padding-left: 20px; scrollbar-width: none"><span aria-hidden="true" style="flex-shrink: 0; width: 10px"></span><sc-for list="{{ others }}" as="p" hint-placeholder-count="6"><div style="flex-shrink: 0; width: 250px; scroll-snap-align: start; padding: 14px; border-radius: 14px; background: #111115; border: 1px dashed rgba(255,179,71,0.22); display: flex; flex-direction: column; gap: 7px"><span style="font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: {{ p.c }}">{{ p.k }}</span><span style="font-size: 14.5px; line-height: 1.4; font-weight: 600">{{ p.t }}</span><span style="font-size: 11.5px; color: #8D8475">{{ p.n }} · {{ p.v }}</span><sc-if value="{{ p.hasNote }}" hint-placeholder-val="{{ false }}"><span style="margin-top: auto; font-size: 12px; line-height: 1.45; color: #B7AE9F">{{ p.note }}</span></sc-if></div></sc-for><span aria-hidden="true" style="flex-shrink: 0; width: 10px"></span></div>
+</section>
+
+<section class="rv-rise" style="padding: 16px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 10px; font-size: 12.5px; line-height: 1.5; color: #8D8475">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: 0.12em">WHERE IT ALL COMES FROM</span>
+<span><b style="color: #D8CFC2">Your first scan</b>, <b style="color: #D8CFC2">your video audio</b>, <b style="color: #D8CFC2">daily niche reading</b>, and <b style="color: #D8CFC2">what you do</b>: ratings, opening picks, test viewers, yes and no taps, facts you switch off.</span>
+<span style="padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); color: #B7AE9F">Private matters (health, police, debts…) and facts you switched off stay off this page and out of your scripts.</span>
+</section>
+<div style="display: flex; gap: 8px"><a href="MSettings.dc.html" style="flex: 1; padding: 12px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); color: #F6F1E9; font-size: 13px; font-weight: 600; text-decoration: none; text-align: center">Edit your voice</a><a href="MProducts.dc.html" style="flex: 1; padding: 12px; border-radius: 14px; background: #111115; border: 1px solid rgba(255,255,255,0.07); color: #F6F1E9; font-size: 13px; font-weight: 600; text-decoration: none; text-align: center">Brands & products</a></div>
+
+</div></sc-if>
+</div>
+<nav aria-label="Main" style="position: sticky; bottom: 0; z-index: 5; margin-top: auto; display: flex; align-items: flex-start; padding: 10px 8px 26px; background: rgba(11,11,14,0.94); border-top: 1px solid rgba(255,255,255,0.07); backdrop-filter: blur(14px)"><a href="MHome.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #8D8475; text-decoration: none; font-size: 10.5px; font-weight: 600"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"></path></svg>Home<span style="width: 4px; height: 4px"></span></a><a href="MScript.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #8D8475; text-decoration: none; font-size: 10.5px; font-weight: 600"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M9 13h6M9 17h6"></path></svg>Scripts<span style="width: 4px; height: 4px"></span></a><a href="MCreate.dc.html" aria-label="Create a script" style="flex: 1; display: flex; justify-content: center; text-decoration: none"><span class="gbtn cta" style="margin-top: -22px; width: 56px; height: 56px; border-radius: 18px; display: flex; align-items: center; justify-content: center; color: #0B0B0E; box-shadow: 0 12px 30px -10px rgba(255,91,123,0.9), 0 0 0 6px #0B0B0E"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></span></a><a href="MGallery.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #8D8475; text-decoration: none; font-size: 10.5px; font-weight: 600"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"></path></svg>Gallery<span style="width: 4px; height: 4px"></span></a><a href="MTwin.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #F6F1E9; text-decoration: none; font-size: 10.5px; font-weight: 600"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0"></path></svg>My Twin<span style="width: 4px; height: 4px; border-radius: 9px; background: #FF5B7B"></span></a></nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {}; const pv = s.pv || 'ok'; const off = s.off || {}; const qx = s.qx || {}; const vw = s.vw || {}; const me = s.me || {};
+    const set = (k, obj, v) => this.setState({ [k]: Object.assign({}, obj, v) });
+    const R = [
+      ['How you open', '#FFB347', [
+        ['An opening that stopped 8 of 10 of your test viewers: “Nobody tells you the popper is the hard part.” Copy its shape, never its topic.', 'From your test viewers · used in 4 scripts'],
+        ['Open with a real question someone asked you. You picked this over Twin’s opening 5 times.', 'From the openings you picked · heard 5× · used in 6 scripts']]],
+      ['How you sound', '#FF5B7B', [
+        ['Keep writing in your plain, direct voice.', 'From your rating note · heard 3× · used in 5 scripts'],
+        ['Short sentences. One idea per line.', 'From your ratings, tagged “too wordy” 2× · used in 3 scripts']]],
+      ['How you end', '#65E5D8', [
+        ['Keep the link-in-bio ending.', 'From your rating note · heard 2× · used in 4 scripts'],
+        ['End on a question to the viewer, not a sales line.', 'From your test viewers · used in 2 scripts']]],
+      ['What to leave out', '#B7AE9F', [
+        ['Never mention two-pound batches.', 'From your rating note · heard 1× · used in 3 scripts'],
+        ['Don’t say “artisanal”.', 'From your ratings, tagged “not me” · used in 5 scripts']]]
+    ];
+    const rules = R.map((g, gi) => ({ h: g[0], c: g[1], items: g[2].map((r, ri) => { const k = gi + '.' + ri; const o = !!off[k]; return { t: r[0], src: r[1], on: !o, isOff: o, link: o ? 'Turn on' : 'Turn off', op: o ? 0.42 : 1, deco: o ? 'line-through' : 'none', tog: () => set('off', off, { [k]: !o }) }; }) }));
+    const onCount = R.reduce((a, g, gi) => a + g[2].filter((r, ri) => !off[gi + '.' + ri]).length, 0);
+    const T = [['Home roasting', 14, true], ['Starting a coffee cart', 9, true], ['Bean sourcing', 6, false], ['Farmers market days', 5, true], ['Roast level myths', 4, false], ['Pricing your coffee', 3, false], ['Gear on a budget', 3, false], ['Cold brew for the cart', 2, false]];
+    const topics = T.map(x => ({ t: x[0], n: x[1] + (x[1] === 1 ? ' video' : ' videos'), made: x[2], fs: x[1] >= 9 ? 17 : (x[1] >= 5 ? 15.5 : 14), pad: x[1] >= 9 ? '12px 18px' : '9px 14px', bd: x[2] ? 'rgba(255,255,255,0.08)' : 'rgba(101,229,216,0.35)', bg: x[2] ? 'rgba(255,255,255,0.03)' : 'rgba(101,229,216,0.07)' }));
+    const Q = [['How long did it take before the cart paid for itself?', 'Day 1 at the market', '14 likes · 2 weeks ago'], ['What popper do you use? Mine scorches the beans', 'The $40 popcorn popper', '31 likes · 5 days ago'], ['Do you need a permit to sell beans at a farmers market?', 'Saturday market setup', '9 likes · 3 weeks ago'], ['Is light roast really more caffeine?', 'Roast myths, part 2', '22 likes · 1 week ago']];
+    const qs = Q.map((x, i) => ({ q: x[0], on: x[1], meta: x[2], live: !qx[i], gone: !!qx[i], hide: () => set('qx', qx, { [i]: 1 }), undo: () => set('qx', qx, { [i]: 0 }) }));
+    const V = [['Sept 2025', 'You need a proper roaster before you sell anything.', 'Mar 2026', 'Sell to ten neighbours before you buy anything big.'], ['Oct 2025', 'Dark roast for the cart. People want strong.', 'Apr 2026', 'Medium sells better at the cart, and people come back for it.']];
+    const views = V.map((x, i) => ({ d1: x[0], a: x[1], d2: x[2], b: x[3], ask: !vw[i], yes: vw[i] === 'y', no: vw[i] === 'n', y: () => set('vw', vw, { [i]: 'y' }), n: () => set('vw', vw, { [i]: 'n' }), u: () => set('vw', vw, { [i]: 0 }), story: 'I used to think ' + x[1].charAt(0).toLowerCase() + x[1].slice(1).replace(/\.$/, '') + '. Now: ' + x[3] }));
+    const M = [['Article', 'The local paper', 'Local roaster turns her garage into a coffee cart business', 'Mar 2026'], ['Podcast', 'Small Batch Stories · Ep. 41', 'A home roaster on starting with a popcorn popper', 'Jan 2026'], ['Feature', 'A local food newsletter', 'Five carts worth the Saturday drive', 'Nov 2025']];
+    const mentions = M.map((x, i) => ({ kind: x[0], src: x[1], t: x[2], d: x[3], ask: !me[i], yes: me[i] === 'y', no: me[i] === 'n', y: () => set('me', me, { [i]: 'y' }), n: () => set('me', me, { [i]: 'n' }), u: () => set('me', me, { [i]: 0 }) }));
+    const P = [['Topics', 'Behind-the-scenes roast days', 7, '18.2k', 'Roast day. The garage smells like burnt toast and I love it.'], ['Openings that work', 'A question someone asked you, answered straight', 6, '14.9k', 'Someone asked if I need a real roaster to start. No.'], ['How the argument runs', 'The myth → what actually happened → the small step', 5, '11.3k', 'Everyone said buy the trailer first. I bought a $40 popper.'], ['Proof viewers believe', 'Real numbers from your own sales', 4, '16.8k', 'Sold 38 bags at the first market. I brought 40.'], ['Objections to answer', '“I don’t have the money to start”', 3, '9.7k', 'You don’t need $20k. You need ten neighbours.'], ['How to close', 'Invite them to the cart this weekend', 1, '6.1k', 'Come find the cart Saturday, I’ll save you a cup.']];
+    const COL = ['#FFB347', '#FF5B7B', '#65E5D8', '#FFB347', '#FF5B7B', '#65E5D8'];
+    const pats = P.map((x, i) => ({ k: x[0], t: x[1], n: x[2] === 1 ? 'from 1 post' : 'from ' + x[2] + ' of your posts', v: 'avg ' + x[3] + ' views', q: x[4], c: COL[i], weak: x[2] < 2, op: x[2] < 2 ? 0.6 : 1 }));
+    const N = [['International Coffee Day', 'Today · Oct 1', 'What a $40 popper taught you about coffee'], ['Pumpkin-spice season', 'Now to late Nov', 'Why you don’t sell a pumpkin-spice roast'], ['Holiday gift bags', 'From mid-Nov', 'Pricing small-batch gift bags without guessing'], ['New-crop beans arriving', 'This month', 'Tasting new crop vs last year’s at home'], ['“Coffee cart permit” searches up', 'This week', 'The one permit you actually needed first'], ['Cold-morning markets', 'Weekends', 'Keeping the cart warm and the line moving']];
+    const now = N.map((x, i) => ({ t: x[0], when: x[1], angle: x[2], c: COL[i] }));
+    const O = [['Topics getting attention', 'Roasting fails and burnt batches', 14, '42k', ''], ['Openings that work', '“I [did the unusual thing] so you don’t have to.”', 22, '61k', 'Fill it with yours: “I roasted 40 batches on a popper so you don’t have to.”'], ['How the argument runs', 'Cost breakdown → the surprise line item → what they’d do instead', 11, '38k', ''], ['Proof viewers believe', 'The scale or the receipt, shown on screen', 17, '47k', ''], ['Objections to answer', '“Home-roasted can’t be as good as a café”', 9, '29k', ''], ['How to close', 'Tell them where to find you this week: market, shop or link', 12, '33k', 'Closes that only ask for a follow are filtered out.']];
+    const others = O.map((x, i) => ({ k: x[0], t: x[1], n: 'seen in ' + x[2] + ' other creators’ videos', v: 'avg ' + x[3] + ' views', note: x[4], hasNote: !!x[4], c: COL[i] }));
+    return {
+      previews: [['ok', 'Normal'], ['load', 'Loading'], ['empty', 'Nothing yet']].map(x => ({ t: x[1], pick: () => this.setState({ pv: x[0] }), bg: x[0] === pv ? '#F6F1E9' : 'transparent', fg: x[0] === pv ? '#0B0B0E' : '#8D8475' })),
+      ok: pv === 'ok', load: pv === 'load', empty: pv === 'empty',
+      rules, onCount: onCount + ' of 8 on', topics, qs, views, mentions, pats, now, others,
+      index: [['1', 'What Twin learned'], ['2', 'What you talk about'], ['3', 'Asked, not answered'], ['4', 'Did your view change?'], ['5', 'Is this you?'], ['6', 'Your patterns'], ['7', 'Happening now'], ['8', 'What works for others']].map((x, i) => ({ n: x[0], t: x[1], c: i < 6 ? '#8FEDE3' : '#FFCB85' }))
+    };
+  }
+}
+</script>
+</body>
+</html>

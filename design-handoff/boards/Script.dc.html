@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Script</title>
+<script src="./support.js"></script>
+<script data-rv>(function(){var d=document.documentElement;d.classList.add('rv-js');function show(el){el.classList.add('in')}function vis(el){var r=el.getBoundingClientRect();return r.top<innerHeight&&r.bottom>0}var io=null;if('IntersectionObserver' in window){try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){show(e.target);io.unobserve(e.target)}})},{root:document,threshold:0.08})}catch(x){io=null}}function scan(){var n=document.querySelectorAll('body [class*="rv-"]:not([data-rvo])');for(var i=0;i<n.length;i++){n[i].setAttribute('data-rvo','');if(io)io.observe(n[i]);else show(n[i])}var m=document.querySelectorAll('[data-rvo]:not(.in)');for(var j=0;j<m.length;j++){if(vis(m[j]))show(m[j])}}new MutationObserver(scan).observe(d,{childList:true,subtree:true});document.addEventListener('DOMContentLoaded',scan);addEventListener('scroll',scan,{passive:true,capture:true});addEventListener('resize',scan);setInterval(scan,500);setTimeout(function(){if(window.self!==window.top&&innerHeight>1400){var m=document.querySelectorAll('[data-rvo]');for(var k=0;k<m.length;k++)show(m[k])}},2500)})();</script>
+<style data-bg>.brandbg{background-image:radial-gradient(ellipse 50% 20% at 4% 22%,rgba(255,179,71,.085),rgba(255,179,71,0) 100%),radial-gradient(ellipse 46% 19% at 96% 52%,rgba(255,91,123,.075),rgba(255,91,123,0) 100%),radial-gradient(ellipse 50% 20% at 14% 79%,rgba(101,229,216,.06),rgba(101,229,216,0) 100%)!important;background-repeat:repeat-y!important;background-size:100% 1500px!important}
+.brandbg.bgm{background-size:100% 1000px!important}</style>
+<style data-vt>@media (prefers-reduced-motion: no-preference){::view-transition-old(root){animation:vtApOut .45s ease both}::view-transition-new(root){animation:vtApIn .7s cubic-bezier(.22,1,.36,1) both}@keyframes vtApOut{to{opacity:0;transform:perspective(1400px) translateZ(-120px) rotateY(6deg)}}@keyframes vtApIn{from{opacity:0;transform:perspective(1400px) translateZ(160px) rotateY(-6deg);filter:blur(8px)}}}</style>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0;background:#0B0B0E}a{color:inherit}</style>
+<style>
+@keyframes pin{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(80px,40px) scale(1.15)}}
+@keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-70px,-50px) scale(1.1)}}
+@keyframes shine{0%{transform:translateX(-120%) skewX(-20deg)}60%,100%{transform:translateX(260%) skewX(-20deg)}}
+@keyframes recp{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}100%{box-shadow:0 0 0 8px rgba(255,255,255,0)}}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,91,123,.45)}100%{box-shadow:0 0 0 14px rgba(255,91,123,0)}}
+@keyframes spinb{to{transform:rotate(360deg)}}
+@keyframes hue{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+@keyframes wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(16deg)}20%,40%{transform:rotate(-8deg)}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes seg{from{opacity:.15}to{opacity:1}}
+.pin{opacity:0;animation:pin .7s cubic-bezier(.22,1,.36,1) forwards}
+.d1{animation-delay:.05s}.d2{animation-delay:.15s}.d3{animation-delay:.25s}.d4{animation-delay:.35s}.d5{animation-delay:.45s}.d6{animation-delay:.55s}.d7{animation-delay:.65s}.d8{animation-delay:.75s}
+.lv{position:relative}.lv>*{position:relative;z-index:1}.lv>.aur{position:absolute;z-index:0}
+.lift{transition:transform .25s cubic-bezier(.22,1,.36,1),box-shadow .25s ease,border-color .25s ease}
+.lift:hover{transform:translateY(-4px);box-shadow:0 18px 40px -18px rgba(0,0,0,.9);border-color:rgba(255,255,255,.18)!important}
+.row{transition:background .2s ease,padding .2s ease}.row:hover{background:rgba(255,255,255,.04);padding-left:24px!important}
+.cta{position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease}
+.cta::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:shine 3.2s ease-in-out infinite}
+.cta:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 16px 40px -12px rgba(255,91,123,.7)}
+.recdot{animation:recp 1.4s ease-out infinite}
+.ringp{animation:ring 1.8s ease-out infinite}
+.grad{background:linear-gradient(110deg,#FFB347,#FF5B7B,#65E5D8,#FFB347);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:hue 6s ease infinite}
+.gbtn{background:linear-gradient(110deg,#FFB347,#FF5B7B 55%,#65E5D8);background-size:200% 100%;animation:hue 5s ease infinite}
+.bob{animation:bob 3s ease-in-out infinite}
+.wave{display:inline-block;transform-origin:70% 80%;animation:wave 2.4s ease-in-out 1s infinite}
+.dots span{display:inline-block;width:5px;height:5px;border-radius:9px;background:#FF8FA4;animation:dot 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+.grow{transform-origin:left;animation:grow 1.2s cubic-bezier(.22,1,.36,1) .4s both}
+.seg{opacity:.15;animation:seg .3s ease forwards}
+@keyframes blink{50%{opacity:0}}
+@keyframes popin{0%{opacity:0;transform:translateY(10px) scale(.94)}100%{opacity:1;transform:none}}
+@keyframes scan{0%{top:-30%}100%{top:110%}}
+@keyframes floaty{0%,100%{transform:translateY(0) rotate(var(--r,0deg))}50%{transform:translateY(-10px) rotate(var(--r,0deg))}}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:#FF5B7B;animation:blink 1s steps(1) infinite}
+.pop{animation:popin .5s cubic-bezier(.22,1,.36,1) both}
+.floaty{animation:floaty 5s ease-in-out infinite}
+.chip{transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease;cursor:pointer}
+.chip:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.28)!important}
+.inp{transition:border-color .2s ease,box-shadow .2s ease}.inp:focus{border-color:rgba(255,91,123,.6)!important;box-shadow:0 0 0 4px rgba(255,91,123,.14)}
+@keyframes wv{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+.wv{display:inline-flex;align-items:center;gap:3px;height:20px}.wv span{display:block;width:3px;height:20px;border-radius:2px;background:#FF5B7B;transform-origin:center;animation:wv .9s ease-in-out infinite}
+.wv span:nth-child(2){animation-delay:.12s}.wv span:nth-child(3){animation-delay:.24s}.wv span:nth-child(4){animation-delay:.36s}.wv span:nth-child(5){animation-delay:.48s}.wv span:nth-child(6){animation-delay:.2s}.wv span:nth-child(7){animation-delay:.05s}
+.sel{transition:transform .18s ease,border-color .2s ease,background .2s ease,box-shadow .2s ease;cursor:pointer}.sel:hover{transform:translateY(-3px)}
+.card{border-radius:18px;background:#111115;border:1px solid rgba(255,255,255,0.07)}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.12em;color:#8D8475}
+.btnL{white-space:nowrap;flex-shrink:0;padding:12px 18px;border-radius:12px;border:0;background:#F6F1E9;color:#0B0B0E;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btnG{white-space:nowrap;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#D8CFC2;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.opt{padding:13px 15px;border-radius:12px;border-width:1px;border-style:solid;font-family:inherit;font-size:14.5px;font-weight:500;text-align:left;cursor:pointer;transition:all .15s ease}
+.opt:hover{transform:translateY(-1px)}
+.fld{min-width:0;box-sizing:border-box;padding:12px 14px;border-radius:11px;border:1px solid rgba(255,255,255,0.1);background:#0B0B0E;color:#F6F1E9;font-family:inherit;font-size:15px;outline:none}
+.fld:focus{border-color:rgba(255,91,123,.6);box-shadow:0 0 0 4px rgba(255,91,123,.12)}
+.guess{padding:2px 8px;border-radius:99px;background:rgba(255,179,71,.14);color:#FFB347;font-size:10.5px;font-weight:700;letter-spacing:.05em}
+.cam{position:absolute;inset:0;background-color:#141015;background-position:center 30%;background-size:cover;background-repeat:no-repeat;background-image:url(../assets/images/maya-talking-kitchen.jpg);animation:kb 22s ease-in-out infinite alternate;will-change:transform}
+@keyframes kb{0%{transform:scale(1.02) translate(0,0)}50%{transform:scale(1.07) translate(-1%,1%)}100%{transform:scale(1.04) translate(1%,-.5%)}}
+.cam .who{display:none}
+.cam::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.08) 45%,rgba(0,0,0,.4))}
+.who{position:absolute;left:50%;bottom:0;width:62%;transform:translateX(-50%)}
+.who i{display:block;margin:0 auto;width:44%;aspect-ratio:1/1.18;border-radius:999px;border:1.5px dashed rgba(246,241,233,.28);box-sizing:border-box}
+.who b{display:block;margin-top:10px;height:260px;border-radius:140px 140px 0 0;border:1.5px dashed rgba(246,241,233,.2);border-bottom:0;box-sizing:border-box}
+.fade{-webkit-mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent)}
+.ctl{white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:5px;padding:0;border:0;background:transparent;color:#F6F1E9;font-family:inherit;font-size:11.5px;font-weight:600}
+.ctl span.ic{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center}
+.big{font-variant-numeric:tabular-nums}
+@keyframes cdz{0%{transform:scale(1.4);opacity:0}25%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.85}}
+.cdz{animation:cdz 1s ease-out infinite}
+@keyframes lvl{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+.lvl span{display:inline-block;width:4px;height:16px;border-radius:3px;background:#65E5D8;transform-origin:bottom;animation:lvl .9s ease-in-out infinite}
+.lvl span:nth-child(2){animation-delay:.12s}.lvl span:nth-child(3){animation-delay:.24s}.lvl span:nth-child(4){animation-delay:.36s}.lvl span:nth-child(5){animation-delay:.48s}
+@keyframes bar{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.indet{position:relative;overflow:hidden}.indet::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:bar 1.4s linear infinite}
+.scene{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 30%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55))}
+@view-transition{navigation:auto}
+@keyframes vtOut{to{opacity:0;transform:perspective(1600px) translateZ(-60px) rotateX(2deg)}}
+@keyframes vtIn{from{opacity:0;transform:perspective(1600px) translateY(18px) translateZ(40px) rotateX(-2deg)}}
+@keyframes pageIn{from{opacity:0}to{opacity:1}}
+.lv{animation:pageIn .45s ease-out both}
+a,button{transition:transform .15s ease,opacity .2s ease,background-color .2s ease,border-color .2s ease}
+button:active,a.cta:active,a.btnL:active,a.btnG:active{transform:scale(.97)}
+.ph{background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat}
+.phfill{position:absolute;inset:0;background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat;animation:kb 26s ease-in-out infinite alternate}
+.ph-coach{background-image:url(../assets/images/creator-coach-home.jpg)}
+.ph-local{background-image:url(../assets/images/maya-talking-kitchen.jpg)}
+.ph-realestate{background-image:url(../assets/images/creator-realestate-outdoors.jpg)}
+.ph-agency{background-image:url(../assets/images/creator-agency-desk.jpg)}
+.ph-g1{background-image:url(../assets/images/gallery-01-market-roaster.jpg)}
+.ph-g2{background-image:url(../assets/images/gallery-02-cafe-tasting.jpg)}
+.ph-g3{background-image:url(../assets/images/gallery-03-roasting-on-stove.jpg)}
+.ph-g4{background-image:url(../assets/images/gallery-04-beans-on-tray.jpg)}
+.ph-g5{background-image:url(../assets/images/gallery-05-cart-owner-on-phone.jpg)}
+.ph-g6{background-image:url(../assets/images/gallery-06-late-night-latte.jpg)}
+.ph-s_window{background-image:url(../assets/images/maya-holding-mug.jpg)}
+.ph-s_tray{background-image:url(../assets/images/maya-holding-beans.jpg)}
+.camv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;display:block}
+.rv-up,.rv-left,.rv-right,.rv-zoom,.rv-tilt,.rv-flip,.rv-rise{transition:opacity .9s cubic-bezier(.22,1,.36,1),transform 1.1s cubic-bezier(.22,1,.36,1),filter .9s ease}
+.rv-js .rv-up:not(.in){opacity:0;transform:translateY(70px)}
+.rv-js .rv-left:not(.in){opacity:0;transform:translateX(-90px)}
+.rv-js .rv-right:not(.in){opacity:0;transform:translateX(90px)}
+.rv-js .rv-zoom:not(.in){opacity:0;transform:scale(.88);filter:blur(10px)}
+.rv-js .rv-tilt:not(.in){opacity:0;transform:perspective(1200px) rotateX(16deg) translateY(60px)}
+.rv-js .rv-flip:not(.in){opacity:0;transform:perspective(1200px) rotateY(-14deg) translateX(-40px)}
+.rv-js .rv-rise:not(.in){opacity:0;transform:translateY(40px) scale(.97)}
+.rv-d1{transition-delay:.12s}.rv-d2{transition-delay:.24s}.rv-d3{transition-delay:.36s}.rv-d4{transition-delay:.48s}
+@media (prefers-reduced-motion: reduce){.rv-js [class*="rv-"]{opacity:1!important;transform:none!important;filter:none!important}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;opacity:1!important;transition:none!important}}
+</style>
+</helmet>
+<div class="brandbg " style="width: 1440px; height: 1300px; display: flex; background: #0B0B0E; font-family: Geist, system-ui, sans-serif; color: #F6F1E9">
+<dc-import name="Sidebar" active="scripts" h="1300" hint-size="248px,1300px"></dc-import>
+<main class="lv" style="flex-grow: 1; padding: 48px 56px; display: flex; justify-content: center; overflow: hidden; overflow: clip">
+<div class="aur" aria-hidden="true" style="left: -120px; top: -160px; width: 560px; height: 560px; border-radius: 999px; background: radial-gradient(circle, rgba(255,91,123,0.15), rgba(255,91,123,0) 65%); animation: drift1 16s ease-in-out infinite; pointer-events: none"></div>
+<div class="aur" aria-hidden="true" style="right: -140px; top: 300px; width: 620px; height: 620px; border-radius: 999px; background: radial-gradient(circle, rgba(101,229,216,0.09), rgba(101,229,216,0) 65%); animation: drift2 20s ease-in-out infinite; pointer-events: none"></div>
+<div style="width: 1080px; display: flex; flex-direction: column; gap: 22px">
+
+<header class="pin d1" style="display: flex; flex-direction: column; gap: 10px">
+<a href="Gallery.dc.html" style="font-size: 13px; color: #8D8475; text-decoration: none">← Scripts</a>
+<h1 style="margin: 0; font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: -0.03em">The truth about launching a coffee cart</h1>
+<span style="display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: #8D8475"><span>45-second video</span><span style="color: #3A3A44">·</span><span>From a video you liked</span><span style="color: #3A3A44">·</span><span>For Maya’s Coffee</span></span>
+</header>
+
+<sc-if value="{{ needSend }}" hint-placeholder-val="{{ false }}"><div class="pop" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 16px; background: rgba(255,179,71,0.07); border: 1px solid rgba(255,179,71,0.3)"><span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 14.5px">Your client signs off before you film</b><span style="font-size: 13px; color: #B7AE9F">Send it to Maya’s Coffee. You can keep reading while you wait.</span></span><button type="button" onClick="{{ send }}" class="btnL" style="padding: 10px 16px">Send for approval</button></div></sc-if>
+<sc-if value="{{ waiting }}" hint-placeholder-val="{{ false }}"><div class="pop" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 16px; background: rgba(255,179,71,0.07); border: 1px solid rgba(255,179,71,0.3)"><span class="dots" style="display: inline-flex; gap: 4px"><span></span><span></span><span></span></span><span style="flex-grow: 1; font-size: 14px">Waiting for Maya’s Coffee to approve. We’ll email you the moment they do.</span><button type="button" onClick="{{ approve }}" style="padding: 7px 10px; border-radius: 9px; border: 1px dashed rgba(255,255,255,0.2); background: transparent; color: #8D8475; font-family: inherit; font-size: 12px; cursor: pointer">Simulate: client approves</button></div></sc-if>
+<sc-if value="{{ okBanner }}" hint-placeholder-val="{{ false }}"><span class="pop" style="align-self: flex-start; padding: 7px 12px; border-radius: 99px; background: rgba(101,229,216,0.1); font-size: 13px; font-weight: 600; color: #8FEDE3">✓ Approved by Maya’s Coffee · ready to film</span></sc-if>
+
+<div style="display: flex; gap: 40px; align-items: flex-start">
+<div style="width: 720px; display: flex; flex-direction: column; gap: 12px">
+
+<section class="rv-up pin d2" style="border-radius: 20px; background: #111115; border: 1px solid rgba(255,255,255,0.07); overflow: hidden">
+<sc-if value="{{ c0 }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ open0 }}" style="width: 100%; display: flex; align-items: center; gap: 14px; padding: 18px 22px; border: 0; background: transparent; color: #F6F1E9; font-family: inherit; text-align: left; cursor: pointer"><span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 99px; background: {{ hb0 }}; color: {{ hf0 }}; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 800">{{ hm0 }}</span><span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15.5px; font-weight: 650">Choose how you open</span><span style="font-size: 13px; color: #8D8475; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ sum0 }}</span></span><span style="font-size: 13px; color: #8D8475">{{ hl0 }}</span></button></sc-if>
+<sc-if value="{{ s0 }}" hint-placeholder-val="{{ true }}"><div class="pop" style="padding: 24px 24px 22px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #FF8FA4">STEP 1 OF 4</span><h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Choose how you open</h2><p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #B7AE9F">The first line decides whether people keep watching. Twin wrote four and tested them on viewers like yours.</p></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><sc-for list="{{ hooks }}" as="h" hint-placeholder-count="4"><button type="button" onClick="{{ h.pick }}" class="lift" style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; border: 1px solid {{ h.bd }}; background: {{ h.bg }}; color: #F6F1E9; font-family: inherit; text-align: left; cursor: pointer; transition: all .2s ease"><span style="flex-shrink: 0; width: 18px; height: 18px; border-radius: 99px; border: 2px solid {{ h.dotBd }}; display: flex; align-items: center; justify-content: center"><span style="width: 8px; height: 8px; border-radius: 99px; background: {{ h.dot }}"></span></span><span style="flex-grow: 1; font-size: 15.5px; line-height: 1.4; font-weight: 550">{{ h.t }}</span><span style="flex-shrink: 0; width: 120px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px"><span style="font-size: 12px; color: #B7AE9F">{{ h.score }}<sc-if value="{{ h.best }}" hint-placeholder-val="{{ false }}"> · <b style="color: #FFB347">best</b></sc-if></span><span style="width: 100%; height: 4px; border-radius: 9px; background: rgba(255,255,255,0.07); overflow: hidden"><span style="display: block; height: 100%; width: {{ h.bar }}; background: linear-gradient(90deg,#FFB347,#FF5B7B)"></span></span></span></button></sc-for></div>
+<span style="font-size: 12px; color: #6E675C">“Stopped 8 of 10” means 8 of 10 test viewers, people who watch accounts like yours, kept watching past this line.</span>
+<button type="button" onClick="{{ useHook }}" class="btnL" style="align-self: flex-start; padding: 13px 20px">Use this opening →</button>
+</div></sc-if>
+</section>
+
+<section class="rv-left pin d3" style="border-radius: 20px; background: #111115; border: 1px solid rgba(255,255,255,0.07); overflow: hidden">
+<sc-if value="{{ c1 }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ open1 }}" style="width: 100%; display: flex; align-items: center; gap: 14px; padding: 18px 22px; border: 0; background: transparent; color: #F6F1E9; font-family: inherit; text-align: left; cursor: pointer"><span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 99px; background: {{ hb1 }}; color: {{ hf1 }}; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 800">{{ hm1 }}</span><span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15.5px; font-weight: 650">Read it out loud once</span><span style="font-size: 13px; color: #8D8475; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ sum1 }}</span></span><span style="font-size: 13px; color: #8D8475">{{ hl1 }}</span></button></sc-if>
+<sc-if value="{{ s1 }}" hint-placeholder-val="{{ false }}"><div class="pop" style="padding: 24px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #FF8FA4">STEP 2 OF 4</span><h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Read it out loud once</h2><p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #B7AE9F">If a line doesn’t sound like you, click it and change it now. It’s much easier than after filming.</p></div>
+<div style="padding: 6px 0; display: flex; flex-direction: column">
+<sc-for list="{{ lines }}" as="l" hint-placeholder-count="7"><div style="display: flex; gap: 14px; padding: 9px 0"><span style="flex-shrink: 0; width: 20px; margin-top: 4px; font-size: 12px; color: #6E675C; text-align: right">{{ l.n }}</span>
+<sc-if value="{{ l.talk }}" hint-placeholder-val="{{ true }}"><span style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px"><span contenteditable="true" spellcheck="false" style="font-size: 18px; line-height: 1.55; color: {{ l.c }}; outline: none; border-radius: 6px; transition: color .2s ease">{{ l.line }}</span><sc-if value="{{ src }}" hint-placeholder-val="{{ false }}"><span style="font-size: 11.5px; color: {{ l.srcC }}">{{ l.srcT }}</span></sc-if><sc-if value="{{ l.check }}" hint-placeholder-val="{{ false }}"><span style="align-self: flex-start; padding: 3px 9px; border-radius: 99px; background: rgba(255,179,71,0.12); font-size: 12px; color: #FFCB85">Only you know this. Is $40 right?</span></sc-if></span></sc-if>
+<sc-if value="{{ l.show }}" hint-placeholder-val="{{ false }}"><span style="flex-grow: 1; font-size: 15px; line-height: 1.55; font-style: italic; color: #8D8475">Just film: {{ l.line }}. No talking.</span></sc-if>
+</div></sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06)"><span style="font-size: 14px; color: #B7AE9F">Does it sound like you?</span><span style="display: flex; gap: 4px"><sc-for list="{{ stars }}" as="x" hint-placeholder-count="5"><button type="button" onClick="{{ x.pick }}" aria-label="Rate {{ x.n }} of 5" style="padding: 0; border: 0; background: transparent; color: {{ x.c }}; font-size: 22px; cursor: pointer; transition: transform .15s ease">★</button></sc-for></span><span style="flex-grow: 1"></span><button type="button" onClick="{{ togSrc }}" style="padding: 0; border: 0; background: transparent; color: #8D8475; font-family: inherit; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer">{{ srcLbl }}</button></div>
+<sc-if value="{{ rated }}" hint-placeholder-val="{{ false }}"><div class="pop" style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; color: #8FEDE3">{{ rateMsg }}</span><sc-if value="{{ lowRate }}" hint-placeholder-val="{{ false }}"><input class="fld" placeholder="What felt off? e.g. too formal, I’d never say “roadmap”" style="font-size: 14px"></sc-if></div></sc-if>
+<div style="display: flex; flex-direction: column; gap: 10px"><button type="button" onClick="{{ togWhy }}" style="align-self: flex-start; padding: 0; border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ whyLbl }} <span style="color: #6E675C">▾</span></button>
+<sc-if value="{{ why }}" hint-placeholder-val="{{ false }}"><div class="pop" style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 14px; background: #0B0B0E; font-size: 14px; line-height: 1.5; color: #D8CFC2"><span><b style="color: #FFB347">It opens on a question you really get.</b> Your best videos start this way.</span><span><b style="color: #FF8FA4">It uses your own numbers.</b> $40 and ten neighbours are proof nobody else has.</span><span><b style="color: #65E5D8">It ends on a real question.</b> Real answers in the comments become your next scripts.</span></div></sc-if></div>
+<button type="button" onClick="{{ readDone }}" class="btnL" style="align-self: flex-start; padding: 13px 20px">It sounds like me →</button>
+</div></sc-if>
+</section>
+
+<section class="rv-zoom pin d4" style="border-radius: 20px; background: #111115; border: 1px solid rgba(255,255,255,0.07); overflow: hidden">
+<sc-if value="{{ c2 }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ open2 }}" style="width: 100%; display: flex; align-items: center; gap: 14px; padding: 18px 22px; border: 0; background: transparent; color: #F6F1E9; font-family: inherit; text-align: left; cursor: pointer"><span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 99px; background: {{ hb2 }}; color: {{ hf2 }}; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 800">{{ hm2 }}</span><span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15.5px; font-weight: 650">Film it</span><span style="font-size: 13px; color: #8D8475; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ sum2 }}</span></span><span style="font-size: 13px; color: #8D8475">{{ hl2 }}</span></button></sc-if>
+<sc-if value="{{ s2 }}" hint-placeholder-val="{{ false }}"><div class="pop" style="padding: 24px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #FF8FA4">STEP 3 OF 4</span><h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Film it in two places</h2><p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #B7AE9F">About 15–20 minutes. Film everything in one place, then move. The teleprompter shows one scene at a time and tells you what to do.</p></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px"><sc-for list="{{ places }}" as="p" hint-placeholder-count="2"><div style="padding: 16px; border-radius: 16px; background: #0B0B0E; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 8px"><span style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: {{ p.c }}"><span style="width: 20px; height: 20px; border-radius: 99px; background: {{ p.c }}; color: #0B0B0E; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900">{{ p.n }}</span>PLACE {{ p.n }} · {{ p.mins }}</span><b style="font-size: 16px">{{ p.where }}</b><span style="font-size: 13.5px; line-height: 1.45; color: #B7AE9F">{{ p.tip }}</span><span style="font-size: 12.5px; color: #6E675C">{{ p.which }}</span></div></sc-for></div>
+<button type="button" onClick="{{ togAll }}" style="align-self: flex-start; padding: 0; border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ allLbl }} <span style="color: #6E675C">▾</span></button>
+<sc-if value="{{ all }}" hint-placeholder-val="{{ false }}"><div class="pop" style="border-radius: 14px; border: 1px solid rgba(255,255,255,0.06); overflow: hidden"><sc-for list="{{ scenes }}" as="x" hint-placeholder-count="7"><div style="border-bottom: 1px solid rgba(255,255,255,0.05)"><button type="button" onClick="{{ x.tog }}" style="width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; background: transparent; color: #F6F1E9; font-family: inherit; text-align: left; cursor: pointer"><span style="flex-shrink: 0; width: 22px; font-size: 12.5px; font-weight: 700; color: #6E675C">{{ x.n }}</span><span style="flex-shrink: 0; width: 8px; height: 8px; border-radius: 9px; background: {{ x.pc }}"></span><span style="flex-shrink: 0; width: 140px; font-size: 14px; font-weight: 600">{{ x.name }}</span><span style="flex-grow: 1; min-width: 0; font-size: 13.5px; color: #8D8475; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ x.line }}</span><span style="font-size: 12.5px; color: #6E675C">{{ x.t }}</span><span style="width: 14px; color: #8D8475">{{ x.arrow }}</span></button>
+<sc-if value="{{ x.open }}" hint-placeholder-val="{{ false }}"><div class="pop" style="padding: 0 14px 14px 70px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; font-size: 13px; line-height: 1.45"><span style="display: flex; flex-direction: column; gap: 2px"><span style="color: #6E675C">Camera</span>{{ x.frame }}</span><span style="display: flex; flex-direction: column; gap: 2px"><span style="color: #6E675C">How to say it</span>{{ x.say }}</span><span style="display: flex; flex-direction: column; gap: 2px"><span style="color: #6E675C">Hands</span>{{ x.hands }}</span></div></sc-if></div></sc-for></div></sc-if>
+<div style="display: flex; align-items: center; gap: 12px; opacity: {{ blockedOp }}; pointer-events: {{ blockedEv }}"><a href="Record.dc.html" class="cta gbtn" style="display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 13px; color: #0B0B0E; font-size: 15px; font-weight: 700; text-decoration: none"><span class="recdot" style="width: 9px; height: 9px; border-radius: 99px; background: #0B0B0E"></span>Start recording</a><a href="Upload.dc.html" class="btnG">Upload a take instead</a></div>
+<sc-if value="{{ blocked }}" hint-placeholder-val="{{ false }}"><span style="margin-top: -8px; font-size: 12.5px; color: #FFCB85">Recording opens once your client approves.</span></sc-if>
+</div></sc-if>
+</section>
+
+<section class="rv-right pin d5" style="border-radius: 20px; background: #111115; border: 1px solid rgba(255,255,255,0.07); overflow: hidden">
+<sc-if value="{{ c3 }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ open3 }}" style="width: 100%; display: flex; align-items: center; gap: 14px; padding: 18px 22px; border: 0; background: transparent; color: #F6F1E9; font-family: inherit; text-align: left; cursor: pointer"><span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 99px; background: {{ hb3 }}; color: {{ hf3 }}; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 800">{{ hm3 }}</span><span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15.5px; font-weight: 650">Post it</span><span style="font-size: 13px; color: #8D8475; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ sum3 }}</span></span><span style="font-size: 13px; color: #8D8475">{{ hl3 }}</span></button></sc-if>
+<sc-if value="{{ s3 }}" hint-placeholder-val="{{ false }}"><div class="pop" style="padding: 24px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #FF8FA4">STEP 4 OF 4</span><h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Post it</h2></div>
+<sc-if value="{{ notFilmed }}" hint-placeholder-val="{{ false }}"><span style="font-size: 14.5px; color: #8D8475">This opens after you film. Twin edits your take, then you schedule it here.</span></sc-if>
+<sc-if value="{{ readyToPost }}" hint-placeholder-val="{{ true }}"><div style="display: flex; gap: 18px; align-items: center"><div style="position: relative; width: 96px; height: 170px; flex-shrink: 0; border-radius: 14px; overflow: hidden; background: radial-gradient(120% 80% at 0% 30%,rgba(255,196,128,.32),rgba(255,196,128,0) 55%),#1B1519"></div><div style="display: flex; flex-direction: column; gap: 10px"><b style="font-size: 17px">Your video is ready · 0:39</b><span style="font-size: 14px; line-height: 1.5; color: #B7AE9F">Twin cut one stumble, added captions and two zooms. Every word is one you said.</span><span style="display: flex; gap: 10px"><a href="Post.dc.html" class="cta gbtn" style="padding: 12px 20px; border-radius: 12px; color: #0B0B0E; font-size: 14.5px; font-weight: 700; text-decoration: none">Schedule or post →</a><a href="Edit.dc.html" class="btnG">Watch the edit</a></span></div></div></sc-if>
+<sc-if value="{{ posted }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 10px"><span style="font-size: 15px; font-weight: 600; color: #8FEDE3">✓ Posted Thu 7:30 pm on TikTok, Instagram and YouTube</span><span style="font-size: 14px; color: #B7AE9F">24.8k views so far. 4 comments are already ideas for your next video.</span><a href="Results.dc.html" class="btnL" style="align-self: flex-start">See how it did →</a></div></sc-if>
+</div></sc-if>
+</section>
+</div>
+
+<aside class="pin d3" style="width: 320px; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0">
+<div style="padding: 20px; border-radius: 20px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column">
+<span style="margin-bottom: 12px; font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #8D8475">YOUR PLAN</span>
+<sc-for list="{{ plan }}" as="p" hint-placeholder-count="4"><button type="button" onClick="{{ p.open }}" style="position: relative; display: flex; gap: 12px; padding: 10px; margin: 0 -10px; border-radius: 12px; border: 0; background: {{ p.bg }}; color: #F6F1E9; font-family: inherit; text-align: left; cursor: pointer; transition: background .2s ease"><span style="position: relative; flex-shrink: 0; display: flex; flex-direction: column; align-items: center"><span style="width: 26px; height: 26px; border-radius: 99px; background: {{ p.dBg }}; color: {{ p.dFg }}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; transition: background .3s ease">{{ p.mark }}</span></span><span style="min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14.5px; font-weight: 600; color: {{ p.tc }}">{{ p.t }}</span><span style="font-size: 12.5px; color: #6E675C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px">{{ p.sub }}</span></span></button></sc-for>
+</div>
+<div style="padding: 18px 20px; border-radius: 20px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 10px"><span style="font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #8D8475">WHAT YOU’LL NEED</span><span style="font-size: 14px; line-height: 1.6; color: #D8CFC2">Your phone, a window for light, and the green apron from your last videos. Green beans for scene 4.</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.14); font-size: 11.5px; color: #6E675C"><b style="letter-spacing: .08em">DESIGN PREVIEW · NOT IN THE APP</b><span style="display: flex; gap: 4px"><sc-for list="{{ previews }}" as="f" hint-placeholder-count="3"><button type="button" onClick="{{ f.pick }}" style="padding: 4px 8px; border-radius: 6px; border: 0; background: {{ f.bg }}; color: {{ f.fg }}; font-family: inherit; font-size: 11.5px; cursor: pointer">{{ f.t }}</button></sc-for></span><button type="button" onClick="{{ togAgency }}" style="align-self: flex-start; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #B7AE9F; font-family: inherit; font-size: 11.5px; cursor: pointer">{{ agencyLbl }}</button></div>
+</aside>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {}; const stage = s.stage || 0; const agency = !!s.agency; const ok = !!s.ok; const sent = !!s.sent;
+    const hook = s.hook === undefined ? 0 : s.hook; const rate = s.rate || 0; const src = !!s.src; const why = !!s.why; const all = !!s.all; const sc = s.sc === undefined ? -1 : s.sc;
+    const def = stage === 0 ? (s.step === undefined ? 0 : s.step) : (s.step === undefined ? 3 : s.step); const step = def;
+    const H = [['The truth about launching a coffee cart from your kitchen.', 8, true], ['Anyone selling you a guaranteed coffee roadmap is lying to you.', 6, false], ['Before you buy permits or a trailer, make your expensive mistakes at home.', 6, false], ['Here’s what nobody tells you about starting a cart.', 4, false]];
+    const P = { 1: ['Kitchen counter, facing the window', '#FFB347', 'Phone at eye level. Window light on your face.'], 2: ['By the roaster', '#65E5D8', 'Roaster in the frame behind you. Step a little closer.'] };
+    const SC = [
+      { name: 'Opening', p: 1, t: 6, line: H[hook][0], src: 'w', frame: 'Close-up, eye level', say: 'Calm, like you’re letting them in on something', hands: 'Flat on the counter' },
+      { name: 'Why you’re asking', p: 1, t: 6, line: 'I get this question in my inbox all the time, and people expect a step-by-step checklist.', src: 'w', frame: 'Close-up, eye level', say: 'Matter-of-fact, a little amused', hands: 'Open one hand to the camera, then rest it' },
+      { name: 'The truth', p: 1, t: 7, line: 'There’s no clean formula. Anyone selling you a guaranteed roadmap is skipping the hard parts.', src: 't', frame: 'Step the phone back, counter in view', say: 'Slower. Lean on “formula”', hands: 'Still' },
+      { name: 'Just film this', p: 1, t: 3, show: true, line: 'Your hands sorting a tray of green beans', src: 'f', frame: 'Phone above the tray, pointing down', say: 'No talking. Twin adds the words on screen.', hands: 'Slow, one handful at a time' },
+      { name: 'How you started', p: 2, t: 6, line: 'I started with a $40 popcorn popper on my stove.', src: 'f', frame: 'Waist up, roaster behind you', say: 'Proud, a bit self-deprecating', hands: 'Point back at the roaster on “started”', check: true },
+      { name: 'The one step', p: 2, t: 5, line: 'Sell to ten neighbours before you buy anything big.', src: 'f', frame: 'Close-up', say: 'Direct. This is the advice.', hands: 'Count on one hand, loosely' },
+      { name: 'Ask them', p: 1, t: 6, line: 'Would you rather wait for the budget, or start right now from home? Tell me below.', src: 't', frame: 'Close-up, eye level', say: 'Warm, a real question', hands: 'Back on the counter. Hold a beat at the end.' }
+    ];
+    const SRC = { w: ['Your words', '#FFB347'], f: ['Your fact', '#65E5D8'], t: ['Twin’s wording', '#B7AE9F'] };
+    const filmed = stage >= 1; const posted = stage >= 2; const blocked = agency && !ok;
+    const STEPS = [['Choose how you open', H[hook][0]], ['Read it out loud once', rate ? 'Rated ' + rate + ' of 5' : 'About 45 seconds'], ['Film it', filmed ? 'Filmed · 0:42' : '2 places · about 20 min'], ['Post it', posted ? 'Posted Thu 7:30 pm' : (filmed ? 'Ready to post' : 'After you film')]];
+    const doneStep = (i) => (i === 0 && (step > 0 || filmed)) || (i === 1 && (step > 1 || filmed)) || (i === 2 && filmed) || (i === 3 && posted);
+    const go = (i) => () => this.setState({ step: i, sc: -1 });
+    return {
+      previews: [['Before filming', 0], ['Filmed', 1], ['Posted', 2]].map(x => ({ t: x[0], pick: () => this.setState({ stage: x[1], step: undefined }), bg: x[1] === stage ? '#F6F1E9' : 'transparent', fg: x[1] === stage ? '#0B0B0E' : '#8D8475' })),
+      agencyLbl: agency ? 'Client approval: on' : 'Client approval: off', togAgency: () => this.setState({ agency: !agency, ok: false, sent: false }),
+      blocked, needSend: blocked && !sent, waiting: blocked && sent, okBanner: agency && ok, send: () => this.setState({ sent: true }), approve: () => this.setState({ ok: true }),
+      plan: STEPS.map((x, i) => { const d = doneStep(i); const c = i === step; const lock = i === 3 && !filmed; return { n: i + 1, t: x[0], sub: x[1], mark: d ? '✓' : String(i + 1), dBg: d ? '#65E5D8' : (c ? '#F6F1E9' : 'rgba(255,255,255,0.07)'), dFg: d || c ? '#0B0B0E' : '#8D8475', tc: c ? '#F6F1E9' : (lock ? '#6E675C' : '#D8CFC2'), bg: c ? 'rgba(255,255,255,0.05)' : 'transparent', open: go(i), line: i < 3 ? (d ? '#65E5D8' : 'rgba(255,255,255,0.1)') : 'transparent', last: i === 3 }; }),
+      s0: step === 0, s1: step === 1, s2: step === 2, s3: step === 3,
+      c0: step !== 0, c1: step !== 1, c2: step !== 2, c3: step !== 3,
+      sum0: H[hook][0], sum1: rate ? 'You rated it ' + rate + ' of 5' : '7 short scenes · about 45 seconds', sum2: filmed ? 'Filmed · 7 scenes · 0:42' : 'Kitchen counter, then by the roaster', sum3: posted ? 'Posted Thu 7:30 pm · 24.8k views' : (filmed ? 'Your video is ready to post' : 'Unlocks after you film'),
+      d0: step > 0 || filmed, d1: step > 1 || filmed, d2: filmed, d3: posted,
+      ...[0,1,2,3].reduce((o,i)=>{ const d=[step > 0 || filmed, step > 1 || filmed, filmed, posted][i]; const lock = i===3 && !filmed; o['hb'+i]=d?'rgba(101,229,216,0.15)':'rgba(255,255,255,0.06)'; o['hf'+i]=d?'#65E5D8':'#8D8475'; o['hm'+i]=d?'✓':String(i+1); o['hl'+i]=lock?'Locked':(d?'Change':'Open'); return o; },{}), open0: go(0), open1: go(1), open2: go(2), open3: () => { if (filmed) this.setState({ step: 3 }); },
+      hooks: H.map((h, i) => ({ t: h[0], score: 'Stopped ' + h[1] + ' of 10', best: h[2], on: i === hook, pick: () => this.setState({ hook: i }), bd: i === hook ? 'rgba(255,91,123,0.55)' : 'rgba(255,255,255,0.07)', bg: i === hook ? 'rgba(255,91,123,0.06)' : '#111115', dot: i === hook ? '#FF5B7B' : 'transparent', dotBd: i === hook ? '#FF5B7B' : 'rgba(255,255,255,0.25)', bar: h[1] * 10 + '%' })),
+      useHook: go(1),
+      lines: SC.map((x, i) => ({ n: i + 1, line: x.line, show: !!x.show, talk: !x.show, check: !!x.check, c: src ? SRC[x.src][1] : '#F6F1E9', srcT: SRC[x.src][0], srcC: SRC[x.src][1] })),
+      src, srcLbl: src ? 'Hide where lines came from' : 'Show where each line came from', togSrc: () => this.setState({ src: !src }),
+      stars: [1, 2, 3, 4, 5].map(n => ({ n, pick: () => this.setState({ rate: n }), c: n <= rate ? '#FFB347' : 'rgba(255,255,255,0.18)' })), rated: rate > 0, rateMsg: rate >= 4 ? 'Thanks. Twin will write more like this.' : 'Thanks. Tell Twin what felt off and it learns for next time.', lowRate: rate > 0 && rate < 4,
+      why, togWhy: () => this.setState({ why: !why }), whyLbl: why ? 'Hide' : 'Why this script works',
+      readDone: go(2),
+      places: [1, 2].map(p => ({ n: p, where: P[p][0], c: P[p][1], tip: P[p][2], which: 'Scenes ' + SC.map((x, i) => x.p === p ? i + 1 : 0).filter(Boolean).join(', '), mins: p === 1 ? 'about 12 min' : 'about 8 min' })),
+      all, togAll: () => this.setState({ all: !all, sc: -1 }), allLbl: all ? 'Hide the scenes' : 'See every scene before you film',
+      scenes: SC.map((x, i) => ({ n: i + 1, name: x.name, place: 'Place ' + x.p, pc: P[x.p][1], t: x.t + 's', line: x.show ? 'No talking · ' + x.line.toLowerCase() : x.line, open: i === sc, closed: i !== sc, tog: () => this.setState({ sc: sc === i ? -1 : i }), frame: x.frame, say: x.say, hands: x.hands, check: !!x.check, arrow: i === sc ? '−' : '+' })),
+      blockedOp: blocked ? 0.4 : 1, blockedEv: blocked ? 'none' : 'auto',
+      filmed, notFilmed: !filmed, posted, readyToPost: filmed && !posted
+    };
+  }
+}
+</script>
+</body>
+</html>
