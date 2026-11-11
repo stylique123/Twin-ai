@@ -17,6 +17,7 @@
 
 import { contentWords, isNonAnswerText, type LedgerItem, type GateQuestion, type ItemOrigin } from './inventionGate.ts'
 import { mergeQuestions, type SpinePlan } from './spinePlanner.ts'
+import { sentenceMatch } from './urlSafe.ts'
 
 export const SPINE_CONTRACT_VERSION = 'spine-contract-v1'
 
@@ -304,7 +305,7 @@ export const FILL_MAX_WORDS = 30
 export interface SpineFillRecord { filled: SpineBeatRole[]; cta_before: number; cta_after: number; cta_sentences_removed: number }
 type FillBeat = { line?: unknown; section?: unknown; [k: string]: unknown }
 
-const sentencesOf = (t: string) => (t.match(/[^.!?]+[.!?]*["”')]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
+const sentencesOf = (t: string) => (sentenceMatch(t, /[^.!?]+[.!?]*["”')]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
 const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length
 
 /** Fill missing item-backed beats verbatim, then keep exactly one CTA beat. */

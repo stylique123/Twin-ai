@@ -1,3 +1,4 @@
+import { sentenceMatch } from './urlSafe.js'
 // EVERY SPECIFIC IN A SCRIPT TRACES TO HER MATERIAL (owner WS1, 2026-10-05).
 //
 // ⚠️ Blind set 2 still carried invented details the reviewer never listed:
@@ -120,7 +121,7 @@ export interface NovelFinding { line: number; sentence: string; novel: Specific[
 export function findNovelDetails(lines: readonly string[], material: string): NovelFinding[] {
   const out: NovelFinding[] = []
   lines.forEach((line, i) => {
-    for (const sentence of line.match(/[^.!?]+[.!?]*/g) ?? []) {
+    for (const sentence of sentenceMatch(line, /[^.!?]+[.!?]*/g) ?? []) {
       // "If you brew at home every morning…" describes the viewer, not her.
       const aboutViewer = /^\s*(?:(?:so|and|but|now),?\s+)?(?:if|when|whether|do|does|did|are|have|what|how)\s+you\b|^\s*you(?:'re|r)?\b/i.test(sentence)
       const novel = extractSpecifics(sentence)
@@ -157,7 +158,7 @@ export function dropNovelSentences<B extends { line?: unknown }>(beats: readonly
     const found = findNovelDetails([b.line], material)
     if (!found.length) { out.push(b); return }
     const bad = new Set(found.map((f) => f.sentence))
-    const rest = (b.line.match(/[^.!?]+[.!?]*/g) ?? []).filter((s) => !bad.has(s.trim())).join('').trim()
+    const rest = (sentenceMatch(b.line, /[^.!?]+[.!?]*/g) ?? []).filter((s) => !bad.has(s.trim())).join('').trim()
     if (rest) { removed.push(...bad); out.push({ ...b, line: rest }); return }
     if (i === 0 || i === beats.length - 1) { kept.push(...bad); out.push(b); return }
     removed.push(...bad)
