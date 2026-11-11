@@ -15,13 +15,13 @@ export type LegalDoc = {
   sections: LegalSection[]
 }
 
-// ⚠️ OWNER TO FILL IN. Each null renders as a visible amber [placeholder] on the
-// page, exactly as the boards show it, until a real value is set here.
+// Legal facts confirmed by the owner (2026-11-11). Setting one to null brings
+// back the board's amber [placeholder] on the page.
 /** Effective / last-updated date, e.g. 'November 11, 2026'. */
-export const LEGAL_LAST_UPDATED: string | null = null
+export const LEGAL_LAST_UPDATED: string | null = 'November 11, 2026'
 /** Real contact address for privacy and legal requests. */
-export const LEGAL_CONTACT_EMAIL: string | null = null
+export const LEGAL_CONTACT_EMAIL: string | null = 'hello@twinai.studio'
 /** How soon data is deleted after a deletion request, e.g. '30 days'. */
-export const LEGAL_DELETION_WINDOW: string | null = null
+export const LEGAL_DELETION_WINDOW: string | null = '30 days'
 /** Governing law: the state/country where Twin Studios LLC is registered. */
-export const LEGAL_GOVERNING_LAW: string | null = null
+export const LEGAL_GOVERNING_LAW: string | null = 'the State of Wyoming, United States'
