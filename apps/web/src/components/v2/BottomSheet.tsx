@@ -1,24 +1,48 @@
-// A simple mobile bottom sheet for one-tap "change the recommendation" choices.
-// Opens from the bottom, dims the rest, closes on backdrop tap, Escape, or pick.
-// Keeps the change inline so the user never leaves the screen they're on.
-// Declares role=dialog/aria-modal and behaves like one: moves focus into the
-// sheet on open, keeps Tab cycling inside it, and restores focus on close.
-import { useEffect, useRef } from 'react'
+// Sheet: one component for every pop-up panel in the app.
+// Phone (< sm): a bottom sheet with a drag handle, safe-area padding and an
+// optional sticky footer (the Continue bar). Desktop (sm+): a centred dialog.
+// Behaves like a real modal: role=dialog/aria-modal, moves focus in on open,
+// keeps Tab inside, closes on Escape or backdrop tap, restores focus on close,
+// and locks page scroll while open. Motion is calm and is neutralised by the
+// global prefers-reduced-motion rule in index.css.
+import { useEffect, useId, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { X } from 'lucide-react'
+import { cn } from '../../lib/cn'
 
-export default function BottomSheet({
-  open,
-  title,
-  onClose,
-  children,
-}: {
+export type SheetProps = {
   open: boolean
   title: string
   onClose: () => void
   children: ReactNode
-}) {
+  /** One plain sentence under the title. */
+  description?: ReactNode
+  /** Sticky bottom bar (e.g. the Continue button). Stays visible while the body scrolls. */
+  footer?: ReactNode
+  /** Desktop dialog width. Defaults to 'md'. */
+  size?: 'md' | 'lg'
+  /** Show the close (X) button. Defaults to true. */
+  closeButton?: boolean
+}
+
+export function Sheet({
+  open,
+  title,
+  onClose,
+  children,
+  description,
+  footer,
+  size = 'md',
+  closeButton = true,
+}: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
+  const titleId = useId()
+  const descId = useId()
+  // Keep the latest onClose without re-running the focus effect (an inline
+  // arrow from the parent would otherwise steal focus back on every render).
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
 
   useEffect(() => {
     if (!open) return
@@ -27,19 +51,21 @@ export default function BottomSheet({
     const focusables = () =>
       Array.from(
         panel?.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
         ) ?? [],
       )
     ;(focusables()[0] ?? panel)?.focus()
 
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        onClose()
+        closeRef.current()
         return
       }
       if (e.key !== 'Tab') return
-      // Contain Tab inside the sheet (wrap at the edges).
       const els = focusables()
       if (!els.length) return
       const first = els[0]
@@ -50,24 +76,69 @@ export default function BottomSheet({
     document.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
       restoreRef.current?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return (
-    // Phone: a bottom sheet. Desktop (sm+): a proper CENTERED modal — a bottom
-    // sheet stuck to the top of a wide screen read as a broken phone dialog.
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={description ? descId : undefined}
+    >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div ref={panelRef} tabIndex={-1} className="relative w-full max-w-screen-sm rounded-t-3xl border border-white/10 bg-ink2 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[80dvh] overflow-y-auto shadow-2xl outline-none animate-[slideUp_.2s_ease] sm:max-w-md sm:rounded-3xl sm:p-6 sm:pb-6 sm:animate-[fadeIn_.15s_ease]">
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20 sm:hidden" />
-        <h3 className="mb-3 text-base font-bold text-cream sm:text-lg">{title}</h3>
-        <div className="space-y-2">{children}</div>
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className={cn(
+          'relative flex max-h-[85dvh] w-full flex-col rounded-t-panel border border-white/10 bg-ink2 shadow-lift outline-none',
+          'animate-sheet-up sm:max-h-[80dvh] sm:rounded-panel sm:animate-dialog-in',
+          size === 'lg' ? 'sm:max-w-xl' : 'sm:max-w-md',
+        )}
+      >
+        <div className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-white/20 sm:hidden" aria-hidden="true" />
+        <div className="flex shrink-0 items-start gap-3 px-5 pt-3 sm:px-6 sm:pt-6">
+          <div className="min-w-0 flex-1">
+            <h2 id={titleId} className="text-lg font-bold tracking-tight text-cream">{title}</h2>
+            {description && (
+              <p id={descId} className="mt-1 text-sm leading-relaxed text-sand-muted">{description}</p>
+            )}
+          </div>
+          {closeButton && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="-mr-2 -mt-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-stone transition-colors hover:bg-white/5 hover:text-cream"
+            >
+              <X className="h-[18px] w-[18px]" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-5 pt-4 sm:px-6',
+            footer ? 'pb-4' : 'pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6',
+          )}
+        >
+          {children}
+        </div>
+        {footer && (
+          <div className="shrink-0 border-t border-white/[0.07] px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-5">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )
 }
+
+// Back-compat: existing callers import the default export.
+export default Sheet
 
 // A single selectable option row inside the sheet.
 export function SheetOption({
@@ -83,8 +154,9 @@ export function SheetOption({
 }) {
   return (
     <button
+      type="button"
       onClick={onPick}
-      className={`w-full text-left rounded-2xl border p-3 active:scale-[0.99] transition ${
+      className={`w-full min-h-11 text-left rounded-2xl border p-3 active:scale-[0.99] transition ${
         selected ? 'border-coral bg-white/10' : 'border-white/15'
       }`}
     >

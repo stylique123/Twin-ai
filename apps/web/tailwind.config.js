@@ -15,13 +15,25 @@ export default {
         amber: '#FFB347',
         coral: '#FF5B7B',
         teal: '#65E5D8',
+        // Design-handoff shades (2026 redesign). Softer text tints of the
+        // existing colours for dark surfaces — not new accents. Still ONE teal.
+        'sand-muted': '#B7AE9F', // secondary body text
+        'sand-soft': '#D8CFC2', // text on quiet buttons and notes
+        'stone-dim': '#6E675C', // footnotes, calendar day names, footer eyebrows
+        'amber-soft': '#FFCB85', // muted warnings ("You've used your 3 free videos")
+        'coral-soft': '#FF8FA4', // failure / "Scheduled" text on dark
+        'teal-soft': '#8FEDE3', // success / "Posted" text, teal outline buttons
+        rec: '#FF3B5C', // the recording dot and bar on Record only
+        placeholder: '#141015', // background while a media tile loads
       },
       fontFamily: {
         sans: ['Geist', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['Geist Mono', 'ui-monospace', 'monospace'],
       },
       fontWeight: { display: '800', heading: '700' },
-      borderRadius: { card: '18px', panel: '24px', xl2: '28px' },
+      // rounded-xl (12px) and rounded-2xl (16px) are Tailwind defaults; 9 and 14 are the
+      // extra corners the redesign boards use for chips/controls and radio rows.
+      borderRadius: { '9': '9px', '14': '14px', card: '18px', panel: '24px', xl2: '28px' },
       maxWidth: { content: '1180px' },
       backgroundImage: {
         // Signature gradient — never re-order: amber -> coral -> teal at 135deg
@@ -64,6 +76,8 @@ export default {
           '50%': { backgroundPosition: '100% 50%' },
         },
         'spin-slow': { to: { transform: 'rotate(360deg)' } },
+        'sheet-up': { '0%': { transform: 'translateY(100%)' }, '100%': { transform: 'translateY(0)' } },
+        'dialog-in': { '0%': { opacity: '0', transform: 'translateY(8px) scale(.98)' }, '100%': { opacity: '1', transform: 'none' } },
       },
       animation: {
         'fade-up': 'fade-up .6s cubic-bezier(.22,1,.36,1) both',
@@ -74,6 +88,8 @@ export default {
         shimmer: 'shimmer 2.4s linear infinite',
         'gradient-pan': 'gradient-pan 6s ease infinite',
         'spin-slow': 'spin-slow 22s linear infinite',
+        'sheet-up': 'sheet-up .28s cubic-bezier(.22,1,.36,1) both',
+        'dialog-in': 'dialog-in .2s cubic-bezier(.22,1,.36,1) both',
       },
     },
   },
