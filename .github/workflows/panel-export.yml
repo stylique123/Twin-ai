@@ -1,0 +1,53 @@
+name: panel-export
+
+# THE BLIND PACK, BUILT WHERE THE KEY LIVES (owner, 11 Nov). Reads a finished
+# fictional panel batch (script_batch_results) and uploads ONLY blind.md and
+# report.json as a downloadable artifact. key.json (the answer key) is written
+# to the runner's temp directory and never uploaded; it dies with the runner.
+# Manual dispatch only, from main only, by the repository owner only.
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: 'Panel batch label to export (e.g. panel-13c)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ${{ (!github.event.repository.private || !vars.CI_RUNNER) && 'ubuntu-24.04' || vars.CI_RUNNER }}
+    timeout-minutes: 20
+    steps:
+      - name: Guard — main branch and owner only
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then echo "::error::panel-export runs only from main"; exit 1; fi
+          if [ "$ACTOR" != "$OWNER" ]; then echo "::error::panel-export runs only for the repository owner"; exit 1; fi
+        env:
+          REF: ${{ github.ref }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the blind pack (key stays on the runner)
+        run: |
+          case "$LABEL" in *[!A-Za-z0-9._-]*|'') echo "::error::label must be letters, digits, . _ -"; exit 1;; esac
+          node scripts/ops/panelBlindPack.mjs "$LABEL" --out="$RUNNER_TEMP/pack"
+          mkdir -p "$RUNNER_TEMP/upload"
+          cp "$RUNNER_TEMP/pack/blind.md" "$RUNNER_TEMP/pack/report.json" "$RUNNER_TEMP/upload/"
+        env:
+          LABEL: ${{ inputs.label }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Upload blind.md and report.json (never key.json)
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-blind-${{ inputs.label }}
+          path: ${{ runner.temp }}/upload/
+          if-no-files-found: error
+          retention-days: 14
