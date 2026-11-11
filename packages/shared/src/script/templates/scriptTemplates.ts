@@ -21,6 +21,7 @@ import {
   type ScriptTemplate, type TemplateSlot, type TemplateBeat, type BeatRole, type DurationProfile,
 } from './templateData.js'
 import { hasEventDate } from '../writerGuards.js'
+import { sentenceMatch } from '../urlSafe.js'
 
 export const SCRIPT_TEMPLATES_VERSION = 'templates-v1'
 
@@ -212,7 +213,7 @@ export interface ScriptBeat { line?: unknown; section?: unknown; [k: string]: un
 
 const ROLES: readonly BeatRole[] = ['hook', 'promise', 'build', 'turn', 'anchor', 'offer', 'close']
 const lineOf = (b: ScriptBeat | null | undefined) => String(b?.line ?? '').trim()
-const sentencesOf = (s: string) => (s.match(/[^.!?]+[.!?]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
+const sentencesOf = (s: string) => (sentenceMatch(s, /[^.!?]+[.!?]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
 const words = (s: string) => s.split(/\s+/).filter(Boolean).length
 
 /** The template beat roles in script order (counted beats expanded to their minimum). */

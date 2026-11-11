@@ -110,6 +110,8 @@ import { hygieneBeats } from '../_shared/scriptHygiene.ts'
 import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
+import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
+import { scriptCleanupV1 } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
 import { writerLoopOn, inventionGateOn, lateChecksOn, loopFlagFor, renderWriterLoop, answersForThisVideo, pillarsFrom, sampleLinesFrom, profileForSeconds as loopProfileForSeconds } from '../_shared/writerLoop.ts'
@@ -7178,6 +7180,10 @@ async function handle(req: Request): Promise<Response> {
   // The fictional creator panel (owner, 13 Oct) are test accounts too: tagged in
   // app_metadata by the service-role seed, which no user can write. See _shared/testAccount.ts.
   const isPanel = isPanelAccount(user)
+  // SCRIPT_CLEANUP_V1 (panel 13c, default OFF): URL-safe sentence splitting
+  // for every splitter routed through sentenceMatch. Off = the old split.
+  const cleanupV1 = scriptCleanupV1On(Deno.env.get('SCRIPT_CLEANUP_V1'))
+  setUrlSafeSplitting(cleanupV1)
   const isHeartbeat = (heartbeatUserId !== '' && user.id === heartbeatUserId) || isPanel
   // ⚖️ TRIAL FIRST (owner 2026-10-04: "fix and keep re-running before it goes
   // to everyone"). A writing change under trial runs for the test account
@@ -17086,7 +17092,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         let hedged = 0
         for (const b of beats) {
           if (typeof b.line !== 'string' || !isHedgedCta(b.line)) continue
-          const rest = (b.line.match(/[^.!?]+[.!?]*/g) ?? []).filter((x) => !isHedgedCta(x)).join('').trim()
+          const rest = (sentenceMatch(b.line, /[^.!?]+[.!?]*/g) ?? []).filter((x) => !isHedgedCta(x)).join('').trim()
           if (rest) { b.line = rest; hedged++ }
         }
         const goalNow = String(intent.goal ?? body.goal ?? '')
@@ -18050,6 +18056,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       }
       // Panel 13b: the worker re-runs the panel final pass after its QC and polish.
       if (isPanel) (inventionRecheck.ledger as Record<string, unknown>).panel_final_pass = { request: String(reference_note ?? '').slice(0, 300) }
+      if (cleanupV1) (inventionRecheck.ledger as Record<string, unknown>).script_cleanup_v1 = true
       bpg.gate_mode = gateModeLabel(gateMeasure)
       console.log(JSON.stringify({ event: 'invention_gate_queued' }))
     }
@@ -18119,6 +18126,23 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         bpf.panel_final_pass = fp.cut
         console.log(JSON.stringify({ event: 'feature_fired', feature: 'panel_final_pass', where: 'edge', ...fp.cut }))
       } catch { /* the final pass never fails a build */ }
+    }
+    // ⚖️ SCRIPT CLEANUP V1 (panel 13c; SCRIPT_CLEANUP_V1=on only, default OFF,
+    // any account once on): cut a dangling last line, a fact said twice and the
+    // weaker of two tellings of one story. Cuts only; hook, CTA and questions
+    // never cut; at most 2 cuts and ~30% of words. Counts only in logs.
+    if (cleanupV1 && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      try {
+        const bpc = blueprint as Record<string, unknown>
+        const c = panelFinalCtx()
+        const r = scriptCleanupV1(bpc.script as Array<Record<string, unknown>>, { products: c.products, stories: c.stories, offers: c.offers })
+        if (r.cut.dangling_last + r.cut.fact_repeat + r.cut.story_repeat) {
+          bpc.script = r.beats
+          if (Array.isArray(bpc.shot_list)) bpc.shot_list = syncShotListSpokenText(bpc.shot_list as Array<{ spoken_text?: unknown }>, bpc.script as Array<{ line?: unknown }>).shots
+        }
+        bpc.script_cleanup_v1 = r.cut
+        console.log(JSON.stringify({ event: 'feature_fired', feature: 'script_cleanup_v1', where: 'edge', ...r.cut }))
+      } catch { /* a cleanup never fails a build */ }
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
     // W12.2 niche pack banned claims, REPORT ONLY (NICHE_PACKS, default OFF):

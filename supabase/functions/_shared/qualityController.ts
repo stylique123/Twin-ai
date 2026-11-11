@@ -42,6 +42,7 @@ import { blockingFlags, scoreCraft, repeatedSentence, type BestOfNFlagCtx } from
 import { isCtaLine, isProblemLine, isHerTruth } from './spineComplete.ts'
 import { BEAT_WORD_BUDGETS, type BeatId } from './beatBudgets.ts'
 import { runStructureChecks, hookPaysOff, type CheckResult } from './structureChecks.ts'
+import { sentenceMatch } from './urlSafe.ts'
 
 export const QC_VERSION = 'qc-v1'
 
@@ -155,7 +156,7 @@ const lineText = (b: QcLine | undefined) => (typeof b?.line === 'string' ? b.lin
 const wc = (s: string) => s.trim().split(/\s+/).filter(Boolean).length
 const spokenWords = (s: readonly QcLine[]) => s.reduce((a, b) => a + wc(lineText(b)), 0)
 const spoken = (s: readonly QcLine[]) => s.map(lineText).filter(Boolean)
-const sentencesOf = (line: string) => line.match(/[^.!?]+[.!?]*/g)?.map((x) => x.trim()).filter(Boolean) ?? []
+const sentencesOf = (line: string) => sentenceMatch(line, /[^.!?]+[.!?]*/g)?.map((x) => x.trim()).filter(Boolean) ?? []
 const baseId = (id: string) => id.replace(/#\d+$/, '')
 const STORY_LINE = /\b(?:i|my|we|our|a regular|a customer|a client|a buyer)\b[^.?!]*\b(?:was|were|had|came|went|got|lost|found|told|asked|built|started|kept|tried|made|sold|spent|learned|realized|bought|took|said|[a-z]{3,}ed)\b/i
 const OFFERISH = /(\$\s?\d|\bper (?:month|week)\b|\bfree trial\b|\btrial\b|\blink in (?:my |the )?bio\b)/i
