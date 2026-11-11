@@ -1,46 +1,67 @@
-// Sheet: one component for every pop-up panel in the app.
-// Phone (< sm): a bottom sheet with a drag handle, safe-area padding and an
-// optional sticky footer (the Continue bar). Desktop (sm+): a centred dialog.
-// Behaves like a real modal: role=dialog/aria-modal, moves focus in on open,
-// keeps Tab inside, closes on Escape or backdrop tap, restores focus on close,
-// and locks page scroll while open. Motion is calm and is neutralised by the
-// global prefers-reduced-motion rule in index.css.
+// Sheet: the app's pop-ups, built one for one from Create.dc.html / MCreate.dc.html.
+//
+// variant "dialog" = the "Add a product" pop-up.
+//   <768  : bottom sheet, left/right/bottom 0, max-height 86%, radius 22 22 0 0.
+//   768+  : centred dialog, 500px wide (max 560 on iPad per rule B), top 120px.
+//   Surface #17171D, 1px white/12 border, padding 24, gap 14, scrim rgba(5,5,8,.6).
+// variant "drawer" = the "Edit what Twin knows" panel.
+//   <768  : full screen. 768+: right-hand panel, 470px, full height.
+//   Surface #121217, left border white/10, padding 24, gap 16, scrim rgba(5,5,8,.55).
+//
+// Both are real modals: role=dialog + aria-modal, focus moves in (no forced
+// ring for mouse/touch), Tab stays inside, Escape / scrim tap close, focus is
+// restored on close, page scroll is locked.
 import { useEffect, useId, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { X } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
 export type SheetProps = {
   open: boolean
+  /** Accessible name; also the visible title in the default dialog header. */
   title: string
   onClose: () => void
   children: ReactNode
-  /** One plain sentence under the title. */
+  variant?: 'dialog' | 'drawer'
+  /** One line under the title (default dialog header only). */
   description?: ReactNode
-  /** Sticky bottom bar (e.g. the Continue button). Stays visible while the body scrolls. */
+  /** Replaces the default header (e.g. the drawer's thumb + eyebrow + name). */
+  header?: ReactNode
+  /** Action row (Cancel / primary). Right-aligned like the boards. */
   footer?: ReactNode
-  /** Desktop dialog width. Defaults to 'md'. */
-  size?: 'md' | 'lg'
-  /** Show the close (X) button. Defaults to true. */
-  closeButton?: boolean
 }
 
-export function Sheet({
-  open,
-  title,
-  onClose,
-  children,
-  description,
-  footer,
-  size = 'md',
-  closeButton = true,
-}: SheetProps) {
+/** The board's "Close" text button. */
+export function SheetClose({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      className="shrink-0 border-0 bg-transparent p-0 text-[13.5px] leading-[normal] text-label hover:text-cream"
+    >
+      Close
+    </button>
+  )
+}
+
+/** Drawer header from "Edit what Twin knows": 40px thumb, eyebrow, name, Close. */
+export function DrawerHeader({ eyebrow, title, thumb, onClose }: { eyebrow: string; title: string; thumb?: ReactNode; onClose: () => void }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="h-10 w-10 shrink-0 overflow-hidden rounded-[11px] bg-placeholder">{thumb}</span>
+      <span className="flex flex-grow flex-col">
+        <span className="text-[12px] font-bold tracking-[.1em] text-label">{eyebrow}</span>
+        <span className="text-[17px] font-bold text-cream">{title}</span>
+      </span>
+      <SheetClose onClose={onClose} />
+    </div>
+  )
+}
+
+export function Sheet({ open, title, onClose, children, variant = 'dialog', description, header, footer }: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
   const descId = useId()
-  // Keep the latest onClose without re-running the focus effect (an inline
-  // arrow from the parent would otherwise steal focus back on every render).
   const closeRef = useRef(onClose)
   closeRef.current = onClose
 
@@ -54,20 +75,13 @@ export function Sheet({
           'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
         ) ?? [],
       )
-    // Move focus in without forcing a visible ring: the global :focus-visible
-    // rule still shows it for keyboard users (Tab), but not after a mouse/touch
-    // open. `focusVisible` is supported in Chromium and Firefox; others ignore it.
+    // No forced ring after a mouse/touch open; :focus-visible still shows it for Tab.
     ;(focusables()[0] ?? panel)?.focus({ focusVisible: false } as FocusOptions)
 
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        closeRef.current()
-        return
-      }
+      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); return }
       if (e.key !== 'Tab') return
       const els = focusables()
       if (!els.length) return
@@ -85,65 +99,56 @@ export function Sheet({
   }, [open])
 
   if (!open) return null
+  const drawer = variant === 'drawer'
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      aria-describedby={description ? descId : undefined}
-    >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+    <>
+      <div
+        className={cn('fixed inset-0', drawer ? 'z-[70] bg-[rgba(5,5,8,0.55)]' : 'z-[60] bg-[rgba(5,5,8,0.6)]')}
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <div
         ref={panelRef}
         tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={header ? undefined : titleId}
+        aria-label={header ? title : undefined}
+        aria-describedby={!header && description ? descId : undefined}
         className={cn(
-          'relative flex max-h-[85dvh] w-full flex-col rounded-t-panel border border-white/10 bg-ink2 shadow-lift outline-none',
-          'animate-sheet-up sm:max-h-[80dvh] sm:rounded-panel sm:animate-dialog-in',
-          size === 'lg' ? 'sm:max-w-xl' : 'sm:max-w-md',
+          'fixed box-border flex flex-col overflow-auto p-6 leading-[normal] text-cream outline-none',
+          drawer
+            ? 'inset-y-0 right-0 z-[71] w-full animate-cfdrawer gap-4 border-l border-white/10 bg-drawer md:w-[470px]'
+            : [
+                'inset-x-0 bottom-0 z-[61] max-h-[86%] animate-popin gap-[14px] rounded-t-[22px] border border-white/[0.12] bg-dialog shadow-[0_40px_90px_-20px_rgba(0,0,0,0.95)]',
+                // Centred with auto margins: the board's popin animation ends on transform:none,
+                // which would cancel a translate-based centring.
+                'md:bottom-auto md:mx-auto md:top-[120px] md:max-h-[calc(100dvh-160px)] md:w-[min(560px,calc(100vw-48px))] md:rounded-[20px] lg:w-[500px]',
+              ],
         )}
       >
-        <div className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-white/20 sm:hidden" aria-hidden="true" />
-        <div className="flex shrink-0 items-start gap-3 px-5 pt-3 sm:px-6 sm:pt-6">
-          <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-lg font-bold tracking-tight text-cream">{title}</h2>
-            {description && (
-              <p id={descId} className="mt-1 text-sm leading-relaxed text-sand-muted">{description}</p>
-            )}
-          </div>
-          {closeButton && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="-mr-2 -mt-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-stone transition-colors hover:bg-white/5 hover:text-cream"
-            >
-              <X className="h-[18px] w-[18px]" aria-hidden="true" />
-            </button>
-          )}
-        </div>
-        <div
-          className={cn(
-            'min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-5 pt-4 sm:px-6',
-            footer ? 'pb-4' : 'pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6',
-          )}
-        >
-          {children}
-        </div>
-        {footer && (
-          <div className="shrink-0 border-t border-white/[0.07] px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-5">
-            {footer}
+        {header ?? (
+          <div className="flex items-start justify-between gap-[10px]">
+            <span className="flex flex-col gap-1">
+              <span id={titleId} className="text-[18px] font-bold">{title}</span>
+              {description && <span id={descId} className="text-[13.5px] text-label">{description}</span>}
+            </span>
+            <SheetClose onClose={onClose} />
           </div>
         )}
+        {children}
+        {footer && (
+          <div className={cn('flex justify-end gap-[10px]', drawer ? 'mt-auto pt-2' : 'pt-1')}>{footer}</div>
+        )}
       </div>
-    </div>
+    </>
   )
 }
 
 // Back-compat: existing callers import the default export.
 export default Sheet
 
-// A single selectable option row inside the sheet.
+// A single selectable option row inside a sheet (existing V2Capture sheets).
 export function SheetOption({
   label,
   reason,

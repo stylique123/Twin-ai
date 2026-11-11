@@ -25,6 +25,12 @@ export default {
         'teal-soft': '#8FEDE3', // success / "Posted" text, teal outline buttons
         rec: '#FF3B5C', // the recording dot and bar on Record only
         placeholder: '#141015', // background while a media tile loads
+        // Exact board values (START_HERE rule 1.3: never round to a nearby token).
+        label: '#8D8475', // board labels/captions (the board's stone; differs from `stone`)
+        dialog: '#17171D', // pop-up dialog surface (Add a product)
+        drawer: '#121217', // side panel surface (Edit what Twin knows)
+        row: '#0E0E12', // choice-row surface
+        footer: '#09090C', // site footer
       },
       fontFamily: {
         sans: ['Geist', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
@@ -78,6 +84,9 @@ export default {
         'spin-slow': { to: { transform: 'rotate(360deg)' } },
         'sheet-up': { '0%': { transform: 'translateY(100%)' }, '100%': { transform: 'translateY(0)' } },
         'dialog-in': { '0%': { opacity: '0', transform: 'translateY(8px) scale(.98)' }, '100%': { opacity: '1', transform: 'none' } },
+        // Board keyframes, verbatim.
+        popin: { '0%': { opacity: '0', transform: 'translateY(10px) scale(.94)' }, '100%': { opacity: '1', transform: 'none' } },
+        cfdrawer: { from: { transform: 'translateX(40px)', opacity: '0' }, to: { transform: 'none', opacity: '1' } },
       },
       animation: {
         'fade-up': 'fade-up .6s cubic-bezier(.22,1,.36,1) both',
@@ -90,6 +99,8 @@ export default {
         'spin-slow': 'spin-slow 22s linear infinite',
         'sheet-up': 'sheet-up .28s cubic-bezier(.22,1,.36,1) both',
         'dialog-in': 'dialog-in .2s cubic-bezier(.22,1,.36,1) both',
+        popin: 'popin .5s cubic-bezier(.22,1,.36,1) both',
+        cfdrawer: 'cfdrawer .4s cubic-bezier(.22,1,.36,1) both',
       },
     },
   },
