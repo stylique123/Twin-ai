@@ -3,7 +3,8 @@
 // handles the key by hand. Fictional panel rows only (scenario.group 'panel').
 //
 // Writes into --out (refused inside the repository):
-//   blind.md     every scored script under a random id, shuffled; no creator, n or label
+//   blind.md     every scored script under a random id, shuffled, with its creator
+//                slug (to check facts against her material); no label, n or generation id
 //   report.json  counts only: scripts, asked instead of writing, failures, the
 //                gate's invented lines (after repair), the rule-based craft
 //                PRE-SCORE (not the advisor's craft), check states, the panel
@@ -74,7 +75,7 @@ export function buildBlindPack(rows, blueprints = {}, craft = () => null, rand =
     ids.add(id)
     return { id, sort: rand(4).readUInt32BE(0), r }
   }).sort((x, y) => x.sort - y.sort)
-  const blind = withId.map(({ id, r }) => [`## ${id}`, `**Goal:** ${r.scenario?.body?.goal ?? ''} · **Request:** ${r.scenario?.body?.reference_note ?? r.scenario?.body?.note ?? ''}`, r.script_text, '', `Hooks: ${(r.hooks ?? []).join(' · ')}`, ''].join('\n')).join('\n')
+  const blind = withId.map(({ id, r }) => [`## ${id}`, `**Creator:** ${r.scenario?.creator ?? ''} · **Goal:** ${r.scenario?.body?.goal ?? ''} · **Request:** ${r.scenario?.body?.reference_note ?? r.scenario?.body?.note ?? ''}`, r.script_text, '', `Hooks: ${(r.hooks ?? []).join(' · ')}`, ''].join('\n')).join('\n')
   const key = Object.fromEntries(withId.map(({ id, r }) => [id, { n: r.n, label: r.scenario?.label ?? null, creator: r.scenario?.creator ?? null, generation_id: r.generation_id ?? null }]))
   return { blind: `# Panel — blind scripts (${withId.length})\n\n${blind}`, key, report }
 }

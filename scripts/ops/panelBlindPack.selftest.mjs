@@ -27,8 +27,11 @@ assert.deepEqual(p.report.final_pass, { pressure: 1, filler: 1 })
 assert.equal(p.report.headline.requests, 5)
 assert.equal(p.report.headline.asked, 1)
 assert.match(p.report.headline.invented, /^1 of 3 scripts \(2 lines/)
-// Blind: no creator, label or n in blind.md; all of it in the key.
-assert.doesNotMatch(p.blind, /clay-kiln|panel-\d|#\d/)
+// Blind: the creator slug is shown above each script (to check facts against
+// her material); label, n and generation id are not. All of them are in the key.
+assert.equal((p.blind.match(/\*\*Creator:\*\* clay-kiln · \*\*Goal:\*\* sell · \*\*Request:\*\* request \d/g) ?? []).length, 3)
+assert.doesNotMatch(p.blind, /panel-\d|#\d|\bg\d\b/)
+assert.ok(Object.keys(p.key).every((id) => /^S-[0-9A-F]{6}$/.test(id) && p.blind.includes(`## ${id}`)))
 assert.equal(Object.keys(p.key).length, 3)
 assert.ok(Object.values(p.key).every((k) => k.creator === 'clay-kiln' && /^panel-\d$/.test(k.label)))
 // The report carries no ids that map back to the key.
