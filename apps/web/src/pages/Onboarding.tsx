@@ -28,7 +28,9 @@ import {
   readScanFailure, scanFailure, otherPlatforms, otherPlatformsSentence, PLATFORM_LABEL,
   type ScanFailure,
 } from '../lib/api'
-import { Aurora } from '../components/Aurora'
+import { OnboardingHeader } from '../components/onboarding/OnboardingHeader'
+import { useWide } from '../hooks/useWide'
+import '../styles/onboarding.css'
 
 /** The chooser's words. Kept beside the screen rather than in the contract: the
  *  ids are the contract, and how they are phrased to a person is not. */
@@ -171,13 +173,11 @@ import {
   profileAnswersOf,
 } from '../lib/onboardingDraft'
 
-const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
-
 // Per-platform placeholder so the input matches the source they picked.
 const PLACEHOLDER: Record<Platform, string> = {
-  tiktok: '@yourhandle  or  https://tiktok.com/@yourhandle',
-  instagram: '@yourhandle  or  https://instagram.com/@yourhandle',
-  youtube: '@yourchannel  or  https://youtube.com/@yourchannel',
+  tiktok: '@yourhandle or https://tiktok.com/@yourhandle',
+  instagram: '@yourhandle or https://instagram.com/@yourhandle',
+  youtube: '@yourchannel or https://youtube.com/@yourchannel',
   linkedin: '@yourname  or  https://linkedin.com/in/yourname',
   other: '@yourhandle',
 }
@@ -337,6 +337,15 @@ export default function Onboarding() {
   // there was Back, re-pick a platform, and retype the handle from memory.
   // That is a charge levied on somebody we have just told the fault was ours.
   const [retrySeed, setRetrySeed] = useState<{ handle: string; platform: Platform } | null>(null)
+  // ⚖️ CONNECT BOARD: a failed scan is shown ON THE HANDLE SCREEN, with the
+  // handle still filled in, the reason named, and the two ways forward (another
+  // platform, or describe it myself). The answers given while it ran are kept.
+  const [scanFailureShown, setScanFailureShown] = useState<ScanFailure | null>(null)
+  const scanFailed = useCallback((f: ScanFailure) => {
+    setScanFailureShown(f)
+    setRetrySeed({ handle: draft?.handle ?? '', platform: draft?.platform ?? 'instagram' })
+    setMode('handle')
+  }, [draft?.handle, draft?.platform])
   const tryAnotherPlatform = useCallback((platform: Platform) => {
     setRetrySeed({ handle: draft?.handle ?? '', platform })
     // ⚖️ THE DEAD SCAN IS DROPPED FIRST. Leaving the failed voiceId on the draft
@@ -393,6 +402,7 @@ export default function Onboarding() {
     try { clearStoryDraft() } catch { /* storage unavailable */ }
     setDraft(null)
     setRetrySeed(null)
+    setScanFailureShown(null)
     setConfirmingStartOver(false)
     setMode('handle')
   }, [userId])
@@ -412,89 +422,71 @@ export default function Onboarding() {
   // same `max(…, env(safe-area-inset-bottom))` idiom used there — so this
   // screen stops being the one place that measures the phone differently from
   // every other.
+  const stepIndex = mode === 'handle' ? 0 : mode === 'building' ? 1 : mode === 'stories' ? 2 : 3
   return (
-    <main className="relative grid min-h-[100dvh] place-items-center overflow-clip px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-20 sm:px-5 sm:pb-12">
-      <Aurora />
-      <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.7, ease: EASE }}
-        /* THE CONFIRM STEP IS NOT A PHONE FORM. Every step shared one 576px
-           column, which is right for pasting a handle and watching a scan, and
-           wrong for a screen carrying fifteen fields: on a desktop it rendered
-           as a narrow strip with the whole display empty either side and most
-           of the form below the fold. When the scan comes back thin, that strip
-           is fifteen EMPTY boxes, which is the worst version of it. */
-        /* ⚠️ AND THE QUESTION SCREEN IS NOT A SIDE RAIL EITHER. `max-w-xl` is
-           576px — right for pasting a handle, wrong for a screen that now
-           carries four questions and their chip grids, which rendered as a
-           narrow strip with a three-column grid squeezed into it and the
-           button far below the fold. 768px is wide enough for two short
-           questions side by side and still a readable measure. */
-        className={cn(
-          'relative w-full',
-          mode === 'confirm' ? 'max-w-4xl' : mode === 'building' ? 'max-w-3xl' : mode === 'stories' ? 'max-w-2xl' : 'max-w-xl',
+    <main className="page-glow relative flex min-h-[100dvh] flex-col overflow-clip bg-ink pb-[max(2rem,env(safe-area-inset-bottom))] leading-[normal] text-cream">
+      <div className="ob-aur ob-drift1 left-[-160px] top-[-160px] h-[700px] w-[700px] rounded-full bg-[radial-gradient(circle,rgba(255,179,71,0.14),rgba(255,179,71,0)_65%)] max-md:h-[460px] max-md:w-[460px]" aria-hidden="true" />
+      <div className="ob-aur ob-drift2 bottom-[-200px] right-[-200px] h-[760px] w-[760px] rounded-full bg-[radial-gradient(circle,rgba(255,91,123,0.12),rgba(255,91,123,0)_65%)] max-md:hidden" aria-hidden="true" />
+      <OnboardingHeader
+        step={stepIndex}
+        startOver={mode !== 'handle' && (
+          confirmingStartOver ? (
+            <span className="text-[12.5px] text-label">
+              Clear your answers and start again?{' '}
+              <button type="button" className="border-0 bg-transparent p-0 text-coral-soft underline" onClick={startOver}>Yes, start over</button>{' '}
+              <button type="button" className="border-0 bg-transparent p-0 text-sand-soft underline" onClick={() => setConfirmingStartOver(false)}>Keep going</button>
+            </span>
+          ) : (
+            <button type="button" className="border-0 bg-transparent p-0 text-[12.5px] text-label underline" onClick={() => setConfirmingStartOver(true)}>
+              Stuck? Start over
+            </button>
+          )
         )}
-      >
-        {/* p-8 is 64px of horizontal padding, which is 16% of a 390px phone
-            spent on nothing. The confirm step is the longest screen in the
-            product, so that width is exactly what makes its fields feel
-            cramped and its labels wrap. Phones get p-5 and grow from there. */}
-        <div className="glass overflow-hidden rounded-panel p-5 sm:p-8 lg:p-9">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={mode}
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.35, ease: EASE }}
-            >
-              {mode === 'handle' && (
-                <HandleStep onStarted={handleStarted} seed={retrySeed} />
-              )}
-              {mode === 'building' && draft && (
-                <BuildingStep
-                  draft={draft}
-                  onReady={handleReady}
-                  onBack={() => setMode('handle')}
-                  onScanDead={forgetDeadScan}
-                  onTryPlatform={tryAnotherPlatform}
-                  onDraftChange={persistDraft}
-                />
-              )}
-              {mode === 'stories' && draft && (
-                <StoryStep
-                  draft={draft}
-                  onDone={() => setMode('confirm')}
-                />
-              )}
-              {mode === 'confirm' && draft && (
-                <ConfirmStep
-                  draft={draft}
-                  onDraftChange={updateAnswers}
-                  onDone={complete}
-                  onBack={() => setMode('handle')}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-        {mode !== 'handle' && (
-          <div className="mt-3 text-center text-xs text-stone">
-            {confirmingStartOver ? (
-              <span>
-                Clear your answers and start again from your handle?{' '}
-                <button type="button" className="text-coral underline underline-offset-2" onClick={startOver}>Yes, start over</button>{' '}
-                <button type="button" className="underline underline-offset-2" onClick={() => setConfirmingStartOver(false)}>Keep going</button>
-              </span>
-            ) : (
-              <button type="button" className="underline underline-offset-2 hover:text-cream" onClick={() => setConfirmingStartOver(true)}>
-                Stuck? Start over
-              </button>
-            )}
-          </div>
-        )}
-      </motion.div>
+      />
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={mode}
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -24 }}
+          transition={{ duration: 0.35, ease: EASE }}
+          className="relative z-[1] flex flex-grow flex-col"
+        >
+          {mode === 'handle' && (
+            <HandleStep
+              onStarted={(...args) => { setScanFailureShown(null); handleStarted(...args) }}
+              seed={retrySeed}
+              failure={scanFailureShown}
+              onClearFailure={() => setScanFailureShown(null)}
+            />
+          )}
+          {mode === 'building' && draft && (
+            <BuildingStep
+              draft={draft}
+              onReady={handleReady}
+              onBack={() => setMode('handle')}
+              onScanDead={forgetDeadScan}
+              onTryPlatform={tryAnotherPlatform}
+              onDraftChange={persistDraft}
+              onFailed={scanFailed}
+            />
+          )}
+          {mode === 'stories' && draft && (
+            <StoryStep
+              draft={draft}
+              onDone={() => setMode('confirm')}
+            />
+          )}
+          {mode === 'confirm' && draft && (
+            <ConfirmStep
+              draft={draft}
+              onDraftChange={updateAnswers}
+              onDone={complete}
+              onBack={() => (draft.manual ? setMode('handle') : setMode('stories'))}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </main>
   )
 }
@@ -527,12 +519,18 @@ function safeClearDraft(userId: string): void {
 function HandleStep({
   onStarted,
   seed,
+  failure = null,
+  onClearFailure,
 }: {
   onStarted: (voiceId: string, platform: Platform, handle: string, profile: VoiceProfile | null, manual?: boolean) => void
   /** ⚖️ SET ONLY WHEN A FAILED SCAN SENT THEM BACK HERE. A normal arrival gets
    *  the empty form it always got; this is a recovery path, not a new default. */
   seed?: { handle: string; platform: Platform } | null
+  /** The classified reason the last scan failed, shown on this screen (Connect board). */
+  failure?: ScanFailure | null
+  onClearFailure?: () => void
 }) {
+  const wide = useWide()
   const [handle, setHandle] = useState(seed?.handle ?? '')
   const [platform, setPlatform] = useState<Platform>(seed?.platform ?? 'instagram')
   const [busy, setBusy] = useState(false)
@@ -577,83 +575,160 @@ function HandleStep({
     }
   }
 
-  return (
-    <>
-      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft">
-        <LogoMark size={22} />
-      </span>
-      <p className="eyebrow mt-5">Your brand voice · the one-tap way</p>
-      <h1 className="mt-3 font-display text-3xl leading-tight">
-        Paste your handle. We read how <span className="gradient-text">you</span> sound.
-      </h1>
-      <p className="mt-2.5 text-sand">
-        TwinAI reads your recent posts and learns your voice, so every script sounds like you, not a robot.
-      </p>
-
-      <div className="mt-6 flex flex-wrap gap-2">
-        {PLATFORMS.filter((p) => p !== 'other').map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPlatform(p)}
-            className={cn(
-              'chip capitalize transition-all duration-200',
-              platform === p && 'border-coral/60 bg-coral/10 text-cream',
-            )}
-          >
-            {p}
-          </button>
+  const name = handleName(handle)
+  const liveErr = handle.trim() ? handleShapeError(handle) : null
+  const shownErr = err ?? liveErr
+  const ok = !!handle.trim() && !shownErr && !failure
+  const pick = (p: Platform) => { setPlatform(p); setErr(null); onClearFailure?.() }
+  const fail = failure ? failureCopy(failure, platform) : null
+  const others = (['tiktok', 'instagram', 'youtube'] as const).filter((p) => p !== platform)
+  const failureCard = fail && (
+    <div role="alert" className={`ob-pop flex flex-col border border-[rgba(255,91,123,0.35)] bg-[rgba(255,91,123,0.08)] ${wide ? 'gap-2 rounded-[14px] px-4 py-[14px]' : 'gap-[6px] rounded-[14px] px-[14px] py-[13px]'}`}>
+      <span className={`font-bold text-coral-soft ${wide ? 'text-[15px]' : 'text-[14.5px]'}`}>{fail.title}</span>
+      <span className={`text-sand-soft ${wide ? 'text-[13.5px] leading-[1.5]' : 'text-[13px] leading-[1.45]'}`}>{fail.body}</span>
+      <span className={`flex flex-wrap ${wide ? 'gap-2' : 'mt-1 gap-[6px]'}`}>
+        {failure?.tryAnotherPlatform && others.map((p) => (
+          <button key={p} type="button" onClick={() => pick(p)} className={`btn-outline ${wide ? '!px-3 !py-2 !text-[13px]' : '!px-[11px] !py-[7px] !text-[12.5px]'}`}>Try on {PLATFORM_LABEL[p]}</button>
         ))}
-      </div>
-
-      <input
-        className="field mt-4"
-        placeholder={PLACEHOLDER[platform]}
-        value={handle}
-        onChange={(e) => setHandle(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && go()}
-      />
-
-      <AnimatePresence>
-        {err && (
-          <motion.p
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral"
-          >
-            {err}
-          </motion.p>
-        )}
-      </AnimatePresence>
-
-      <div className="mt-8">
-        <button className="btn-gradient w-full !py-3.5" onClick={go} disabled={busy || manualBusy}>
-          {busy ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Starting…
-            </>
-          ) : (
-            <>
-              Build my voice <ArrowRight className="h-4 w-4" />
-            </>
-          )}
+        <button type="button" onClick={goManual} disabled={busy || manualBusy} className={`btn-outline ${wide ? '!px-3 !py-2 !text-[13px]' : '!px-[11px] !py-[7px] !text-[12.5px]'}`}>
+          {manualBusy ? 'Setting up…' : wide ? 'Describe my voice myself →' : 'Describe it myself →'}
         </button>
-        <p className="mt-3 text-center text-xs text-stone">
-          Use any public account — it can be yours or a creator you sound like. We only read public posts.
-        </p>
-        {/* Escape hatch: no account to scan, or the scan is down? Describe your
-            voice by hand instead — same editable form, a real voice, no dead-end. */}
-        <button
-          type="button"
-          className="mt-4 w-full text-center text-sm text-sand underline-offset-4 hover:text-cream hover:underline disabled:opacity-60"
-          onClick={goManual}
-          disabled={busy || manualBusy}
-        >
-          {manualBusy ? 'Setting up…' : 'No account to scan? Set up my voice myself'}
-        </button>
-      </div>
-    </>
+      </span>
+    </div>
+  )
+  const tabs = (
+    <div role="tablist" aria-label="Platform" className={`flex ${wide ? 'gap-2' : 'gap-[6px]'}`}>
+      {(['tiktok', 'instagram', 'youtube'] as const).map((p) => {
+        const on = platform === p
+        return (
+          <button key={p} type="button" role="tab" aria-selected={on} onClick={() => pick(p)}
+            className={`flex items-center gap-2 rounded-full border font-semibold ${wide ? 'px-[15px] py-[9px] text-[14px]' : 'flex-1 justify-center gap-[6px] py-[9px] text-[13px] [@media(pointer:coarse)]:min-h-11'}`}
+            style={{ borderColor: on ? 'rgba(255,91,123,0.6)' : 'rgba(255,255,255,0.1)', background: on ? 'rgba(255,91,123,0.12)' : 'transparent', color: on ? '#F6F1E9' : '#B7AE9F' }}>
+            <PlatformIcon p={p} />{PLATFORM_LABEL[p]}
+          </button>
+        )
+      })}
+    </div>
+  )
+  const input = (
+    <input className="fld" type="text" aria-label="Your handle or profile link" placeholder={PLACEHOLDER[platform]} value={handle}
+      onChange={(e) => { setHandle(e.target.value); setErr(null); onClearFailure?.() }}
+      onKeyDown={(e) => e.key === 'Enter' && go()}
+      style={wide ? { padding: '16px 18px', fontSize: 17 } : { padding: '15px 16px', fontSize: 16 }} />
+  )
+  const status = ok ? (
+    wide ? (
+      <span className="ob-pop flex items-center gap-2 text-[13.5px] text-teal-soft">
+        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-teal text-[12px] font-black text-ink">✓</span>
+        We'll read <b>@{name}</b> on {platformName(platform)}
+      </span>
+    ) : <span className="ob-pop -mt-[6px] text-[13px] text-teal-soft">✓ We'll read <b>@{name}</b> on {platformName(platform)}</span>
+  ) : shownErr ? <span role="alert" className={`ob-pop text-coral-soft ${wide ? 'text-[13.5px]' : '-mt-[6px] text-[13px]'}`}>{shownErr}</span> : null
+  const build = (
+    <button type="button" onClick={go} disabled={busy || manualBusy}
+      className={`ob-cta ob-gbtn flex items-center justify-center rounded-[14px] border-0 text-[16px] font-bold text-ink disabled:opacity-70 ${wide ? 'p-4 shadow-[0_14px_36px_-14px_rgba(255,91,123,0.8)]' : 'p-[15px]'}`}>
+      {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting…</> : 'Build my voice →'}
+    </button>
+  )
+  // Escape hatch: no account to scan? Describe your voice by hand instead.
+  const manualLink = (cls: string) => (
+    <button type="button" onClick={goManual} disabled={busy || manualBusy} className={cls}>
+      {manualBusy ? 'Setting up…' : 'No account to scan? Set up my voice myself'}
+    </button>
+  )
+
+  if (!wide) {
+    return (
+      <>
+        <section className="pin d2 flex flex-grow flex-col gap-4 px-5 pt-7">
+          <span className="text-[12px] font-bold tracking-[.12em] text-coral-soft">YOUR BRAND VOICE · THE ONE-TAP WAY</span>
+          <h1 className="m-0 mt-[-6px] text-[31px] font-bold leading-[1.08] tracking-[-0.03em]">Paste your handle.<br /><span className="ob-grad">We read how you sound.</span></h1>
+          {tabs}
+          {input}
+          {status}
+          {failureCard}
+          <span className="text-[13px] leading-[1.5] text-label">We read your recent public posts. Every guess stays yours to keep or change.</span>
+        </section>
+        <div className="flex flex-col gap-3 px-5 pb-7 pt-6">
+          {build}
+          {manualLink('min-h-11 border-0 bg-transparent text-center text-[13px] text-sand-muted underline')}
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <div className="flex flex-grow flex-wrap items-center justify-center gap-x-20 gap-y-10 px-6 py-12 lg:px-20">
+      <section className="pin d2 flex w-full max-w-[560px] flex-col gap-[22px]">
+        <span className="text-[12px] font-bold tracking-[.12em] text-coral-soft">YOUR BRAND VOICE · THE ONE-TAP WAY</span>
+        <h1 className="m-0 mt-[-8px] text-[46px] font-bold leading-[1.05] tracking-[-0.035em]">Paste your handle.<br /><span className="ob-grad">We read how you sound.</span></h1>
+        <p className="m-0 text-[16px] leading-[1.55] text-sand-muted">Twin reads your recent posts and learns your voice, so every script sounds like you, not a robot.</p>
+        {tabs}
+        <div className="flex flex-col gap-[10px]">
+          {input}
+          {status}
+        </div>
+        {failureCard}
+        {build}
+        <div className="flex flex-wrap items-center justify-between gap-y-2 text-[13px] text-label">
+          <span>We only read public posts. Use your own account.</span>
+          {manualLink('border-0 bg-transparent p-0 text-sand-soft underline')}
+        </div>
+      </section>
+      <aside className="pin d3 flex w-full max-w-[380px] flex-col gap-3">
+        <span className="text-[12px] font-bold tracking-[.12em] text-label">WHAT TWIN READS</span>
+        <div className="flex flex-col gap-[14px] rounded-[18px] border border-white/[0.07] bg-card p-[18px]">
+          {[
+            ['1', 'rgba(255,179,71,0.14)', '#FFB347', 'Your recent posts', 'How you open and end, the words you repeat'],
+            ['2', 'rgba(255,91,123,0.14)', '#FF8FA4', 'How you actually talk', 'A few minutes later, from your videos’ audio'],
+            ['3', 'rgba(101,229,216,0.14)', '#65E5D8', 'Nothing is final until you say so', 'Every guess is yours to keep or change'],
+          ].map(([n, bg, fg, t, d]) => (
+            <span key={n} className="flex items-start gap-3">
+              <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] text-[13px] font-extrabold" style={{ background: bg, color: fg }}>{n}</span>
+              <span className="flex flex-col gap-[2px]"><b className="text-[14.5px]">{t}</b><span className="text-[13px] text-label">{d}</span></span>
+            </span>
+          ))}
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+/** The account name a handle or profile link points at (Connect board's parser). */
+function handleName(v: string): string {
+  const t = v.trim()
+  if (!t) return ''
+  if (/\//.test(t)) {
+    const parts = t.replace(/^https?:\/\//, '').split('/').filter(Boolean).slice(1)
+    const at = parts.find((q) => q[0] === '@')
+    return (at || parts.filter((q) => !['shorts', 'reels', 'videos', 'featured'].includes(q)).pop() || '').replace(/^@/, '')
+  }
+  return t.replace(/^@/, '')
+}
+
+/** Connect board copy for the three named failures; every other cause keeps
+ *  its own tested sentence under a plain title. Never a dead end. */
+function platformName(p: Platform): string {
+  return p === 'tiktok' || p === 'instagram' || p === 'youtube' ? PLATFORM_LABEL[p] : 'This platform'
+}
+
+function failureCopy(f: ScanFailure, platform: Platform): { title: string; body: string } {
+  switch (f.cause) {
+    case 'ACCOUNT_PRIVATE': return { title: 'This account is private', body: 'Twin can only read public posts. Make it public for a minute, or try another platform.' }
+    case 'NO_RECENT_CONTENT': return { title: 'No posts found', body: 'This account has no public videos yet. Try the platform you post on most.' }
+    case 'RATE_LIMITED': return { title: `${platformName(platform)} is busy right now`, body: 'Too many reads at once. Wait a minute and try again, or try another platform.' }
+    case 'HANDLE_NOT_FOUND': return { title: 'We couldn’t find that account', body: f.message }
+    default: return { title: 'We couldn’t read this account', body: f.message }
+  }
+}
+
+/** Platform glyphs, stroke paths copied from the Connect board. */
+function PlatformIcon({ p }: { p: Platform }) {
+  const d = p === 'tiktok' ? 'M15 3v10.5a3.5 3.5 0 1 1-3.5-3.5M15 3c.5 2.5 2.3 4 5 4'
+    : p === 'instagram' ? 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z'
+    : 'M3 8a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM10 9l5 3-5 3z'
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
   )
 }
 
@@ -674,11 +749,14 @@ function BuildingStep({
   onScanDead,
   onTryPlatform,
   onDraftChange,
+  onFailed,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile, manual?: boolean) => void
   onBack: () => void
   onScanDead: () => void
+  /** Connect board: a classified failure goes back to the handle screen. */
+  onFailed?: (f: ScanFailure) => void
   /** Take the same handle to another platform, in one tap. */
   onTryPlatform: (platform: Platform) => void
   onDraftChange: (next: OnboardingDraft) => void
@@ -818,6 +896,7 @@ function BuildingStep({
           else {
             setErr('The scan finished without a voice profile. Try a different handle or describe it yourself.')
             onScanDead()
+            onFailed?.(scanFailure('VOICE_INCOMPLETE'))
           }
         } else if (res.status === 'failed') {
           if (timer.current) clearInterval(timer.current)
@@ -829,6 +908,7 @@ function BuildingStep({
           const f = readScanFailure((res as { cause?: unknown }).cause)
           setFailure(f)
           setErr(f.message)
+          onFailed?.(f)
           // AND FORGET THE DEAD SCAN. `mode` resumes into 'building' whenever
           // the draft still carries a voiceId, so a failed scan used to trap
           // the account: onboarded stays false, every sign-in redirects here,
@@ -845,6 +925,7 @@ function BuildingStep({
           setFailure(f)
           setErr(f.message)
           onScanDead()
+          onFailed?.(f)
         }
       } catch (e) {
         // Transient, keep polling; surface only if it persists past the cap.
@@ -857,6 +938,7 @@ function BuildingStep({
           setFailure(f)
           setErr(f.message)
           onScanDead()
+          onFailed?.(f)
         }
       }
     }
@@ -866,7 +948,7 @@ function BuildingStep({
       stopped = true
       if (timer.current) clearInterval(timer.current)
     }
-  }, [draft.voiceId, onReady])
+  }, [draft.voiceId, onReady]) // eslint-disable-line react-hooks/exhaustive-deps -- onFailed/onScanDead are stable callbacks
 
   return (
     <>
