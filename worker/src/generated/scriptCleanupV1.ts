@@ -52,6 +52,16 @@ export function finalPassCuts(fp: unknown): number {
   return ['pressure', 'unbacked_result', 'wrong_story', 'story_repeat', 'fact_repeat', 'false_cause'].reduce((n, k) => n + (Number(r[k]) || 0), 0)
 }
 
+/** A line in an ordinal series ("The first check…", "Step 2:", "3) …"): one item of a list, never a story told again (panel 13c pos 8). */
+export function isOrdinalItem(s: string): boolean {
+  const t = String(s ?? '').trim()
+  return /^(?:(?:and|so|then|now)\s+)?(?:the\s+)?(?:first|second|third|fourth|fifth|sixth|seventh|next|last|final|another)\s+(?:\w+\s+)?(?:check|step|way|thing|rule|tip|reason|habit|mistake|sign|question|point|part|lesson|option|setup|test)\b/i.test(t)
+    || /^(?:firstly|secondly|thirdly|finally|first|second|third)\s*[,:]/i.test(t)
+    || /^step\s+\d+\b/i.test(t)
+    || /^\(?\d+[.):]\s/.test(t)
+    || /^(?:number|no\.)\s*\d+\b/i.test(t)
+}
+
 export interface CleanupCtx { products?: readonly ScopedProduct[]; stories?: readonly string[]; offers?: readonly string[] }
 export interface CleanupCut { dangling_last: number; fact_repeat: number; story_repeat: number; capped: number; /** Sentence cuts in this script so far, prior passes included. */ total: number }
 
@@ -133,7 +143,7 @@ export function scriptCleanupV1<T extends { line?: unknown; section?: unknown }>
     for (const i of spokenIdx) {
       if (protectedBeat(i)) continue
       sents[i].forEach((s, k) => {
-        if (!plan[i][k] || protectedSentence(s)) return
+        if (!plan[i][k] || protectedSentence(s) || isOrdinalItem(s)) return
         const sw = new Set(words(s))
         const hit = [...sw].filter((w) => st.has(w))
         if (sw.size >= 2 && hit.length / sw.size >= 0.5 && hit.length >= 2) tellings.push({ i, k, sw, strength: hit.length })

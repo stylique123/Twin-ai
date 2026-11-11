@@ -108,3 +108,38 @@ describe('review of #1360 (11 Nov)', () => {
     expect(after2.cut.capped).toBeGreaterThanOrEqual(1)
   })
 })
+
+describe('ordinal series are never cut as a story repeat (panel 13c pos 8)', () => {
+  const sd = {
+    products: [{ id: 'nl', name: 'Signal Daily Newsletter', facts: ['One email every weekday with one AI tool tested', 'Each issue ends with the catch: one thing the tool gets wrong'] }],
+    stories: [
+      'I asked an AI tool to summarize my own newsletter and it confidently quoted a sentence I never wrote.',
+      'Before trusting an AI answer: ask for its sources, open one, find the exact sentence, and if it is not there, treat the whole answer as a draft.',
+      'I think the most useful AI feature most people ignore is asking it to show its sources.',
+      'Real talk, I think an AI tool that admits it does not know is worth more than one that always answers.',
+    ],
+    offers: ['Signal Daily Newsletter: subscribe, link in bio'],
+  }
+  it('keeps "The first check is asking for sources." in the signal-daily script', () => {
+    const b = beats(
+      'I asked an AI tool to summarize my own newsletter.',
+      'The first check is asking for sources.',
+      'The second check is how it handles gaps.',
+      'When you run these three checks, you stop relying on blind confidence and start catching errors before they hit your work.',
+      'And this is where people get caught. Before trusting an AI answer: ask for its sources, open one, find the exact sentence. And if it is not there, treat the whole answer as a draft.',
+      'One email every weekday with one AI tool tested.',
+      'Each issue ends with the catch: one thing the tool gets wrong.',
+      'Real talk, I think an AI tool that admits it does not know is worth more than one that always answers.',
+      'I think the most useful AI feature most people ignore is asking it to show its sources.',
+      'Signal Daily Newsletter: Subscribe to the free newsletter, link in bio.',
+    )
+    const r = scriptCleanupV1(b, sd)
+    expect(text(r.beats)).toMatch(/The first check is asking for sources\./)
+    expect(r.cut.story_repeat).toBe(0)
+  })
+  it('also keeps "Step 2 …" and numbered items', () => {
+    const story = ['To check if your beans are stale, read the roast date, smell a handful, then watch the bloom.']
+    const b = beats('Stale beans?', 'Step 1: read the roast date on the bag.', 'Step 2: smell a handful of beans, read the roast date again.', '3) Watch the bloom when the water hits the beans.', 'Link in bio.')
+    expect(scriptCleanupV1(b, { stories: story }).cut.story_repeat).toBe(0)
+  })
+})
