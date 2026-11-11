@@ -228,47 +228,58 @@ body {
     background: rgba(255, 255, 255, 0.02);
   }
 
-  /* Single-choice row (role="radio"). Picked state via aria-checked. */
-  .radio-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
+  /* Board primitives, values copied one for one from the Create board CSS. */
+  .fld {
+    min-width: 0;
     width: 100%;
-    min-height: 58px;
-    padding: 12px 16px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: #0c0c11;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #07070a; /* board #0B0B0E -> ink */
     color: #f6f1e9;
-    text-align: left;
-    cursor: pointer;
-    transition: border-color 0.2s ease, background 0.2s ease;
+    font-family: inherit;
+    font-size: 15px;
+    line-height: normal;
+    outline: none;
   }
-  .radio-row:hover { border-color: rgba(255, 255, 255, 0.16); }
-  .radio-row[aria-checked='true'] {
-    border-color: #ff5b7b;
-    background: rgba(255, 91, 123, 0.1);
+  .fld:focus {
+    border-color: rgba(255, 91, 123, 0.6);
+    box-shadow: 0 0 0 4px rgba(255, 91, 123, 0.12);
   }
-  .radio-row[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
-  .radio-dot {
+  .fld::placeholder { color: #757575; }
+  .btn-light {
+    white-space: nowrap;
     flex-shrink: 0;
-    display: flex;
+    padding: 12px 18px;
+    border-radius: 12px;
+    border: 0;
+    background: #f6f1e9;
+    color: #07070a;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: normal;
+    cursor: pointer;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    border: 2px solid rgba(255, 255, 255, 0.25);
+    gap: 8px;
   }
-  .radio-dot::after {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
+  .btn-light:active { transform: scale(0.97); }
+  .btn-light:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-outline {
+    padding: 11px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     background: transparent;
+    color: #d8cfc2;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: normal;
+    cursor: pointer;
   }
-  .radio-row[aria-checked='true'] .radio-dot { border-color: #ff5b7b; }
-  .radio-row[aria-checked='true'] .radio-dot::after { background: #ff5b7b; }
 
   .chip {
     display: inline-flex;
@@ -283,50 +294,14 @@ body {
   }
 }
 
+/* Rule C: no double-tap zoom delay on controls. */
+button, [role='button'], a, input, select, textarea { touch-action: manipulation; }
+
 /* Touch devices: raise tap targets to a comfortable minimum (desktop untouched). */
 @media (pointer: coarse) {
-  /* Single-choice row (role="radio"). Picked state via aria-checked. */
-  .radio-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    width: 100%;
-    min-height: 58px;
-    padding: 12px 16px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: #0c0c11;
-    color: #f6f1e9;
-    text-align: left;
-    cursor: pointer;
-    transition: border-color 0.2s ease, background 0.2s ease;
-  }
-  .radio-row:hover { border-color: rgba(255, 255, 255, 0.16); }
-  .radio-row[aria-checked='true'] {
-    border-color: #ff5b7b;
-    background: rgba(255, 91, 123, 0.1);
-  }
-  .radio-row[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
-  .radio-dot {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    border: 2px solid rgba(255, 255, 255, 0.25);
-  }
-  .radio-dot::after {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: transparent;
-  }
-  .radio-row[aria-checked='true'] .radio-dot { border-color: #ff5b7b; }
-  .radio-row[aria-checked='true'] .radio-dot::after { background: #ff5b7b; }
-
+  /* Rule C: inputs at least 16px so iOS doesn't zoom. */
+  .fld, input, select, textarea { font-size: max(16px, 1em) !important; }
+  .btn-light, .btn-outline { min-height: 44px; }
   .chip { min-height: 2.4rem; }
   .btn-primary,
   .btn-gradient,
