@@ -33,11 +33,20 @@ The owner thinks of the design as four parts: **Website · Onboarding · App · 
 
 ## 3. Rules that apply to every task
 
-1. **Where the design and DESIGN.md disagree:**
-   - **The design wins on** layout, words, flow and states.
-   - **`DESIGN.md` wins on** tokens and primitives: `.glass`, `.btn-gradient`, `.btn-ghost`, `.chip`, `.field`, Lucide icons, the single teal `#65E5D8`, no emoji, one ambient glow per page.
-   - The faint brand-color background shading in the boards counts as that page's one ambient glow.
-   - The boards use `#0B0B0E` as the page color. Use the repo's `ink` token instead.
+1. **The boards are the exact spec.** These rules win over anything else in this file and in `DESIGN.md`.
+   1. **Match the boards exactly.** Same layout, words, sizes, spacing, colours, corner sizes, borders, gradients, shadows and animations. Don't swap in a "similar" style from DESIGN.md or an existing component if it looks different. If an existing component doesn't match the board, change the component or make a new one.
+   2. **"Don't copy the markup" only means:** don't copy the design runtime (`support.js`, `<sc-if>`, `<sc-for>`, `{{ }}` holes, `DCLogic`). Do copy the structure and every value. Turn the board's inline styles into Tailwind classes (or arbitrary values like `rounded-[14px]`, `text-[14.5px]`, `gap-[13px]`) one for one.
+   3. **DESIGN.md is only for naming.** If a board colour matches a token exactly, use the token. If it doesn't, add a new token with the board's exact value. Never round a value to the nearest existing token. The only allowed changes are:
+      - text under 12px goes up to 12px;
+      - `#0B0B0E` becomes `ink`.
+   4. **Measure, don't guess.** Before building each screen, write a Playwright script that:
+      - serves `design-handoff/` (`python3 -m http.server 8000` from that folder);
+      - opens the board at 1440px and 390px;
+      - picks the DESIGN PREVIEW state you're building;
+      - saves the computed styles of every visible element (font size, weight, line height, letter spacing, colours, padding, gap, radius, border, width, height) to a JSON file.
+      Build from those numbers.
+   5. **Prove it matches.** For every screen and state, screenshot the board and the real page at the same size and state, make a pixel-difference image, and report the percentage that differs. Fix it until the only differences are real data and fonts loading. Put each board / app / difference set side by side in the PR description.
+   6. **Never invent content.** Test and preview pages use the board's own example content, never made-up content.
 2. **Copy is exact.** Use the words on the boards, in plain everyday language. Don't add jargon ("hook", "beat", "arc"). Don't add hype.
 3. **Example data and media are fake.** Maya, Maya's Coffee, @brewbyjo, Signature Blend, Northfield Gooseneck Kettle and all the numbers are placeholders. Wire every screen to the real data and API calls the page already uses. **Never ship the placeholder names or numbers.** Never show a made-up number in the product (viewer scores, counts). The same goes for the pictures and videos in `assets/`: only the Landing page media ships (see `assets/ASSETS.md`). In-app screens show the user's real camera, clips and Gallery thumbnails.
 4. **Keep the plumbing.** Most pages already exist and have tests (`*.test.ts(x)` next to them). Change the look and flow, keep the data loading, auth, routing and edge-function calls. Run the tests. If a test fails because the design changed the behavior on purpose, update the test and say why in the commit. If it fails for any other reason, fix your code.
