@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import CreatorTypePicker from '../components/CreatorTypePicker'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Loader2, Check, ArrowRight } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { trialUser } from '../components/ProductDetailsByKind'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
@@ -472,6 +472,7 @@ export default function Onboarding() {
               draft={draft}
               onDraftChange={updateAnswers}
               onDone={complete}
+              onPatch={persistDraft}
               onBack={() => (draft.manual ? setMode('handle') : setMode('stories'))}
             />
           )}
@@ -1229,6 +1230,7 @@ export function ConfirmStep({
   onDraftChange,
   onDone,
   onBack,
+  onPatch,
 }: {
   draft: OnboardingDraft
   onDraftChange: (
@@ -1237,7 +1239,14 @@ export function ConfirmStep({
   ) => void
   onDone: () => Promise<void>
   onBack: () => void
+  /** Writes a whole draft. Used by the content-goal and product-capability
+   *  questions, which moved here from Reading. */
+  onPatch?: (next: OnboardingDraft) => void
 }) {
+  const wide = useWide()
+  const [hookIdx, setHookIdx] = useState(0)
+  const [hookK, setHookK] = useState(0)
+  const [prodConfirmed, setProdConfirmed] = useState(false)
   const [vp, setVp] = useState<VoiceProfile | null>(draft.profile)
   // ⚠️⚠️ EIGHT FIELDS RENDERED BLANK WHILE THEIR VALUES WERE PRINTED ONE LINE
   // ABOVE THEM. Reported live on a creator's account: `WHO YOU'RE TALKING TO`,
@@ -1402,8 +1411,8 @@ export function ConfirmStep({
     const words = Array.isArray(p.vocabulary) ? p.vocabulary.length : 0
     const ctas = Array.isArray(p.recurring_ctas) ? p.recurring_ctas.length : 0
     if (words) bits.push(`${words} signature ${words === 1 ? 'phrase' : 'phrases'}`)
-    if (ctas) bits.push(`${ctas} recurring ${ctas === 1 ? 'CTA' : 'CTAs'}`)
-    return bits.length ? `${bits.join(' · ')}. Tap to change anything.` : 'What the scan heard.'
+    if (ctas) bits.push(`${ctas} recurring ${ctas === 1 ? 'ending' : 'endings'}`)
+    return bits.length ? `${bits.join(' · ')}. Tap Show to change anything.` : 'What the scan heard.'
   }, [vp])
 
   // INVERTED, because the old default made a GOOD scan the worst screen.
@@ -1422,8 +1431,10 @@ export function ConfirmStep({
   // ⚖️ READ, NEVER SET, ON THIS SCREEN. The value still travels — a creator who
   // answered before this change keeps their answer, and the Product Library
   // writes it per product — but nothing here asks for it any more.
-  const [canRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
-  const [canFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
+  // Read live from the draft: the product-capability question below writes
+  // it through `onPatch`, and a copy captured at mount would overwrite that.
+  const canRecordScreen: boolean | null = draft.canRecordScreen
+  const canFilmObjects: boolean | null = draft.canFilmObjects
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // A refinement that did not land. Distinct from `err`, which blocks: this one
@@ -1446,6 +1457,16 @@ export function ConfirmStep({
       })
     }
   }, [vp, audience, product, goal, workKind, workKindOther, claimsValue, q4, ownsEntity, offerTouched, canRecordScreen, canFilmObjects, onDraftChange])
+
+  // Types the opening line like the board (30ms, two characters a tick).
+  const liveHooks = (vp?.sample_hooks ?? []).filter((h) => typeof h === 'string' && h.trim() !== '')
+  const hookLen = liveHooks.length ? liveHooks[hookIdx % liveHooks.length].length : 0
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setHookK(hookLen); return }
+    if (hookK >= hookLen) return
+    const t = window.setTimeout(() => setHookK((k) => k + 2), 30)
+    return () => window.clearTimeout(t)
+  }, [hookK, hookLen])
 
   if (!vp) {
     return (
@@ -1713,425 +1734,376 @@ export function ConfirmStep({
     }
   }
 
-  return (
-    <>
-      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft">
-        <Check className="h-5 w-5 text-teal" />
-      </span>
-      <p className="eyebrow mt-5">This is your voice · tweak anything</p>
-      <h1 className="mt-3 font-display text-2xl leading-snug">{vp.summary || 'Here’s how you sound'}</h1>
-
-      {/* Lead with PROOF the AI nailed their voice — a hook written as them. One
-          generated line converts skeptics far better than a wall of input fields. */}
-      {vp.sample_hooks?.[0] && (
-        <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.07] p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">A hook I’d write as you</p>
-          <p className="mt-1.5 font-heading text-lg leading-snug text-cream">“{vp.sample_hooks[0]}”</p>
-          {vp.sample_hooks[1] && (
-            <p className="mt-2 text-sm leading-snug text-sand">“{vp.sample_hooks[1]}”</p>
-          )}
-        </div>
+  // Meet / MMeet boards. Desktop column 880, phone 20px gutters.
+  const hooks = (vp.sample_hooks ?? []).filter((h) => typeof h === 'string' && h.trim() !== '')
+  const hook = hooks.length ? hooks[hookIdx % hooks.length] : ''
+  const hook2 = hooks.length > 1 ? hooks[(hookIdx + 1) % hooks.length] : ''
+  const offerName = product.trim() || 'your offer'
+  const sellable = (splitItems ?? []).filter((it) => it.kind !== 'content').length
+  const goalInferred = goalFromCtas(draft.profile?.recurring_ctas)
+  const goalChosen = !!goalInferred && draft.contentGoals.includes(goalInferred.goal)
+  const goalDeclined = draft.contentGoals.length === 0 && draft.contentGoalsTouched === true
+  const showProductCap = asksProductCapability(profileAnswersOf(draft))
+  const patch = (p: Partial<OnboardingDraft>) => onPatch?.({ ...draft, ...p })
+  const plainRows: Array<[string, string | undefined]> = [
+    ['Niche', vp.niche], ['Tone', vp.tone], ['Pacing', vp.pacing],
+    ['Opening style', vp.hook_style], ['What you push against', vp.enemy],
+  ]
+  const sumFields: Array<[string, 'niche' | 'tone' | 'pacing' | 'hook_style']> = [
+    ['Niche', 'niche'], ['Tone', 'tone'], ['Pacing', 'pacing'], ['Opening style', 'hook_style'],
+  ]
+  const tagGroups1: Array<[string, keyof VoiceProfile]> = [
+    ['Signature words', 'vocabulary'], ['Recurring endings', 'recurring_ctas'], ['Do', 'dos'], ['Don’t', 'donts'],
+  ]
+  const tagGroups2: Array<[string, keyof VoiceProfile]> = [
+    ['Your point of view', 'pov'], ['Openings you use', 'hook_patterns'], ['Your video formats', 'formats'],
+  ]
+  const pad = wide ? 'px-5 py-[18px]' : 'p-[14px]'
+  const smallBtn = 'min-h-11 !px-[14px] !py-[9px] !text-[13.5px] md:min-h-0'
+  const linkBtn = 'cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[13px] [@media(pointer:coarse)]:min-h-11'
+  const cta = (
+    <button
+      type="button"
+      onClick={() => void confirm()}
+      disabled={busy}
+      className={cn(
+        'ob-cta ob-gbtn inline-flex cursor-pointer items-center justify-center gap-2 border-0 font-[inherit] font-bold text-ink [touch-action:manipulation] disabled:opacity-70',
+        wide ? 'rounded-[14px] px-7 py-[15px] text-[16px] shadow-[0_14px_36px_-14px_rgba(255,91,123,0.8)]' : 'flex-grow rounded-[14px] p-[15px] text-[15.5px]',
       )}
+    >
+      {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : <>This is me, enter the studio →</>}
+    </button>
+  )
 
-      {/* WHAT CHANGES THE SCRIPT, SEPARATED FROM WHAT DESCRIBES THE VOICE.
-          Every field on this screen used to carry identical weight: the four
-          answers that decide what a video says sat between ten scan-derived
-          voice details, indistinguishable. When the scan came back thin that
-          was fifteen empty boxes with no indication which mattered — the worst
-          moment to make someone guess.
-
-          These are the ones no scan can produce. Niche moved down with the
-          voice fields, because a scan CAN read it. */}
-      <div className="mt-6 space-y-4">
-        <div>
-          <p className="eyebrow text-cream">What Twin needs from you</p>
-          <p className="mt-1 text-xs text-stone">
-            No scan can read these, and each one changes what your scripts say.
-          </p>
-        </div>
-        {/* Captured here so the DNA is complete from day one (the scan can't read
-            these). Optional — empty is fine, the creator can fill them in Settings. */}
-        {/* ⚠️⚠️ TWO TYPED BOXES REMOVED HERE, AND THE MEASUREMENT IS WHY.
-            "Who you're talking to" ASKED THE SAME THING SCREEN 2 ALREADY ASKS as
-            chips ("Who do you mainly want to reach?" plus "How much do they
-            already know?"), and those chips have real readers — `audienceSeg`
-            and `audienceKnowledge` travel on the pre-script brief. A second,
-            free-text copy could not be routed, compared against the scan or used
-            to pick a register, which is the reason screen 2 stopped being a box
-            in the first place.
-
-            ⚖️ THE OFFER MOVED TO THE PRODUCT LIBRARY, where a product is entered
-            with its real name and link behind an attestation. Measured: 51 of 53
-            ready voices carry `profile.offer` and every one of them is the
-            SCAN'S GUESS — the field was deliberately not used unless the creator
-            edited it, so what it mostly bought was a box that looked answered
-            and changed nothing. A name and a link, captured once, in the place
-            that grants the claim, beats a sentence typed at signup.
-            `generationReadiness` already reads the product entity. */}
-        {/* ⚠️ THE "What do you do?" CHIPS ARE GONE FROM HERE TOO, for the
-            same reason: screen 2 asks exactly this, from the same
-            `ONBOARDING_WORK_KINDS` list with the same labels. `workKind` below
-            still comes from the draft, so the claims question it gates is
-            unaffected — this removed a second asking, not an answer. */}
-        {/* WHAT Q3 ALREADY TOLD US — SHOWN, NOT ASKED.
-            A creator who has just said "Software" is not then asked whether they
-            have a product. Q3 mints the owned entity and it appears here
-            pre-filled and correctable, which is the pattern `offer` directly
-            above already uses.
-            CORRECTABLE MEANS A REAL EXIT. The mint is an inference from an
-            answer, not the answer itself, so "That's not right" clears it rather
-            than arguing — and clearing it hands ownership back to Q4 below,
-            which is where a creator with nothing of their own belongs. */}
-        {mintsOwnedEntity(workKind) && (
-          <div className="rounded-card border border-white/10 bg-white/[0.03] p-3.5">
-            {ownsEntity ? (
-              <>
-                <p className="text-sm text-cream">
-                  We’ll treat{' '}
-                  <span className="text-amber">{product.trim() || 'your offer'}</span>{' '}
-                  as your own {ENTITY_TYPE_LABEL[mintedType]}.
-                </p>
-                <p className="mt-1 text-[11px] text-stone">
-                  From what you do — so a script may speak for it, and say what it costs.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setOwnsEntity(false)}
-                  className="mt-2 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
-                >
-                  That’s not right — I don’t own one
-                </button>
-                {splitItems === null && pieces.length >= 2 && (
-                  <button
-                    type="button"
-                    onClick={() => setSplitItems(pieces)}
-                    className="ml-4 mt-2 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
-                  >
-                    {pieces.some((p) => p.kind !== 'product') ? 'These are separate things' : 'These are separate products'}
+  return (
+    <div className={cn('flex flex-grow flex-col items-center leading-[normal]', wide ? 'px-6 pb-[60px] pt-9' : 'pt-5')}>
+    <div className={cn('flex w-full flex-col', wide ? 'max-w-[880px] gap-[30px]' : 'gap-5 px-5')}>
+      <header className="pin d2 flex flex-col gap-[14px]">
+        <span className="flex items-center gap-2 text-[13.5px] font-semibold text-teal-soft">
+          <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[22px] bg-teal text-[12px] font-black text-ink" aria-hidden="true">✓</span>
+          This is your voice · tweak anything
+        </span>
+        <h1 className={cn('m-0 font-bold leading-[1.15] tracking-[-0.03em]', wide ? 'text-[36px]' : 'text-[25px]')}>
+          {vp.summary || 'Here’s how you sound'}
+        </h1>
+        {hook && (
+          <div className="relative overflow-hidden rounded-[16px] p-[1.5px]">
+            <div aria-hidden="true" className="ob-spinb absolute left-1/2 top-1/2 -ml-[700px] -mt-[700px] h-[1400px] w-[1400px] bg-[conic-gradient(from_0deg,rgba(255,179,71,0),rgba(255,179,71,0.9),rgba(255,91,123,0.8),rgba(255,179,71,0)_35%)] [animation-duration:7s]" />
+            <div className={cn('relative flex flex-col gap-2 rounded-[14.5px] bg-[#15121A]', wide ? 'px-5 py-[18px]' : 'p-[14px]')}>
+              <span className="flex items-center justify-between">
+                <span className="text-[11.5px] font-bold tracking-[.12em] text-amber">AN OPENING I’D WRITE AS YOU</span>
+                {hooks.length > 1 && (
+                  <button type="button" onClick={() => { setHookIdx((i) => i + 1); setHookK(0) }}
+                    className="cursor-pointer rounded-full border border-white/[0.12] bg-transparent px-[10px] py-[5px] font-[inherit] text-[12px] font-semibold text-cream [@media(pointer:coarse)]:min-h-11 [touch-action:manipulation]">
+                    ↻ Another
                   </button>
                 )}
-                {splitItems !== null && (
-                  <div className="mt-3">
-                    <p className="text-xs text-sand">We’ll add each as its own item (free content is noted, not added as something you sell):</p>
-                    <ul className="mt-1 flex flex-wrap gap-1.5">
-                      {splitItems.map((it) => (
-                        <li key={it.name} className="flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-0.5 text-xs text-cream">
-                          {it.name} <span className="text-stone">· {OFFER_KIND_LABEL[it.kind]}</span>
-                          <button type="button" aria-label={`Remove ${it.name}`} className="text-stone hover:text-cream"
-                            onClick={() => setSplitItems((prev) => {
-                              const next = (prev ?? []).filter((x) => x.name !== it.name)
-                              return next.length > 0 ? next : null
-                            })}>×</button>
-                        </li>
-                      ))}
-                    </ul>
-                    <button type="button" onClick={() => setSplitItems(null)}
-                      className="mt-1 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream">
-                      Keep it as one
+              </span>
+              <p className={cn('m-0 font-semibold leading-[1.4]', wide ? 'min-h-[34px] text-[21px]' : 'min-h-[60px] text-[17px]')}>
+                “{hook.slice(0, hookK)}<span className="ob-caret" aria-hidden="true" />”
+                <span className="sr-only">{hook}</span>
+              </p>
+              {hook2 && <p className="m-0 text-[13.5px] leading-[1.45] text-label">or: “{hook2}”</p>}
+            </div>
+          </div>
+        )}
+      </header>
+
+      <section className="pin d3 flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 className="m-0 text-[20px] font-bold">What Twin needs from you</h2>
+          <p className="m-0 text-[14px] text-sand-muted">No scan can read these, and each one changes what your scripts say.</p>
+        </div>
+
+        {mintsOwnedEntity(workKind) && (
+          <div className={cn('flex flex-col gap-3 rounded-[18px] border border-white/[0.07] bg-[#111115]', pad)}>
+            <span className="flex items-center gap-[10px]">
+              <span className="text-[15.5px] font-semibold">Your own product</span>
+              {ownsEntity && !prodConfirmed && splitItems === null && (
+                <span className="rounded-full bg-[rgba(255,179,71,.14)] px-2 py-[2px] text-[12px] font-bold tracking-[.05em] text-amber">FROM WHAT YOU DO</span>
+              )}
+            </span>
+            {ownsEntity && prodConfirmed && (
+              <span className="ob-pop text-[14px] text-teal-soft">
+                ✓ {splitItems ? `${sellable} ${sellable === 1 ? 'item' : 'items'}` : offerName} {splitItems && sellable !== 1 ? 'are' : 'is'} yours. You’ll find {splitItems && sellable !== 1 ? 'them' : 'it'} in Brands &amp; products.{' '}
+                <button type="button" onClick={() => setProdConfirmed(false)} className={cn(linkBtn, 'text-label')}>Undo</button>
+              </span>
+            )}
+            {!ownsEntity && (
+              <span className="ob-pop text-[14px] text-sand-muted">
+                No product of your own, then. Scripts won’t speak for one.{' '}
+                <button type="button" onClick={() => setOwnsEntity(true)} className={cn(linkBtn, 'text-coral-soft')}>Actually, I do own one</button>
+              </span>
+            )}
+            {ownsEntity && !prodConfirmed && splitItems === null && (
+              <div className="flex flex-col gap-3">
+                <span className="flex flex-col gap-[3px]">
+                  <span className="text-[15px] leading-[1.5] text-sand">We’ll treat <b className="text-cream">{offerName}</b> as your own {ENTITY_TYPE_LABEL[mintedType]}.</span>
+                  <span className="text-[13px] text-label">So a script may speak for it, and say what it costs.</span>
+                </span>
+                <span className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setProdConfirmed(true)} className={cn('btn-board-light', smallBtn)}>Yes, that’s mine</button>
+                  {pieces.length >= 2 && (
+                    <button type="button" onClick={() => setSplitItems(pieces)} className={cn('btn-board-ghost', smallBtn)}>
+                      {pieces.some((p) => p.kind !== 'product') ? 'These are separate things' : 'These are separate products'}
                     </button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-sand">No product of your own, then.</p>
-                <button
-                  type="button"
-                  onClick={() => setOwnsEntity(true)}
-                  className="mt-2 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
-                >
-                  Actually, I do own one
-                </button>
-              </>
+                  )}
+                  <button type="button" onClick={() => setOwnsEntity(false)} className={cn('btn-board-ghost', smallBtn)}>That’s not right, I don’t own one</button>
+                </span>
+              </div>
+            )}
+            {ownsEntity && !prodConfirmed && splitItems !== null && (
+              <div className="ob-pop flex flex-col gap-[10px]">
+                <span className="text-[13.5px] leading-[1.45] text-sand-muted">We’ll add each one as its own item. Free content is noted, not added as something you sell.</span>
+                <div className="flex flex-wrap gap-[7px]">
+                  {splitItems.map((it) => (
+                    <span key={it.name} className="ob-pop inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] py-[7px] pl-3 pr-2 text-[13.5px]">
+                      {it.name} <span className="text-label">· {OFFER_KIND_LABEL[it.kind]}</span>
+                      <button type="button" aria-label={`Remove ${it.name}`}
+                        className="h-[22px] w-[22px] cursor-pointer rounded-full border-0 bg-white/[0.07] font-[inherit] text-sand-muted"
+                        onClick={() => setSplitItems((prev) => {
+                          const next = (prev ?? []).filter((x) => x.name !== it.name)
+                          return next.length > 0 ? next : null
+                        })}>×</button>
+                    </span>
+                  ))}
+                </div>
+                <span className="flex items-center gap-[10px]">
+                  <button type="button" onClick={() => setProdConfirmed(true)} className={cn('btn-board-light', smallBtn)}>
+                    Add {sellable} as separate {sellable === 1 ? 'item' : 'items'}
+                  </button>
+                  <button type="button" onClick={() => setSplitItems(null)} className={cn(linkBtn, 'text-label')}>Keep it as one</button>
+                </span>
+              </div>
             )}
           </div>
         )}
-        {/* Q4 — ONLY ABOUT THINGS THE CREATOR DOES NOT OWN.
-            Placed after the mint because it is the residue: the block above
-            settles what is theirs, this settles whose else's appears.
 
-            NO DEFAULT. Leaving it unset is a real state that emits nothing into
-            the prompt — the same three-state rule the claims question follows. A
-            pre-selected answer would have this screen deciding a
-            liability-adjacent fact nobody asked about.
-
-            FOR A `creator` IT DOES DOUBLE DUTY. Q3 implies nothing for them, so
-            "Nothing of anyone else's" additionally means ideas-only and no
-            Product DNA at all — which is why the helper line changes with
-            `q4AsksOwnership`. */}
-        {/* ⚠️ THE BADGE COUNTED A QUESTION THIS SCREEN NO LONGER ASKS. Left as
-            it was, `canRecordScreen` is permanently null here, so the block
-            would read `Not answered` for ever — which is exactly the report
-            that started this: five consecutive accounts, unanswerable by
-            construction, because two of the three stacked questions can only be
-            answered by a product. */}
-        {/* ── "WHAT CAN APPEAR IN YOUR VIDEOS" IS DELETED, ON THE SIXTH REPORT ──
-            ⚠️ IT READ `Not answered` ON EVERY ACCOUNT, and by construction: it
-            stacked three questions, two of which only a PRODUCT can answer.
-            "Can you point a camera at a screen showing it" has no `it` on a
-            screen where no product exists yet. An earlier pass removed one of
-            the three and fixed the badge; the block stayed, which is why this
-            was reported still present after being reported fixed.
-
-            ⚖️ EACH QUESTION GOES WHERE IT CAN BE ANSWERED:
-             · relationship (own / affiliate / sponsored / review) → Product
-               Library, per product, where it writes the `relationship` enum
-               every claim rule and disclosure check actually reads;
-             · "can you show it on a screen" → Product Library, per product,
-               via `capabilityQuestion`, which asks it with the referent in hand;
-             · "can you put an object in front of the camera" → an inference
-               confirmed once, not a question asked cold.
-
-            ⚠️ AND THE CONSEQUENCE IS STATED RATHER THAN HIDDEN: `promotes` (the
-            brief's copy of q4) is null — "unanswered" — until the creator
-            registers a product. `preScriptBrief` already documents null as
-            unanswered and `asksProductEvidence` already handles it, so this is a
-            state the system has rather than a new one, and the per-product
-            relationship is strictly better information than the account-level
-            guess it replaces. */}
-        {/* THE CONDITIONAL. Unguessable, and unforgivable to get wrong for a
-            doctor, lawyer, financial adviser or supplement brand — there is no
-            model that can infer what a regulator will not let someone say. */}
         {asksForbiddenClaims(workKind) && (
-          <Labeled label="Is there anything you are not allowed to claim?">
-            {/* ⚠️⚠️ ZERO OF 53 READY VOICES EVER FILLED THE BOX THIS REPLACES,
-                and this is the one field where an empty answer is dangerous
-                rather than merely thin: it is unguessable, and unforgivable to
-                get wrong for a doctor, lawyer, adviser or supplement brand. A
-                blank box asks someone to inventory their own regulator from
-                memory at the end of signup, which is why nobody did it.
-
-                ⚖️ CHIPS MAKE IT RECOGNITION INSTEAD OF RECALL — the same move
-                that fixed the story screen. These are the restrictions that
-                recur across regulated work, so tapping two is a second's work
-                where writing them was a task.
-
-                ⚠️⚠️ AND THE LIST IS NEVER PRESENTED AS EXHAUSTIVE. A creator
-                whose restriction is not here must still be able to say it, so
-                the free-text box remains underneath and always. Chips that
-                quietly CAP what someone may declare about their own legal
-                exposure would be worse than the blank box they replace. */}
-            <div className="flex flex-wrap gap-2">
+          <div className={cn('flex flex-col gap-3 rounded-[18px] border border-white/[0.07] bg-[#111115]', pad)}>
+            <span className="text-[15.5px] font-semibold">Is there anything you’re not allowed to claim?</span>
+            <div className={cn('grid gap-[7px]', wide ? 'grid-cols-2' : 'grid-cols-1')}>
               {CLAIM_RESTRICTIONS.map((c: string) => {
                 const on = claimChips.includes(c)
                 return (
                   <button
                     key={c}
                     type="button"
+                    aria-pressed={on}
                     onClick={() => { setClaimChips(on ? claimChips.filter((x) => x !== c) : [...claimChips, c]); setClaimsAreGuessed(false) }}
-                    className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                      on ? 'border-coral bg-coral/15 text-cream'
-                        : 'border-white/15 text-sand hover:bg-white/5'
-                    }`}
+                    className={cn(
+                      'flex min-h-11 cursor-pointer items-center gap-[10px] rounded-[11px] border border-white/[0.07] px-3 py-[9px] text-left font-[inherit] text-[14px] text-cream [touch-action:manipulation]',
+                      on ? 'bg-[rgba(101,229,216,0.06)]' : 'bg-[#0E0E12]',
+                    )}
                   >
+                    <span aria-hidden="true" className={cn(
+                      'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] text-[12px] font-black text-ink',
+                      on ? 'border-teal bg-teal' : 'border-white/25 bg-transparent',
+                    )}>{on ? '✓' : ''}</span>
                     {c}
                   </button>
                 )
               })}
             </div>
-            <input
-              className="field mt-2"
-              value={forbiddenClaims}
-              onChange={(e) => { setForbiddenClaims(e.target.value); setClaimsAreGuessed(false) }}
-              placeholder="Anything else you are not allowed to say"
-            />
+            <label className="flex flex-col gap-[6px] text-[13px] text-sand-muted">
+              Anything else you’re not allowed to say
+              <input
+                className="ob-fld md:!text-[15px]"
+                value={forbiddenClaims}
+                onChange={(e) => { setForbiddenClaims(e.target.value); setClaimsAreGuessed(false) }}
+                placeholder="e.g. never mention our supplier by name"
+              />
+            </label>
             {claimsAreGuessed ? (
-              <p className="mt-1 text-[11px] text-amber">
-                We found this in your posts — is this right? Edit it if not.
-              </p>
+              <div className="flex items-center gap-[10px] rounded-[10px] bg-[rgba(255,179,71,0.07)] px-3 py-2 text-[13px] text-[#FFCB85]">
+                <span className="flex-grow">We found this in your posts. Is it right? Edit it if not.</span>
+                <button type="button" onClick={() => setClaimsAreGuessed(false)}
+                  className="cursor-pointer rounded-[8px] border-0 bg-amber px-[10px] py-[6px] font-[inherit] text-[12.5px] font-bold text-ink [@media(pointer:coarse)]:min-h-11">
+                  Yes, it’s right
+                </button>
+              </div>
             ) : null}
-            <p className="mt-1 text-[11px] text-stone">
-              We will keep these out of every script. Write “none” if there are no restrictions.
-            </p>
-          </Labeled>
+            <span className="text-[12.5px] text-label">We’ll keep these out of every script. Write “none” if there are no restrictions.</span>
+          </div>
         )}
-        {/* ⚠️⚠️ THE TYPED "Your goal" BOX IS GONE AND IS *NOT* REPLACED BY CHIPS,
-            which is the opposite of what the rest of this block did, so here is
-            why. Measured: ZERO of 53 ready voices ever carried a typed goal — it
-            was the most skippable thing on the screen and everyone skipped it.
-            The obvious fix is the one applied to the claims question below:
-            offer the options instead of a box.
 
-            ⚠️ THAT WOULD HAVE UNDONE A MEASURED DECISION. The seven goal chips
-            were deliberately REMOVED from onboarding — `the-cta-already-said-
-            what-the-videos-are-for` pins their absence, and records the reason:
-            the goal is CONFIRMED from the creator's own sign-offs on screen 2
-            ("Is this what your videos are for?"), and where it cannot be
-            inferred the question is deleted rather than softened. Re-adding the
-            chips here would be, in that test's own words, "the third asking".
+        {/* Moved here from Reading (owner decision): the content goal, read off
+            the creator's own sign-offs, and whether they can film the product. */}
+        {goalInferred && onPatch && (
+          <div className={cn('flex flex-col gap-3 rounded-[18px] border border-white/[0.07] bg-[#111115]', pad)}>
+            <span className="flex items-center gap-[10px]">
+              <span className="text-[15.5px] font-semibold">Is this what your videos are for?</span>
+              {!draft.contentGoalsTouched && (
+                <span className="rounded-full bg-[rgba(255,179,71,.14)] px-2 py-[2px] text-[12px] font-bold tracking-[.05em] text-amber">GUESS</span>
+              )}
+            </span>
+            <span className="text-[15px] leading-[1.5] text-sand">{goalConfirmationLine(goalInferred)}</span>
+            <span className="flex flex-wrap gap-2">
+              <button type="button" aria-pressed={goalChosen}
+                onClick={() => patch({ contentGoals: [goalInferred.goal], contentGoalsTouched: true })}
+                className={cn(goalChosen ? 'btn-board-light' : 'btn-board-ghost', smallBtn)}>Yes, that’s right</button>
+              <button type="button" aria-pressed={goalDeclined}
+                onClick={() => patch({ contentGoals: [], contentGoalsTouched: true })}
+                className={cn(goalDeclined ? 'btn-board-light' : 'btn-board-ghost', smallBtn)}>Not quite</button>
+            </span>
+            {goalDeclined && (
+              <div className="ob-pop flex flex-col gap-2">
+                <span className="text-[13.5px] text-sand-muted">Then what are they for?</span>
+                <span className="flex flex-wrap gap-2">
+                  {BRIEF_GOALS.filter((g) => g !== goalInferred.goal).map((g) => (
+                    <button key={g} type="button" onClick={() => patch({ contentGoals: [g], contentGoalsTouched: true })}
+                      className={cn('btn-board-ghost', smallBtn)}>{CONTENT_GOAL_LABEL[g]}</button>
+                  ))}
+                </span>
+              </div>
+            )}
+            {draft.contentGoalsTouched && draft.contentGoals.length > 0 && !goalChosen && (
+              <span className="ob-pop text-[14px] text-teal-soft">✓ {CONTENT_GOAL_LABEL[draft.contentGoals[0]]}</span>
+            )}
+          </div>
+        )}
+        {showProductCap && onPatch && (
+          <div className={cn('flex flex-col gap-3 rounded-[18px] border border-white/[0.07] bg-[#111115]', pad)}>
+            <span className="text-[15.5px] font-semibold">Can you usually show the product on camera?</span>
+            <span className="flex flex-wrap gap-2">
+              {CAPABILITY_ANSWERS.map((v) => {
+                const on = draft.productCapability === v
+                return (
+                  <button key={v} type="button" aria-pressed={on}
+                    onClick={() => {
+                      const next = on ? null : v
+                      patch({ productCapability: next, canFilmObjects: next === 'yes' ? true : next === 'no' ? false : null })
+                    }}
+                    className={cn(on ? 'btn-board-light' : 'btn-board-ghost', smallBtn)}>{CAPABILITY_LABEL[v]}</button>
+                )
+              })}
+            </span>
+            <span className="text-[12.5px] text-label">Say no and we stop suggesting shots you cannot film. Skip it and nothing is decided.</span>
+          </div>
+        )}
+      </section>
 
-            ⚖️ SO THE DEAD BOX IS REMOVED AND NOTHING TAKES ITS PLACE.
-            `contentGoals` still reaches the writer through the brief; it is
-            answered where it can be answered honestly. */}
-      </div>
-
-      {/* THE VOICE DETAILS, AND THEY COLLAPSE WHEN THERE IS NOTHING IN THEM.
-          These are what the scan produced. When it worked they are worth
-          reviewing, so the section opens. When it returned nothing they are ten
-          empty boxes that make the screen look broken and bury the answers
-          above, so it starts closed and says so. Either way nothing is hidden
-          from anyone who wants it. */}
-      <div className="mt-8 border-t border-white/8 pt-6">
+      <section className="pin d4 overflow-hidden rounded-[18px] border border-white/[0.07] bg-[#111115]">
         <button
           type="button"
           onClick={() => setShowVoice((v) => !v)}
           aria-expanded={showVoice}
-          className="flex w-full items-center justify-between gap-3 text-left"
+          className={cn('flex w-full cursor-pointer items-center gap-[14px] border-0 bg-transparent text-left font-[inherit] text-cream', wide ? 'px-5 py-[18px]' : 'p-[14px]')}
         >
-          <span>
-            <span className="eyebrow text-cream">Your voice</span>
-            <span className="mt-1 block text-xs text-stone">
+          <span className="flex flex-grow flex-col gap-[3px]">
+            <span className="text-[18px] font-bold">Your voice</span>
+            <span className="text-[13px] leading-[1.45] text-label">
               {voiceIsEmpty
-                ? 'The scan found nothing to fill these in. You can add them now or leave them, and Twin will learn them from how you talk on camera.'
+                ? 'The scan found nothing to fill these in. Add them now or leave them, and Twin will learn them from how you talk on camera.'
                 : voiceDigest}
             </span>
           </span>
-          <span className="shrink-0 text-xs text-sand">{showVoice ? 'Hide' : 'Show'}</span>
+          <span className="shrink-0 rounded-full border border-white/[0.12] px-3 py-[6px] text-[12.5px] text-sand">{showVoice ? 'Hide' : 'Show'}</span>
         </button>
-      </div>
-
-      {/* ⚠️ REPORTED BLANK ON EVERY ACCOUNT TESTED, WHILE THE DATA WAS THERE.
-          The values live in text boxes inside a section that starts closed, and
-          a box's value is not page text — so a reader of the page (or a tool
-          reading it) saw empty labels. What the scan found is now also printed
-          as plain text, always visible; the boxes below stay for editing. */}
-      {!voiceIsEmpty && vp && (
-        <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-1.5 text-[12px] sm:grid-cols-[auto_1fr]" data-testid="voice-plain">
-          {([['Niche', vp.niche], ['Tone', vp.tone], ['Pacing', vp.pacing], ['Hook style', vp.hook_style], ['What you push against', vp.enemy]] as const)
-            .filter(([, v]) => typeof v === 'string' && v.trim())
-            .map(([k, v]) => (
-              <div key={k} className="contents">
-                <dt className="text-stone">{k}</dt>
-                <dd className="text-cream">{v}</dd>
+        {!showVoice && (
+          <dl className={cn('m-0 flex flex-col', wide ? 'px-5 pb-[18px]' : 'px-[14px] pb-[14px]')} data-testid="voice-plain">
+            {plainRows.map(([k, v]) => (
+              <div key={k} className="flex gap-[14px] border-t border-white/[0.05] py-[9px] text-[13.5px]">
+                <dt className={cn('shrink-0 text-stone-dim', wide ? 'w-[170px]' : 'w-[104px]')}>{k}</dt>
+                <dd className="m-0 leading-[1.4]">{typeof v === 'string' && v.trim() ? v : '—'}</dd>
               </div>
             ))}
-        </dl>
-      )}
-
-      <div className={cn('mt-6 space-y-4', !showVoice && 'hidden')}>
-        <Labeled label="Niche">
-          <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
-        </Labeled>
-        <CreatorTypePicker value={vp.creator_type} onChange={(t) => setVp({ ...vp, creator_type: t })} />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
-          <Labeled label="Tone">
-            <input className="field" value={vp.tone} onChange={(e) => setField('tone', e.target.value)} />
-          </Labeled>
-          <Labeled label="Pacing">
-            <input className="field" value={vp.pacing} onChange={(e) => setField('pacing', e.target.value)} />
-          </Labeled>
+          </dl>
+        )}
+        <div className={cn('ob-pop flex flex-col gap-4', wide ? 'px-5 pb-5' : 'px-[14px] pb-4', !showVoice && 'hidden')}>
+          <div className={cn('grid gap-[10px]', wide ? 'grid-cols-2' : 'grid-cols-1')}>
+            {sumFields.map(([label, key]) => (
+              <label key={key} className="flex flex-col gap-[6px] text-[12.5px] text-label">
+                {label}
+                <input className="ob-fld" value={vp[key] ?? ''} placeholder={voiceIsEmpty ? 'In your words' : ''} onChange={(e) => setField(key, e.target.value)} />
+              </label>
+            ))}
+          </div>
+          <CreatorTypePicker value={vp.creator_type} onChange={(t) => setVp({ ...vp, creator_type: t })} />
+          {tagGroups1.map(([label, key]) => (
+            <TagRow key={key} label={label} items={(vp[key] as string[] | undefined) ?? []} onChange={(v) => setList(key, v)} />
+          ))}
+          <label className="flex flex-col gap-[6px] text-[12.5px] text-label">
+            What you push against (your “enemy”)
+            <input className="ob-fld" value={vp.enemy ?? ''} onChange={(e) => setField('enemy', e.target.value)} placeholder="The bad advice or take you argue against" />
+          </label>
+          {tagGroups2.map(([label, key]) => (
+            <TagRow key={key} label={label} items={(vp[key] as string[] | undefined) ?? []} onChange={(v) => setList(key, v)} />
+          ))}
+          <span className="text-[12.5px] text-teal-soft">We’ll sharpen this from how you actually talk on camera within a few minutes. Your spoken voice is the strongest signal.</span>
         </div>
-        <Labeled label="Hook style">
-          <input className="field" value={vp.hook_style} onChange={(e) => setField('hook_style', e.target.value)} />
-        </Labeled>
-        <ChipList label="Signature words" items={vp.vocabulary} onChange={(v) => setList('vocabulary', v)} />
-        <ChipList label="Recurring CTAs" items={vp.recurring_ctas} onChange={(v) => setList('recurring_ctas', v)} />
-        <ChipList label="Do" items={vp.dos} onChange={(v) => setList('dos', v)} />
-        <ChipList label="Don’t" items={vp.donts} onChange={(v) => setList('donts', v)} />
-        {/* The distinctive fields — what makes a hook unmistakably YOURS. Editable
-            so a wrong stance can't silently poison every future blueprint. */}
-        <Labeled label="What you push against (your “enemy”)">
-          <input className="field" value={vp.enemy ?? ''} onChange={(e) => setField('enemy', e.target.value)} placeholder="the bad advice or take you argue against" />
-        </Labeled>
-        <ChipList label="Your point of view" items={vp.pov ?? []} onChange={(v) => setList('pov', v)} />
-        <ChipList label="Hook patterns" items={vp.hook_patterns ?? []} onChange={(v) => setList('hook_patterns', v)} />
-        <ChipList label="Your video formats" items={vp.formats ?? []} onChange={(v) => setList('formats', v)} />
-        <p className="text-xs text-stone">We’ll sharpen this from how you actually talk on camera within a few minutes — your spoken voice is the strongest signal.</p>
-      </div>
+      </section>
 
       {err && (
-        <div className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">
-          <p>{err}</p>
+        <div className="rounded-[12px] bg-coral/10 px-3 py-2 text-[14px] text-coral">
+          <p className="m-0">{err}</p>
           {/* Every write in `confirm` is an upsert, so running it again is a safe retry. */}
-          <button type="button" className="mt-1 text-xs underline underline-offset-2" onClick={() => void confirm()} disabled={busy}>
+          <button type="button" className="mt-1 min-h-11 cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[13px] text-coral underline underline-offset-2 md:min-h-0" onClick={() => void confirm()} disabled={busy}>
             Try again
           </button>
         </div>
       )}
       {mintWarning && (
-        <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600">{mintWarning}</p>
+        <p className="m-0 rounded-[12px] bg-amber/10 px-3 py-2 text-[14px] text-amber">{mintWarning}</p>
       )}
 
-      {/* A WAY OUT. "Describe your voice myself" landed here with no exit, so
-          choosing it by mistake meant filling in fifteen fields or reloading
-          the page. The scan step has always had a back button; this one never
-          did, and it is the step you are most likely to reach by accident.
-
-          The draft is written to localStorage on every answer, so going back
-          keeps everything typed so far — this is a route out, not a reset. */}
-      <div className="mt-8 flex items-center justify-between gap-3">
-        <button className="btn-ghost" onClick={onBack} disabled={busy}>
-          Back
-        </button>
-        <button className="btn-gradient" onClick={confirm} disabled={busy}>
-          {busy ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Saving…
-            </>
-          ) : (
-            <>
-              This is me, enter the studio <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </button>
+      {wide && (
+        <div className="pin d5 flex items-center gap-3">
+          <button type="button" className="btn-board-ghost" onClick={onBack} disabled={busy}>← Back</button>
+          <span className="flex-grow" />
+          <span className="text-[13px] text-label">Only what you keep is saved</span>
+          {cta}
+        </div>
+      )}
+    </div>
+    {!wide && (
+      <div className="sticky bottom-0 mt-[22px] flex w-full gap-2 bg-[linear-gradient(180deg,rgba(11,11,14,0),#0B0B0E_30%)] px-5 pb-[max(26px,env(safe-area-inset-bottom))] pt-[14px]">
+        <button type="button" className="btn-board-ghost !px-4 !py-[14px]" aria-label="Back" onClick={onBack} disabled={busy}>←</button>
+        {cta}
       </div>
-    </>
-  )
-}
-
-// ⚠️ `Section` (the collapsible block) WAS DELETED WITH ITS LAST USER,
-// "What can appear in your videos". An unused component is a shape the next
-// screen gets built around because it is there, not because it is right.
-
-function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="eyebrow">{label}</label>
-      <div className="mt-2">{children}</div>
+    )}
     </div>
   )
 }
 
-// Chip editor: click a chip to remove it; type + Enter to add one.
-function ChipList({ label, items, onChange }: { label: string; items: string[]; onChange: (v: string[]) => void }) {
-  const [draft, setDraft] = useState('')
+function TagRow({ label, items, onChange }: { label: string; items: string[]; onChange: (v: string[]) => void }) {
+  const [text, setText] = useState('')
   const add = () => {
-    const v = draft.trim()
-    if (v && !items.includes(v)) onChange([...items, v])
-    setDraft('')
+    const t = text.trim()
+    if (t && !items.includes(t)) onChange([...items, t])
+    setText('')
   }
   return (
-    <div>
-      <label className="eyebrow">{label}</label>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {items.map((it) => (
-          <button
-            key={it}
-            type="button"
-            className="chip border-coral/50 text-cream transition-colors hover:border-coral"
-            onClick={() => onChange(items.filter((x) => x !== it))}
-            title="Remove"
-          >
-            {it} ✕
+    <div className="flex flex-col gap-[7px]">
+      <span className="text-[12.5px] text-label">{label}</span>
+      <div className="flex flex-wrap items-center gap-[6px]">
+        {items.map((t) => (
+          <button key={t} type="button" aria-label={`Remove ${t}`} onClick={() => onChange(items.filter((x) => x !== t))}
+            className="ob-pop cursor-pointer rounded-full border border-white/10 bg-white/[0.04] px-[10px] py-[6px] font-[inherit] text-[13px] text-[#E6DED2] [@media(pointer:coarse)]:min-h-11">
+            {t} <span className="text-stone-dim">×</span>
           </button>
         ))}
         <input
-          className="field w-40 flex-1"
-          placeholder="add…"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              add()
-            }
-          }}
+          className="ob-fld w-[110px] !rounded-full !px-[11px] !py-[6px] !text-[16px] md:!text-[13px]"
+          placeholder="+ add"
+          aria-label={`Add to ${label}`}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
           onBlur={add}
         />
       </div>
     </div>
   )
 }
+
+
+// ⚠️ `Section` (the collapsible block) WAS DELETED WITH ITS LAST USER,
+// "What can appear in your videos". An unused component is a shape the next
+// screen gets built around because it is there, not because it is right.
+
+
+// Chip editor: click a chip to remove it; type + Enter to add one.
 
 // ── THE SIX QUESTIONS, IN PLAIN ENGLISH ───────────────────────────────────
 //
