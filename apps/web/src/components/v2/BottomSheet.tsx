@@ -36,7 +36,7 @@ export function SheetClose({ onClose }: { onClose: () => void }) {
     <button
       type="button"
       onClick={onClose}
-      className="shrink-0 border-0 bg-transparent p-0 text-[13.5px] leading-[normal] text-label hover:text-cream"
+      className="shrink-0 border-0 bg-transparent p-0 text-[13.5px] leading-[normal] text-label hover:text-cream [@media(pointer:coarse)]:-my-3 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
     >
       Close
     </button>

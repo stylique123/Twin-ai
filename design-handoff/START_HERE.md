@@ -51,8 +51,21 @@ The owner thinks of the design as four parts: **Website · Onboarding · App · 
       - **A. Sizes to support.** Build and check every screen at 375, 390, 430 (phones), 744, 820, 1024 (iPad), 1180, 1366 (iPad landscape), 1440 and 1920 (desktop). Phone widths must match the M… boards. 1440 must match the desktop boards. Everything in between follows B and C.
       - **B. Layout by width.**
         - Under 768: phone layout exactly as the M… boards. Bottom tab bar, bottom sheets, sticky Continue bar, and chip rows that scroll sideways.
-        - 768 to 1023 (iPad portrait): use the desktop page structure and components. The sidebar becomes an icon rail (72px) with labels in tooltips; never a hamburger menu. Grids drop one column (4→2, 3→2, 2 stays 2). Pop-ups are centred dialogs, max 560px wide. The Continue bar stays [the rest of this rule was cut off in the owner's message, to be completed]
-      - **C.** [not received yet, to be completed]
+        - 768 to 1023 (iPad portrait): use the desktop page structure and components. The sidebar becomes an icon rail (72px) with labels in tooltips; never a hamburger menu. Grids drop one column (4→2, 3→2, 2 stays 2). Pop-ups are centred dialogs, max 560px wide. The Continue bar stays inline, not sticky.
+        - 1024 to 1279: full desktop layout with the full sidebar; content columns shrink, never the sidebar or text.
+        - 1280 and up: the exact desktop board, centred at the board's max width so 1920 never stretches.
+        - At every width: never shrink text below board sizes, nothing overflows sideways or overlaps, images use `object-fit: cover` with the board's crop.
+      - **C. Touch devices (iPad and phones).**
+        - Hover effects only under `@media (hover: hover)`.
+        - 44x44px minimum tap targets.
+        - Respect `env(safe-area-inset-*)`.
+        - Use `100dvh`, not `100vh`.
+        - The focused field and its Save/Continue button stay visible when the keyboard opens.
+        - Both orientations work, and rotating keeps the user's place and typed text.
+        - Keyboard and trackpad work with `:focus-visible` rings.
+        - `touch-action: manipulation` on buttons.
+        - Inputs at least 16px text so iOS doesn't zoom.
+      - **Owner decisions:** keep the 12px minimum; where a board has an obvious bug (e.g. a field running outside its panel), fix it and say so.
    Tools for 1.4 and 1.5 live in `design-handoff/tools/` (`measure.js`, `diff.py`).
 2. **Copy is exact.** Use the words on the boards, in plain everyday language. Don't add jargon ("hook", "beat", "arc"). Don't add hype.
 3. **Example data and media are fake.** Maya, Maya's Coffee, @brewbyjo, Signature Blend, Northfield Gooseneck Kettle and all the numbers are placeholders. Wire every screen to the real data and API calls the page already uses. **Never ship the placeholder names or numbers.** Never show a made-up number in the product (viewer scores, counts). The same goes for the pictures and videos in `assets/`: only the Landing page media ships (see `assets/ASSETS.md`). In-app screens show the user's real camera, clips and Gallery thumbnails.

@@ -2,6 +2,8 @@
  *  flagship redesign (motion, depth, gradient mesh). Brand DNA is unchanged:
  *  dark ink canvas, cream ink, signature amber → coral → teal gradient. */
 export default {
+  // Rule C: hover styles only on devices that can hover.
+  future: { hoverOnlyWhenSupported: true },
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {

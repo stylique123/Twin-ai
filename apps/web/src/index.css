@@ -294,8 +294,14 @@ body {
   }
 }
 
+/* Rule C: no double-tap zoom delay on controls. */
+button, [role='button'], a, input, select, textarea { touch-action: manipulation; }
+
 /* Touch devices: raise tap targets to a comfortable minimum (desktop untouched). */
 @media (pointer: coarse) {
+  /* Rule C: inputs at least 16px so iOS doesn't zoom. */
+  .fld, input, select, textarea { font-size: max(16px, 1em) !important; }
+  .btn-light, .btn-outline { min-height: 44px; }
   .chip { min-height: 2.4rem; }
   .btn-primary,
   .btn-gradient,

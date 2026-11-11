@@ -51,7 +51,7 @@ function Column({ col, gap }: { col: (typeof COLUMNS)[number]; gap: string }) {
     <nav aria-label={col.heading.toLowerCase()} className={`flex flex-col ${gap}`}>
       <span className="text-[12px] font-bold tracking-[.12em] text-stone-dim">{col.heading}</span>
       {col.links.map((l) => (
-        <Link key={l.label} to={l.to} className="leading-[1.3] text-sand-muted no-underline hover:text-cream">
+        <Link key={l.label} to={l.to} className="leading-[1.3] text-sand-muted no-underline hover:text-cream [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center">
           {l.label}
         </Link>
       ))}
