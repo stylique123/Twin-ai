@@ -423,3 +423,70 @@ export default function LandingPhone({ v }: { v: any }) {
   </>
   )
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function PhoneHeroMockup({ v }: { v: any }) {
+  return (
+  <>
+    <div className="lp-fl2 [position:relative] [align-self:center] [margin-top:16px] [width:230px] [height:430px] [border-radius:34px] [overflow:hidden] [border:3px_solid_#26262D] [box-shadow:0_40px_80px_-30px_rgba(0,0,0,.9),_0_0_0_6px_rgba(255,59,92,0.1)]">
+      <div className="lp-cam lp-ph-local">
+        <LoopVideo name="maya-talking-kitchen" className="lp-camv" />
+      </div>
+      <div className="[position:absolute] [left:0] [right:0] [top:0] [height:3px] [background:rgba(255,255,255,0.1)]">
+        <div className="lp-lshrink [height:100%] [background:#FF3B5C]" />
+      </div>
+      <div className="lp-fade [position:absolute] [left:16px] [right:16px] [top:40px] [height:190px] [display:flex] [flex-direction:column] [justify-content:center]">
+        <span className="[margin-bottom:6px] [font-size:9px] [font-weight:700] [letter-spacing:.1em] [color:rgba(246,241,233,.55)]">
+          SCENE 5 OF 7
+        </span>
+        <p className="[margin:0] [font-size:18px] [line-height:1.35] [font-weight:650] [text-shadow:0_2px_10px_rgba(0,0,0,.7)]">
+          {v.pw.map((w: any, w_i: number) => (
+            <Fragment key={w_i}>
+              <span className="[transition:opacity_.2s_ease]" style={{ opacity: `${w.op}`, color: `${w.c}` } as CSSProperties}>
+                {w.w}
+              </span>
+            </Fragment>
+          ))}
+        </p>
+      </div>
+      <span className="[position:absolute] [left:50%] [bottom:22px] [width:52px] [height:52px] [margin-left:-26px] [border-radius:99px] [border:3px_solid_#F6F1E9] [display:flex] [align-items:center] [justify-content:center]">
+        <span className="[width:18px] [height:18px] [border-radius:5px] [background:#FF3B5C]" />
+      </span>
+    </div>
+  </>
+  )
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function PhoneLoopList({ v }: { v: any }) {
+  return (
+  <>
+    <div className="[margin-top:8px] [display:flex] [flex-direction:column]">
+      {v.loop.map((l: any, l_i: number) => (
+        <Fragment key={l_i}>
+          <div className="[display:flex] [gap:14px]">
+            <span className="[display:flex] [flex-direction:column] [align-items:center]">
+              <span className="[width:28px] [height:28px] [border-radius:99px] [color:#07070A] [display:flex] [align-items:center] [justify-content:center] [font-size:12px] [font-weight:800]" style={{ background: `${l.c}` } as CSSProperties}>
+                {l.n}
+              </span>
+              {l.line ? (
+                <>
+                  <span className="[width:2px] [flex-grow:1] [min-height:26px] [background:rgba(255,255,255,0.1)]" />
+                </>
+              ) : null}
+            </span>
+            <span className="[padding-bottom:18px] [display:flex] [flex-direction:column] [gap:3px]">
+              <b className="[font-size:16px] [margin-top:4px]">
+                {l.t}
+              </b>
+              <span className="[font-size:14px] [line-height:1.45] [color:#8D8475]">
+                {l.b}
+              </span>
+            </span>
+          </div>
+        </Fragment>
+      ))}
+    </div>
+  </>
+  )
+}

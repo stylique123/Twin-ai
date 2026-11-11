@@ -39,7 +39,7 @@ export default function LandingDesktop({ v }: { v: any }) {
           , then helps you film, edit and post it.
         </p>
         {' '}
-        <div className="lp-pin lp-d4 [margin-top:30px] [display:flex] [gap:12px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+        <div className="lp-pin lp-d4 [margin-top:30px] [display:flex] [gap:12px]">
           <Link to="/auth?mode=signup" className="lp-cta lp-glowcta [padding:18px_34px] [border-radius:999px] [background:linear-gradient(110deg,#FFB347,#FF5B7B_55%,#65E5D8)] [color:#07070A] [font-size:16.5px] [font-weight:700] [text-decoration:none] [box-shadow:0_16px_50px_-16px_rgba(255,91,123,0.8)]">
             Get your first 3 videos free
           </Link>
@@ -51,7 +51,8 @@ export default function LandingDesktop({ v }: { v: any }) {
         {' '}
         <div className="lp-pin lp-d5 [margin-top:30px] [position:relative] [display:flex] [flex-direction:column] [align-items:center] [gap:26px]">
           {' '}
-          <div data-fit-w="792" className="lp-fit lp-fl2 [width:792px] [height:506px]">
+          {v.slots?.f792}
+          <div data-fit-w="792" className="lp-fit max-lg:!hidden lp-fl2 [width:792px] [height:506px]">
             <div className="[transform:scale(1.1)] [transform-origin:top_left]">
               <div className="[position:relative] [width:720px] [height:460px]">
                 <div className="[position:absolute] [inset:0] [transition:opacity_.7s_cubic-bezier(.22,1,.36,1),_transform_.9s_cubic-bezier(.22,1,.36,1)]" style={{ opacity: `${v.p0.op}`, transform: `${v.p0.tf}`, pointerEvents: `${v.p0.ev}`, zIndex: `${v.p0.z}` } as CSSProperties}>
@@ -521,12 +522,12 @@ export default function LandingDesktop({ v }: { v: any }) {
             </div>
           </div>
           {' '}
-          <div className="[display:flex] [align-items:center] [gap:8px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+          <div className="[display:flex] [align-items:center] [gap:8px]">
             {v.hsteps.map((h: any, h_i: number) => (
               <Fragment key={h_i}>
-                <span className="[display:flex] [align-items:center] [gap:8px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+                <span className="[display:flex] [align-items:center] [gap:8px]">
                   <span className="[display:flex] [align-items:center] [gap:7px] [padding:7px_13px_7px_8px] [border-radius:10px] [font-size:13px] [font-weight:600] [transition:all_.5s_cubic-bezier(.22,1,.36,1)]" style={{ border: `1px solid ${h.bd}`, background: `${h.bg}`, color: `${h.fg}`, transform: `scale(${h.sc})`, boxShadow: `${h.sh}` } as CSSProperties}>
-                    <span className="[width:18px] [height:18px] [border-radius:6px] [color:#07070A] [display:flex] [align-items:center] [justify-content:center] [font-size:10px] [font-weight:800] [transition:background_.5s_ease]" style={{ background: `${h.dot}` } as CSSProperties}>
+                    <span className="[width:18px] [height:18px] [border-radius:6px] [color:#07070A] [display:flex] [align-items:center] [justify-content:center] [font-size:12px] [font-weight:800] [transition:background_.5s_ease] max-lg:[height:auto] max-lg:[min-height:18px]" style={{ background: `${h.dot}` } as CSSProperties}>
                       {h.n}
                     </span>
                     {h.t}
@@ -620,7 +621,8 @@ export default function LandingDesktop({ v }: { v: any }) {
           </span>
         </h2>
         {' '}
-        <div data-fit-w="1120" className="lp-fit lp-orbwrap [margin-top:50px] [position:relative] [width:1120px] [height:440px]">
+        {v.slots?.f1120}
+        <div data-fit-w="1120" className="lp-fit max-lg:!hidden lp-orbwrap [margin-top:50px] [position:relative] [width:1120px] [height:440px]">
           {' '}
           <svg aria-hidden="true" width="1120" height="440" viewBox="0 0 1120 440" className="[position:absolute] [inset:0]">
             <defs>
@@ -705,7 +707,7 @@ export default function LandingDesktop({ v }: { v: any }) {
             <p className="[margin:0] [font-size:19px] [line-height:1.55] [color:#8D8475]">
               “Are you ready to unlock your coffee business dreams? Here are 5 game-changing tips every aspiring entrepreneur needs to know. Let’s dive in!”
             </p>
-            <span className="[margin-top:auto] [display:flex] [flex-wrap:wrap] [gap:6px] max-xl:[max-width:calc(100%_-_48px)]">
+            <span className="[margin-top:auto] [display:flex] [flex-wrap:wrap] [gap:6px]">
               <span className="[padding:5px_10px] [border-radius:99px] [background:rgba(255,255,255,0.04)] [font-size:12.5px] [color:#6E675C]">
                 Could be anyone
               </span>
@@ -721,7 +723,7 @@ export default function LandingDesktop({ v }: { v: any }) {
           <div className="[position:relative] [width:470px] [border-radius:22px] [padding:1.5px] [overflow:hidden] [min-width:0]">
             <div aria-hidden="true" className="[position:absolute] [left:50%] [top:50%] [width:1200px] [height:1200px] [margin:-600px_0_0_-600px] [background:conic-gradient(from_0deg,_rgba(255,179,71,0),_rgba(255,179,71,.9),_rgba(255,91,123,.8),_rgba(101,229,216,.6),_rgba(255,179,71,0)_40%)] [animation:spinb_8s_linear_infinite] [max-width:calc(100%_-_48px)]" />
             <div className="[position:relative] [height:100%] [box-sizing:border-box] [padding:28px] [border-radius:20.5px] [background:#121217] [display:flex] [flex-direction:column] [gap:16px]">
-              <span className="[display:flex] [align-items:center] [gap:8px] [font-size:12px] [font-weight:700] [letter-spacing:.12em] [color:#FFB347] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+              <span className="[display:flex] [align-items:center] [gap:8px] [font-size:12px] [font-weight:700] [letter-spacing:.12em] [color:#FFB347]">
                 <span className="lp-ph lp-ph-local [width:28px] [height:28px] [border-radius:99px] [background-position:center_18%] [background-size:240%] [box-shadow:0_0_0_2px_#FFB347]" />
                 TWIN, WRITING AS YOU
                 {v.typing ? (
@@ -745,8 +747,8 @@ export default function LandingDesktop({ v }: { v: any }) {
                 ))}
                 <span className="lp-caret" />
               </p>
-              <span className="[margin-top:auto] [display:flex] [flex-wrap:wrap] [gap:6px] max-xl:[max-width:calc(100%_-_48px)]">
-                <span className="[min-height:27px] [display:flex] [gap:6px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+              <span className="[margin-top:auto] [display:flex] [flex-wrap:wrap] [gap:6px]">
+                <span className="[min-height:27px] [display:flex] [gap:6px]">
                   {v.tag0 ? (
                     <>
                       <span className="lp-pop [padding:5px_10px] [border-radius:99px] [background:rgba(101,229,216,0.1)] [font-size:12.5px] [color:#8FEDE3]">
@@ -795,7 +797,7 @@ export default function LandingDesktop({ v }: { v: any }) {
           Twin builds 10 viewer personas from your real audience, then runs every opening past them. A weak line gets caught in seconds, not after a post that flops.
         </p>
         {' '}
-        <div className="[margin-top:40px] [width:1080px] [display:flex] [gap:30px] [align-items:stretch] [max-width:calc(100%_-_48px)] max-lg:[flex-wrap:wrap]">
+        <div className="[margin-top:40px] [width:1080px] [display:flex] [gap:30px] [align-items:stretch] [max-width:calc(100%_-_48px)]">
           {' '}
           <div className="[width:400px] [padding:26px] [border-radius:20px] [background:#121217] [border:1px_solid_rgba(255,255,255,0.07)] [display:flex] [flex-direction:column] [gap:14px] [min-width:0]">
             <span className="[font-size:12px] [font-weight:700] [letter-spacing:.12em] [color:#8D8475]">
@@ -805,7 +807,7 @@ export default function LandingDesktop({ v }: { v: any }) {
               “The truth about launching a coffee cart from your kitchen.”
             </span>
             <div className="[margin-top:auto] [display:flex] [flex-direction:column] [gap:8px]">
-              <span className="[display:flex] [justify-content:space-between] [align-items:baseline] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+              <span className="[display:flex] [justify-content:space-between] [align-items:baseline]">
                 <b className="lp-big [font-size:44px] [letter-spacing:-0.03em]">
                   {v.pStay}
                   <span className="[font-size:20px] [color:#6E675C]">
@@ -828,7 +830,7 @@ export default function LandingDesktop({ v }: { v: any }) {
           <div className="[flex-grow:1] [display:grid] [grid-template-columns:repeat(2,_minmax(0,_1fr))] [gap:8px]">
             {v.pers.map((x: any, x_i: number) => (
               <Fragment key={x_i}>
-                <div className="[display:flex] [align-items:center] [gap:12px] [padding:11px_14px] [border-radius:13px] [background:#101015] [transition:border-color_.3s_ease] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]" style={{ border: `1px solid ${x.bd}` } as CSSProperties}>
+                <div className="[display:flex] [align-items:center] [gap:12px] [padding:11px_14px] [border-radius:13px] [background:#101015] [transition:border-color_.3s_ease]" style={{ border: `1px solid ${x.bd}` } as CSSProperties}>
                   <span className="[flex-shrink:0] [width:9px] [height:9px] [border-radius:9px] [transition:background_.3s_ease]" style={{ background: `${x.dot}` } as CSSProperties} />
                   <span className="[flex-grow:1] [min-width:0] [display:flex] [flex-direction:column] [gap:1px]">
                     <b className="[font-size:14px]">
@@ -938,7 +940,7 @@ export default function LandingDesktop({ v }: { v: any }) {
             <span className="[font-size:13px] [color:#8D8475]">
               Writing the script
             </span>
-            <span className="[display:flex] [align-items:baseline] [gap:10px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+            <span className="[display:flex] [align-items:baseline] [gap:10px]">
               <b className="lp-tnew [font-size:24px] [letter-spacing:-0.02em] [color:#FFCB85] [animation-delay:0.0s]">
                 5 min
               </b>
@@ -954,7 +956,7 @@ export default function LandingDesktop({ v }: { v: any }) {
             <span className="[font-size:13px] [color:#8D8475]">
               Filming & retakes
             </span>
-            <span className="[display:flex] [align-items:baseline] [gap:10px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+            <span className="[display:flex] [align-items:baseline] [gap:10px]">
               <b className="lp-tnew [font-size:24px] [letter-spacing:-0.02em] [color:#FFCB85] [animation-delay:0.35s]">
                 15–20 min
               </b>
@@ -970,7 +972,7 @@ export default function LandingDesktop({ v }: { v: any }) {
             <span className="[font-size:13px] [color:#8D8475]">
               Editing
             </span>
-            <span className="[display:flex] [align-items:baseline] [gap:10px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+            <span className="[display:flex] [align-items:baseline] [gap:10px]">
               <b className="lp-tnew [font-size:24px] [letter-spacing:-0.02em] [color:#FFCB85] [animation-delay:0.7s]">
                 10–12 min
               </b>
@@ -986,7 +988,7 @@ export default function LandingDesktop({ v }: { v: any }) {
             <span className="[font-size:13px] [color:#8D8475]">
               Posting everywhere
             </span>
-            <span className="[display:flex] [align-items:baseline] [gap:10px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+            <span className="[display:flex] [align-items:baseline] [gap:10px]">
               <b className="lp-tnew [font-size:24px] [letter-spacing:-0.02em] [color:#FFCB85] [animation-delay:1.0499999999999998s]">
                 1 min
               </b>
@@ -1024,7 +1026,7 @@ export default function LandingDesktop({ v }: { v: any }) {
           Built for people who grow by talking to camera.
         </h2>
         {' '}
-        <div className="[margin-top:36px] [width:1120px] [display:flex] [gap:56px] [align-items:center] [max-width:calc(100%_-_48px)] max-lg:[flex-wrap:wrap]">
+        <div className="[margin-top:36px] [width:1120px] [display:flex] [gap:56px] [align-items:center] [max-width:calc(100%_-_48px)]">
           {' '}
           <div className="[width:440px] [display:flex] [flex-direction:column] [min-width:0]">
             {v.whos.map((w: any, w_i: number) => (
@@ -1046,7 +1048,7 @@ export default function LandingDesktop({ v }: { v: any }) {
             ))}
           </div>
           {' '}
-          <div className="[position:relative] [flex-grow:1] [height:470px] [display:flex] [align-items:center] [gap:28px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+          <div className="[position:relative] [flex-grow:1] [height:470px] [display:flex] [align-items:center] [gap:28px] max-lg:[height:auto] max-lg:[min-height:470px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
             {' '}
             <div aria-hidden="true" className="[position:absolute] [left:40px] [top:30px] [width:520px] [height:460px] [border-radius:999px] [transition:background_.6s_ease] [pointer-events:none] [min-width:0]" style={{ background: `radial-gradient(circle, ${v.woC}33, rgba(7,7,10,0) 65%)` } as CSSProperties} />
             {' '}
@@ -1088,7 +1090,7 @@ export default function LandingDesktop({ v }: { v: any }) {
                   </span>
                 </Fragment>
               ))}
-              <span className="[margin-top:8px] [display:flex] [align-items:center] [gap:10px] [padding:12px_14px] [border-radius:14px] [font-size:14px] [color:#D8CFC2] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]" style={{ border: `1px dashed ${v.woC}66` } as CSSProperties}>
+              <span className="[margin-top:8px] [display:flex] [align-items:center] [gap:10px] [padding:12px_14px] [border-radius:14px] [font-size:14px] [color:#D8CFC2]" style={{ border: `1px dashed ${v.woC}66` } as CSSProperties}>
                 <span className="[width:8px] [height:8px] [border-radius:9px]" style={{ background: `${v.woC}` } as CSSProperties} />
                 {v.woOut}
               </span>
@@ -1114,15 +1116,15 @@ export default function LandingDesktop({ v }: { v: any }) {
           The same tour you’ll see on your first day.
         </p>
         {' '}
-        <div className="[margin-top:34px] [width:1180px] [display:flex] [gap:44px] [align-items:center] [max-width:calc(100%_-_48px)] max-lg:[flex-wrap:wrap]">
+        <div className="[margin-top:34px] [width:1180px] [display:flex] [gap:44px] [align-items:center] [max-width:calc(100%_-_48px)]">
           {' '}
           <div className="[width:360px] [flex-shrink:0] [display:flex] [flex-direction:column] [gap:20px]">
             {' '}
             <div className="[display:flex] [flex-direction:column] [gap:4px]">
               {v.tour.map((x: any, x_i: number) => (
                 <Fragment key={x_i}>
-                  <button type="button" onClick={x.pick} className="[display:flex] [align-items:center] [gap:14px] [padding:10px_0] [border:0] [background:transparent] [font-size:16px] [font-weight:600] [text-align:left] [cursor:pointer] [transition:color_.3s_ease] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]" style={{ color: `${x.c}` } as CSSProperties}>
-                    <span className="[width:28px] [height:28px] [border-radius:99px] [display:flex] [align-items:center] [justify-content:center] [font-size:12px] [font-weight:800] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]" style={{ background: `${x.dot}`, color: `${x.dfg}` } as CSSProperties}>
+                  <button type="button" onClick={x.pick} className="[display:flex] [align-items:center] [gap:14px] [padding:10px_0] [border:0] [background:transparent] [font-size:16px] [font-weight:600] [text-align:left] [cursor:pointer] [transition:color_.3s_ease]" style={{ color: `${x.c}` } as CSSProperties}>
+                    <span className="[width:28px] [height:28px] [border-radius:99px] [display:flex] [align-items:center] [justify-content:center] [font-size:12px] [font-weight:800] max-lg:[height:auto] max-lg:[min-height:28px]" style={{ background: `${x.dot}`, color: `${x.dfg}` } as CSSProperties}>
                       {x.mark}
                     </span>
                     {x.t}
@@ -1144,7 +1146,7 @@ export default function LandingDesktop({ v }: { v: any }) {
               <span className="[align-self:flex-start] [padding:4px_10px] [border-radius:99px] [background:rgba(101,229,216,0.1)] [font-size:12.5px] [font-weight:600] [color:#8FEDE3]">
                 {v.tourK}
               </span>
-              <span className="[display:flex] [gap:8px] [margin-top:6px] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+              <span className="[display:flex] [gap:8px] [margin-top:6px]">
                 {v.canTBack ? (
                   <>
                     <button type="button" onClick={v.tBack} className="lp-btnG [padding:10px_14px]">
@@ -1161,7 +1163,8 @@ export default function LandingDesktop({ v }: { v: any }) {
           </div>
           {' '}
           <div className="[position:relative]">
-            <div data-fit-w="700" className="lp-fit [position:relative] [width:700px] [height:440px]">
+            {v.slots?.f700}
+            <div data-fit-w="700" className="lp-fit max-lg:!hidden [position:relative] [width:700px] [height:440px]">
               <div className="[position:absolute] [inset:0] [transition:opacity_.7s_cubic-bezier(.22,1,.36,1),_transform_.9s_cubic-bezier(.22,1,.36,1)]" style={{ opacity: `${v.t0.op}`, transform: `${v.t0.tf}`, pointerEvents: `${v.t0.ev}`, zIndex: `${v.t0.z}` } as CSSProperties}>
                 <div className="[width:700px] [height:440px] [border-radius:20px] [overflow:hidden] [background:#0E0E12] [border:1px_solid_rgba(255,255,255,0.09)] [box-shadow:0_60px_120px_-50px_rgba(0,0,0,0.95),_0_0_0_1px_rgba(255,255,255,0.02)] [display:flex] [flex-direction:column]">
                   {' '}
@@ -1673,7 +1676,7 @@ export default function LandingDesktop({ v }: { v: any }) {
               <br />
               post to 1 platform
             </span>
-            <Link to="/auth?mode=signup" className="[margin-top:auto] [padding:12px] [border-radius:12px] [text-align:center] [text-decoration:none] [font-size:14.5px] [font-weight:700] [border:1px_solid_rgba(255,255,255,0.12)] [color:#F6F1E9]">
+            <Link to="/auth?plan=aspiring&mode=signup" className="[margin-top:auto] [padding:12px] [border-radius:12px] [text-align:center] [text-decoration:none] [font-size:14.5px] [font-weight:700] [border:1px_solid_rgba(255,255,255,0.12)] [color:#F6F1E9]">
               Start free
             </Link>
           </div>
@@ -1704,7 +1707,7 @@ export default function LandingDesktop({ v }: { v: any }) {
               <br />
               analytics
             </span>
-            <Link to="/auth?mode=signup" className="[margin-top:auto] [padding:12px] [border-radius:12px] [text-align:center] [text-decoration:none] [font-size:14.5px] [font-weight:700] [background:linear-gradient(110deg,#FFB347,#FF5B7B_55%,#65E5D8)] [color:#07070A]">
+            <Link to="/auth?plan=professional&mode=signup" className="[margin-top:auto] [padding:12px] [border-radius:12px] [text-align:center] [text-decoration:none] [font-size:14.5px] [font-weight:700] [background:linear-gradient(110deg,#FFB347,#FF5B7B_55%,#65E5D8)] [color:#07070A]">
               Start free
             </Link>
           </div>
@@ -1730,7 +1733,7 @@ export default function LandingDesktop({ v }: { v: any }) {
               <br />
               bulk scheduling
             </span>
-            <Link to="/auth?mode=signup" className="[margin-top:auto] [padding:12px] [border-radius:12px] [text-align:center] [text-decoration:none] [font-size:14.5px] [font-weight:700] [border:1px_solid_rgba(255,255,255,0.12)] [color:#F6F1E9]">
+            <Link to="/auth?plan=studio&mode=signup" className="[margin-top:auto] [padding:12px] [border-radius:12px] [text-align:center] [text-decoration:none] [font-size:14.5px] [font-weight:700] [border:1px_solid_rgba(255,255,255,0.12)] [color:#F6F1E9]">
               Start free
             </Link>
           </div>
@@ -1756,7 +1759,7 @@ export default function LandingDesktop({ v }: { v: any }) {
               <br />
               approvals
             </span>
-            <Link to="/auth?mode=signup" className="[margin-top:auto] [padding:12px] [border-radius:12px] [text-align:center] [text-decoration:none] [font-size:14.5px] [font-weight:700] [border:1px_solid_rgba(255,255,255,0.12)] [color:#F6F1E9]">
+            <Link to="/auth?plan=agency&mode=signup" className="[margin-top:auto] [padding:12px] [border-radius:12px] [text-align:center] [text-decoration:none] [font-size:14.5px] [font-weight:700] [border:1px_solid_rgba(255,255,255,0.12)] [color:#F6F1E9]">
               Start free
             </Link>
           </div>
@@ -1779,9 +1782,9 @@ export default function LandingDesktop({ v }: { v: any }) {
           {v.faqs.map((f: any, f_i: number) => (
             <Fragment key={f_i}>
               <div className="[border-bottom:1px_solid_rgba(255,255,255,0.08)]">
-                <button type="button" onClick={f.pick} className="[width:100%] [display:flex] [justify-content:space-between] [align-items:center] [gap:20px] [padding:15px_0] [border:0] [background:transparent] [color:#F6F1E9] [font-size:17.5px] [font-weight:600] [text-align:left] [cursor:pointer] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+                <button type="button" onClick={f.pick} className="[width:100%] [display:flex] [justify-content:space-between] [align-items:center] [gap:20px] [padding:15px_0] [border:0] [background:transparent] [color:#F6F1E9] [font-size:17.5px] [font-weight:600] [text-align:left] [cursor:pointer]">
                   {f.q}
-                  <span className="[flex-shrink:0] [width:30px] [height:30px] [border-radius:99px] [border:1px_solid_rgba(255,255,255,0.14)] [display:flex] [align-items:center] [justify-content:center] [font-size:18px] [color:#B7AE9F] max-lg:[flex-wrap:wrap] max-xl:[max-width:calc(100%_-_48px)]">
+                  <span className="[flex-shrink:0] [width:30px] [height:30px] [border-radius:99px] [border:1px_solid_rgba(255,255,255,0.14)] [display:flex] [align-items:center] [justify-content:center] [font-size:18px] [color:#B7AE9F] max-lg:[height:auto] max-lg:[min-height:30px]">
                     {f.sign}
                   </span>
                 </button>

@@ -65,7 +65,8 @@ export function useLandingDesktop() {
   return useMemo(() => {
     const oa = (oaN * 0.0042) % (Math.PI * 2)
     const words = 'There’s no clean formula. Anyone selling you a guaranteed roadmap is skipping the hard parts.'.split(' ')
-    const wi = STATIC ? words.length : Math.floor(tk * 0.33) % (words.length + 6)
+    // Finished state (reduced motion): no word marked as read, all at full brightness.
+    const wi = STATIC ? -1 : Math.floor(tk * 0.33) % (words.length + 6)
     const total = SEG.reduce((a, x) => a + x[0].length, 0)
     const k = STATIC ? total : ty % (total + 70)
     let left = Math.min(k, total)
@@ -79,7 +80,7 @@ export function useLandingDesktop() {
       return { n: x[0], who: x[1], r: done ? (x[2] ? 'Kept watching' : 'Scrolled past') : 'Watching…', rc: done ? (x[2] ? '#8FEDE3' : '#FF8FA4') : '#6E675C', dot: done ? (x[2] ? '#65E5D8' : '#FF5B7B') : 'rgba(255,255,255,0.15)', bd: done ? (x[2] ? 'rgba(101,229,216,0.25)' : 'rgba(255,91,123,0.25)') : 'rgba(255,255,255,0.06)' }
     })
     const wl = W[wo][2].split(' ')
-    const wk = STATIC ? wl.length : Math.floor(tk * 0.33) % (wl.length + 6)
+    const wk = STATIC ? -1 : Math.floor(tk * 0.33) % (wl.length + 6)
     const inner = INNER.map((m, i) => { const a = -oa * 1.6 + (i * 2 * Math.PI) / 4; const x = 560 + 250 * Math.cos(a), y = 220 + 100 * Math.sin(a); return { t: m, x: (x - 80).toFixed(1) + 'px', y: (y - 13).toFixed(1) + 'px', op: (0.45 + (0.4 * (Math.sin(a) + 1)) / 2).toFixed(2) } })
     const orbs = OL.map((x, i) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5 + oa; const sn = Math.sin(a); const depth = (sn + 1) / 2; return { t: x[0], b: x[1], c: x[2], n: i + 1, x: (560 + 430 * Math.cos(a) - 120).toFixed(1) + 'px', y: (220 + 160 * sn - 46).toFixed(1) + 'px', sc: (0.86 + depth * 0.18).toFixed(3), op: (0.6 + depth * 0.4).toFixed(2), z: depth > 0.5 ? 3 : 1 } })
     return {
@@ -110,7 +111,7 @@ export function useLandingPhone() {
   const [faq, setFaq] = useState(0)
   return useMemo(() => {
     const words = 'Honestly? I started with a $40 popcorn popper on my stove.'.split(' ')
-    const wi = STATIC ? words.length : Math.floor(tk * 0.3) % (words.length + 6)
+    const wi = STATIC ? -1 : Math.floor(tk * 0.3) % (words.length + 6)
     return {
       pw: words.map((w, j) => ({ w: w + ' ', op: j < wi ? 0.25 : 1, c: j === wi ? '#FFCB85' : '#F6F1E9' })),
       loop: OL.map((x, i) => ({ n: i + 1, t: x[0], b: x[1], c: x[2], last: i === 4, line: i < 4 })),

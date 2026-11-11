@@ -29,6 +29,18 @@ SVG_ATTR = {
     'stroke-linecap': 'strokeLinecap', 'fill-opacity': 'fillOpacity', 'stop-opacity': 'stopOpacity',
 }
 SVG_TAG = {'lineargradient': 'linearGradient', 'radialgradient': 'radialGradient'}
+PLAN_IDS = [('Creator', 'aspiring'), ('Pro', 'professional'), ('Studio', 'studio'), ('Agency', 'agency')]
+
+
+def subtree_text(n):
+    if isinstance(n, str):
+        return [n]
+    out = []
+    for k in n.kids:
+        out += subtree_text(k)
+    return out
+
+
 HOLE = re.compile(r'\{\{\s*([^}]+?)\s*\}\}')
 
 
@@ -166,7 +178,7 @@ class Compiler:
             return ''  # the phone board's fake iOS status bar
         parent_mockup = mockup
         fit_w = None
-        mockup = mockup or 'fl2' in a.get('class', '').split() or 'scale(' in a.get('style', '')
+        mockup = mockup or 'fl2' in a.get('class', '').split() or bool(re.search(r'scale\((?!\s*\{\{)', a.get('style', '')))
         is_root = 'brandbg' in a.get('class', '').split()
         props = []
         st = a.get('style', '')
@@ -194,7 +206,13 @@ class Compiler:
         if fit_w:
             mockup = True  # inside a scaled illustration: no 12px raise, no further fitting
         classes, dyn = self.style(st, mockup)
-        if self.responsive and not mockup and 'display: flex' in st and 'flex-direction: column' not in st:
+        hfix = re.search(r'(?:^|;)\s*height:\s*([\d.]+)px', st)
+        if self.responsive and not mockup and not fit_w and hfix and 'display: flex' in st and 'position: absolute' not in st:
+            # Below 1024 a fixed-height flex box grows with its (wrapping) text.
+            classes.append('max-lg:[height:auto]')
+            classes.append(f'max-lg:[min-height:{hfix.group(1)}px]')
+        wide_kids = sum(1 for k in n.kids if not isinstance(k, str) and (m2 := re.search(r'(?:^|;)\s*width:\s*([\d.]+)px', k.attrs.get('style', ''))) and float(m2.group(1)) >= 150)
+        if self.responsive and not mockup and wide_kids >= 2 and 'display: flex' in st and 'flex-direction: column' not in st:
             if 'flex-wrap' not in st:
                 classes.append('max-lg:[flex-wrap:wrap]')
             if 'max-width' not in st:
@@ -219,9 +237,13 @@ class Compiler:
             board_classes.append('lp-' + c)
         all_cls = board_classes + classes
         fitw = fit_w
+        slot = ''
         if fitw:
-            all_cls = ['lp-fit'] + all_cls
+            # 768-1023 shows the phone board's version instead (owner decision),
+            # passed in as v.slots.f<width>; 1024+ scales this stage to fit.
+            all_cls = ['lp-fit', 'max-lg:!hidden'] + all_cls
             props.append(f'data-fit-w="{fitw}"')
+            slot = f'{pad}{{v.slots?.f{fitw}}}\n'
         jtag = SVG_TAG.get(tag, tag)
         if tag == 'video':
             src = a.get('src', '')
@@ -230,6 +252,12 @@ class Compiler:
             return f'{pad}<LoopVideo name={nm} className="{" ".join(all_cls)}" />'
         if tag == 'a':
             kind, href = self.link(a.get('href', '#'))
+            if href == '/auth?mode=signup' and n.parent is not None:
+                # Pricing card links keep the plan the visitor picked (owner decision).
+                names = dict(PLAN_IDS)
+                label = next((t.strip() for t in subtree_text(n.parent) if t.strip() in names), None)
+                if label:
+                    href = f'/auth?plan={names[label]}&mode=signup'
             jtag = kind
             props.append(f'to="{href}"' if kind == 'Link' else f'href="{href}"')
         for k, val in a.items():
@@ -257,8 +285,8 @@ class Compiler:
             return f'{pad}{open_} />'
         body = self.kids(n, ind + 2, mockup, a.get('style', ''))
         if not body.strip():
-            return f'{pad}{open_} />' if tag not in ('textarea',) else f'{pad}{open_}></{jtag}>'
-        return f'{pad}{open_}>\n{body}\n{pad}</{jtag}>'
+            return slot + (f'{pad}{open_} />' if tag not in ('textarea',) else f'{pad}{open_}></{jtag}>')
+        return slot + f'{pad}{open_}>\n{body}\n{pad}</{jtag}>'
 
     def kids(self, n, ind, mockup, pstyle=''):
         parts = [self.node(k, ind, mockup, pstyle) for k in n.kids]
@@ -280,6 +308,33 @@ def main():
     c = Compiler(responsive=opts.get('--phone') != '1')
     root = [k for k in p.root.kids if not isinstance(k, str) or k.strip()]
     jsx = '\n'.join(c.node(k, 4) for k in root)
+    extra = ''
+    for spec in [x for x in opts.get('--export', '').split(',') if x]:
+        ename, how = spec.split('=')
+        def find(nd):
+            if isinstance(nd, str):
+                return None
+            hit = (how.startswith('class:') and how[6:] in nd.attrs.get('class', '').split()) or \
+                  (how.startswith('loop:') and any(not isinstance(k, str) and k.tag == 'sc-for' and how[5:] in k.attrs.get('list', '') for k in nd.kids))
+            if hit:
+                return nd
+            for k in nd.kids:
+                r = find(k)
+                if r is not None:
+                    return r
+            return None
+        target = find(p.root)
+        part = c.node(target, 4) if target is not None else '    null'
+        extra += f"""
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function {ename}({{ v }}: {{ v: any }}) {{
+  return (
+  <>
+{part}
+  </>
+  )
+}}
+"""
     open(out, 'w', encoding='utf-8').write(
         f"""// GENERATED by design-handoff/tools/board2tsx.py from {path.split('/')[-1]}.
 // Do not hand-edit values here: fix the board or the compiler and regenerate.
@@ -297,7 +352,7 @@ export default function {name}({{ v }}: {{ v: any }}) {{
   </>
   )
 }}
-""")
+""" + extra)
     print('wrote', out, len(jsx), 'chars')
 
 

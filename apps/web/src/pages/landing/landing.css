@@ -120,3 +120,13 @@
 @media (pointer: coarse) {
   .lp-root a, .lp-root button { min-height: 44px; }
 }
+/* 768-1023: the phone-board pieces shown in the desktop page keep text at 12px
+   or more (owner decision); at phone width they stay at the board's sizes. */
+.lp-min12 .\[font-size\:9px\]{font-size:12px}
+.lp-min12 .\[font-size\:9.5px\]{font-size:12px}
+.lp-min12 .\[font-size\:10px\]{font-size:12px}
+.lp-min12 .\[font-size\:10.5px\]{font-size:12px}
+.lp-min12 .\[font-size\:11px\]{font-size:12px}
+.lp-min12 .\[font-size\:11.5px\]{font-size:12px}
+/* 768-1023: the tour mockup is dropped, so its animated cursor goes too. */
+@media (max-width: 1023px) { .lp-tcur { display: none; } }

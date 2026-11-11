@@ -8,7 +8,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import SiteFooter from '../components/SiteFooter'
 import LandingDesktop from './landing/LandingDesktop'
-import LandingPhone from './landing/LandingPhone'
+import LandingPhone, { PhoneHeroMockup, PhoneLoopList } from './landing/LandingPhone'
 import { useLandingDesktop, useLandingPhone } from './landing/useLandingState'
 import './landing/landing.css'
 
@@ -67,7 +67,12 @@ function useFitStages(root: React.RefObject<HTMLDivElement | null>, deps: unknow
 }
 
 function Desktop() {
-  const v = useLandingDesktop()
+  const d = useLandingDesktop()
+  const p = useLandingPhone()
+  // 768-1023 (owner decision): the phone board's hero mockup and step list
+  // replace the scaled desktop stages; the tour drops only its mockup.
+  const tablet = (node: React.ReactNode) => <div className="lp-min12 hidden w-[min(792px,calc(100vw-48px))] justify-center max-lg:flex">{node}</div>
+  const v = { ...d, slots: { f792: tablet(<PhoneHeroMockup v={p} />), f1120: tablet(<div className="w-full max-w-[560px] px-6"><PhoneLoopList v={p} /></div>), f700: null } }
   return <LandingDesktop v={v} />
 }
 function Phone() {
