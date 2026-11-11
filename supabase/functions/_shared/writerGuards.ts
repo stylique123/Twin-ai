@@ -20,6 +20,7 @@
 // ⚖️ TRIAL ONLY. Real creators never reach this module.
 
 import { contentWords, isScaffoldText, type LedgerItem } from './inventionGate.ts'
+import { sentenceMatch } from './urlSafe.ts'
 
 export const WRITER_GUARDS_VERSION = 'writer-guards-v1'
 
@@ -107,7 +108,7 @@ export function sentenceRule(sentence: string, ctx: GuardContext, outsideOnly: S
   return null
 }
 
-const sentencesOf = (s: string) => (s.match(/[^.!?]+[.!?]*["”')]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
+const sentencesOf = (s: string) => (sentenceMatch(s, /[^.!?]+[.!?]*["”')]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
 
 export interface GuardRecord {
   version: string

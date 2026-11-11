@@ -1,0 +1,132 @@
+/* Ported from the Landing and MLanding boards' CSS, verbatim except: class and
+   keyframe names prefixed lp-, images point at /landing/*.webp, the board's
+   view-transition and reduced-motion rules dropped (the app has its own). */
+/* The boards run without a CSS reset: boxes are content-box. Element-type
+   specificity: beats the app's reset (*), loses to a board element's own class. */
+:where(.lp-root) :is(div, span, p, a, button, b, i, h1, h2, h3, section, img, video, svg, ul, li) { box-sizing: content-box; }
+.lp-brandbg{background-image:radial-gradient(ellipse 50% 20% at 4% 22%,rgba(255,179,71,.085),rgba(255,179,71,0) 100%),radial-gradient(ellipse 46% 19% at 96% 52%,rgba(255,91,123,.075),rgba(255,91,123,0) 100%),radial-gradient(ellipse 50% 20% at 14% 79%,rgba(101,229,216,.06),rgba(101,229,216,0) 100%)!important;background-repeat:repeat-y!important;background-size:100% 1500px!important}
+.lp-brandbg.lp-bgm{background-size:100% 1000px!important}
+@keyframes lp-dash{{to{{stroke-dashoffset:-2690}}}}
+@keyframes lp-pin{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes lp-drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(80px,40px) scale(1.15)}}
+@keyframes lp-drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-70px,-50px) scale(1.1)}}
+@keyframes lp-shine{0%{transform:translateX(-120%) skewX(-20deg)}60%,100%{transform:translateX(260%) skewX(-20deg)}}
+@keyframes lp-recp{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}100%{box-shadow:0 0 0 8px rgba(255,255,255,0)}}
+@keyframes lp-ring{0%{box-shadow:0 0 0 0 rgba(255,91,123,.45)}100%{box-shadow:0 0 0 14px rgba(255,91,123,0)}}
+@keyframes lp-spinb{to{transform:rotate(360deg)}}
+@keyframes lp-hue{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes lp-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes lp-dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+@keyframes lp-wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(16deg)}20%,40%{transform:rotate(-8deg)}}
+@keyframes lp-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes lp-seg{from{opacity:.15}to{opacity:1}}
+.lp-pin{opacity:0;animation:lp-pin .7s cubic-bezier(.22,1,.36,1) forwards}
+.lp-d1{animation-delay:.05s}
+.lp-d2{animation-delay:.15s}
+.lp-d3{animation-delay:.25s}
+.lp-d4{animation-delay:.35s}
+.lp-d5{animation-delay:.45s}
+.lp-lv{position:relative}
+.lp-lv>*{position:relative;z-index:1}
+.lp-lv>.lp-aur{position:absolute;z-index:0}
+.lp-lift{transition:transform .25s cubic-bezier(.22,1,.36,1),box-shadow .25s ease,border-color .25s ease}
+.lp-cta{position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease}
+.lp-cta::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:lp-shine 3.2s ease-in-out infinite}
+.lp-recdot{animation:lp-recp 1.4s ease-out infinite}
+.lp-grad{background:linear-gradient(110deg,#FFB347,#FF5B7B,#65E5D8,#FFB347);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lp-hue 6s ease infinite}
+.lp-dots span{display:inline-block;width:5px;height:5px;border-radius:9px;background:#FF8FA4;animation:lp-dot 1.2s infinite}
+.lp-dots span:nth-child(2){animation-delay:.15s}
+.lp-dots span:nth-child(3){animation-delay:.3s}
+.lp-grow{transform-origin:left;animation:lp-grow 1.2s cubic-bezier(.22,1,.36,1) .4s both}
+@keyframes lp-blink{50%{opacity:0}}
+@keyframes lp-popin{0%{opacity:0;transform:translateY(10px) scale(.94)}100%{opacity:1;transform:none}}
+@keyframes lp-scan{0%{top:-30%}100%{top:110%}}
+@keyframes lp-floaty{0%,100%{transform:translateY(0) rotate(var(--r,0deg))}50%{transform:translateY(-10px) rotate(var(--r,0deg))}}
+@keyframes lp-orbit{to{transform:rotate(360deg)}}
+.lp-caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:#FF5B7B;animation:lp-blink 1s steps(1) infinite}
+.lp-pop{animation:lp-popin .5s cubic-bezier(.22,1,.36,1) both}
+@keyframes lp-wv{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+.lp-btnL{white-space:nowrap;flex-shrink:0;padding:12px 18px;border-radius:12px;border:0;background:#F6F1E9;color:#0B0B0E;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.lp-btnG{white-space:nowrap;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#D8CFC2;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.lp-cam{position:absolute;inset:0;background-color:#141015;background-position:center 30%;background-size:cover;background-repeat:no-repeat;background-image:url(/landing/maya-talking-kitchen.webp);animation:lp-kb 22s ease-in-out infinite alternate;will-change:transform}
+@keyframes lp-kb{0%{transform:scale(1.02) translate(0,0)}50%{transform:scale(1.07) translate(-1%,1%)}100%{transform:scale(1.04) translate(1%,-.5%)}}
+.lp-cam .lp-who{display:none}
+.lp-cam::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.08) 45%,rgba(0,0,0,.4))}
+.lp-who{position:absolute;left:50%;bottom:0;width:62%;transform:translateX(-50%)}
+.lp-who i{display:block;margin:0 auto;width:44%;aspect-ratio:1/1.18;border-radius:999px;border:1.5px dashed rgba(246,241,233,.28);box-sizing:border-box}
+.lp-who b{display:block;margin-top:10px;height:260px;border-radius:140px 140px 0 0;border:1.5px dashed rgba(246,241,233,.2);border-bottom:0;box-sizing:border-box}
+.lp-fade{-webkit-mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent)}
+.lp-big{font-variant-numeric:tabular-nums}
+@keyframes lp-cdz{0%{transform:scale(1.4);opacity:0}25%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.85}}
+@keyframes lp-lvl{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+@keyframes lp-bar{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+@keyframes lp-vtOut{to{opacity:0;transform:perspective(1600px) translateZ(-60px) rotateX(2deg)}}
+@keyframes lp-vtIn{from{opacity:0;transform:perspective(1600px) translateY(18px) translateZ(40px) rotateX(-2deg)}}
+@keyframes lp-pageIn{from{opacity:0}to{opacity:1}}
+.lp-lv{animation:lp-pageIn .45s ease-out both}
+.lp-root button:active,a.lp-cta:active,a.lp-btnL:active,a.lp-btnG:active{transform:scale(.97)}
+.lp-ph{background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat}
+.lp-ph-coach{background-image:url(/landing/creator-coach-home.webp)}
+.lp-ph-local{background-image:url(/landing/maya-talking-kitchen.webp)}
+.lp-ph-realestate{background-image:url(/landing/creator-realestate-outdoors.webp)}
+.lp-ph-agency{background-image:url(/landing/creator-agency-desk.webp)}
+.lp-ph-s_window{background-image:url(/landing/maya-holding-mug.webp)}
+.lp-ph-s_tray{background-image:url(/landing/maya-holding-beans.webp)}
+.lp-camv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;display:block}
+.lp-rv-up,.lp-rv-left,.lp-rv-right,.lp-rv-zoom,.lp-rv-tilt,.lp-rv-flip,.lp-rv-rise{transition:opacity .9s cubic-bezier(.22,1,.36,1),transform 1.1s cubic-bezier(.22,1,.36,1),filter .9s ease}
+.lp-rv-up:not(.in){opacity:0;transform:translateY(70px)}
+.lp-rv-left:not(.in){opacity:0;transform:translateX(-90px)}
+.lp-rv-right:not(.in){opacity:0;transform:translateX(90px)}
+.lp-rv-zoom:not(.in){opacity:0;transform:scale(.88);filter:blur(10px)}
+.lp-rv-tilt:not(.in){opacity:0;transform:perspective(1200px) rotateX(16deg) translateY(60px)}
+.lp-rv-flip:not(.in){opacity:0;transform:perspective(1200px) rotateY(-14deg) translateX(-40px)}
+.lp-rv-rise:not(.in){opacity:0;transform:translateY(40px) scale(.97)}
+.lp-rv-d1{transition-delay:.12s}
+.lp-rv-d2{transition-delay:.24s}
+.lp-rv-d3{transition-delay:.36s}
+@keyframes lp-wsRise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes lp-wsSlide{from{opacity:0;transform:translateX(-40px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@keyframes lp-wsCard{0%{opacity:0;transform:translateY(16px) scale(.96)}100%{opacity:1;transform:none}}
+@keyframes lp-wsFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes lp-lpop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.lp-lpop{animation:lp-lpop .6s cubic-bezier(.22,1,.36,1) both}
+@keyframes lp-lshrink{from{width:100%}to{width:0%}}
+.lp-lshrink{animation:lp-lshrink 6s linear infinite}
+@keyframes lp-spinr{to{transform:rotate(360deg)}}
+@keyframes lp-floaty2{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.lp-fl2{animation:lp-floaty2 6s ease-in-out infinite}
+@keyframes lp-sheen{from{background-position:-200% 0}to{background-position:200% 0}}
+.lp-sheen{background:linear-gradient(110deg,#F6F1E9 30%,#FFCB85 45%,#FF8FA4 52%,#F6F1E9 65%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lp-sheen 6s linear infinite}
+@keyframes lp-tprog{from{width:0}to{width:100%}}
+@keyframes lp-tcur{0%{transform:translate(700px,440px);opacity:0}12%{opacity:1}45%{transform:translate(430px,330px)}52%{transform:translate(430px,330px) scale(.85)}58%{transform:translate(430px,330px) scale(1)}85%{transform:translate(560px,180px);opacity:1}100%{transform:translate(560px,180px);opacity:0}}
+.lp-tcur{animation:lp-tcur 4.8s cubic-bezier(.45,0,.2,1) infinite}
+@keyframes lp-tshr{0%,18%{width:100%}60%,100%{width:var(--to)}}
+.lp-tshr{width:100%;animation:lp-tshr 7s cubic-bezier(.7,0,.2,1) infinite}
+@keyframes lp-tnew{0%,40%{opacity:0;transform:translateY(6px)}60%,100%{opacity:1;transform:none}}
+.lp-tnew{animation:lp-tnew 7s ease infinite}
+@keyframes lp-ctaglow{0%,100%{box-shadow:0 0 0 0 rgba(255,91,123,.55),0 16px 50px -16px rgba(255,91,123,.8)}50%{box-shadow:0 0 0 10px rgba(255,91,123,0),0 18px 60px -10px rgba(255,179,71,.9)}}
+@keyframes lp-ctapop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08);opacity:1}80%{transform:scale(.97)}100%{transform:scale(1)}}
+@keyframes lp-ctanudge{0%,86%,100%{transform:scale(1)}90%{transform:scale(1.06)}94%{transform:scale(.98)}}
+.lp-glowcta{display:inline-block;animation:lp-ctapop .8s cubic-bezier(.22,1.6,.36,1) .5s both,lp-ctaglow 2.4s ease-in-out 1.3s infinite,lp-ctanudge 5s ease-in-out 2s infinite !important}
+.lp-phfill{position:absolute;inset:0;background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat;animation:lp-kb 26s ease-in-out infinite alternate}
+
+/* Rule C: hover effects only on devices that can hover. */
+@media (hover: hover) {
+  .lp-lift:hover{transform:translateY(-4px);box-shadow:0 18px 40px -18px rgba(0,0,0,.9);border-color:rgba(255,255,255,.18)!important}
+  .lp-cta:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 16px 40px -12px rgba(255,91,123,.7)}
+  .lp-glowcta:hover{filter:brightness(1.08)}
+}
+/* Rule C: 44px tap targets on touch screens (board sizes kept elsewhere). */
+@media (pointer: coarse) {
+  .lp-root a, .lp-root button { min-height: 44px; }
+}
+/* 768-1023: the phone-board pieces shown in the desktop page keep text at 12px
+   or more (owner decision); at phone width they stay at the board's sizes. */
+.lp-min12 .\[font-size\:9px\]{font-size:12px}
+.lp-min12 .\[font-size\:9.5px\]{font-size:12px}
+.lp-min12 .\[font-size\:10px\]{font-size:12px}
+.lp-min12 .\[font-size\:10.5px\]{font-size:12px}
+.lp-min12 .\[font-size\:11px\]{font-size:12px}
+.lp-min12 .\[font-size\:11.5px\]{font-size:12px}
+/* 768-1023: the tour mockup is dropped, so its animated cursor goes too. */
+@media (max-width: 1023px) { .lp-tcur { display: none; } }

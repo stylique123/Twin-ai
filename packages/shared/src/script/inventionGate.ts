@@ -1,3 +1,4 @@
+import { sentenceMatch } from './urlSafe.js'
 // THE ZERO-INVENTION GATE, STAGE 1 (design v1, Part A; owner amendments a–g).
 //
 // Every factual sentence a creator is handed — spoken lines, hook options,
@@ -392,7 +393,7 @@ export function splitSentences(text: string): string[] {
   return [...parts, ...splitPlain(text.slice(last))]
 }
 function splitPlain(text: string): string[] {
-  return (text.match(/[^.!?]+[.!?]*["”')]*/g) ?? []).map((s) => s.trim()).filter((s) => /[A-Za-z0-9]/.test(s))
+  return (sentenceMatch(text, /[^.!?]+[.!?]*["”')]*/g) ?? []).map((s) => s.trim()).filter((s) => /[A-Za-z0-9]/.test(s))
 }
 
 /** Every creator-facing sentence the gate covers (owner amendment c). */
