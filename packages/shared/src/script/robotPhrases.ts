@@ -49,9 +49,12 @@ export const ROBOT_PHRASES: readonly RobotPhrase[] = [
   flag('delve', String.raw`\bdelv(?:e|es|ing)\b`),
 ]
 
-const sentencesOf = (line: string): string[] => line.match(/[^.!?]+[.!?]*/g)?.map((x) => x.trim()).filter(Boolean) ?? []
+// Split only where . ! ? is followed by a space or ends the line, so a URL
+// ("https://example.com/pip-live") or "$4.99" is never cut in two and
+// re-capitalised (panel 13b: "https://example. Com/pip-live").
+const sentencesOf = (line: string): string[] => String(line ?? '').split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean)
 const words = (t: string): number => t.split(/\s+/).filter((w) => /[a-z0-9]/i.test(w)).length
-const cap = (t: string): string => (t ? t[0]!.toUpperCase() + t.slice(1) : t)
+const cap = (t: string): string => (t && !/^(?:https?:\/\/|www\.)/i.test(t) ? t[0]!.toUpperCase() + t.slice(1) : t)
 
 export interface RobotRepair { line: string; hits: string[]; dropped: boolean }
 

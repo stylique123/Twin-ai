@@ -34,6 +34,35 @@ import {
 import { voicePolishBrief, voicePolishVerdict, polishFactChecks, type VoiceCard } from '../generated/voiceCard.js'
 import { reorderEnding, reorderCheck } from '../generated/spineComplete.js'
 import { runQualityController, qcLogRecord, type QcProfile } from '../generated/qualityController.js'
+import { panelFinalPass } from '../generated/panelFinalPass.js'
+
+const PANEL_STORY_ORIGINS = new Set(['her_story', 'her_answer'])
+/** ⚖️ PANEL FINAL PASS (panel 13b, 9 Nov). Runs right after the QC, only when
+ *  the edge put `panel_final_pass` on the job (panel accounts only): the QC
+ *  and the polish can add a line, so the same cuts run again here. Built from
+ *  the gate's ledger; never fails the job. Logs counts only. */
+export function applyPanelFinalPass(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: ReadonlyArray<{ origin?: unknown; product_id?: unknown; text?: unknown }>, products: Array<{ id: string; name: string }>, target: string | null, generationId: string): void {
+  const o = extra.panel_final_pass
+  if (!o || typeof o !== 'object' || !Array.isArray(bp.script)) return
+  try {
+    const items = ledger.filter((it) => String(it.text ?? '').trim())
+    const r = panelFinalPass(bp.script as Array<Record<string, unknown>>, {
+      request: String((o as { request?: unknown }).request ?? ''),
+      material: items.map((it) => String(it.text)).join('\n'),
+      stories: items.filter((it) => PANEL_STORY_ORIGINS.has(String(it.origin))).map((it) => String(it.text)),
+      products: products.map((p) => ({ id: p.id, name: p.name, facts: items.filter((it) => it.origin === 'product_fact' && String(it.product_id ?? '') === p.id).map((it) => String(it.text)) })),
+      subjectId: target,
+      offers: items.filter((it) => it.origin === 'offer').map((it) => String(it.text)),
+    })
+    const n = Object.values(r.cut).reduce((a, b) => a + b, 0)
+    if (n) { bp.script = r.beats; resyncShotListToScript(bp) }
+    bp.panel_final_pass = r.cut
+    console.log(JSON.stringify({ event: 'panel_final_pass', where: 'worker', generation_id: generationId, ...r.cut }))
+  } catch (e) {
+    bp.panel_final_pass = { error: true }
+    console.warn(JSON.stringify({ event: 'panel_final_pass_failed', generation_id: generationId, error: String((e as Error)?.name ?? 'error') }))
+  }
+}
 
 /** ⚖️ THE QUALITY CONTROLLER, LAST (plan v6.8 §33). Runs only when the edge put
  *  `quality_controller` on the job: the QUALITY_CONTROLLER lever of the quality
@@ -389,6 +418,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
   if (measureOnly && gate.record.outcome === 'measure_only' && gate.record.timed_out !== true) {
     bp.invention_gate = gate.record
     applyQualityController(bp, extra, ledger, products, target, generationId)
+    applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
     bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
     await chain
     await deps.saveBlueprint(generationId, bp)
@@ -460,6 +490,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
     if (lines.length) console.log(JSON.stringify({ event: 'check_lines', generation_id: generationId, lines: checkLinesLog(lines) }))
   }
   applyQualityController(bp, extra, ledger, products, target, generationId)
+  applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
   // No progress write may land after (and clobber) the result.
   await chain

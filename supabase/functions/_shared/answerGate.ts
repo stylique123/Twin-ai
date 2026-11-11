@@ -75,7 +75,8 @@ export interface GatedAnswer {
   directions?: string[]
 }
 
-const sentences = (t: string) => (t.match(/[^.!?]+[.!?]*/g) ?? [t]).map((x) => x.trim()).filter(Boolean)
+// URL-safe: split only at . ! ? followed by a space (panel 13b).
+const sentences = (t: string) => String(t ?? '').split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean)
 
 /**
  * @param known what she has already stated or confirmed (her brand, her

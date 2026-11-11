@@ -86,6 +86,8 @@ export function dropRepeatedSentences(lines: readonly string[], share = 0.6): { 
 export function stripSpokenFiller(line: string, strict = false): string {
   let t = String(line ?? '')
   if (strict) {
+    // "it's more like, they need…": that "like" carries the sentence (replay, 10 Nov).
+    t = t.replace(/\b(more|just|exactly|something|kind of|sort of),?\s+like,\s*/gi, '$1 like ')
     t = t.replace(/,\s*like,\s*/gi, ' ')
     t = t.replace(/(^|[\s,.!?])(?:so,?\s+yeah|yeah,?\s+so)(?=[\s,.!?]|$),?/gi, '$1')
     t = t.replace(/(^|[\s,.!?])I mean(?=[\s,.!?]|$),?/gi, '$1')
@@ -104,6 +106,9 @@ export function stripSpokenFiller(line: string, strict = false): string {
   t = t.replace(/,\s*like,\s*/gi, ' ').replace(/\bjust,\s*like,?\s*/gi, 'just ')
   t = t.replace(/\b(?:so yeah|you know),\s*/gi, '')
   t = t.replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').replace(/^\s*,\s*/, '').trim()
+  // Panel 13b: a lone "…" left where filler stood, and "I think," whose comma
+  // only fenced off an "um" ("I think, um, … so yeah, I mean, most shops…").
+  if (strict) t = t.replace(/(^|[\s,])(?:…|\.\.\.)(?=[\s,]|$),?/g, '$1').replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').replace(/\bI think,\s+(?=[a-z])/g, 'I think ')
   if (strict) t = t.replace(/,\s*([.!?])/g, '$1').replace(/^[,.\s]+/, '').replace(/([.!?])\s+([a-z])/g, (_m, p: string, c: string) => `${p} ${c.toUpperCase()}`).trim()
   // No filler found: the line comes out exactly as it went in.
   const orig = String(line ?? '')
