@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CreatorTypePicker from '../components/CreatorTypePicker'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
+import { Loader2, Check, ArrowRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { trialUser } from '../components/ProductDetailsByKind'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
@@ -25,7 +25,7 @@ import {
   saveMintedEntity, type EntityType, type Q4Answer,
 } from '../lib/api'
 import {
-  readScanFailure, scanFailure, otherPlatforms, otherPlatformsSentence, PLATFORM_LABEL,
+  readScanFailure, scanFailure, PLATFORM_LABEL,
   type ScanFailure,
 } from '../lib/api'
 import { OnboardingHeader } from '../components/onboarding/OnboardingHeader'
@@ -155,7 +155,6 @@ const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
 }
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
-import { LogoMark } from '../components/Logo'
 import type { SellsKind } from '@twinai/shared'
 import { loadProductEntities, sellsAnswerWithLibrary, type LibraryProductView } from '@twinai/shared'
 import { manualVoiceCardOn, sanitizeManualVoiceAnswers, MANUAL_VOICE_KEY } from '@twinai/shared'
@@ -346,13 +345,6 @@ export default function Onboarding() {
     setRetrySeed({ handle: draft?.handle ?? '', platform: draft?.platform ?? 'instagram' })
     setMode('handle')
   }, [draft?.handle, draft?.platform])
-  const tryAnotherPlatform = useCallback((platform: Platform) => {
-    setRetrySeed({ handle: draft?.handle ?? '', platform })
-    // ⚖️ THE DEAD SCAN IS DROPPED FIRST. Leaving the failed voiceId on the draft
-    // is what used to resume straight back into the scan that already failed.
-    forgetDeadScan()
-    setMode('handle')
-  }, [draft?.handle, forgetDeadScan])
   // THE SCAN MUST NOT OVERWRITE WHAT THE CREATOR JUST TYPED.
   //
   // This used to hand the scan's own reading straight in — `profile.audience`
@@ -464,9 +456,7 @@ export default function Onboarding() {
             <BuildingStep
               draft={draft}
               onReady={handleReady}
-              onBack={() => setMode('handle')}
               onScanDead={forgetDeadScan}
-              onTryPlatform={tryAnotherPlatform}
               onDraftChange={persistDraft}
               onFailed={scanFailed}
             />
@@ -733,7 +723,6 @@ function PlatformIcon({ p }: { p: Platform }) {
 }
 
 // --- Step 2: live progress while the scan runs -----------------------------
-const SCAN_STAGES = ['Fetching your posts', 'Reading captions & hooks', 'Synthesizing your voice']
 
 // ⚖️ THE COUNT IS NO LONGER A CONSTANT, AND THAT IS THE FEATURE. It is whatever
 // `profileQuestionsFor` says applies to this person: five for a creator with
@@ -745,20 +734,16 @@ const SCAN_STAGES = ['Fetching your posts', 'Reading captions & hooks', 'Synthes
 function BuildingStep({
   draft,
   onReady,
-  onBack,
   onScanDead,
-  onTryPlatform,
   onDraftChange,
   onFailed,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile, manual?: boolean) => void
-  onBack: () => void
   onScanDead: () => void
-  /** Connect board: a classified failure goes back to the handle screen. */
+  /** Connect board: a classified failure goes back to the handle screen,
+   *  where "Try on <platform>" and "Describe my voice myself" live. */
   onFailed?: (f: ScanFailure) => void
-  /** Take the same handle to another platform, in one tap. */
-  onTryPlatform: (platform: Platform) => void
   onDraftChange: (next: OnboardingDraft) => void
 }) {
   // Her live Product Library rows, so an unanswered "do you sell" reads her
@@ -772,13 +757,11 @@ function BuildingStep({
       .catch(() => { if (alive) setLibrary(null) })
     return () => { alive = false }
   }, [])
-  const [err, setErr] = useState<string | null>(null)
+  const [, setErr] = useState<string | null>(null)
   // ⚠️ THE CLASSIFIED FAILURE, BESIDE THE RAW STRING RATHER THAN INSTEAD OF IT.
   // `err` still drives anything that only needs a sentence; this decides whether
   // the creator is told to go and change something, and it is the difference
   // between "your account may be private" and "this is on our side".
-  const [failure, setFailure] = useState<ScanFailure | null>(null)
-  const [stage, setStage] = useState(0)
 
   // THE QUESTIONS RUN AT THE CREATOR'S PACE, THE SCAN AT ITS OWN.
   //
@@ -792,7 +775,6 @@ function BuildingStep({
   // skips. `readyProfile` parks the finished scan until they are done, so
   // finishing early means WAITING, never interrupting. The last one to finish
   // hands over, whichever it is.
-  const [qIndex, setQIndex] = useState(0)
   // ⚠⚠ THE THREE STORY QUESTIONS ARE NO LONGER ASKED HERE. They moved to their
   // own step AFTER the scan (`mode === 'stories'`), because on this screen the
   // DNA does not exist yet and they could never be worded in her world. What is
@@ -819,33 +801,14 @@ function BuildingStep({
   // ⚠️ AND A SHRINKING LIST CLAMPS RATHER THAN SKIPS. Standing on question five
   // when the list becomes four means seeing question four, not being thrown out
   // of the set entirely.
-  const qAt = Math.min(qIndex, Math.max(asked.length - 1, 0))
   const questionsDone = finished || asked.length === 0
 
-  // Hand over exactly once, and only when BOTH halves are finished.
-  useEffect(() => {
-    // ⚠️ THE STORY QUESTIONS GATE THIS TOO, FOR THE REASON THIS FILE ALREADY
-    // LEARNED ONCE: a scan that finished early used to take the screen away
-    // with an answer half-typed. The finished scan is parked the same
-    // way `questionsDone` does, so finishing early means WAITING, never
-    // interrupting.
-    if (questionsDone && depthDone && readyProfile) onReady(readyProfile)
-  }, [questionsDone, depthDone, readyProfile, onReady])
+  // Hand over only when BOTH halves are finished — and, per the Reading board,
+  // on the creator's tap ("Twin has your voice." → Continue), never mid-answer.
+  const canHandOver = !!(questionsDone && depthDone && readyProfile)
+  const [tab, setTab] = useState(0)
+  const wide = useWide()
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Advance the visual stage on a gentle clock so the wait feels alive even
-  // though the backend reports only building/ready/failed.
-  //
-  // AND STOP THE MOMENT IT FAILS. This ran on empty deps, so polling halted on
-  // an error and the animation did not: the screen showed a live spinner on
-  // "Synthesizing your voice" directly above the words "We couldn't read
-  // @handle". Still working and already failed, at the same time, and no way
-  // for a creator to tell which one was true.
-  useEffect(() => {
-    if (err) return
-    const t = setInterval(() => setStage((s) => Math.min(s + 1, SCAN_STAGES.length - 1)), 9000)
-    return () => clearInterval(t)
-  }, [err])
 
   useEffect(() => {
     let stopped = false
@@ -906,7 +869,6 @@ function BuildingStep({
           // the server's prose for the word "private" would be exactly the guess
           // this taxonomy exists to stop.
           const f = readScanFailure((res as { cause?: unknown }).cause)
-          setFailure(f)
           setErr(f.message)
           onFailed?.(f)
           // AND FORGET THE DEAD SCAN. `mode` resumes into 'building' whenever
@@ -922,7 +884,6 @@ function BuildingStep({
           // A timeout tells us nothing about their account, so it must not
           // imply one. SCAN_TIMED_OUT names it as ours and worth another try.
           const f = scanFailure('SCAN_TIMED_OUT')
-          setFailure(f)
           setErr(f.message)
           onScanDead()
           onFailed?.(f)
@@ -935,7 +896,6 @@ function BuildingStep({
           // We could not reach our OWN scanner. There is no ambiguity about
           // whose problem this is.
           const f = scanFailure('PLATFORM_ACCESS_FAILED')
-          setFailure(f)
           setErr(f.message)
           onScanDead()
           onFailed?.(f)
@@ -950,301 +910,244 @@ function BuildingStep({
     }
   }, [draft.voiceId, onReady]) // eslint-disable-line react-hooks/exhaustive-deps -- onFailed/onScanDead are stable callbacks
 
-  return (
-    <>
-      <span className="relative grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft">
-        <span className="absolute inset-0 animate-ping rounded-2xl bg-coral/20" />
-        <LogoMark size={22} className="relative" />
+  const set = (patch: Partial<OnboardingDraft>) => onDraftChange({ ...draft, ...patch })
+  const shownSells = sellsAnswerWithLibrary(draft.commercialTies, library)
+  const answers = profileAnswersOf(draft)
+  const answered = [
+    draft.workKind != null || draft.commercialTies.length > 0,
+    draft.audienceSeg != null || draft.audienceKnowledge != null,
+    depthDone,
+  ]
+  const TABS = [
+    { short: 'About you', q: 'First, a little about you' },
+    { short: 'Your audience', q: 'Who’s watching your videos?' },
+    { short: 'Only you know', q: 'What do you keep having to explain to people, over and over?' },
+  ]
+  // Skip all on any step finishes the questions and the depth question both;
+  // nothing is written for an unanswered question.
+  const skipEverything = () => { setFinished(true); setDepthDone(true) }
+  const next = () => { if (tab + 1 >= 2) setFinished(true); setTab(tab + 1) }
+  const asking = !(questionsDone && depthDone)
+
+  // Honest progress (owner decision): the scan reports only building / ready /
+  // failed, so the first stage is active while it runs and all three are done
+  // when it is ready. No post counts, no "noticed so far" until the backend
+  // reports them.
+  const STAGES: [string, string][] = [['Fetching your posts', 'In progress'], ['Reading captions and openings', 'Openings, endings, phrases'], ['Building your voice', 'Tone, pacing, what you push against']]
+  const stageAt = readyProfile ? 3 : 0
+  const stages = STAGES.map((x, i) => ({
+    t: x[0], sub: i === stageAt ? x[1] : i < stageAt ? 'Done' : 'Waiting',
+    c: i < stageAt ? '#65E5D8' : i === stageAt ? '#FF5B7B' : 'rgba(255,255,255,0.15)',
+    fg: i <= stageAt ? '#F6F1E9' : '#6E675C', mark: i < stageAt ? '✓' : String(i + 1), on: i === stageAt,
+  }))
+
+  const QHead = ({ n, title, hint }: { n: number; title: string; hint?: string }) => (
+    <div className="flex items-start gap-[11px]">
+      <span className="mt-[1px] flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px] bg-[rgba(255,179,71,0.14)] text-[12.5px] font-extrabold text-amber">{n}</span>
+      <span className="flex flex-col gap-[3px]">
+        <span className={`${wide ? 'text-[17px]' : 'text-[16px]'} font-[650] leading-[1.3] text-cream`}>{title}</span>
+        {hint && <span className="text-[13px] leading-[1.45] text-label">{hint}</span>}
       </span>
-      {/* SIZED FOR THE PHONE FIRST. `text-3xl` turned this heading into two
-          lines on a 390px screen and the sub-paragraph into three, which is
-          most of a viewport spent restating the eyebrow. The copy also said
-          "this usually takes under a minute" directly above a progress bar that
-          reports the same thing more honestly, so it goes: a static estimate
-          next to a live indicator is the one that gets believed, and it is the
-          one that can be wrong. */}
-      <p className="eyebrow mt-5">Reading your voice</p>
-      <h1 className="mt-2.5 font-display text-2xl sm:text-3xl">Studying your recent posts…</h1>
-      <p className="mt-2 text-sm text-sand sm:text-base">
-        Pulling your hooks, pacing and signature phrases.
-      </p>
+    </div>
+  )
+  const Opt = ({ on, onClick, children, center, pad = 'px-3 py-[10px]', size = 'text-[13.5px]' }: { on: boolean; onClick: () => void; children: React.ReactNode; center?: boolean; pad?: string; size?: string }) => (
+    <button type="button" aria-pressed={on} onClick={onClick}
+      className={`min-h-[44px] cursor-pointer rounded-[12px] border leading-[1.25] transition-all duration-150 ${pad} ${size} ${center ? 'text-center' : 'text-left'}`}
+      style={{ borderColor: on ? '#FF5B7B' : 'rgba(255,255,255,0.09)', background: on ? '#FF5B7B' : '#17171D', color: on ? '#07070A' : '#D8CFC2', fontWeight: on ? 600 : 500 }}>
+      {children}
+    </button>
+  )
+  const divider = 'flex flex-col gap-3 border-t border-white/[0.07] pt-5'
+  /** The Reading board's option grid, fed by the same value lists and labels
+   *  the rest of onboarding uses — one source of truth for what is offered. */
+  function OptGrid<T extends string>({ values, label, chosen, onPick, cls, center, pad, size }: {
+    values: readonly T[]; label: Record<T, string>; chosen: T | null | undefined; onPick: (v: T) => void
+    cls: string; center?: boolean; pad?: string; size?: string
+  }) {
+    return (
+      <div className={cls}>
+        {values.map((v) => <Opt key={v} center={center} pad={pad} size={size} on={chosen === v} onClick={() => onPick(v)}>{label[v]}</Opt>)}
+      </div>
+    )
+  }
 
-      {/* ONE LINE, NOT THREE CARDS.
-          Three stacked status cards cost ~200px — over a third of a phone
-          viewport — to say one thing: which of three stages is running. They
-          pushed the QUESTION to the fold, which is the exact defect §6 exists
-          to fix. Every stage below the active one was also pure padding: a
-          creator does not need "Synthesizing your voice" listed as pending in
-          order to understand that a scan has steps.
-          So the stage is a single line with a progress bar, and the space it
-          gave back goes to the question. The information lost is the list of
-          stages not yet reached, which nobody acted on. `SCAN_STAGES` still
-          drives both the label and the bar, so the two cannot disagree. */}
-      <div className="mt-6">
-        <div className="flex items-center gap-2.5">
-          <span className="grid h-5 w-5 shrink-0 place-items-center">
-            {err ? (
-              <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+  const about = (
+    <div className="ob-pop flex flex-col gap-5">
+      <div className="flex flex-col gap-3">
+        <QHead n={1} title="What best describes what you do?" />
+        <OptGrid cls="grid grid-cols-2 gap-2"
+          values={ONBOARDING_WORK_KINDS} label={WORK_KIND_LABEL} chosen={draft.workKind}
+          onPick={(k) => set({ workKind: draft.workKind === k ? null : k })} />
+      </div>
+      <div className={divider}>
+        <QHead n={2} title="Do you sell or promote anything in your videos?" hint="A product, a service, a course, a cart. You add the details later in Brands & products." />
+        <div className="grid grid-cols-2 gap-2">
+          {ONBOARDING_SELLS_ANSWERS.map((a) => (
+            <Opt key={a} center pad="px-3 py-3" size="text-[14.5px]" on={shownSells.answer === a}
+              onClick={() => set({ commercialTies: shownSells.answer === a && !shownSells.fromLibrary ? [] : [...SELLS_ANSWER_TO_TIES[a]] })}>{SELLS_LABEL[a]}</Opt>
+          ))}
+        </div>
+        {shownSells.reason && <p className="m-0 text-[12px] text-label">{shownSells.reason}</p>}
+      </div>
+      {asksScreenCapability(answers) && (
+        <div className={`ob-pop ${divider}`}>
+          <QHead n={3} title="Can you record your screen when Twin needs it?" hint="You picked software. Say no and we stop suggesting shots you can’t film." />
+          <div className="grid grid-cols-3 gap-2">
+            {CAPABILITY_ANSWERS.map((v) => (
+              <Opt key={v} center pad="px-[6px] py-[9px]" on={draft.screenCapability === v} onClick={() => {
+                const nx = draft.screenCapability === v ? null : v
+                set({ screenCapability: nx, canRecordScreen: nx === 'yes' ? true : nx === 'no' ? false : null })
+              }}>{CAPABILITY_LABEL[v]}</Opt>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+  const audience = (
+    <div className="ob-pop flex flex-col gap-5">
+      <div className="flex flex-col gap-3">
+        <QHead n={1} title="Who do you mainly want to reach?" />
+        <OptGrid cls="grid grid-cols-2 gap-2 lg:grid-cols-4" pad="px-[10px] py-2" size="text-[13px]"
+          values={AUDIENCE_SEGMENTS} label={AUDIENCE_LABEL} chosen={draft.audienceSeg}
+          onPick={(a) => set({ audienceSeg: draft.audienceSeg === a ? null : a })} />
+      </div>
+      <div className={divider}>
+        <QHead n={2} title="How much do they already know?" hint="So Twin knows what to explain and what to skip." />
+        <OptGrid cls="grid grid-cols-2 gap-2 lg:grid-cols-4" center pad="px-[6px] py-2" size="text-[13px]"
+          values={AUDIENCE_KNOWLEDGE} label={KNOWLEDGE_LABEL} chosen={draft.audienceKnowledge}
+          onPick={(k) => set({ audienceKnowledge: draft.audienceKnowledge === k ? null : k })} />
+      </div>
+    </div>
+  )
+  const footer = (
+    <div className="mt-auto flex items-center gap-[10px] pt-2">
+      {tab > 0 && <button type="button" onClick={() => setTab(tab - 1)} className="btn-outline">Back</button>}
+      <span className="flex-grow" />
+      <button type="button" onClick={skipEverything} className="min-h-11 cursor-pointer rounded-[10px] border-0 bg-transparent px-[10px] text-[13px] text-label">Skip all</button>
+      <button type="button" onClick={next} className="btn-light !px-6">Next</button>
+    </div>
+  )
+  const stepsRow = (
+    <div className="flex items-center gap-[6px]">
+      {TABS.map((t, i) => {
+        const cur = i === tab
+        const dot = cur ? 'linear-gradient(135deg,#FFB347,#FF5B7B)' : answered[i] ? '#65E5D8' : 'rgba(255,255,255,0.08)'
+        const dfg = cur || answered[i] ? '#07070A' : '#8D8475'
+        const mark = answered[i] && !cur ? '✓' : String(i + 1)
+        return (
+          <Fragment key={t.short}>
+            {wide ? (
+              <button type="button" onClick={() => setTab(i)} aria-current={cur ? 'step' : undefined}
+                className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-full border-0 py-[5px] pl-[5px] pr-[11px] text-[13px] font-semibold"
+                style={{ background: cur ? 'rgba(255,255,255,0.06)' : 'transparent', color: cur ? '#F6F1E9' : answered[i] ? '#8FEDE3' : '#6E675C' }}>
+                <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-[12px] font-extrabold" style={{ background: dot, color: dfg }}>{mark}</span>{t.short}
+              </button>
             ) : (
-              <Loader2 className="h-4 w-4 animate-spin text-coral" />
+              <button type="button" onClick={() => setTab(i)} aria-label={t.short} aria-current={cur ? 'step' : undefined}
+                className="h-[26px] w-[26px] cursor-pointer rounded-full border-0 p-0 text-[12px] font-extrabold [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:bg-clip-content [@media(pointer:coarse)]:p-[9px]"
+                style={{ background: dot, color: dfg }}>{mark}</button>
             )}
+            {i < TABS.length - 1 && <span className={`h-px ${wide ? 'w-[22px] bg-white/[0.12]' : 'w-[18px] bg-white/[0.14]'}`} />}
+          </Fragment>
+        )
+      })}
+      {!wide && <span className="ml-[6px] text-[13.5px] font-semibold">{TABS[tab].short}</span>}
+    </div>
+  )
+  const card = (
+    <div className={`relative flex flex-col gap-[18px] ${wide ? 'min-h-[560px] rounded-[20.5px] bg-[#131318] px-7 py-[26px]' : 'flex-grow'}`}>
+      {asking && (
+        <div className="flex flex-grow flex-col gap-5">
+          <div className={`flex flex-col ${wide ? 'gap-3' : 'gap-[10px]'}`}>
+            <span className="flex items-baseline justify-between">
+              <span className="text-[12px] font-bold tracking-[.12em] text-amber">{wide ? 'WHILE WE READ · 3 QUICK STEPS' : 'WHILE WE READ'}</span>
+              <span className="text-[12px] text-stone-dim">{wide ? 'all optional' : `Step ${tab + 1} of 3 · all optional`}</span>
+            </span>
+            {stepsRow}
+          </div>
+          <h2 key={tab} className={`ob-pop m-0 mt-[2px] font-bold leading-[1.2] tracking-[-0.02em] ${wide ? 'text-[26px]' : 'text-[22px]'}`}>{TABS[tab].q}</h2>
+          {tab === 0 && about}
+          {tab === 1 && audience}
+          {tab < 2 && footer}
+          {/* ⚖️ ONE STORYINTERVIEW, THE DEPTH QUESTION, NO NICHE: there is no
+              scan yet on this screen, so the plain wording is the honest one. */}
+          {tab === 2 && (
+            <StoryInterview
+              voiceId={draft.voiceId ?? null}
+              onDone={() => { setFinished(true); setDepthDone(true) }}
+              questionIds={DEPTH_QUESTION_IDS}
+              look="reading"
+              onBack={() => setTab(1)}
+            />
+          )}
+        </div>
+      )}
+      {!asking && !canHandOver && (
+        <div className="ob-pop flex flex-grow flex-col items-center justify-center gap-[14px] text-center" aria-live="polite">
+          <span className="ob-dots inline-flex gap-[5px]" aria-hidden="true"><span /><span /><span /></span>
+          <h2 className="m-0 text-[24px] font-bold">Thanks. Finishing the scan…</h2>
+          <p className="m-0 max-w-[380px] text-[14.5px] leading-[1.5] text-sand-muted">Then three things only you know, and your voice.</p>
+        </div>
+      )}
+      {canHandOver && (
+        <div className="ob-pop flex flex-grow flex-col items-center justify-center gap-[14px] text-center" aria-live="polite">
+          <span className="ob-ringp flex h-[60px] w-[60px] items-center justify-center rounded-full bg-[linear-gradient(135deg,#FFB347,#FF5B7B)] text-[26px] font-extrabold text-ink">✓</span>
+          <h2 className="m-0 text-[26px] font-bold">Twin has your voice.</h2>
+          <p className="m-0 max-w-[400px] text-[14.5px] leading-[1.5] text-sand-muted">Twin read your posts. Now three things only you can tell us, then your voice.</p>
+          <button type="button" onClick={() => readyProfile && onReady(readyProfile)} className="ob-cta ob-gbtn cursor-pointer rounded-[13px] border-0 px-[26px] py-[14px] text-[15px] font-bold text-ink">Continue →</button>
+        </div>
+      )}
+    </div>
+  )
+
+  if (!wide) {
+    return (
+      <>
+        <div className="mx-5 mt-4 flex flex-col gap-[9px] rounded-[14px] border border-white/[0.07] bg-card px-[14px] py-3" aria-live="polite">
+          <span className="flex justify-between text-[13px]"><b>Studying your recent posts…</b><span className="text-label">{readyProfile ? 'Done' : ''}</span></span>
+          <div className="h-1 overflow-hidden rounded-[9px] bg-white/[0.07]">
+            <div className={`ob-gbtn h-full ${readyProfile ? 'w-full' : 'ob-indet w-full opacity-40'}`} />
+          </div>
+          <span className="flex flex-wrap gap-3">
+            {stages.map((g) => (
+              <span key={g.t} className="flex items-center gap-[5px] text-[12px]" style={{ color: g.fg }}>
+                <span className="flex h-[14px] w-[14px] items-center justify-center rounded-full text-[9px] font-black text-ink" style={{ background: g.c }}>{g.mark}</span>{g.sub}
+              </span>
+            ))}
           </span>
-          <p className="min-w-0 flex-1 truncate text-sm text-sand">
-            {err ? 'Scan stopped' : SCAN_STAGES[stage]}
-          </p>
-          {/* A COUNT, so "is it moving" is answerable at a glance without
-              needing three rows to show it. */}
-          <p className="shrink-0 text-xs tabular-nums text-stone">
-            {Math.min(stage + 1, SCAN_STAGES.length)}/{SCAN_STAGES.length}
-          </p>
         </div>
-        <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-white/8">
-          <div
-            className={cn(
-              'h-full rounded-full transition-all duration-700',
-              err ? 'bg-white/20' : 'bg-gradient-to-r from-amber to-coral',
-            )}
-            style={{ width: `${((stage + 1) / SCAN_STAGES.length) * 100}%` }}
-          />
-        </div>
-      </div>
+        <section className="mx-5 mb-6 mt-[14px] flex flex-grow flex-col">{card}</section>
+      </>
+    )
+  }
 
-      {/* ASKED DURING THE SCAN, not on the confirm screen.
-          The scan already costs the creator ~50 seconds of waiting, and this is
-          a question no scan could ever answer: reading someone's captions tells
-          you what they HAVE posted, never what their setup can do (§8a.2's
-          observed-is-not-stated rule). Putting it here spends time that was
-          already being spent, and keeps the confirm screen to what the scan
-          drafted and the creator is correcting.
-          It needs no camera and no permission prompt — the answer is about the
-          creator's setup, not about what this browser can do this second, and
-          opening a share-picker to find out would be asking the operating
-          system a question only the person can answer. They are asked on the
-          CONFIRM screen now, after what the creator does and what they sell,
-          because how someone films is the last thing that matters and was the
-          first thing we asked. */}
-      {/* THE THREE QUESTIONS NO SCAN CAN ANSWER, ASKED WHILE IT RUNS.
-          §6 of the intelligence architecture. They used to sit below the fold on
-          the confirm screen, and in the first real production run EVERY question
-          below the fold came back unanswered — placement, not wording, is why
-          the answers were empty.
-          One per stage, never all three: three questions stacked on a waiting
-          screen is the same wall in a new place. Each is answered in a tap
-          (audience aside), so a stage's worth of waiting is enough time.
-          They persist on every change rather than on a Next button, because the
-          scan finishes on its own schedule and can advance out from under a
-          half-typed answer. `forgetDeadScan` clears only `voiceId`, so a scan
-          that dies keeps every answer given here. */}
-      {/* ⚠️ THE CATEGORICAL QUESTIONS ARE DONE AND THE WAIT IS NOT. Everything
-          above asks WHAT the creator does; nothing asks what HAPPENED to them —
-          and experience items are the one predictor of a script that does not
-          read as generic. Captions have produced zero of them, ever. This is
-          dead time that can carry three real answers instead. */}
-      {/* ⚠️⚠️ AND THE COMMENT ABOVE HAS SAID THIS SINCE IT WAS WRITTEN. It ends
-          "this is dead time that can carry three real answers instead", and the
-          branch under it rendered a thank-you card — the intent recorded and the
-          implementation absent, which is the defect class this codebase keeps
-          closing. Reported by the owner from a real run, in these words: after
-          the first questions "it just says that's all we need and then it just
-          clears".
-
-          ⚖️ ONE, AND IT IS NOT THE STORY THREE (owner decision 2026-09-23: two
-          boxes sat under a "three things" header). `DEPTH_QUESTION_IDS` says why:
-          it must be answerable with NO DNA, because on this screen there is none.
-          The misconception question mints a `claim` and feeds the hook.
-
-          ⚖️ THE SAME COMPONENT AS THE STORY SCREEN, deliberately. It already
-          resolves every field as answered-or-skipped before `onDone`, records
-          `shown` apart from both, and persists a draft as she types — and it
-          writes through `answerQuestion`, which is what stops the same question
-          being asked again on the post-script card. */}
-      {!err && questionsDone && !depthDone && (
-        <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.06] p-4 sm:p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-            While we read · one question
-          </p>
-          <p className="mt-2 text-xs text-stone">
-            Your videos show what you make. They cannot show what people keep
-            getting wrong about it. Optional — skip it if nothing comes to mind.
-          </p>
-          {/* ⚠️ NO NICHE, AND THAT IS CORRECT RATHER THAN A FALLBACK. The scan
-              has not landed here, so there is nothing to word these in; both
-              questions were chosen because the plain wording needs none. */}
-          <StoryInterview
-            voiceId={draft.voiceId ?? null}
-            onDone={() => setDepthDone(true)}
-            questionIds={DEPTH_QUESTION_IDS}
-            heading="One thing only you know"
-            helper="What people assume, and what is actually true. Skip it if nothing comes to mind."
-          />
-        </div>
-      )}
-
-      {!err && questionsDone && depthDone && (
-        // Answered everything before the scan finished. Say so plainly — a
-        // spinner with no sentence reads as a stall, and this is the one moment
-        // the creator is genuinely just waiting.
-        <div className="mt-6 rounded-card border border-white/10 bg-white/[0.03] p-4 text-center">
-          <p className="text-sm text-cream">Thanks — that is everything we needed.</p>
-          <p className="mt-1 text-xs text-stone">
-            {readyProfile ? 'Opening your voice…' : 'Finishing the scan, then we will show you your voice.'}
-          </p>
-        </div>
-      )}
-
-      {!err && !questionsDone && (
-        // THE QUESTION IS THE CONTENT OF THIS SCREEN, so it is styled like it.
-        // It used to be a faint box below three louder status cards, which read
-        // as an aside to the "real" thing happening above — and an aside is
-        // what people skip. The scan is the thing that needs no attention; the
-        // question is the only thing here only the creator can do.
-        <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.06] p-4 sm:p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-            While we read · {qAt + 1} of {asked.length}
-          </p>
-
-          {/* WHAT THEY ALREADY SAID, WITHOUT SCROLLING BACK FOR IT.
-              ⚠️ ONCE A QUESTION IS BEHIND THEM THE ANSWER IS GONE FROM THE
-              SCREEN, so checking one costs a scroll back and a scroll forward,
-              and the common outcome is not checking. This is a compact,
-              read-only summary of the answers so far — it never renders on the
-              first question, because there is nothing to summarise yet. */}
-          <AnswerSummary draft={draft} />
-
-          <ProfileQuestion
-            id={asked[qAt]}
-            draft={draft}
-            onDraftChange={onDraftChange}
-            library={library}
-          />
-          {/* THE CREATOR MOVES THE QUESTIONS, NOTHING ELSE DOES.
-              Skipping is unpunished: a required question on a waiting screen
-              turns a wait into a toll, and all three are asked again on the
-              confirm screen where they stay editable.
-
-              ⚠️ THE BUTTON STICKS TO THE BOTTOM ON A PHONE. It used to sit at
-              the natural end of the content, which on a screen carrying four
-              questions put it below the fold — a creator who had answered
-              everything still had to hunt for the way forward. It is pinned
-              within the card on small screens and sits inline once there is
-              room for it. */}
-          <div className="sticky bottom-0 -mx-4 mt-5 flex items-center gap-3 border-t border-white/10 bg-ink2/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:backdrop-blur-none">
-            <button
-              type="button"
-              onClick={() => {
-                // The LAST question hands over; every other one advances. Read
-                // off the live list, so a list that shrank still ends where the
-                // creator can see it ending.
-                if (qAt + 1 >= asked.length) setFinished(true)
-                else setQIndex(qAt + 1)
-              }}
-              className="btn-gradient min-h-[44px] flex-1 rounded-xl px-3 text-sm font-semibold"
-            >
-              {qAt + 1 >= asked.length ? 'Done' : 'Next'}
-            </button>
-            {/* ⚖️ QUIET, BUT A REAL TARGET. Skipping should not shout — it is
-                the answer we least want and must still be honestly available —
-                but it was a 12px text link with 8px of padding, which is a
-                tap target well under the 44px minimum on the screen where a
-                mis-tap costs the creator the whole question set. Quiet is a
-                matter of colour and weight, not of being hard to hit. */}
-            <button
-              type="button"
-              onClick={() => setFinished(true)}
-              className="inline-flex min-h-[44px] shrink-0 items-center rounded-xl px-3 text-xs text-stone transition hover:bg-white/5 hover:text-cream"
-            >
-              Skip all
-            </button>
+  return (
+    <div className="flex flex-grow flex-wrap justify-center gap-7 px-6 pt-10 lg:px-20">
+      <section className="pin d2 flex w-full max-w-[440px] flex-col gap-[14px]">
+        <h1 className="m-0 text-[30px] font-bold leading-[1.1] tracking-[-0.03em]">Studying your recent posts…</h1>
+        <p className="m-0 text-[14.5px] text-sand-muted">Picking up how you open, your pace and your favourite phrases.</p>
+        <div className="flex flex-col gap-[14px] rounded-[18px] border border-white/[0.07] bg-card p-[18px]" aria-live="polite">
+          <div className="h-[5px] overflow-hidden rounded-[9px] bg-white/[0.07]">
+            <div className={`ob-gbtn h-full transition-[width] duration-300 ${readyProfile ? 'w-full' : 'ob-indet w-full opacity-40'}`} />
           </div>
-          <p className="mt-2 text-[11px] text-stone">
-            Optional, and you can change any of it on the next screen.
-          </p>
-        </div>
-      )}
-
-      {err && (
-        <div className="mt-6 space-y-2">
-          <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
-          {/* ⚠️ THE TIP USED TO SHOW ON EVERY FAILURE, INCLUDING OURS. Telling a
-              creator to "pick a public account" after Twin's own retriever fell
-              over sends them to check a setting that was never the problem — the
-              owner hit exactly this with a large, unambiguously public account.
-              It now appears only when the failure is genuinely theirs to fix. */}
-          {failure?.creatorCanFix && (
-            <p className="text-sm text-sand">
-              Tip: pick a <span className="text-cream">public</span> account with a handful of recent posts — that reads fastest and most accurately.
-            </p>
-          )}
-          {/* ⚖️ AND WHEN IT IS OURS, SAY WHAT ACTUALLY HELPS. The same creator on
-              another platform usually reads fine, which is what happened when
-              Instagram failed and YouTube worked.
-              ⚠️ AND IT NAMES ONLY THE ONES THAT ARE LEFT. This line used to
-              hardcode all three, so an Instagram failure advised "YouTube,
-              TikTok or Instagram" — offering back the platform that had just
-              failed, which reads as though nobody looked at what happened.
-              `otherPlatforms` has been correct and CALLED BY NOTHING since it
-              was written; this is its first caller. */}
-          {failure && !failure.creatorCanFix && failure.tryAnotherPlatform
-            && otherPlatforms(draft.platform).length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm text-sand">
-                {draft.handle !== ''
-                  ? 'You can try the same handle somewhere else:'
-                  : `You can also try the same creator on ${otherPlatformsSentence(draft.platform)}.`}
-              </p>
-              {/* ⚠️ ONE TAP, BECAUSE THE ALTERNATIVE WAS RETYPING FROM MEMORY.
-                  The old route was Back, re-pick a platform, type the handle
-                  again — charged to somebody we have just told the fault was
-                  ours.
-                  ⚖️ AND THE BUTTONS APPEAR ONLY IF WE ACTUALLY KEPT THE HANDLE.
-                  An older draft predates the field and carries ''; offering a
-                  one-tap retry that silently lands on an empty box would be
-                  worse than the sentence, so that case keeps the sentence. */}
-              {draft.handle !== '' && (
-                <div className="flex flex-wrap gap-2">
-                  {otherPlatforms(draft.platform).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      className="btn-ghost text-sm"
-                      onClick={() => onTryPlatform(p)}
-                    >Try on {PLATFORM_LABEL[p]}</button>
-                  ))}
-                </div>
-              )}
+          {stages.map((g) => (
+            <div key={g.t} className="flex items-center gap-3">
+              <span className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold text-ink ${g.on && !readyProfile ? 'ob-ringp' : ''}`} style={{ background: g.c }}>{g.mark}</span>
+              <span className="flex flex-col gap-[1px]">
+                <span className="text-[14.5px] font-semibold" style={{ color: g.fg }}>{g.t}</span>
+                <span className="text-[12.5px] text-label">{g.sub}</span>
+              </span>
             </div>
-          )}
+          ))}
+          <span className="text-[12px] text-stone-dim">Steps move when Twin actually finishes them.</span>
         </div>
-      )}
-
-      {/* On an error, promote "Try again" to the primary action. There is no
-          skip during a HEALTHY scan — building the voice from a real handle is
-          required. But when the scan itself FAILS (private/thin account, scraper
-          outage), a hard wall would block every affected signup from ever entering
-          the product — so failure (and only failure) unlocks a manual path: the
-          creator describes their voice in the same confirm form, which saves as a
-          real, editable profile. Nothing is fabricated; every field is theirs. */}
-      <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
-        <button className="btn-ghost" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" /> Back
-        </button>
-        {err && (
-          <div className="flex flex-wrap items-center gap-3">
-            <button className="btn-ghost" onClick={onBack}>
-              <RotateCcw className="h-4 w-4" /> Try a different handle
-            </button>
-            {/* Manual is the PRIMARY recovery: a scan failure (private/thin account,
-                scraper outage) must never wall a signup out of the product. */}
-            <button
-              className="btn-gradient"
-              onClick={() => onReady(emptyVoiceProfile(), true)}
-            >
-              Describe your voice myself <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-      </div>
-    </>
+      </section>
+      <section className="pin d3 relative w-full max-w-[640px] self-start overflow-clip rounded-[22px] p-[1.5px]">
+        <div aria-hidden="true" className="ob-spinb absolute left-1/2 top-1/2 -ml-[700px] -mt-[700px] h-[1400px] w-[1400px] bg-[conic-gradient(from_0deg,rgba(255,179,71,0),rgba(255,179,71,0.7),rgba(255,91,123,0.75),rgba(101,229,216,0.6),rgba(255,179,71,0)_40%)]" />
+        {card}
+      </section>
+    </div>
   )
 }
 
@@ -1287,17 +1190,18 @@ function StoryStep({
     return () => { alive = false }
   }, [draft.voiceId])
 
+  const wide = useWide()
+  const worded = draft.profile?.sub_niche || draft.profile?.niche || ''
   return (
-    <div className="space-y-4">
-      <div>
-        {/* ⚠️ NO COUNT IN THE HEADING. It said "Three things" while the screen
-            asked three, and the moment the set became five the heading was a
-            lie the creator could count. A number in copy is a second source for
-            a fact the list already states. */}
-        <h2 className="text-xl font-semibold">The things your videos cannot tell us</h2>
-        <p className="mt-1 text-sm text-neutral-600">
-          We read your account. These are the parts only you know — they are what
-          give a script something real to say.
+    <div className={`flex flex-grow justify-center ${wide ? 'px-6 pb-[50px] pt-10' : 'px-5 pb-8 pt-6'}`}>
+    <section className="flex w-full max-w-[760px] flex-col gap-[22px]">
+      <div className="pin d2 flex flex-col gap-[10px]">
+        {/* Stories board copy. The set is the opening three by default. */}
+        <span className="text-[12px] font-bold tracking-[.12em] text-teal-soft">STEP 3 · THREE THINGS ONLY YOU KNOW</span>
+        <h1 className={`m-0 font-bold leading-[1.08] tracking-[-0.03em] ${wide ? 'text-[38px]' : 'text-[30px]'}`}>The things your videos <span className="ob-grad">can't tell us.</span></h1>
+        <p className="m-0 text-[15.5px] leading-[1.5] text-sand-muted">
+          We read your account. These are the parts only you know, and they’re what give a script something real to say.
+          {worded && <> Worded for <b className="text-cream">{worded}</b>, from your scan.</>}
         </p>
       </div>
       <StoryInterview
@@ -1313,7 +1217,9 @@ function StoryStep({
            caller reading a single field of it: the defect class this codebase
            keeps closing. */
         subNiche={draft.profile?.sub_niche ?? null}
+        look="stories"
       />
+    </section>
     </div>
   )
 }

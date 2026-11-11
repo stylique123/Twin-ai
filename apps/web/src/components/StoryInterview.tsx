@@ -69,6 +69,8 @@ export function StoryInterview({
   questionIds = OPENING_THREE,
   heading = 'Three things only you know',
   helper = 'Answer what you can — skip the rest, and everything here stays editable later.',
+  look = 'default',
+  onBack,
 }: {
   voiceId: string | null
   /** ⚠️ CALLED ONLY WHEN ALL THREE ARE RESOLVED (answered or skipped). The
@@ -121,6 +123,12 @@ export function StoryInterview({
    *  the default is the story screen's, unchanged. */
   heading?: string
   helper?: string
+  /** Which board this renders: the Reading board's "Only you know" step, the
+   *  Stories board, or the original box (default, unchanged). The write path is
+   *  the same for all three. */
+  look?: 'default' | 'reading' | 'stories'
+  /** Reading look only: the step's Back button. */
+  onBack?: () => void
 }) {
   // ⚠️ THE BANK WAS READ RAW HERE AND THE NICHE-AWARE BUILDER WAS NEVER CALLED.
   // `creatorQuestionsFor` has existed and been correct; `CreatorQuestionCard`
@@ -309,6 +317,95 @@ export function StoryInterview({
     // now marked skipped, so nothing would ever ask for them again.
     clearStoryDraft()
     onDone()
+  }
+
+  // ── Board looks ───────────────────────────────────────────────────────────
+  /** Live length hint, worded as the boards word it. */
+  const lengthHint = (t: string, good: string): [string, string] => {
+    const l = t.trim().length
+    if (l === 0) return ['A couple of sentences is plenty, or leave it blank.', '#6E675C']
+    if (l < 12) return ['A few more words and it’s usable.', '#FFB347']
+    if (l > 240) return ['Shorter is better. One real moment beats a paragraph.', '#FFB347']
+    return [good, '#8FEDE3']
+  }
+
+  if (look === 'reading') {
+    const q = questions[0]
+    const t = text[q.id] ?? ''
+    const [hint, hintColor] = problem[q.id] ? [problem[q.id], '#FF8FA4'] : lengthHint(t, 'Perfect. Twin will turn this into an opening.')
+    return (
+      <>
+        <div className="ob-pop flex flex-col gap-[10px]">
+          <span className="text-[14px] leading-[1.5] text-sand-muted">What people assume, and what’s actually true. One or two sentences. This often becomes your best opening.</span>
+          <textarea
+            className="fld resize-none !leading-[1.5]" rows={4} aria-label={q.ask} disabled={saving}
+            placeholder="e.g. People think you need expensive gear to start. You don’t. I started with one pan and a stopwatch."
+            value={t} onChange={(e) => setText((prev) => ({ ...prev, [q.id]: e.target.value }))}
+          />
+          <span className="text-[12px]" style={{ color: hintColor }} aria-live="polite">{hint}</span>
+        </div>
+        <div className="mt-auto flex items-center gap-[10px] pt-2">
+          {onBack && <button type="button" onClick={onBack} disabled={saving} className="btn-outline">Back</button>}
+          <span className="flex-grow" />
+          <button type="button" onClick={() => void skipAll()} disabled={saving} className="min-h-11 cursor-pointer rounded-[10px] border-0 bg-transparent px-[10px] text-[13px] text-label">Skip all</button>
+          <button type="button" onClick={() => void submit()} disabled={saving} className="btn-light !px-6">Done</button>
+        </div>
+      </>
+    )
+  }
+
+  if (look === 'stories') {
+    const filled = questions.filter((q) => (text[q.id] ?? '').trim()).length
+    return (
+      <>
+        {questions.map((q, i) => {
+          const t = text[q.id] ?? ''
+          const known = suggestions[q.id] ?? []
+          const heard = known.length > 0 && slot[q.id] !== 'discarded'
+          const [hint, hintColor] = problem[q.id] ? [problem[q.id], '#FF8FA4'] : lengthHint(t, 'Got it.')
+          return (
+            <div key={q.id} className="pin d3 flex gap-4 rounded-[18px] border bg-card px-4 py-[18px] sm:px-5"
+              style={{ borderColor: t.trim().length >= 12 ? 'rgba(101,229,216,0.35)' : 'rgba(255,255,255,0.08)' }}>
+              <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[13px] font-extrabold text-sand-muted" aria-hidden="true">{i + 1}</span>
+              <div className="flex min-w-0 flex-grow flex-col gap-[9px]">
+                <span className="flex flex-col gap-[3px]">
+                  <span className="text-[16.5px] font-semibold leading-[1.35]">{q.ask}</span>
+                  <span className="text-[13px] leading-[1.45] text-label">{heard ? `Something different from that. ${q.hint}` : q.hint}</span>
+                </span>
+                {heard && known.map((k) => (
+                  <div key={k.id ?? k.text} className="ob-pop flex flex-col gap-[7px] rounded-[12px] border border-[rgba(101,229,216,0.2)] bg-[rgba(101,229,216,0.06)] px-[13px] py-[11px]">
+                    <span className="text-[12px] font-bold tracking-[.08em] text-teal">WE ALREADY HEARD YOU SAY THIS, SO NO NEED TO REPEAT IT</span>
+                    <span className="text-[14.5px] font-semibold">{k.text}</span>
+                    {k.evidence && <span className="text-[13px] italic text-sand-muted">“{k.evidence}” <span className="not-italic text-stone-dim">· your video</span></span>}
+                    <span className="flex items-center gap-2">
+                      {k.id && (
+                        <button type="button" onClick={() => void confirmKnown(q.id, k.id!)} disabled={saving}
+                          className="cursor-pointer rounded-[9px] border border-[rgba(101,229,216,0.45)] px-3 py-[7px] text-[12.5px] font-semibold"
+                          style={{ background: confirmed[k.id] ? '#65E5D8' : 'transparent', color: confirmed[k.id] ? '#07070A' : '#8FEDE3' }}>
+                          {confirmed[k.id] ? 'Confirmed ✓' : 'Yes, that’s right'}
+                        </button>
+                      )}
+                      <button type="button" onClick={() => discardSuggestion(q.id)} disabled={saving} className="cursor-pointer border-0 bg-transparent px-2 py-[7px] text-[12.5px] text-label">Hide this</button>
+                    </span>
+                  </div>
+                ))}
+                <textarea className="fld resize-none !leading-[1.5]" rows={2} placeholder="Your answer" aria-label={q.ask} disabled={saving}
+                  value={t} onChange={(e) => setText((prev) => ({ ...prev, [q.id]: e.target.value }))} />
+                <span className="text-[12px]" style={{ color: hintColor }} aria-live="polite">{hint}</span>
+              </div>
+            </div>
+          )
+        })}
+        <div className="pin d4 flex items-center gap-3 pt-1">
+          <span className="text-[13px] text-label">{filled} of {questions.length} answered · all optional</span>
+          <span className="flex-grow" />
+          <button type="button" onClick={() => void (filled ? submit() : skipAll())} disabled={saving}
+            className="ob-cta ob-gbtn cursor-pointer rounded-[13px] border-0 px-[26px] py-[14px] text-[15px] font-bold text-ink disabled:opacity-70">
+            {filled ? 'Continue' : 'Skip all'} →
+          </button>
+        </div>
+      </>
+    )
   }
 
   return (

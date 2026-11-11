@@ -122,7 +122,10 @@ describe('3. the three story questions are one screen, same three rows', () => {
     // ⚖️ THE TWO HALVES OF THIS COMMENT ARRIVED FROM OPPOSITE SIDES OF A MERGE
     // and said different things about the same line. Collapsed into one, because
     // two comments disagreeing about one assertion is worse than either.
-    expect(STORY).not.toMatch(/\bof \{[A-Za-z_.]*\blength\}/)
+    // ⚖️ ONE EXCEPTION, BY DESIGN: the Stories board shows how many are
+    // ANSWERED ("0 of 3 answered · all optional") — a tally of what she gave,
+    // not a queue position. Any other "of {length}" counter still fails.
+    expect(STORY.replace('{filled} of {questions.length} answered', '')).not.toMatch(/\bof \{[A-Za-z_.]*\blength\}/)
     expect(STORY).toMatch(/questionIds\s*\n?\s*\.map/)
     expect(STORY).toMatch(/questionIds = OPENING_THREE/)
     expect(STORY).toMatch(/anchorAllToSubNiche\(/)
