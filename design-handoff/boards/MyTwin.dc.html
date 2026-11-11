@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>My Twin</title>
+<script src="./support.js"></script>
+<script data-rv>(function(){var d=document.documentElement;d.classList.add('rv-js');function show(el){el.classList.add('in')}function vis(el){var r=el.getBoundingClientRect();return r.top<innerHeight&&r.bottom>0}var io=null;if('IntersectionObserver' in window){try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){show(e.target);io.unobserve(e.target)}})},{root:document,threshold:0.08})}catch(x){io=null}}function scan(){var n=document.querySelectorAll('body [class*="rv-"]:not([data-rvo])');for(var i=0;i<n.length;i++){n[i].setAttribute('data-rvo','');if(io)io.observe(n[i]);else show(n[i])}var m=document.querySelectorAll('[data-rvo]:not(.in)');for(var j=0;j<m.length;j++){if(vis(m[j]))show(m[j])}}new MutationObserver(scan).observe(d,{childList:true,subtree:true});document.addEventListener('DOMContentLoaded',scan);addEventListener('scroll',scan,{passive:true,capture:true});addEventListener('resize',scan);setInterval(scan,500);setTimeout(function(){if(window.self!==window.top&&innerHeight>1400){var m=document.querySelectorAll('[data-rvo]');for(var k=0;k<m.length;k++)show(m[k])}},2500)})();</script>
+<style data-bg>.brandbg{background-image:radial-gradient(ellipse 50% 20% at 4% 22%,rgba(255,179,71,.085),rgba(255,179,71,0) 100%),radial-gradient(ellipse 46% 19% at 96% 52%,rgba(255,91,123,.075),rgba(255,91,123,0) 100%),radial-gradient(ellipse 50% 20% at 14% 79%,rgba(101,229,216,.06),rgba(101,229,216,0) 100%)!important;background-repeat:repeat-y!important;background-size:100% 1500px!important}
+.brandbg.bgm{background-size:100% 1000px!important}</style>
+<style data-vt>@media (prefers-reduced-motion: no-preference){::view-transition-old(root){animation:vtApOut .45s ease both}::view-transition-new(root){animation:vtApIn .7s cubic-bezier(.22,1,.36,1) both}@keyframes vtApOut{to{opacity:0;transform:perspective(1400px) translateZ(-120px) rotateY(6deg)}}@keyframes vtApIn{from{opacity:0;transform:perspective(1400px) translateZ(160px) rotateY(-6deg);filter:blur(8px)}}}</style>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0;background:#0B0B0E}a{color:inherit}</style>
+<style>
+@keyframes pin{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(80px,40px) scale(1.15)}}
+@keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-70px,-50px) scale(1.1)}}
+@keyframes shine{0%{transform:translateX(-120%) skewX(-20deg)}60%,100%{transform:translateX(260%) skewX(-20deg)}}
+@keyframes recp{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}100%{box-shadow:0 0 0 8px rgba(255,255,255,0)}}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,91,123,.45)}100%{box-shadow:0 0 0 14px rgba(255,91,123,0)}}
+@keyframes spinb{to{transform:rotate(360deg)}}
+@keyframes hue{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+@keyframes wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(16deg)}20%,40%{transform:rotate(-8deg)}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes seg{from{opacity:.15}to{opacity:1}}
+.pin{opacity:0;animation:pin .7s cubic-bezier(.22,1,.36,1) forwards}
+.d1{animation-delay:.05s}.d2{animation-delay:.15s}.d3{animation-delay:.25s}.d4{animation-delay:.35s}.d5{animation-delay:.45s}.d6{animation-delay:.55s}.d7{animation-delay:.65s}.d8{animation-delay:.75s}
+.lv{position:relative}.lv>*{position:relative;z-index:1}.lv>.aur{position:absolute;z-index:0}
+.lift{transition:transform .25s cubic-bezier(.22,1,.36,1),box-shadow .25s ease,border-color .25s ease}
+.lift:hover{transform:translateY(-4px);box-shadow:0 18px 40px -18px rgba(0,0,0,.9);border-color:rgba(255,255,255,.18)!important}
+.row{transition:background .2s ease,padding .2s ease}.row:hover{background:rgba(255,255,255,.04);padding-left:24px!important}
+.cta{position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease}
+.cta::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:shine 3.2s ease-in-out infinite}
+.cta:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 16px 40px -12px rgba(255,91,123,.7)}
+.recdot{animation:recp 1.4s ease-out infinite}
+.ringp{animation:ring 1.8s ease-out infinite}
+.grad{background:linear-gradient(110deg,#FFB347,#FF5B7B,#65E5D8,#FFB347);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:hue 6s ease infinite}
+.gbtn{background:linear-gradient(110deg,#FFB347,#FF5B7B 55%,#65E5D8);background-size:200% 100%;animation:hue 5s ease infinite}
+.bob{animation:bob 3s ease-in-out infinite}
+.wave{display:inline-block;transform-origin:70% 80%;animation:wave 2.4s ease-in-out 1s infinite}
+.dots span{display:inline-block;width:5px;height:5px;border-radius:9px;background:#FF8FA4;animation:dot 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+.grow{transform-origin:left;animation:grow 1.2s cubic-bezier(.22,1,.36,1) .4s both}
+.seg{opacity:.15;animation:seg .3s ease forwards}
+@keyframes blink{50%{opacity:0}}
+@keyframes popin{0%{opacity:0;transform:translateY(10px) scale(.94)}100%{opacity:1;transform:none}}
+@keyframes scan{0%{top:-30%}100%{top:110%}}
+@keyframes floaty{0%,100%{transform:translateY(0) rotate(var(--r,0deg))}50%{transform:translateY(-10px) rotate(var(--r,0deg))}}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:#FF5B7B;animation:blink 1s steps(1) infinite}
+.pop{animation:popin .5s cubic-bezier(.22,1,.36,1) both}
+.floaty{animation:floaty 5s ease-in-out infinite}
+.chip{transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease;cursor:pointer}
+.chip:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.28)!important}
+.inp{transition:border-color .2s ease,box-shadow .2s ease}.inp:focus{border-color:rgba(255,91,123,.6)!important;box-shadow:0 0 0 4px rgba(255,91,123,.14)}
+@keyframes wv{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+.wv{display:inline-flex;align-items:center;gap:3px;height:20px}.wv span{display:block;width:3px;height:20px;border-radius:2px;background:#FF5B7B;transform-origin:center;animation:wv .9s ease-in-out infinite}
+.wv span:nth-child(2){animation-delay:.12s}.wv span:nth-child(3){animation-delay:.24s}.wv span:nth-child(4){animation-delay:.36s}.wv span:nth-child(5){animation-delay:.48s}.wv span:nth-child(6){animation-delay:.2s}.wv span:nth-child(7){animation-delay:.05s}
+.sel{transition:transform .18s ease,border-color .2s ease,background .2s ease,box-shadow .2s ease;cursor:pointer}.sel:hover{transform:translateY(-3px)}
+.card{border-radius:18px;background:#111115;border:1px solid rgba(255,255,255,0.07)}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.12em;color:#8D8475}
+.btnL{white-space:nowrap;flex-shrink:0;padding:12px 18px;border-radius:12px;border:0;background:#F6F1E9;color:#0B0B0E;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btnG{white-space:nowrap;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#D8CFC2;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.opt{padding:13px 15px;border-radius:12px;border-width:1px;border-style:solid;font-family:inherit;font-size:14.5px;font-weight:500;text-align:left;cursor:pointer;transition:all .15s ease}
+.opt:hover{transform:translateY(-1px)}
+.fld{min-width:0;box-sizing:border-box;padding:12px 14px;border-radius:11px;border:1px solid rgba(255,255,255,0.1);background:#0B0B0E;color:#F6F1E9;font-family:inherit;font-size:15px;outline:none}
+.fld:focus{border-color:rgba(255,91,123,.6);box-shadow:0 0 0 4px rgba(255,91,123,.12)}
+.guess{padding:2px 8px;border-radius:99px;background:rgba(255,179,71,.14);color:#FFB347;font-size:10.5px;font-weight:700;letter-spacing:.05em}
+.cam{position:absolute;inset:0;background-color:#141015;background-position:center 30%;background-size:cover;background-repeat:no-repeat;background-image:url(../assets/images/maya-talking-kitchen.jpg);animation:kb 22s ease-in-out infinite alternate;will-change:transform}
+@keyframes kb{0%{transform:scale(1.02) translate(0,0)}50%{transform:scale(1.07) translate(-1%,1%)}100%{transform:scale(1.04) translate(1%,-.5%)}}
+.cam .who{display:none}
+.cam::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.08) 45%,rgba(0,0,0,.4))}
+.who{position:absolute;left:50%;bottom:0;width:62%;transform:translateX(-50%)}
+.who i{display:block;margin:0 auto;width:44%;aspect-ratio:1/1.18;border-radius:999px;border:1.5px dashed rgba(246,241,233,.28);box-sizing:border-box}
+.who b{display:block;margin-top:10px;height:260px;border-radius:140px 140px 0 0;border:1.5px dashed rgba(246,241,233,.2);border-bottom:0;box-sizing:border-box}
+.fade{-webkit-mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent)}
+.ctl{white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:5px;padding:0;border:0;background:transparent;color:#F6F1E9;font-family:inherit;font-size:11.5px;font-weight:600}
+.ctl span.ic{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center}
+.big{font-variant-numeric:tabular-nums}
+@keyframes cdz{0%{transform:scale(1.4);opacity:0}25%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.85}}
+.cdz{animation:cdz 1s ease-out infinite}
+@keyframes lvl{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+.lvl span{display:inline-block;width:4px;height:16px;border-radius:3px;background:#65E5D8;transform-origin:bottom;animation:lvl .9s ease-in-out infinite}
+.lvl span:nth-child(2){animation-delay:.12s}.lvl span:nth-child(3){animation-delay:.24s}.lvl span:nth-child(4){animation-delay:.36s}.lvl span:nth-child(5){animation-delay:.48s}
+@keyframes bar{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.indet{position:relative;overflow:hidden}.indet::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:bar 1.4s linear infinite}
+.scene{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 30%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55))}
+@view-transition{navigation:auto}
+@keyframes vtOut{to{opacity:0;transform:perspective(1600px) translateZ(-60px) rotateX(2deg)}}
+@keyframes vtIn{from{opacity:0;transform:perspective(1600px) translateY(18px) translateZ(40px) rotateX(-2deg)}}
+@keyframes pageIn{from{opacity:0}to{opacity:1}}
+.lv{animation:pageIn .45s ease-out both}
+a,button{transition:transform .15s ease,opacity .2s ease,background-color .2s ease,border-color .2s ease}
+button:active,a.cta:active,a.btnL:active,a.btnG:active{transform:scale(.97)}
+.ph{background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat}
+.phfill{position:absolute;inset:0;background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat;animation:kb 26s ease-in-out infinite alternate}
+.ph-coach{background-image:url(../assets/images/creator-coach-home.jpg)}
+.ph-local{background-image:url(../assets/images/maya-talking-kitchen.jpg)}
+.ph-realestate{background-image:url(../assets/images/creator-realestate-outdoors.jpg)}
+.ph-agency{background-image:url(../assets/images/creator-agency-desk.jpg)}
+.ph-g1{background-image:url(../assets/images/gallery-01-market-roaster.jpg)}
+.ph-g2{background-image:url(../assets/images/gallery-02-cafe-tasting.jpg)}
+.ph-g3{background-image:url(../assets/images/gallery-03-roasting-on-stove.jpg)}
+.ph-g4{background-image:url(../assets/images/gallery-04-beans-on-tray.jpg)}
+.ph-g5{background-image:url(../assets/images/gallery-05-cart-owner-on-phone.jpg)}
+.ph-g6{background-image:url(../assets/images/gallery-06-late-night-latte.jpg)}
+.ph-s_window{background-image:url(../assets/images/maya-holding-mug.jpg)}
+.ph-s_tray{background-image:url(../assets/images/maya-holding-beans.jpg)}
+.camv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;display:block}
+.rv-up,.rv-left,.rv-right,.rv-zoom,.rv-tilt,.rv-flip,.rv-rise{transition:opacity .9s cubic-bezier(.22,1,.36,1),transform 1.1s cubic-bezier(.22,1,.36,1),filter .9s ease}
+.rv-js .rv-up:not(.in){opacity:0;transform:translateY(70px)}
+.rv-js .rv-left:not(.in){opacity:0;transform:translateX(-90px)}
+.rv-js .rv-right:not(.in){opacity:0;transform:translateX(90px)}
+.rv-js .rv-zoom:not(.in){opacity:0;transform:scale(.88);filter:blur(10px)}
+.rv-js .rv-tilt:not(.in){opacity:0;transform:perspective(1200px) rotateX(16deg) translateY(60px)}
+.rv-js .rv-flip:not(.in){opacity:0;transform:perspective(1200px) rotateY(-14deg) translateX(-40px)}
+.rv-js .rv-rise:not(.in){opacity:0;transform:translateY(40px) scale(.97)}
+.rv-d1{transition-delay:.12s}.rv-d2{transition-delay:.24s}.rv-d3{transition-delay:.36s}.rv-d4{transition-delay:.48s}
+@media (prefers-reduced-motion: reduce){.rv-js [class*="rv-"]{opacity:1!important;transform:none!important;filter:none!important}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;opacity:1!important;transition:none!important}}
+</style>
+</helmet>
+<div class="brandbg " style="width: 1440px; height: 4600px; display: flex; background: #0B0B0E; font-family: Geist, system-ui, sans-serif; color: #F6F1E9">
+<dc-import name="Sidebar" active="twin" h="4600" hint-size="248px,4600px"></dc-import>
+<main class="lv" style="flex-grow: 1; padding: 48px 56px; display: flex; justify-content: center; overflow: hidden; overflow: clip">
+<div class="aur" aria-hidden="true" style="left: -120px; top: -160px; width: 560px; height: 560px; border-radius: 999px; background: radial-gradient(circle, rgba(255,91,123,0.15), rgba(255,91,123,0) 65%); animation: drift1 16s ease-in-out infinite; pointer-events: none"></div>
+<div class="aur" aria-hidden="true" style="right: -140px; top: 300px; width: 620px; height: 620px; border-radius: 999px; background: radial-gradient(circle, rgba(101,229,216,0.09), rgba(101,229,216,0) 65%); animation: drift2 20s ease-in-out infinite; pointer-events: none"></div>
+<div style="width: 1080px; display: flex; flex-direction: column; gap: 44px">
+
+<header class="pin d1" style="display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; justify-content: space-between; align-items: center"><span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8D8475">WHAT TWIN KNOWS</span><div style="display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 9px; border: 1px dashed rgba(255,255,255,0.14); font-size: 11px; color: #6E675C"><b style="letter-spacing: .08em">PREVIEW</b><sc-for list="{{ previews }}" as="f" hint-placeholder-count="3"><button type="button" onClick="{{ f.pick }}" style="padding: 3px 7px; border-radius: 6px; border: 0; background: {{ f.bg }}; color: {{ f.fg }}; font-family: inherit; font-size: 11px; cursor: pointer">{{ f.t }}</button></sc-for></div></div>
+<h1 style="margin: -4px 0 0; font-size: 44px; font-weight: 700; letter-spacing: -0.035em">My Twin</h1>
+<p style="margin: 0; max-width: 760px; font-size: 16.5px; line-height: 1.55; color: #B7AE9F">First, what Twin learned from your own posts and answers — <span style="color: #F6F1E9">this is you.</span> Then, further down, what is happening around you: <span style="color: #F6F1E9">ideas from other creators, never facts about you.</span></p>
+<sc-if value="{{ ok }}" hint-placeholder-val="{{ true }}"><nav aria-label="On this page" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{ index }}" as="x" hint-placeholder-count="8"><span style="display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border-radius: 99px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); font-size: 12.5px; color: #D8CFC2"><b style="color: {{ x.c }}">{{ x.n }}</b>{{ x.t }}</span></sc-for></nav></sc-if>
+</header>
+
+<sc-if value="{{ load }}" hint-placeholder-val="{{ false }}"><div class="pop" style="display: flex; flex-direction: column; gap: 14px"><span style="display: flex; align-items: center; gap: 10px; font-size: 15px; color: #B7AE9F"><span class="dots" style="display: inline-flex; gap: 4px"><span></span><span></span><span></span></span>Loading…</span><div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px"><div style="height: 150px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); opacity: .6"></div><div style="height: 150px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); opacity: .5"></div><div style="height: 150px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); opacity: .4"></div><div style="height: 150px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); opacity: .3"></div></div></div></sc-if>
+
+<sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}"><div class="pop" style="padding: 48px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center"><span class="dots" style="display: inline-flex; gap: 5px"><span></span><span></span><span></span></span><h2 style="margin: 0; font-size: 24px; font-weight: 700">Twin is still reading.</h2><p style="margin: 0; font-size: 15px; color: #B7AE9F">Check back soon — or make a script now.</p><a href="Create.dc.html" class="cta gbtn" style="margin-top: 6px; padding: 12px 22px; border-radius: 12px; color: #0B0B0E; font-size: 14.5px; font-weight: 700; text-decoration: none">Make a script now</a></div></sc-if>
+
+<sc-if value="{{ ok }}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 44px">
+
+<div class="pin d2" style="display: flex; align-items: center; gap: 14px"><span style="font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: #8FEDE3">PART 1 · ABOUT YOU</span><span style="flex-grow: 1; height: 1px; background: linear-gradient(90deg, rgba(101,229,216,0.4), rgba(101,229,216,0))"></span><span style="font-size: 12.5px; color: #8D8475">Only from your own posts and answers</span></div>
+
+<section class="rv-up" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-start; gap: 14px"><span style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #8FEDE3">1</span><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em">What Twin learned from you</h2><span style="font-size: 13px; color: #8D8475">From your script ratings (stars, tags and notes), your test viewers, and the hooks you pick over Twin’s.</span></div><span style="flex-shrink: 0; max-width: 330px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); font-size: 12px; line-height: 1.4; color: #B7AE9F"><b style="color: #8FEDE3; font-weight: 700">How Twin uses it · </b>Every rule that’s on goes into every new script.</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{ rules }}" as="g" hint-placeholder-count="4"><div style="padding: 18px 20px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 14px"><span style="display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700"><span style="width: 8px; height: 8px; border-radius: 9px; background: {{ g.c }}"></span>{{ g.h }}</span>
+<sc-for list="{{ g.items }}" as="r" hint-placeholder-count="2"><div style="display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.05)"><span style="font-size: 14.5px; line-height: 1.5; opacity: {{ r.op }}; text-decoration: {{ r.deco }}; transition: opacity .2s ease">{{ r.t }}</span><span style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #6E675C"><span style="flex-grow: 1">{{ r.src }}</span><sc-if value="{{ r.isOff }}" hint-placeholder-val="{{ false }}"><span style="color: #8D8475">Off · left out of scripts</span></sc-if><button type="button" onClick="{{ r.tog }}" style="padding: 0; border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 12.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer">{{ r.link }}</button></span></div></sc-for>
+</div></sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: rgba(255,255,255,0.025); font-size: 13px; color: #B7AE9F"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8D8475" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4"></path></svg><span style="flex-grow: 1"><b style="color: #F6F1E9">Twin’s own rules</b> — never invent a detail, a number or a quote you did not give — always apply and are not listed here.</span><span style="color: #8FEDE3; font-weight: 600">{{ onCount }}</span></div>
+</section>
+
+<section class="rv-left" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-start; gap: 14px"><span style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #8FEDE3">2</span><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em">What you talk about</h2><span style="font-size: 13px; color: #8D8475">Topics from your own videos. Near-duplicates are merged.</span></div><span style="flex-shrink: 0; max-width: 330px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); font-size: 12px; line-height: 1.4; color: #B7AE9F"><b style="color: #8FEDE3; font-weight: 700">How Twin uses it · </b>Steers ideas toward what you already talk about, and away from repeating what you’ve made.</span></div>
+<div style="padding: 22px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+<sc-for list="{{ topics }}" as="t" hint-placeholder-count="8"><span class="lift" style="display: inline-flex; align-items: center; gap: 10px; padding: {{ t.pad }}; border-radius: 99px; border: 1px solid {{ t.bd }}; background: {{ t.bg }}"><span style="font-size: {{ t.fs }}px; font-weight: 600">{{ t.t }}</span><span style="font-size: 12px; color: #8D8475">{{ t.n }}</span><sc-if value="{{ t.made }}" hint-placeholder-val="{{ false }}"><span style="padding: 2px 7px; border-radius: 99px; background: rgba(255,255,255,0.07); font-size: 11px; font-weight: 600; color: #B7AE9F">already made</span></sc-if></span></sc-for>
+<span style="flex-basis: 100%; margin-top: 6px; font-size: 12px; color: #6E675C">Teal = room for a new video. “Home roasting” and “Roasting at home” were merged.</span>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 28px; align-items: start">
+<section class="rv-zoom" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-start; gap: 14px"><span style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #8FEDE3">3</span><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em">Asked under your posts, not answered yet</h2><span style="font-size: 13px; color: #8D8475">Real questions from your comments. <b style="color: #B7AE9F; font-weight: 600">Twin answers them in your next scripts where they fit.</b></span></div></div>
+<div style="border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); overflow: hidden">
+<sc-for list="{{ qs }}" as="q" hint-placeholder-count="4"><div style="padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.05)">
+<sc-if value="{{ q.live }}" hint-placeholder-val="{{ true }}"><div style="display: flex; gap: 14px; align-items: flex-start"><span style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 15px; line-height: 1.45">“{{ q.q }}”</span><span style="font-size: 12px; color: #6E675C">On “{{ q.on }}” · {{ q.meta }}</span></span><a href="Create.dc.html" style="flex-shrink: 0; padding: 7px 11px; border-radius: 9px; background: rgba(255,255,255,0.06); color: #F6F1E9; font-size: 12.5px; font-weight: 600; text-decoration: none">Answer it</a><button type="button" onClick="{{ q.hide }}" aria-label="Not this one" style="flex-shrink: 0; padding: 7px 4px; border: 0; background: transparent; color: #6E675C; font-family: inherit; font-size: 12.5px; cursor: pointer">Skip</button></div></sc-if>
+<sc-if value="{{ q.gone }}" hint-placeholder-val="{{ false }}"><span class="pop" style="font-size: 13px; color: #6E675C">Skipped. Twin won’t answer this one. <button type="button" onClick="{{ q.undo }}" style="border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 13px; text-decoration: underline; cursor: pointer">Undo</button></span></sc-if>
+</div></sc-for>
+<div style="padding: 11px 18px; display: flex; gap: 8px; align-items: center; font-size: 12px; color: #8D8475; background: rgba(255,255,255,0.02)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path></svg>Private questions, about someone’s home, health, money or the law, are never listed.</div>
+</div>
+</section>
+
+<div style="display: flex; flex-direction: column; gap: 28px">
+<section class="rv-right" style="display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: flex-start; gap: 14px"><span style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #8FEDE3">4</span><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em">Did your view change?</h2><span style="font-size: 13px; color: #8D8475">Your older videos vs your newer ones. Only a yes is used, as a story.</span></div></div>
+<sc-for list="{{ views }}" as="v" hint-placeholder-count="2"><div style="padding: 16px 18px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 12px">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: start"><span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11.5px; color: #6E675C">{{ v.d1 }}</span><span style="font-size: 13.5px; line-height: 1.45; color: #B7AE9F">“{{ v.a }}”</span></span><span style="margin-top: 18px; color: #FFB347">→</span><span style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11.5px; color: #6E675C">{{ v.d2 }}</span><span style="font-size: 13.5px; line-height: 1.45">“{{ v.b }}”</span></span></div>
+<sc-if value="{{ v.ask }}" hint-placeholder-val="{{ true }}"><span style="display: flex; gap: 8px"><button type="button" onClick="{{ v.y }}" style="padding: 8px 12px; border-radius: 9px; border: 0; background: #F6F1E9; color: #0B0B0E; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Yes, I changed my mind</button><button type="button" onClick="{{ v.n }}" style="padding: 8px 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.12); background: transparent; color: #D8CFC2; font-family: inherit; font-size: 13px; cursor: pointer">No</button></span></sc-if>
+<sc-if value="{{ v.yes }}" hint-placeholder-val="{{ false }}"><span class="pop" style="font-size: 12.5px; line-height: 1.45; color: #8FEDE3">✓ Twin may tell it as: “{{ v.story }}” <button type="button" onClick="{{ v.u }}" style="border: 0; background: transparent; color: #8D8475; font-family: inherit; font-size: 12px; cursor: pointer">Undo</button></span></sc-if>
+<sc-if value="{{ v.no }}" hint-placeholder-val="{{ false }}"><span class="pop" style="font-size: 12.5px; color: #8D8475">Got it. Not used. <button type="button" onClick="{{ v.u }}" style="border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 12px; cursor: pointer">Undo</button></span></sc-if>
+</div></sc-for>
+</section>
+</div>
+</div>
+
+<section class="rv-tilt" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-start; gap: 14px"><span style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #8FEDE3">5</span><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em">Is this you?</h2><span style="font-size: 13px; color: #8D8475">Articles, podcasts and features about you that Twin found online.</span></div><span style="flex-shrink: 0; max-width: 330px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); font-size: 12px; line-height: 1.4; color: #B7AE9F"><b style="color: #8FEDE3; font-weight: 700">How Twin uses it · </b>Only a yes is used, and it’s kept as something written about you, never as your own words.</span></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{ mentions }}" as="m" hint-placeholder-count="3"><div style="padding: 16px 18px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 8px"><span style="display: flex; justify-content: space-between; font-size: 11.5px; color: #6E675C"><span style="font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8D8475">{{ m.kind }}</span>{{ m.d }}</span><span style="font-size: 12.5px; color: #B7AE9F">{{ m.src }}</span><span style="flex-grow: 1; font-size: 15px; line-height: 1.4; font-weight: 600">{{ m.t }}</span>
+<sc-if value="{{ m.ask }}" hint-placeholder-val="{{ true }}"><span style="display: flex; gap: 8px; margin-top: 4px"><button type="button" onClick="{{ m.y }}" style="flex: 1; padding: 8px; border-radius: 9px; border: 0; background: #F6F1E9; color: #0B0B0E; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Yes, that’s me</button><button type="button" onClick="{{ m.n }}" style="flex: 1; padding: 8px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.12); background: transparent; color: #D8CFC2; font-family: inherit; font-size: 13px; cursor: pointer">Not me</button></span></sc-if>
+<sc-if value="{{ m.yes }}" hint-placeholder-val="{{ false }}"><span class="pop" style="margin-top: 4px; font-size: 12.5px; color: #8FEDE3">✓ Kept as about you <button type="button" onClick="{{ m.u }}" style="border: 0; background: transparent; color: #8D8475; font-family: inherit; font-size: 12px; cursor: pointer">Undo</button></span></sc-if>
+<sc-if value="{{ m.no }}" hint-placeholder-val="{{ false }}"><span class="pop" style="margin-top: 4px; font-size: 12.5px; color: #8D8475">Ignored, never used <button type="button" onClick="{{ m.u }}" style="border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 12px; cursor: pointer">Undo</button></span></sc-if>
+</div></sc-for>
+</div>
+</section>
+
+<section class="rv-flip" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-start; gap: 14px"><span style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #8FEDE3">6</span><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em">Your patterns</h2><span style="font-size: 13px; color: #8D8475">What works in your own posts, quoted from your real captions.</span></div><span style="flex-shrink: 0; max-width: 330px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); font-size: 12px; line-height: 1.4; color: #B7AE9F"><b style="color: #8FEDE3; font-weight: 700">How Twin uses it · </b>Twin builds on these first, before anything from other creators.</span></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{ pats }}" as="p" hint-placeholder-count="6"><div class="lift" style="padding: 16px 18px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 9px; opacity: {{ p.op }}"><span style="display: flex; justify-content: space-between; align-items: center"><span style="font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: {{ p.c }}">{{ p.k }}</span><sc-if value="{{ p.weak }}" hint-placeholder-val="{{ false }}"><span style="padding: 2px 8px; border-radius: 99px; background: rgba(255,179,71,.14); color: #FFB347; font-size: 10.5px; font-weight: 700; letter-spacing: .05em">SEEN ONCE</span></sc-if></span><span style="font-size: 15.5px; line-height: 1.4; font-weight: 600">{{ p.t }}</span><span style="font-size: 12px; color: #8D8475">{{ p.n }} · {{ p.v }}</span><span style="margin-top: auto; padding: 10px 12px; border-radius: 10px; background: #0B0B0E; font-size: 13px; line-height: 1.45; color: #D8CFC2"><span style="color: #6E675C">You wrote: </span>“{{ p.q }}”</span></div></sc-for>
+</div>
+<span style="font-size: 12px; color: #6E675C">Each caption is quoted once, with links removed. Patterns seen in only 1 post are marked “seen once”, and Twin leans on them less.</span>
+</section>
+
+<div class="pin" style="display: flex; flex-direction: column; gap: 14px; padding-top: 20px">
+<div style="display: flex; align-items: center; gap: 14px"><span style="font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: #FFCB85">PART 2 · AROUND YOU</span><span style="flex-grow: 1; height: 1px; background: linear-gradient(90deg, rgba(255,179,71,0.45), rgba(255,179,71,0))"></span><span style="padding: 4px 10px; border-radius: 99px; background: rgba(255,179,71,0.1); font-size: 12px; font-weight: 600; color: #FFCB85">Ideas only, never facts about you</span></div>
+<h2 style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.03em">Around you</h2>
+<p style="margin: 0; max-width: 760px; font-size: 15.5px; line-height: 1.55; color: #B7AE9F">What other creators in <span style="color: #F6F1E9">micro coffee roasting</span> and the world are doing. Ideas for your scripts — never facts about you or your business.</p>
+<span style="align-self: flex-start; display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); font-size: 12.5px; color: #8D8475">Reading <b style="color: #D8CFC2">38 creators in micro coffee roasting</b> · fills in from Food when it runs thin</span>
+</div>
+
+<section class="rv-rise" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-start; gap: 14px"><span style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #FFCB85">7</span><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em">Happening now in micro coffee roasting</h2><span style="font-size: 13px; color: #8D8475">Events, seasons and trends. Refreshed every morning for your niche.</span></div><span style="flex-shrink: 0; max-width: 330px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); font-size: 12px; line-height: 1.4; color: #B7AE9F"><b style="color: #FFCB85; font-weight: 700">How Twin uses it · </b>An angle you can take. Tap one to start a script.</span></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{ now }}" as="x" hint-placeholder-count="6"><a href="Create.dc.html" class="lift" style="padding: 16px 18px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 8px; color: #F6F1E9; text-decoration: none"><span style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8D8475"><span style="width: 7px; height: 7px; border-radius: 9px; background: {{ x.c }}"></span>{{ x.when }}</span><span style="font-size: 16px; font-weight: 700; line-height: 1.3">{{ x.t }}</span><span style="font-size: 13.5px; line-height: 1.45; color: #B7AE9F"><span style="color: #6E675C">Your angle: </span>{{ x.angle }}</span><span style="margin-top: auto; padding-top: 4px; font-size: 12.5px; font-weight: 600; color: #FFCB85">Write this →</span></a></sc-for>
+</div>
+</section>
+
+<section class="rv-up" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-start; gap: 14px"><span style="flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #FFCB85">8</span><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em">What works for other creators in your niche</h2><span style="font-size: 13px; color: #8D8475">The same six kinds of pattern, from other creators’ videos.</span></div><span style="flex-shrink: 0; max-width: 330px; padding: 7px 11px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); font-size: 12px; line-height: 1.4; color: #B7AE9F"><b style="color: #FFCB85; font-weight: 700">How Twin uses it · </b>Twin may borrow the shape: angle, opening style, argument order, objection, type of close. Never their wording, never their results as yours. Your own stories come first.</span></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{ others }}" as="p" hint-placeholder-count="6"><div class="lift" style="padding: 16px 18px; border-radius: 16px; background: #111115; border: 1px dashed rgba(255,179,71,0.22); display: flex; flex-direction: column; gap: 9px"><span style="font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: {{ p.c }}">{{ p.k }}</span><span style="font-size: 15.5px; line-height: 1.4; font-weight: 600">{{ p.t }}</span><span style="font-size: 12px; color: #8D8475">{{ p.n }} · {{ p.v }}</span><sc-if value="{{ p.hasNote }}" hint-placeholder-val="{{ false }}"><span style="margin-top: auto; padding: 10px 12px; border-radius: 10px; background: #0B0B0E; font-size: 12.5px; line-height: 1.45; color: #B7AE9F">{{ p.note }}</span></sc-if></div></sc-for>
+</div>
+</section>
+
+<section class="rv-left" style="padding: 26px 28px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 18px">
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8D8475">WHERE IT ALL COMES FROM</span>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px">
+<span style="display: flex; flex-direction: column; gap: 5px"><b style="font-size: 14.5px">1 · Your first scan</b><span style="font-size: 13px; line-height: 1.45; color: #8D8475">Your posts became your voice and your facts.</span></span>
+<span style="display: flex; flex-direction: column; gap: 5px"><b style="font-size: 14.5px">2 · Your video audio</b><span style="font-size: 13px; line-height: 1.45; color: #8D8475">How you actually talk, which sharpens your voice.</span></span>
+<span style="display: flex; flex-direction: column; gap: 5px"><b style="font-size: 14.5px">3 · Daily niche reading</b><span style="font-size: 13px; line-height: 1.45; color: #8D8475">Other creators’ videos in your niche, read every day.</span></span>
+<span style="display: flex; flex-direction: column; gap: 5px"><b style="font-size: 14.5px">4 · What you do</b><span style="font-size: 13px; line-height: 1.45; color: #8D8475">Ratings, opening picks, test viewers, your yes and no taps, “Not mine” on products, facts you switch off.</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 13px; color: #B7AE9F"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#65E5D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path></svg>Private matters (health, police, debts…) and facts you switched off stay off this page and out of your scripts.</div>
+</section>
+
+<nav aria-label="Related" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<a href="Settings.dc.html" class="lift" style="padding: 16px 18px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 4px; color: #F6F1E9; text-decoration: none"><b style="font-size: 14.5px">Edit your voice →</b><span style="font-size: 12.5px; color: #8D8475">Settings · Account &amp; DNA: niche, tone, pacing, words, dos and don’ts</span></a>
+<a href="Products.dc.html" class="lift" style="padding: 16px 18px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 4px; color: #F6F1E9; text-decoration: none"><b style="font-size: 14.5px">Brands &amp; products →</b><span style="font-size: 12.5px; color: #8D8475">What scripts may say about what you sell</span></a>
+<a href="Home.dc.html" class="lift" style="padding: 16px 18px; border-radius: 16px; background: #111115; border: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 4px; color: #F6F1E9; text-decoration: none"><b style="font-size: 14.5px">Home →</b><span style="font-size: 12.5px; color: #8D8475">Your overview</span></a>
+</nav>
+
+</div></sc-if>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":4600}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {}; const pv = s.pv || 'ok'; const off = s.off || {}; const qx = s.qx || {}; const vw = s.vw || {}; const me = s.me || {};
+    const set = (k, obj, v) => this.setState({ [k]: Object.assign({}, obj, v) });
+    const R = [
+      ['How you open', '#FFB347', [
+        ['An opening that stopped 8 of 10 of your test viewers: “Nobody tells you the popper is the hard part.” Copy its shape, never its topic.', 'From your test viewers · used in 4 scripts'],
+        ['Open with a real question someone asked you. You picked this over Twin’s opening 5 times.', 'From the openings you picked · heard 5× · used in 6 scripts']]],
+      ['How you sound', '#FF5B7B', [
+        ['Keep writing in your plain, direct voice.', 'From your rating note · heard 3× · used in 5 scripts'],
+        ['Short sentences. One idea per line.', 'From your ratings, tagged “too wordy” 2× · used in 3 scripts']]],
+      ['How you end', '#65E5D8', [
+        ['Keep the link-in-bio ending.', 'From your rating note · heard 2× · used in 4 scripts'],
+        ['End on a question to the viewer, not a sales line.', 'From your test viewers · used in 2 scripts']]],
+      ['What to leave out', '#B7AE9F', [
+        ['Never mention two-pound batches.', 'From your rating note · heard 1× · used in 3 scripts'],
+        ['Don’t say “artisanal”.', 'From your ratings, tagged “not me” · used in 5 scripts']]]
+    ];
+    const rules = R.map((g, gi) => ({ h: g[0], c: g[1], items: g[2].map((r, ri) => { const k = gi + '.' + ri; const o = !!off[k]; return { t: r[0], src: r[1], on: !o, isOff: o, link: o ? 'Turn on' : 'Turn off', op: o ? 0.42 : 1, deco: o ? 'line-through' : 'none', tog: () => set('off', off, { [k]: !o }) }; }) }));
+    const onCount = R.reduce((a, g, gi) => a + g[2].filter((r, ri) => !off[gi + '.' + ri]).length, 0);
+    const T = [['Home roasting', 14, true], ['Starting a coffee cart', 9, true], ['Bean sourcing', 6, false], ['Farmers market days', 5, true], ['Roast level myths', 4, false], ['Pricing your coffee', 3, false], ['Gear on a budget', 3, false], ['Cold brew for the cart', 2, false]];
+    const topics = T.map(x => ({ t: x[0], n: x[1] + (x[1] === 1 ? ' video' : ' videos'), made: x[2], fs: x[1] >= 9 ? 17 : (x[1] >= 5 ? 15.5 : 14), pad: x[1] >= 9 ? '12px 18px' : '9px 14px', bd: x[2] ? 'rgba(255,255,255,0.08)' : 'rgba(101,229,216,0.35)', bg: x[2] ? 'rgba(255,255,255,0.03)' : 'rgba(101,229,216,0.07)' }));
+    const Q = [['How long did it take before the cart paid for itself?', 'Day 1 at the market', '14 likes · 2 weeks ago'], ['What popper do you use? Mine scorches the beans', 'The $40 popcorn popper', '31 likes · 5 days ago'], ['Do you need a permit to sell beans at a farmers market?', 'Saturday market setup', '9 likes · 3 weeks ago'], ['Is light roast really more caffeine?', 'Roast myths, part 2', '22 likes · 1 week ago']];
+    const qs = Q.map((x, i) => ({ q: x[0], on: x[1], meta: x[2], live: !qx[i], gone: !!qx[i], hide: () => set('qx', qx, { [i]: 1 }), undo: () => set('qx', qx, { [i]: 0 }) }));
+    const V = [['Sept 2025', 'You need a proper roaster before you sell anything.', 'Mar 2026', 'Sell to ten neighbours before you buy anything big.'], ['Oct 2025', 'Dark roast for the cart. People want strong.', 'Apr 2026', 'Medium sells better at the cart, and people come back for it.']];
+    const views = V.map((x, i) => ({ d1: x[0], a: x[1], d2: x[2], b: x[3], ask: !vw[i], yes: vw[i] === 'y', no: vw[i] === 'n', y: () => set('vw', vw, { [i]: 'y' }), n: () => set('vw', vw, { [i]: 'n' }), u: () => set('vw', vw, { [i]: 0 }), story: 'I used to think ' + x[1].charAt(0).toLowerCase() + x[1].slice(1).replace(/\.$/, '') + '. Now: ' + x[3] }));
+    const M = [['Article', 'The local paper', 'Local roaster turns her garage into a coffee cart business', 'Mar 2026'], ['Podcast', 'Small Batch Stories · Ep. 41', 'A home roaster on starting with a popcorn popper', 'Jan 2026'], ['Feature', 'A local food newsletter', 'Five carts worth the Saturday drive', 'Nov 2025']];
+    const mentions = M.map((x, i) => ({ kind: x[0], src: x[1], t: x[2], d: x[3], ask: !me[i], yes: me[i] === 'y', no: me[i] === 'n', y: () => set('me', me, { [i]: 'y' }), n: () => set('me', me, { [i]: 'n' }), u: () => set('me', me, { [i]: 0 }) }));
+    const P = [['Topics', 'Behind-the-scenes roast days', 7, '18.2k', 'Roast day. The garage smells like burnt toast and I love it.'], ['Openings that work', 'A question someone asked you, answered straight', 6, '14.9k', 'Someone asked if I need a real roaster to start. No.'], ['How the argument runs', 'The myth → what actually happened → the small step', 5, '11.3k', 'Everyone said buy the trailer first. I bought a $40 popper.'], ['Proof viewers believe', 'Real numbers from your own sales', 4, '16.8k', 'Sold 38 bags at the first market. I brought 40.'], ['Objections to answer', '“I don’t have the money to start”', 3, '9.7k', 'You don’t need $20k. You need ten neighbours.'], ['How to close', 'Invite them to the cart this weekend', 1, '6.1k', 'Come find the cart Saturday, I’ll save you a cup.']];
+    const COL = ['#FFB347', '#FF5B7B', '#65E5D8', '#FFB347', '#FF5B7B', '#65E5D8'];
+    const pats = P.map((x, i) => ({ k: x[0], t: x[1], n: x[2] === 1 ? 'from 1 post' : 'from ' + x[2] + ' of your posts', v: 'avg ' + x[3] + ' views', q: x[4], c: COL[i], weak: x[2] < 2, op: x[2] < 2 ? 0.6 : 1 }));
+    const N = [['International Coffee Day', 'Today · Oct 1', 'What a $40 popper taught you about coffee'], ['Pumpkin-spice season', 'Now to late Nov', 'Why you don’t sell a pumpkin-spice roast'], ['Holiday gift bags', 'From mid-Nov', 'Pricing small-batch gift bags without guessing'], ['New-crop beans arriving', 'This month', 'Tasting new crop vs last year’s at home'], ['“Coffee cart permit” searches up', 'This week', 'The one permit you actually needed first'], ['Cold-morning markets', 'Weekends', 'Keeping the cart warm and the line moving']];
+    const now = N.map((x, i) => ({ t: x[0], when: x[1], angle: x[2], c: COL[i] }));
+    const O = [['Topics getting attention', 'Roasting fails and burnt batches', 14, '42k', ''], ['Openings that work', '“I [did the unusual thing] so you don’t have to.”', 22, '61k', 'Fill it with yours: “I roasted 40 batches on a popper so you don’t have to.”'], ['How the argument runs', 'Cost breakdown → the surprise line item → what they’d do instead', 11, '38k', ''], ['Proof viewers believe', 'The scale or the receipt, shown on screen', 17, '47k', ''], ['Objections to answer', '“Home-roasted can’t be as good as a café”', 9, '29k', ''], ['How to close', 'Tell them where to find you this week: market, shop or link', 12, '33k', 'Closes that only ask for a follow are filtered out.']];
+    const others = O.map((x, i) => ({ k: x[0], t: x[1], n: 'seen in ' + x[2] + ' other creators’ videos', v: 'avg ' + x[3] + ' views', note: x[4], hasNote: !!x[4], c: COL[i] }));
+    return {
+      previews: [['ok', 'Normal'], ['load', 'Loading'], ['empty', 'Nothing yet']].map(x => ({ t: x[1], pick: () => this.setState({ pv: x[0] }), bg: x[0] === pv ? '#F6F1E9' : 'transparent', fg: x[0] === pv ? '#0B0B0E' : '#8D8475' })),
+      ok: pv === 'ok', load: pv === 'load', empty: pv === 'empty',
+      rules, onCount: onCount + ' of 8 on', topics, qs, views, mentions, pats, now, others,
+      index: [['1', 'What Twin learned'], ['2', 'What you talk about'], ['3', 'Asked, not answered'], ['4', 'Did your view change?'], ['5', 'Is this you?'], ['6', 'Your patterns'], ['7', 'Happening now'], ['8', 'What works for others']].map((x, i) => ({ n: x[0], t: x[1], c: i < 6 ? '#8FEDE3' : '#FFCB85' }))
+    };
+  }
+}
+</script>
+</body>
+</html>

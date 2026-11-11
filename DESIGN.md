@@ -20,10 +20,24 @@
 | `ink3` | `#13131A` | input / inset surface |
 | `cream` | `#F6F1E9` | primary text, headlines |
 | `sand` | `#C9BDAC` | body text |
-| `stone` | `#8D8475` | muted / labels / captions |
+| `stone` | `#9C9384` | muted / labels / captions (lightened from `#8D8475` for contrast; the redesign boards' `#8D8475` maps here) |
 | `amber` | `#FFB347` | accent 1 (warmth, value) |
 | `coral` | `#FF5B7B` | accent 2 (energy, primary CTA) |
 | `teal` | `#65E5D8` | accent 3 (success, "for you") |
+
+**Soft shades (2026 redesign).** Tints of the colours above for text on dark surfaces — not new accents:
+| Token | Hex | Role |
+|---|---|---|
+| `sand-muted` | `#B7AE9F` | secondary body text |
+| `sand-soft` | `#D8CFC2` | text on quiet buttons, notes |
+| `stone-dim` | `#6E675C` | footnotes, footer eyebrows, day names |
+| `amber-soft` | `#FFCB85` | muted warnings |
+| `coral-soft` | `#FF8FA4` | failure / "Scheduled" text |
+| `teal-soft` | `#8FEDE3` | success / "Posted" text (a lighter shade of the one teal) |
+| `rec` | `#FF3B5C` | the Record screen's recording dot and bar only |
+| `placeholder` | `#141015` | background while a media tile loads |
+
+Board card colours `#111115`/`#131318`/`#0E0E12`/`#15151B` map to `ink2`/`ink3`; the board page colour `#0B0B0E` maps to `ink`.
 
 - **Signature gradient (never re-order):** `amber → coral → teal` at 135°. There is **ONE teal: `#65E5D8`** — never `#70E4D5`.
 - **Accent discipline:** at most one gradient-text phrase per page; accents are highlights, not the default for emphasis. Cream type carries hierarchy.
@@ -40,6 +54,8 @@
 - **Card:** `.glass` (one primitive everywhere). Hover: lift `-4px`, no scale. Don't invent per-page card variants.
 - **Primary button:** `.btn-gradient` (signature gradient, ink text). Hover lift `-2px`.
 - **Secondary:** `.btn-ghost` (hairline border, transparent).
+- **Single choice:** `RadioGroup` + `RadioRow` (`.radio-row`, 14px corners, coral when picked).
+- **Sheet / dialog:** `Sheet` (bottom sheet on phone, centred dialog from `sm`).
 - **Pill / filter / tag:** `.chip`. When used as a *control*, min touch height 36px (44px on coarse pointers).
 - **Input:** `.field` (ink3 surface, focus ring coral). Inline mini-inputs still inherit field focus treatment.
 - **Icons:** Lucide only, `h-[18px] w-[18px]` in 36–44px tap targets. **No emoji as decoration** — ever (use `Trophy`, `Sparkles`, etc.).
@@ -56,7 +72,7 @@
   - Card: `shadow-glass` (inset highlight + soft drop).
   - Hover/primary: `shadow-glow` (coral) or `shadow-glow-teal`.
   - Big lift: `shadow-lift`.
-- **Glow budget: ONE ambient glow per page** (Aurora). No `blur-[Npx]` blob behind individual cards.
+- **Glow budget: ONE ambient glow per page** (Aurora, or the redesign's `.page-glow` corner shading — never both). No `blur-[Npx]` blob behind individual cards.
 
 ## 7. Do's & Don'ts
 **Do**
@@ -67,7 +83,7 @@
 
 **Don't**
 - ❌ Emoji as decoration. ❌ Two teals. ❌ A glow behind every card. ❌ A perpetually-animating headline.
-- ❌ Gradient-text on every emphasis. ❌ One-off radii (`rounded-[40px]` for a normal card). ❌ Hardcoded `top-[57px]` magic numbers.
+- ❌ Gradient-text on every emphasis. ❌ One-off radii (`rounded-[40px]` for a normal card). Allowed corners: 9 / 12 / 14 / 16 / 18 (card) / 24 / 28 / full. ❌ Hardcoded `top-[57px]` magic numbers.
 - ❌ Sub-12px interactive text. ❌ Tap targets < 44px on touch.
 
 ## 8. Responsive Behavior

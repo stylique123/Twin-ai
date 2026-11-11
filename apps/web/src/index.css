@@ -111,7 +111,7 @@ body {
     letter-spacing: 0.18em;
     font-size: 0.72rem;
     font-weight: 700;
-    color: #8d8475;
+    color: #9c9384;
   }
   .gradient-text {
     background: linear-gradient(135deg, #ffb347 0%, #ff5b7b 50%, #65E5D8 100%);
@@ -220,12 +220,65 @@ body {
     box-shadow: 0 0 0 4px rgba(255, 91, 123, 0.12);
   }
   .field::placeholder {
-    color: #8d8475;
+    color: #9c9384;
   }
   .field:disabled {
     opacity: 0.5;
     cursor: not-allowed;
     background: rgba(255, 255, 255, 0.02);
+  }
+
+  /* Board primitives, values copied one for one from the Create board CSS. */
+  .fld {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #07070a; /* board #0B0B0E -> ink */
+    color: #f6f1e9;
+    font-family: inherit;
+    font-size: 15px;
+    line-height: normal;
+    outline: none;
+  }
+  .fld:focus {
+    border-color: rgba(255, 91, 123, 0.6);
+    box-shadow: 0 0 0 4px rgba(255, 91, 123, 0.12);
+  }
+  .fld::placeholder { color: #757575; }
+  .btn-light {
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 12px 18px;
+    border-radius: 12px;
+    border: 0;
+    background: #f6f1e9;
+    color: #07070a;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: normal;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-light:active { transform: scale(0.97); }
+  .btn-light:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-outline {
+    padding: 11px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: transparent;
+    color: #d8cfc2;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: normal;
+    cursor: pointer;
   }
 
   .chip {
@@ -241,8 +294,14 @@ body {
   }
 }
 
+/* Rule C: no double-tap zoom delay on controls. */
+button, [role='button'], a, input, select, textarea { touch-action: manipulation; }
+
 /* Touch devices: raise tap targets to a comfortable minimum (desktop untouched). */
 @media (pointer: coarse) {
+  /* Rule C: inputs at least 16px so iOS doesn't zoom. */
+  .fld, input, select, textarea { font-size: max(16px, 1em) !important; }
+  .btn-light, .btn-outline { min-height: 44px; }
   .chip { min-height: 2.4rem; }
   .btn-primary,
   .btn-gradient,
@@ -261,6 +320,15 @@ body {
     pointer-events: none;
     opacity: 0.035;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  /* The page's ONE ambient glow (redesign boards): faint amber / coral / teal
+     shading in the corners. Use instead of <Aurora>, never alongside it. */
+  .page-glow {
+    background-image:
+      radial-gradient(ellipse 50% 20% at 4% 22%, rgba(255, 179, 71, 0.085), rgba(255, 179, 71, 0) 100%),
+      radial-gradient(ellipse 46% 19% at 96% 52%, rgba(255, 91, 123, 0.075), rgba(255, 91, 123, 0) 100%),
+      radial-gradient(ellipse 50% 20% at 14% 79%, rgba(101, 229, 216, 0.06), rgba(101, 229, 216, 0) 100%);
+    background-attachment: fixed;
   }
   .text-balance {
     text-wrap: balance;

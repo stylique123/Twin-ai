@@ -2,6 +2,8 @@
  *  flagship redesign (motion, depth, gradient mesh). Brand DNA is unchanged:
  *  dark ink canvas, cream ink, signature amber → coral → teal gradient. */
 export default {
+  // Rule C: hover styles only on devices that can hover.
+  future: { hoverOnlyWhenSupported: true },
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
@@ -15,13 +17,31 @@ export default {
         amber: '#FFB347',
         coral: '#FF5B7B',
         teal: '#65E5D8',
+        // Design-handoff shades (2026 redesign). Softer text tints of the
+        // existing colours for dark surfaces — not new accents. Still ONE teal.
+        'sand-muted': '#B7AE9F', // secondary body text
+        'sand-soft': '#D8CFC2', // text on quiet buttons and notes
+        'stone-dim': '#6E675C', // footnotes, calendar day names, footer eyebrows
+        'amber-soft': '#FFCB85', // muted warnings ("You've used your 3 free videos")
+        'coral-soft': '#FF8FA4', // failure / "Scheduled" text on dark
+        'teal-soft': '#8FEDE3', // success / "Posted" text, teal outline buttons
+        rec: '#FF3B5C', // the recording dot and bar on Record only
+        placeholder: '#141015', // background while a media tile loads
+        // Exact board values (START_HERE rule 1.3: never round to a nearby token).
+        label: '#8D8475', // board labels/captions (the board's stone; differs from `stone`)
+        dialog: '#17171D', // pop-up dialog surface (Add a product)
+        drawer: '#121217', // side panel surface (Edit what Twin knows)
+        row: '#0E0E12', // choice-row surface
+        footer: '#09090C', // site footer
       },
       fontFamily: {
         sans: ['Geist', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['Geist Mono', 'ui-monospace', 'monospace'],
       },
       fontWeight: { display: '800', heading: '700' },
-      borderRadius: { card: '18px', panel: '24px', xl2: '28px' },
+      // rounded-xl (12px) and rounded-2xl (16px) are Tailwind defaults; 9 and 14 are the
+      // extra corners the redesign boards use for chips/controls and radio rows.
+      borderRadius: { '9': '9px', '14': '14px', card: '18px', panel: '24px', xl2: '28px' },
       maxWidth: { content: '1180px' },
       backgroundImage: {
         // Signature gradient — never re-order: amber -> coral -> teal at 135deg
@@ -64,6 +84,11 @@ export default {
           '50%': { backgroundPosition: '100% 50%' },
         },
         'spin-slow': { to: { transform: 'rotate(360deg)' } },
+        'sheet-up': { '0%': { transform: 'translateY(100%)' }, '100%': { transform: 'translateY(0)' } },
+        'dialog-in': { '0%': { opacity: '0', transform: 'translateY(8px) scale(.98)' }, '100%': { opacity: '1', transform: 'none' } },
+        // Board keyframes, verbatim.
+        popin: { '0%': { opacity: '0', transform: 'translateY(10px) scale(.94)' }, '100%': { opacity: '1', transform: 'none' } },
+        cfdrawer: { from: { transform: 'translateX(40px)', opacity: '0' }, to: { transform: 'none', opacity: '1' } },
       },
       animation: {
         'fade-up': 'fade-up .6s cubic-bezier(.22,1,.36,1) both',
@@ -74,6 +99,10 @@ export default {
         shimmer: 'shimmer 2.4s linear infinite',
         'gradient-pan': 'gradient-pan 6s ease infinite',
         'spin-slow': 'spin-slow 22s linear infinite',
+        'sheet-up': 'sheet-up .28s cubic-bezier(.22,1,.36,1) both',
+        'dialog-in': 'dialog-in .2s cubic-bezier(.22,1,.36,1) both',
+        popin: 'popin .5s cubic-bezier(.22,1,.36,1) both',
+        cfdrawer: 'cfdrawer .4s cubic-bezier(.22,1,.36,1) both',
       },
     },
   },

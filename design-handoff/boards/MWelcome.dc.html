@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign up · mobile</title>
+<script src="./support.js"></script>
+<script data-rv>(function(){var d=document.documentElement;d.classList.add('rv-js');function show(el){el.classList.add('in')}function vis(el){var r=el.getBoundingClientRect();return r.top<innerHeight&&r.bottom>0}var io=null;if('IntersectionObserver' in window){try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){show(e.target);io.unobserve(e.target)}})},{root:document,threshold:0.08})}catch(x){io=null}}function scan(){var n=document.querySelectorAll('body [class*="rv-"]:not([data-rvo])');for(var i=0;i<n.length;i++){n[i].setAttribute('data-rvo','');if(io)io.observe(n[i]);else show(n[i])}var m=document.querySelectorAll('[data-rvo]:not(.in)');for(var j=0;j<m.length;j++){if(vis(m[j]))show(m[j])}}new MutationObserver(scan).observe(d,{childList:true,subtree:true});document.addEventListener('DOMContentLoaded',scan);addEventListener('scroll',scan,{passive:true,capture:true});addEventListener('resize',scan);setInterval(scan,500);setTimeout(function(){if(window.self!==window.top&&innerHeight>1400){var m=document.querySelectorAll('[data-rvo]');for(var k=0;k<m.length;k++)show(m[k])}},2500)})();</script>
+<style data-bg>.brandbg{background-image:radial-gradient(ellipse 50% 20% at 4% 22%,rgba(255,179,71,.085),rgba(255,179,71,0) 100%),radial-gradient(ellipse 46% 19% at 96% 52%,rgba(255,91,123,.075),rgba(255,91,123,0) 100%),radial-gradient(ellipse 50% 20% at 14% 79%,rgba(101,229,216,.06),rgba(101,229,216,0) 100%)!important;background-repeat:repeat-y!important;background-size:100% 1500px!important}
+.brandbg.bgm{background-size:100% 1000px!important}</style>
+<style data-vt>@media (prefers-reduced-motion: no-preference){::view-transition-old(root){animation:vtMbOut .45s cubic-bezier(.65,0,.35,1) both}::view-transition-new(root){animation:vtMbIn .55s cubic-bezier(.22,1,.36,1) both}@keyframes vtMbOut{to{transform:translateX(-30%);opacity:.3}}@keyframes vtMbIn{from{transform:translateX(100%)}}}</style>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0;background:#0B0B0E;-webkit-text-size-adjust:100%}a{color:inherit}</style>
+<style>
+@keyframes pin{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(80px,40px) scale(1.15)}}
+@keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-70px,-50px) scale(1.1)}}
+@keyframes shine{0%{transform:translateX(-120%) skewX(-20deg)}60%,100%{transform:translateX(260%) skewX(-20deg)}}
+@keyframes recp{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}100%{box-shadow:0 0 0 8px rgba(255,255,255,0)}}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,91,123,.45)}100%{box-shadow:0 0 0 14px rgba(255,91,123,0)}}
+@keyframes spinb{to{transform:rotate(360deg)}}
+@keyframes hue{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+@keyframes wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(16deg)}20%,40%{transform:rotate(-8deg)}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes seg{from{opacity:.15}to{opacity:1}}
+.pin{opacity:0;animation:pin .7s cubic-bezier(.22,1,.36,1) forwards}
+.d1{animation-delay:.05s}.d2{animation-delay:.15s}.d3{animation-delay:.25s}.d4{animation-delay:.35s}.d5{animation-delay:.45s}.d6{animation-delay:.55s}.d7{animation-delay:.65s}.d8{animation-delay:.75s}
+.lv{position:relative}.lv>*{position:relative;z-index:1}.lv>.aur{position:absolute;z-index:0}
+.lift{transition:transform .25s cubic-bezier(.22,1,.36,1),box-shadow .25s ease,border-color .25s ease}
+.lift:hover{transform:translateY(-4px);box-shadow:0 18px 40px -18px rgba(0,0,0,.9);border-color:rgba(255,255,255,.18)!important}
+.row{transition:background .2s ease,padding .2s ease}.row:hover{background:rgba(255,255,255,.04);padding-left:24px!important}
+.cta{position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease}
+.cta::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:shine 3.2s ease-in-out infinite}
+.cta:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 16px 40px -12px rgba(255,91,123,.7)}
+.recdot{animation:recp 1.4s ease-out infinite}
+.ringp{animation:ring 1.8s ease-out infinite}
+.grad{background:linear-gradient(110deg,#FFB347,#FF5B7B,#65E5D8,#FFB347);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:hue 6s ease infinite}
+.gbtn{background:linear-gradient(110deg,#FFB347,#FF5B7B 55%,#65E5D8);background-size:200% 100%;animation:hue 5s ease infinite}
+.bob{animation:bob 3s ease-in-out infinite}
+.wave{display:inline-block;transform-origin:70% 80%;animation:wave 2.4s ease-in-out 1s infinite}
+.dots span{display:inline-block;width:5px;height:5px;border-radius:9px;background:#FF8FA4;animation:dot 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+.grow{transform-origin:left;animation:grow 1.2s cubic-bezier(.22,1,.36,1) .4s both}
+.seg{opacity:.15;animation:seg .3s ease forwards}
+@keyframes blink{50%{opacity:0}}
+@keyframes popin{0%{opacity:0;transform:translateY(10px) scale(.94)}100%{opacity:1;transform:none}}
+@keyframes scan{0%{top:-30%}100%{top:110%}}
+@keyframes floaty{0%,100%{transform:translateY(0) rotate(var(--r,0deg))}50%{transform:translateY(-10px) rotate(var(--r,0deg))}}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:#FF5B7B;animation:blink 1s steps(1) infinite}
+.pop{animation:popin .5s cubic-bezier(.22,1,.36,1) both}
+.floaty{animation:floaty 5s ease-in-out infinite}
+.chip{transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease;cursor:pointer}
+.chip:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.28)!important}
+.inp{transition:border-color .2s ease,box-shadow .2s ease}.inp:focus{border-color:rgba(255,91,123,.6)!important;box-shadow:0 0 0 4px rgba(255,91,123,.14)}
+@keyframes wv{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+.wv{display:inline-flex;align-items:center;gap:3px;height:20px}.wv span{display:block;width:3px;height:20px;border-radius:2px;background:#FF5B7B;transform-origin:center;animation:wv .9s ease-in-out infinite}
+.wv span:nth-child(2){animation-delay:.12s}.wv span:nth-child(3){animation-delay:.24s}.wv span:nth-child(4){animation-delay:.36s}.wv span:nth-child(5){animation-delay:.48s}.wv span:nth-child(6){animation-delay:.2s}.wv span:nth-child(7){animation-delay:.05s}
+.sel{transition:transform .18s ease,border-color .2s ease,background .2s ease,box-shadow .2s ease;cursor:pointer}.sel:hover{transform:translateY(-3px)}
+.card{border-radius:18px;background:#111115;border:1px solid rgba(255,255,255,0.07)}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.12em;color:#8D8475}
+.btnL{white-space:nowrap;flex-shrink:0;padding:12px 18px;border-radius:12px;border:0;background:#F6F1E9;color:#0B0B0E;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btnG{white-space:nowrap;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#D8CFC2;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.opt{padding:13px 15px;border-radius:12px;border-width:1px;border-style:solid;font-family:inherit;font-size:14.5px;font-weight:500;text-align:left;cursor:pointer;transition:all .15s ease}
+.opt:hover{transform:translateY(-1px)}
+.fld{min-width:0;box-sizing:border-box;padding:12px 14px;border-radius:11px;border:1px solid rgba(255,255,255,0.1);background:#0B0B0E;color:#F6F1E9;font-family:inherit;font-size:15px;outline:none}
+.fld:focus{border-color:rgba(255,91,123,.6);box-shadow:0 0 0 4px rgba(255,91,123,.12)}
+.guess{padding:2px 8px;border-radius:99px;background:rgba(255,179,71,.14);color:#FFB347;font-size:10.5px;font-weight:700;letter-spacing:.05em}
+.cam{position:absolute;inset:0;background-color:#141015;background-position:center 30%;background-size:cover;background-repeat:no-repeat;background-image:url(../assets/images/maya-talking-kitchen.jpg);animation:kb 22s ease-in-out infinite alternate;will-change:transform}
+@keyframes kb{0%{transform:scale(1.02) translate(0,0)}50%{transform:scale(1.07) translate(-1%,1%)}100%{transform:scale(1.04) translate(1%,-.5%)}}
+.cam .who{display:none}
+.cam::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.08) 45%,rgba(0,0,0,.4))}
+.who{position:absolute;left:50%;bottom:0;width:62%;transform:translateX(-50%)}
+.who i{display:block;margin:0 auto;width:44%;aspect-ratio:1/1.18;border-radius:999px;border:1.5px dashed rgba(246,241,233,.28);box-sizing:border-box}
+.who b{display:block;margin-top:10px;height:260px;border-radius:140px 140px 0 0;border:1.5px dashed rgba(246,241,233,.2);border-bottom:0;box-sizing:border-box}
+.fade{-webkit-mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent)}
+.ctl{white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:5px;padding:0;border:0;background:transparent;color:#F6F1E9;font-family:inherit;font-size:11.5px;font-weight:600}
+.ctl span.ic{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center}
+.big{font-variant-numeric:tabular-nums}
+@keyframes cdz{0%{transform:scale(1.4);opacity:0}25%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.85}}
+.cdz{animation:cdz 1s ease-out infinite}
+@keyframes lvl{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+.lvl span{display:inline-block;width:4px;height:16px;border-radius:3px;background:#65E5D8;transform-origin:bottom;animation:lvl .9s ease-in-out infinite}
+.lvl span:nth-child(2){animation-delay:.12s}.lvl span:nth-child(3){animation-delay:.24s}.lvl span:nth-child(4){animation-delay:.36s}.lvl span:nth-child(5){animation-delay:.48s}
+@keyframes bar{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.indet{position:relative;overflow:hidden}.indet::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:bar 1.4s linear infinite}
+.scene{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 30%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55))}
+@view-transition{navigation:auto}
+@keyframes vtOut{to{opacity:0;transform:perspective(1600px) translateZ(-60px) rotateX(2deg)}}
+@keyframes vtIn{from{opacity:0;transform:perspective(1600px) translateY(18px) translateZ(40px) rotateX(-2deg)}}
+@keyframes pageIn{from{opacity:0}to{opacity:1}}
+.lv{animation:pageIn .45s ease-out both}
+a,button{transition:transform .15s ease,opacity .2s ease,background-color .2s ease,border-color .2s ease}
+button:active,a.cta:active,a.btnL:active,a.btnG:active{transform:scale(.97)}
+.ph{background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat}
+.phfill{position:absolute;inset:0;background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat;animation:kb 26s ease-in-out infinite alternate}
+.ph-coach{background-image:url(../assets/images/creator-coach-home.jpg)}
+.ph-local{background-image:url(../assets/images/maya-talking-kitchen.jpg)}
+.ph-realestate{background-image:url(../assets/images/creator-realestate-outdoors.jpg)}
+.ph-agency{background-image:url(../assets/images/creator-agency-desk.jpg)}
+.ph-g1{background-image:url(../assets/images/gallery-01-market-roaster.jpg)}
+.ph-g2{background-image:url(../assets/images/gallery-02-cafe-tasting.jpg)}
+.ph-g3{background-image:url(../assets/images/gallery-03-roasting-on-stove.jpg)}
+.ph-g4{background-image:url(../assets/images/gallery-04-beans-on-tray.jpg)}
+.ph-g5{background-image:url(../assets/images/gallery-05-cart-owner-on-phone.jpg)}
+.ph-g6{background-image:url(../assets/images/gallery-06-late-night-latte.jpg)}
+.ph-s_window{background-image:url(../assets/images/maya-holding-mug.jpg)}
+.ph-s_tray{background-image:url(../assets/images/maya-holding-beans.jpg)}
+.camv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;display:block}
+.rv-up,.rv-left,.rv-right,.rv-zoom,.rv-tilt,.rv-flip,.rv-rise{transition:opacity .9s cubic-bezier(.22,1,.36,1),transform 1.1s cubic-bezier(.22,1,.36,1),filter .9s ease}
+.rv-js .rv-up:not(.in){opacity:0;transform:translateY(70px)}
+.rv-js .rv-left:not(.in){opacity:0;transform:translateX(-90px)}
+.rv-js .rv-right:not(.in){opacity:0;transform:translateX(90px)}
+.rv-js .rv-zoom:not(.in){opacity:0;transform:scale(.88);filter:blur(10px)}
+.rv-js .rv-tilt:not(.in){opacity:0;transform:perspective(1200px) rotateX(16deg) translateY(60px)}
+.rv-js .rv-flip:not(.in){opacity:0;transform:perspective(1200px) rotateY(-14deg) translateX(-40px)}
+.rv-js .rv-rise:not(.in){opacity:0;transform:translateY(40px) scale(.97)}
+.rv-d1{transition-delay:.12s}.rv-d2{transition-delay:.24s}.rv-d3{transition-delay:.36s}.rv-d4{transition-delay:.48s}
+@media (prefers-reduced-motion: reduce){.rv-js [class*="rv-"]{opacity:1!important;transform:none!important;filter:none!important}}
+@keyframes wsRise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes wsSlide{from{opacity:0;transform:translateX(-40px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@keyframes wsCard{0%{opacity:0;transform:translateY(16px) scale(.96)}100%{opacity:1;transform:none}}
+@keyframes wsFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.wsRise{animation:wsRise .7s cubic-bezier(.22,1,.36,1) both}.wsSlide{animation:wsSlide .7s cubic-bezier(.22,1,.36,1) both}.wsCard{animation:wsCard .6s cubic-bezier(.22,1,.36,1) both}.wsFade{animation:wsFade .45s ease both}
+@keyframes lpop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.lpop{animation:lpop .6s cubic-bezier(.22,1,.36,1) both}
+@keyframes lshrink{from{width:100%}to{width:0%}}
+.lshrink{animation:lshrink 6s linear infinite}
+@keyframes spinr{to{transform:rotate(360deg)}}
+@keyframes floaty2{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.fl2{animation:floaty2 6s ease-in-out infinite}
+@keyframes sheen{from{background-position:-200% 0}to{background-position:200% 0}}
+.sheen{background:linear-gradient(110deg,#F6F1E9 30%,#FFCB85 45%,#FF8FA4 52%,#F6F1E9 65%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sheen 6s linear infinite}
+@keyframes tprog{from{width:0}to{width:100%}}
+.tprog{animation:tprog 4.8s linear both}
+@keyframes tcur{0%{transform:translate(700px,440px);opacity:0}12%{opacity:1}45%{transform:translate(430px,330px)}52%{transform:translate(430px,330px) scale(.85)}58%{transform:translate(430px,330px) scale(1)}85%{transform:translate(560px,180px);opacity:1}100%{transform:translate(560px,180px);opacity:0}}
+.tcur{animation:tcur 4.8s cubic-bezier(.45,0,.2,1) infinite}
+@keyframes tshr{0%,18%{width:100%}60%,100%{width:var(--to)}}
+.tshr{width:100%;animation:tshr 7s cubic-bezier(.7,0,.2,1) infinite}
+@keyframes tnew{0%,40%{opacity:0;transform:translateY(6px)}60%,100%{opacity:1;transform:none}}
+.tnew{animation:tnew 7s ease infinite}
+@keyframes ctaglow{0%,100%{box-shadow:0 0 0 0 rgba(255,91,123,.55),0 16px 50px -16px rgba(255,91,123,.8)}50%{box-shadow:0 0 0 10px rgba(255,91,123,0),0 18px 60px -10px rgba(255,179,71,.9)}}
+@keyframes ctapop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08);opacity:1}80%{transform:scale(.97)}100%{transform:scale(1)}}
+@keyframes ctanudge{0%,86%,100%{transform:scale(1)}90%{transform:scale(1.06)}94%{transform:scale(.98)}}
+.glowcta{display:inline-block;animation:ctapop .8s cubic-bezier(.22,1.6,.36,1) .5s both,ctaglow 2.4s ease-in-out 1.3s infinite,ctanudge 5s ease-in-out 2s infinite !important}
+.glowcta:hover{filter:brightness(1.08)}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;opacity:1!important;transition:none!important}}
+</style>
+</helmet>
+<div class="brandbg bgm lv" style="width: 390px; min-height: 844px; display: flex; flex-direction: column; background: #0B0B0E; font-family: Geist, system-ui, sans-serif; color: #F6F1E9; overflow: hidden">
+<div class="aur" aria-hidden="true" style="left: -160px; top: -160px; width: 460px; height: 460px; border-radius: 999px; background: radial-gradient(circle, rgba(255,179,71,0.2), rgba(255,179,71,0) 65%); animation: drift1 16s ease-in-out infinite; pointer-events: none"></div>
+<div class="aur" aria-hidden="true" style="right: -200px; top: 160px; width: 460px; height: 460px; border-radius: 999px; background: radial-gradient(circle, rgba(255,91,123,0.17), rgba(255,91,123,0) 65%); animation: drift2 20s ease-in-out infinite; pointer-events: none"></div>
+<div aria-hidden="true" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 26px 6px; font-size: 14px; font-weight: 600"><span>9:41</span><span style="display: flex; gap: 6px; align-items: center"><span style="width: 17px; height: 10px; border-radius: 2px; border: 1.5px solid #F6F1E9; opacity: .9"></span></span></div>
+<div class="pin d1" style="padding: 14px 24px 0; display: flex; align-items: center; gap: 10px"><span class="gbtn" style="width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #0B0B0E; font-weight: 800; font-size: 14px">T</span><span style="font-size: 16px; font-weight: 700">TwinAI</span></div>
+<sc-if value="{{ isUp }}" hint-placeholder-val="{{ true }}"><div class="wsRise" style="margin: 22px 24px 0; display: flex; flex-direction: column; gap: 16px"><span style="font-size: 11px; font-weight: 700; letter-spacing: .12em; color: #FFB347">NEW HERE? HERE’S WHAT HAPPENS</span><h1 style="margin: -6px 0 0; font-size: 34px; line-height: 1.06; font-weight: 700; letter-spacing: -0.035em">Your next video,<br>written in <span class="grad">your voice.</span></h1><div style="align-self: flex-end; width: 100%; box-sizing: border-box; min-height: 92px; padding: 12px 14px; border-radius: 14px 14px 4px 14px; background: #1A1418; border: 1px solid rgba(255,91,123,0.28); font-size: 14.5px; line-height: 1.45; font-weight: 500"><span style="display: flex; align-items: center; gap: 7px; margin-bottom: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: #FF8FA4"><span class="ringp" style="width: 7px; height: 7px; border-radius: 9px; background: #FF5B7B"></span>TWIN, WRITING AS YOU</span>{{ typed }}<span class="caret"></span></div><div style="display: flex; flex-direction: column; gap: 4px"><sc-for list="{{ nsteps }}" as="x" hint-placeholder-count="3"><div style="display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 12px; background: {{ x.bg }}; transition: background .4s ease"><span style="flex-shrink: 0; width: 26px; height: 26px; border-radius: 99px; background: {{ x.dot }}; color: {{ x.dfg }}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; transition: all .4s ease">{{ x.n }}</span><span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 13.5px; font-weight: 600; color: {{ x.fg }}; transition: color .4s ease">{{ x.t }}</span><span style="font-size: 12px; color: #8D8475">{{ x.sub }}</span></span><span style="margin-left: auto; font-size: 11.5px; color: #6E675C">{{ x.time }}</span></div></sc-for></div></div></sc-if><sc-if value="{{ isIn }}" hint-placeholder-val="{{ false }}"><div class="wsSlide" style="margin: 22px 24px 0; display: flex; flex-direction: column; gap: 14px"><span style="font-size: 11px; font-weight: 700; letter-spacing: .12em; color: #65E5D8">WELCOME BACK</span><h1 style="margin: -6px 0 0; font-size: 32px; line-height: 1.08; font-weight: 700; letter-spacing: -0.035em">Your twin kept working <span class="grad">while you were away.</span></h1><div style="display: flex; flex-direction: column; gap: 7px"><div class="wsCard" style="animation-delay: 0.35s; display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07)"><span style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; background: #FFB34722; color: #FFB347; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"></path></svg></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 14.5px; font-weight: 600">3 new video ideas</span><span style="font-size: 12.5px; color: #8D8475">Written from this week’s trends in your niche</span></span></div><div class="wsCard" style="animation-delay: 0.67s; display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07)"><span style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; background: #65E5D822; color: #65E5D8; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 9-14 9V3z"></path></svg></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 14.5px; font-weight: 600">Tuesday’s video: {{ views }} views</span><span style="font-size: 12.5px; color: #8D8475">38 comments · 12 people asked about the cart</span></span></div><div class="wsCard" style="animation-delay: 0.99s; display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07)"><span style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; background: #FF5B7B22; color: #FF5B7B; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 14.5px; font-weight: 600">Thursday’s script is ready to film</span><span style="font-size: 12.5px; color: #8D8475">Tested on 10 viewers · 8 kept watching</span></span></div><div class="wsCard" style="animation-delay: 1.31s; display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07)"><span style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; background: #B7AE9F22; color: #B7AE9F; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v16H3zM16 3v4M8 3v4M3 10h18"></path></svg></span><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 14.5px; font-weight: 600">Friday, 6:00 pm</span><span style="font-size: 12.5px; color: #8D8475">Scheduled to Instagram and TikTok</span></span></div></div></div></sc-if>
+<section class="pin d4" style="margin: 22px 16px 0; padding: 20px; border-radius: 22px; border: 1px solid rgba(255,255,255,0.08); background: rgba(17,17,21,0.92); display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 3px"><h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">{{ title }}</h2><span style="font-size: 13px; color: #8FEDE3">{{ sub }}</span></div>
+<button type="button" style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px; border-radius: 12px; border: 0; background: #F6F1E9; color: #0B0B0E; font-family: inherit; font-size: 15px; font-weight: 600"><svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.3c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2.1-1.9 3.3-4.7 3.3-8z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.2-2.7l-3.5-2.7c-1 .7-2.2 1.1-3.7 1.1-2.9 0-5.3-1.9-6.2-4.5H2.2v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.8 14.2a6.6 6.6 0 0 1 0-4.3V7.1H2.2a11 11 0 0 0 0 9.9z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.1-3.1A11 11 0 0 0 2.2 7.1l3.6 2.8C6.7 7.3 9.1 5.4 12 5.4z"/></svg>Continue with Google</button>
+<input class="inp" type="email" aria-label="Email" placeholder="you@yourbrand.com" style="padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.09); background: #0B0B0E; color: #F6F1E9; font-family: inherit; font-size: 16px; outline: none">
+<input class="inp" type="password" aria-label="Password" placeholder="{{ pwPh }}" style="padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.09); background: #0B0B0E; color: #F6F1E9; font-family: inherit; font-size: 16px; outline: none">
+<a href="{{ ctaHref }}" class="cta gbtn" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 15px; border-radius: 12px; color: #0B0B0E; font-size: 16px; font-weight: 700; text-decoration: none; box-shadow: 0 14px 30px -12px rgba(255,91,123,0.8)">{{ cta }} →</a>
+<span style="text-align: center; font-size: 12px; color: #6E675C">By continuing you agree to our <a href="Terms.dc.html" style="color: #B7AE9F">Terms of Use</a> and <a href="Privacy.dc.html" style="color: #B7AE9F">Privacy Policy</a>.</span>
+<button type="button" onClick="{{ flip }}" style="border: 0; background: transparent; color: #D8CFC2; font-family: inherit; font-size: 14px">{{ switchText }}</button>
+</section>
+<div style="height: 30px"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this.t = setInterval(() => {
+      const s = this.state || {}; const i = s.i || 0; const k = s.k || 0; const L = this.lines()[i].out.length; const t = (s.t || 0) + 1;
+      if (k < L) this.setState({ k: k + 2, t });
+      else if ((s.w || 0) < 45) this.setState({ w: (s.w || 0) + 1, t });
+      else this.setState({ i: (i + 1) % 3, k: 0, w: 0, t });
+    }, 38);
+  }
+  componentWillUnmount() { clearInterval(this.t); }
+  lines() {
+    return [
+      { said: 'people keep asking how i started the coffee cart lol', out: 'Everyone asks how I started the cart. Honest answer? My kitchen, one grinder, and zero plan.' },
+      { said: 'new single origin in, tastes like blueberries?? idk how to explain', out: 'I opened this bag and smelled blueberries. Not a flavouring. Just the bean. Let me show you.' },
+      { said: 'roasting at 5am again, nobody sees this part', out: "It's 5am, the roaster's warming up, and this is the part nobody films. Until now." }
+    ];
+  }
+  stepsFor(t) {
+    const st = Math.floor(t / 70) % 3;
+    const S = [['Paste your handle', 'Twin reads your recent posts', '30 sec'], ['Answer 3 quick questions', 'Only the things a scan can’t see', '1 min'], ['Get your first script', 'In your voice, tested on 10 viewers', 'ready']];
+    return S.map((x, i) => ({ n: i < st ? '✓' : String(i + 1), t: x[0], sub: x[1], time: x[2], bg: i === st ? 'rgba(255,255,255,0.05)' : 'transparent', dot: i === st ? 'linear-gradient(135deg,#FFB347,#FF5B7B)' : (i < st ? '#65E5D8' : 'rgba(255,255,255,0.08)'), dfg: i <= st ? '#0B0B0E' : '#8D8475', fg: i === st ? '#F6F1E9' : '#B7AE9F' }));
+  }
+  renderVals() {
+    const s = this.state || {}; const up = !s.signin; const ln = this.lines()[s.i || 0]; const t = s.t || 0;
+    const views = Math.min(2418, Math.max(0, Math.round((t - (s.t0 || 0) - 20) * 46)));
+    return {
+      said: ln.said, typed: ln.out.slice(0, s.k || 0), isUp: up, isIn: !up,
+      nsteps: this.stepsFor(t), views: views.toLocaleString('en-US'),
+      title: up ? 'Create your free account' : 'Sign in', sub: up ? 'Your first 3 videos are free. No card.' : 'Good to see you again.',
+      cta: up ? 'Create my account' : 'Sign in to my studio', ctaHref: up ? 'MConnect.dc.html' : 'MHome.dc.html',
+      pwPh: up ? 'Pick a password, at least 6 characters' : 'Your password',
+      switchText: up ? 'Already have an account? Sign in' : 'New here? Start free',
+      upBg: up ? '#F6F1E9' : 'transparent', upFg: up ? '#0B0B0E' : '#B7AE9F', inBg: up ? 'transparent' : '#F6F1E9', inFg: up ? '#B7AE9F' : '#0B0B0E',
+      goUp: () => this.setState({ mode: 'up', signin: false }), goIn: () => this.setState({ mode: 'in', signin: true, t0: t }),
+      flip: () => this.setState(up ? { mode: 'in', signin: true, t0: t } : { mode: 'up', signin: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your voice</title>
+<script src="./support.js"></script>
+<script data-rv>(function(){var d=document.documentElement;d.classList.add('rv-js');function show(el){el.classList.add('in')}function vis(el){var r=el.getBoundingClientRect();return r.top<innerHeight&&r.bottom>0}var io=null;if('IntersectionObserver' in window){try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){show(e.target);io.unobserve(e.target)}})},{root:document,threshold:0.08})}catch(x){io=null}}function scan(){var n=document.querySelectorAll('body [class*="rv-"]:not([data-rvo])');for(var i=0;i<n.length;i++){n[i].setAttribute('data-rvo','');if(io)io.observe(n[i]);else show(n[i])}var m=document.querySelectorAll('[data-rvo]:not(.in)');for(var j=0;j<m.length;j++){if(vis(m[j]))show(m[j])}}new MutationObserver(scan).observe(d,{childList:true,subtree:true});document.addEventListener('DOMContentLoaded',scan);addEventListener('scroll',scan,{passive:true,capture:true});addEventListener('resize',scan);setInterval(scan,500);setTimeout(function(){if(window.self!==window.top&&innerHeight>1400){var m=document.querySelectorAll('[data-rvo]');for(var k=0;k<m.length;k++)show(m[k])}},2500)})();</script>
+<style data-bg>.brandbg{background-image:radial-gradient(ellipse 50% 20% at 4% 22%,rgba(255,179,71,.085),rgba(255,179,71,0) 100%),radial-gradient(ellipse 46% 19% at 96% 52%,rgba(255,91,123,.075),rgba(255,91,123,0) 100%),radial-gradient(ellipse 50% 20% at 14% 79%,rgba(101,229,216,.06),rgba(101,229,216,0) 100%)!important;background-repeat:repeat-y!important;background-size:100% 1500px!important}
+.brandbg.bgm{background-size:100% 1000px!important}</style>
+<style data-vt>@media (prefers-reduced-motion: no-preference){::view-transition-old(root){animation:vtMbOut .45s cubic-bezier(.65,0,.35,1) both}::view-transition-new(root){animation:vtMbIn .55s cubic-bezier(.22,1,.36,1) both}@keyframes vtMbOut{to{transform:translateX(-30%);opacity:.3}}@keyframes vtMbIn{from{transform:translateX(100%)}}}</style>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0;background:#0B0B0E}a{color:inherit}</style>
+<style>
+@keyframes pin{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(80px,40px) scale(1.15)}}
+@keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-70px,-50px) scale(1.1)}}
+@keyframes shine{0%{transform:translateX(-120%) skewX(-20deg)}60%,100%{transform:translateX(260%) skewX(-20deg)}}
+@keyframes recp{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}100%{box-shadow:0 0 0 8px rgba(255,255,255,0)}}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,91,123,.45)}100%{box-shadow:0 0 0 14px rgba(255,91,123,0)}}
+@keyframes spinb{to{transform:rotate(360deg)}}
+@keyframes hue{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+@keyframes wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(16deg)}20%,40%{transform:rotate(-8deg)}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes seg{from{opacity:.15}to{opacity:1}}
+.pin{opacity:0;animation:pin .7s cubic-bezier(.22,1,.36,1) forwards}
+.d1{animation-delay:.05s}.d2{animation-delay:.15s}.d3{animation-delay:.25s}.d4{animation-delay:.35s}.d5{animation-delay:.45s}.d6{animation-delay:.55s}.d7{animation-delay:.65s}.d8{animation-delay:.75s}
+.lv{position:relative}.lv>*{position:relative;z-index:1}.lv>.aur{position:absolute;z-index:0}
+.lift{transition:transform .25s cubic-bezier(.22,1,.36,1),box-shadow .25s ease,border-color .25s ease}
+.lift:hover{transform:translateY(-4px);box-shadow:0 18px 40px -18px rgba(0,0,0,.9);border-color:rgba(255,255,255,.18)!important}
+.row{transition:background .2s ease,padding .2s ease}.row:hover{background:rgba(255,255,255,.04);padding-left:24px!important}
+.cta{position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease}
+.cta::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:shine 3.2s ease-in-out infinite}
+.cta:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 16px 40px -12px rgba(255,91,123,.7)}
+.recdot{animation:recp 1.4s ease-out infinite}
+.ringp{animation:ring 1.8s ease-out infinite}
+.grad{background:linear-gradient(110deg,#FFB347,#FF5B7B,#65E5D8,#FFB347);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:hue 6s ease infinite}
+.gbtn{background:linear-gradient(110deg,#FFB347,#FF5B7B 55%,#65E5D8);background-size:200% 100%;animation:hue 5s ease infinite}
+.bob{animation:bob 3s ease-in-out infinite}
+.wave{display:inline-block;transform-origin:70% 80%;animation:wave 2.4s ease-in-out 1s infinite}
+.dots span{display:inline-block;width:5px;height:5px;border-radius:9px;background:#FF8FA4;animation:dot 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+.grow{transform-origin:left;animation:grow 1.2s cubic-bezier(.22,1,.36,1) .4s both}
+.seg{opacity:.15;animation:seg .3s ease forwards}
+@keyframes blink{50%{opacity:0}}
+@keyframes popin{0%{opacity:0;transform:translateY(10px) scale(.94)}100%{opacity:1;transform:none}}
+@keyframes scan{0%{top:-30%}100%{top:110%}}
+@keyframes floaty{0%,100%{transform:translateY(0) rotate(var(--r,0deg))}50%{transform:translateY(-10px) rotate(var(--r,0deg))}}
+@keyframes orbit{to{transform:rotate(360deg)}}
+.caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:#FF5B7B;animation:blink 1s steps(1) infinite}
+.pop{animation:popin .5s cubic-bezier(.22,1,.36,1) both}
+.floaty{animation:floaty 5s ease-in-out infinite}
+.chip{transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease;cursor:pointer}
+.chip:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.28)!important}
+.inp{transition:border-color .2s ease,box-shadow .2s ease}.inp:focus{border-color:rgba(255,91,123,.6)!important;box-shadow:0 0 0 4px rgba(255,91,123,.14)}
+@keyframes wv{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+.wv{display:inline-flex;align-items:center;gap:3px;height:20px}.wv span{display:block;width:3px;height:20px;border-radius:2px;background:#FF5B7B;transform-origin:center;animation:wv .9s ease-in-out infinite}
+.wv span:nth-child(2){animation-delay:.12s}.wv span:nth-child(3){animation-delay:.24s}.wv span:nth-child(4){animation-delay:.36s}.wv span:nth-child(5){animation-delay:.48s}.wv span:nth-child(6){animation-delay:.2s}.wv span:nth-child(7){animation-delay:.05s}
+.sel{transition:transform .18s ease,border-color .2s ease,background .2s ease,box-shadow .2s ease;cursor:pointer}.sel:hover{transform:translateY(-3px)}
+.card{border-radius:18px;background:#111115;border:1px solid rgba(255,255,255,0.07)}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.12em;color:#8D8475}
+.btnL{padding:12px 18px;border-radius:12px;border:0;background:#F6F1E9;color:#0B0B0E;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btnG{padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#D8CFC2;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.opt{padding:13px 15px;border-radius:12px;border-width:1px;border-style:solid;font-family:inherit;font-size:14.5px;font-weight:500;text-align:left;cursor:pointer;transition:all .15s ease}
+.opt:hover{transform:translateY(-1px)}
+.fld{padding:12px 14px;border-radius:11px;border:1px solid rgba(255,255,255,0.1);background:#0B0B0E;color:#F6F1E9;font-family:inherit;font-size:15px;outline:none}
+.fld:focus{border-color:rgba(255,91,123,.6);box-shadow:0 0 0 4px rgba(255,91,123,.12)}
+.guess{padding:2px 8px;border-radius:99px;background:rgba(255,179,71,.14);color:#FFB347;font-size:10.5px;font-weight:700;letter-spacing:.05em}
+.card{border-radius:18px;background:#111115;border:1px solid rgba(255,255,255,0.07)}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.12em;color:#8D8475}
+.btnL{white-space:nowrap;flex-shrink:0;padding:12px 18px;border-radius:12px;border:0;background:#F6F1E9;color:#0B0B0E;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btnG{white-space:nowrap;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#D8CFC2;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.opt{padding:13px 15px;border-radius:12px;border-width:1px;border-style:solid;font-family:inherit;font-size:14.5px;font-weight:500;text-align:left;cursor:pointer;transition:all .15s ease}
+.opt:hover{transform:translateY(-1px)}
+.fld{min-width:0;box-sizing:border-box;padding:12px 14px;border-radius:11px;border:1px solid rgba(255,255,255,0.1);background:#0B0B0E;color:#F6F1E9;font-family:inherit;font-size:15px;outline:none}
+.fld:focus{border-color:rgba(255,91,123,.6);box-shadow:0 0 0 4px rgba(255,91,123,.12)}
+.guess{padding:2px 8px;border-radius:99px;background:rgba(255,179,71,.14);color:#FFB347;font-size:10.5px;font-weight:700;letter-spacing:.05em}
+.cam{position:absolute;inset:0;background-color:#141015;background-position:center 30%;background-size:cover;background-repeat:no-repeat;background-image:url(../assets/images/maya-talking-kitchen.jpg);animation:kb 22s ease-in-out infinite alternate;will-change:transform}
+@keyframes kb{0%{transform:scale(1.02) translate(0,0)}50%{transform:scale(1.07) translate(-1%,1%)}100%{transform:scale(1.04) translate(1%,-.5%)}}
+.cam .who{display:none}
+.cam::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.08) 45%,rgba(0,0,0,.4))}
+.who{position:absolute;left:50%;bottom:0;width:62%;transform:translateX(-50%)}
+.who i{display:block;margin:0 auto;width:44%;aspect-ratio:1/1.18;border-radius:999px;border:1.5px dashed rgba(246,241,233,.28);box-sizing:border-box}
+.who b{display:block;margin-top:10px;height:260px;border-radius:140px 140px 0 0;border:1.5px dashed rgba(246,241,233,.2);border-bottom:0;box-sizing:border-box}
+.fade{-webkit-mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(180deg,transparent,#000 22%,#000 78%,transparent)}
+.ctl{white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:5px;padding:0;border:0;background:transparent;color:#F6F1E9;font-family:inherit;font-size:11.5px;font-weight:600}
+.ctl span.ic{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center}
+.big{font-variant-numeric:tabular-nums}
+@keyframes cdz{0%{transform:scale(1.4);opacity:0}25%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.85}}
+.cdz{animation:cdz 1s ease-out infinite}
+@keyframes lvl{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+.lvl span{display:inline-block;width:4px;height:16px;border-radius:3px;background:#65E5D8;transform-origin:bottom;animation:lvl .9s ease-in-out infinite}
+.lvl span:nth-child(2){animation-delay:.12s}.lvl span:nth-child(3){animation-delay:.24s}.lvl span:nth-child(4){animation-delay:.36s}.lvl span:nth-child(5){animation-delay:.48s}
+@keyframes bar{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.indet{position:relative;overflow:hidden}.indet::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:bar 1.4s linear infinite}
+.scene{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 30%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55))}
+@view-transition{navigation:auto}
+@keyframes vtOut{to{opacity:0;transform:perspective(1600px) translateZ(-60px) rotateX(2deg)}}
+@keyframes vtIn{from{opacity:0;transform:perspective(1600px) translateY(18px) translateZ(40px) rotateX(-2deg)}}
+@keyframes pageIn{from{opacity:0}to{opacity:1}}
+.lv{animation:pageIn .45s ease-out both}
+a,button{transition:transform .15s ease,opacity .2s ease,background-color .2s ease,border-color .2s ease}
+button:active,a.cta:active,a.btnL:active,a.btnG:active{transform:scale(.97)}
+.ph{background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat}
+.phfill{position:absolute;inset:0;background-color:#141015;background-position:center 28%;background-size:cover;background-repeat:no-repeat;animation:kb 26s ease-in-out infinite alternate}
+.ph-coach{background-image:url(../assets/images/creator-coach-home.jpg)}
+.ph-local{background-image:url(../assets/images/maya-talking-kitchen.jpg)}
+.ph-realestate{background-image:url(../assets/images/creator-realestate-outdoors.jpg)}
+.ph-agency{background-image:url(../assets/images/creator-agency-desk.jpg)}
+.ph-g1{background-image:url(../assets/images/gallery-01-market-roaster.jpg)}
+.ph-g2{background-image:url(../assets/images/gallery-02-cafe-tasting.jpg)}
+.ph-g3{background-image:url(../assets/images/gallery-03-roasting-on-stove.jpg)}
+.ph-g4{background-image:url(../assets/images/gallery-04-beans-on-tray.jpg)}
+.ph-g5{background-image:url(../assets/images/gallery-05-cart-owner-on-phone.jpg)}
+.ph-g6{background-image:url(../assets/images/gallery-06-late-night-latte.jpg)}
+.ph-s_window{background-image:url(../assets/images/maya-holding-mug.jpg)}
+.ph-s_tray{background-image:url(../assets/images/maya-holding-beans.jpg)}
+.camv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;display:block}
+.rv-up,.rv-left,.rv-right,.rv-zoom,.rv-tilt,.rv-flip,.rv-rise{transition:opacity .9s cubic-bezier(.22,1,.36,1),transform 1.1s cubic-bezier(.22,1,.36,1),filter .9s ease}
+.rv-js .rv-up:not(.in){opacity:0;transform:translateY(70px)}
+.rv-js .rv-left:not(.in){opacity:0;transform:translateX(-90px)}
+.rv-js .rv-right:not(.in){opacity:0;transform:translateX(90px)}
+.rv-js .rv-zoom:not(.in){opacity:0;transform:scale(.88);filter:blur(10px)}
+.rv-js .rv-tilt:not(.in){opacity:0;transform:perspective(1200px) rotateX(16deg) translateY(60px)}
+.rv-js .rv-flip:not(.in){opacity:0;transform:perspective(1200px) rotateY(-14deg) translateX(-40px)}
+.rv-js .rv-rise:not(.in){opacity:0;transform:translateY(40px) scale(.97)}
+.rv-d1{transition-delay:.12s}.rv-d2{transition-delay:.24s}.rv-d3{transition-delay:.36s}.rv-d4{transition-delay:.48s}
+@media (prefers-reduced-motion: reduce){.rv-js [class*="rv-"]{opacity:1!important;transform:none!important;filter:none!important}}
+@keyframes wsRise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes wsSlide{from{opacity:0;transform:translateX(-40px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@keyframes wsCard{0%{opacity:0;transform:translateY(16px) scale(.96)}100%{opacity:1;transform:none}}
+@keyframes wsFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.wsRise{animation:wsRise .7s cubic-bezier(.22,1,.36,1) both}.wsSlide{animation:wsSlide .7s cubic-bezier(.22,1,.36,1) both}.wsCard{animation:wsCard .6s cubic-bezier(.22,1,.36,1) both}.wsFade{animation:wsFade .45s ease both}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;opacity:1!important;transition:none!important}}
+</style>
+</helmet>
+<div class="brandbg bgm lv" style="width: 390px; min-height: 844px; display: flex; flex-direction: column; background: #0B0B0E; font-family: Geist, system-ui, sans-serif; color: #F6F1E9; overflow: hidden">
+<div class="aur" aria-hidden="true" style="left: -160px; top: -160px; width: 460px; height: 460px; border-radius: 999px; background: radial-gradient(circle, rgba(255,179,71,0.16), rgba(255,179,71,0) 65%); animation: drift1 16s ease-in-out infinite; pointer-events: none"></div>
+<div aria-hidden="true" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 26px 6px; font-size: 14px; font-weight: 600"><span>9:41</span><span style="display: flex; gap: 6px; align-items: center"><span style="width: 17px; height: 10px; border-radius: 2px; border: 1.5px solid #F6F1E9; opacity: .9"></span></span></div><div style="padding:4px 20px 0;display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#8D8475"><span style="display:flex;align-items:center;gap:8px;color:#F6F1E9;font-weight:700;font-size:15px"><span class="gbtn" style="width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#0B0B0E;font-weight:800;font-size:12px">T</span>TwinAI</span><a href="#" style="color:#B7AE9F">Sign out</a></div>
+<div style="margin:14px 20px 0;display:flex;flex-direction:column;gap:8px"><div style="display:flex;gap:5px"><span style="flex:1;height:4px;border-radius:9px;background:#65E5D8"></span><span style="flex:1;height:4px;border-radius:9px;background:#65E5D8"></span><span style="flex:1;height:4px;border-radius:9px;background:#65E5D8"></span><span style="flex:1;height:4px;border-radius:9px;background:linear-gradient(90deg,#FFB347,#FF5B7B)"></span></div><span style="display:flex;justify-content:space-between;font-size:12px;color:#B7AE9F"><span>Step 4 of 4 · <b style="color:#F6F1E9">Your voice</b></span><a href="MConnect.dc.html" style="color:#8D8475">Start over</a></span></div>
+<div style="padding: 20px 20px 0; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; border: 1px dashed rgba(255,255,255,0.14); font-size: 11px; color: #6E675C; align-self: flex-start"><b style="letter-spacing: 0.08em">PREVIEW</b><sc-for list="{{ previews }}" as="f" hint-placeholder-count="2"><button type="button" onClick="{{ f.pick }}" style="padding: 4px 8px; border-radius: 6px; border: 0; background: {{ f.bg }}; color: {{ f.fg }}; font-family: inherit; font-size: 11px; cursor: pointer">{{ f.t }}</button></sc-for></div>
+<header class="pin d2" style="display: flex; flex-direction: column; gap: 14px"><span style="display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: #8FEDE3"><span style="width: 22px; height: 22px; border-radius: 22px; background: #65E5D8; color: #0B0B0E; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900">✓</span>This is your voice · tweak anything</span><h1 style="margin: 0; font-size: 25px; line-height: 1.15; font-weight: 700; letter-spacing: -0.03em">{{ title }}</h1><sc-if value="{{ auto }}" hint-placeholder-val="{{ true }}"><div style="position: relative; border-radius: 16px; padding: 1.5px; overflow: hidden"><div aria-hidden="true" style="position: absolute; left: 50%; top: 50%; width: 1400px; height: 1400px; margin: -700px 0 0 -700px; background: conic-gradient(from 0deg, rgba(255,179,71,0), rgba(255,179,71,0.9), rgba(255,91,123,0.8), rgba(255,179,71,0) 35%); animation: spinb 7s linear infinite"></div><div style="position: relative; padding: 14px; border-radius: 14.5px; background: #15121A; display: flex; flex-direction: column; gap: 8px"><span style="display: flex; justify-content: space-between; align-items: center"><span class="lbl" style="color: #FFB347">AN OPENING I’D WRITE AS YOU</span><button type="button" onClick="{{ nextHook }}" style="padding: 5px 10px; border-radius: 99px; border: 1px solid rgba(255,255,255,0.12); background: transparent; color: #F6F1E9; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer">↻ Another</button></span><p style="margin: 0; min-height: 60px; font-size: 17px; line-height: 1.4; font-weight: 600">"{{ hook }}<span class="caret"></span>"</p><p style="margin: 0; font-size: 13.5px; line-height: 1.45; color: #8D8475">or: "{{ hook2 }}"</p></div></div></sc-if></header>
+<section class="pin d3" style="display: flex; flex-direction: column; gap: 12px"><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 20px; font-weight: 700">What Twin needs from you</h2><p style="margin: 0; font-size: 14px; color: #B7AE9F">No scan can read these, and each one changes what your scripts say.</p></div><div class="card" style="padding: 14px; display: flex; flex-direction: column; gap: 12px"><span style="display: flex; align-items: center; gap: 10px"><span style="font-size: 15.5px; font-weight: 600">Your own product</span><sc-if value="{{ prodGuess }}" hint-placeholder-val="{{ true }}"><span class="guess">FROM WHAT YOU DO</span></sc-if></span><sc-if value="{{ prodGuess }}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 12px"><span style="display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px; line-height: 1.5; color: #D8CFC2">We’ll treat <b style="color: #F6F1E9">Maya’s Coffee</b> as your own physical product.</span><span style="font-size: 13px; color: #8D8475">So a script may speak for it, and say what it costs.</span></span><span style="display: flex; gap: 8px; flex-wrap: wrap"><button type="button" onClick="{{ pYes }}" class="btnL" style="padding: 9px 14px; font-size: 13.5px">Yes, that’s mine</button><button type="button" onClick="{{ pSplit }}" class="btnG" style="padding: 9px 14px; font-size: 13.5px">These are separate products</button><button type="button" onClick="{{ pNo }}" class="btnG" style="padding: 9px 14px; font-size: 13.5px">That’s not right, I don’t own one</button></span></div></sc-if><sc-if value="{{ prodYes }}" hint-placeholder-val="{{ false }}"><span class="pop" style="font-size: 14px; color: #8FEDE3">✓ Maya’s Coffee is yours. You’ll find it in Brands & products. <button type="button" onClick="{{ pUndo }}" style="border: 0; background: transparent; color: #8D8475; font-family: inherit; font-size: 13px; cursor: pointer">Undo</button></span></sc-if><sc-if value="{{ prodNo }}" hint-placeholder-val="{{ false }}"><span class="pop" style="font-size: 14px; color: #B7AE9F">No product of your own, then. Scripts won’t speak for one. <button type="button" onClick="{{ pUndo }}" style="border: 0; background: transparent; color: #FF8FA4; font-family: inherit; font-size: 13px; cursor: pointer">Actually, I do own one</button></span></sc-if><sc-if value="{{ prodSplit }}" hint-placeholder-val="{{ false }}"><div class="pop" style="display: flex; flex-direction: column; gap: 10px"><span style="font-size: 13.5px; line-height: 1.45; color: #B7AE9F">We’ll add each one as its own item. Free content is noted, not added as something you sell.</span><div style="display: flex; flex-wrap: wrap; gap: 7px"><sc-for list="{{ pieces }}" as="p" hint-placeholder-count="4"><span class="pop" style="display: inline-flex; align-items: center; gap: 8px; padding: 7px 8px 7px 12px; border-radius: 99px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); font-size: 13.5px">{{ p.t }} <span style="color: #8D8475">· {{ p.k }}</span><button type="button" onClick="{{ p.rm }}" aria-label="Remove" style="width: 22px; height: 22px; border-radius: 99px; border: 0; background: rgba(255,255,255,0.07); color: #B7AE9F; font-family: inherit; cursor: pointer">×</button></span></sc-for></div><span style="display: flex; gap: 10px; align-items: center"><button type="button" onClick="{{ pYes }}" class="btnL" style="padding: 9px 14px; font-size: 13.5px">{{ saveSplit }}</button><button type="button" onClick="{{ pUndo }}" style="border: 0; background: transparent; color: #8D8475; font-family: inherit; font-size: 13px; cursor: pointer">Keep it as one</button></span></div></sc-if></div><div class="card" style="padding: 14px; display: flex; flex-direction: column; gap: 12px"><span style="font-size: 15.5px; font-weight: 600">Is there anything you’re not allowed to claim?</span><div style="display: grid; grid-template-columns: 1fr; gap: 7px"><sc-for list="{{ claims }}" as="c" hint-placeholder-count="7"><button type="button" onClick="{{ c.tog }}" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 9px 12px; border-radius: 11px; border: 1px solid rgba(255,255,255,0.07); background: {{ c.cbg }}; color: #F6F1E9; font-family: inherit; font-size: 14px; text-align: left; cursor: pointer"><span style="flex-shrink: 0; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid {{ c.bd }}; background: {{ c.box }}; color: #0B0B0E; font-size: 11px; font-weight: 900; display: flex; align-items: center; justify-content: center">{{ c.mark }}</span>{{ c.t }}</button></sc-for></div><label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #B7AE9F">Anything else you’re not allowed to say<input class="fld" value="{{ otherClaim }}" placeholder="e.g. never mention our supplier by name"></label><sc-if value="{{ found }}" hint-placeholder-val="{{ true }}"><div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: rgba(255,179,71,0.07); font-size: 13px; color: #FFCB85"><span style="flex-grow: 1">We found this in your posts. Is it right? Edit it if not.</span><button type="button" onClick="{{ fOk }}" style="padding: 6px 10px; border-radius: 8px; border: 0; background: #FFB347; color: #0B0B0E; font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer">Yes, it’s right</button></div></sc-if><span style="font-size: 12.5px; color: #8D8475">We’ll keep these out of every script. Write “none” if there are no restrictions.</span></div></section>
+<section class="pin d4 card" style="overflow: hidden"><button type="button" onClick="{{ togV }}" style="width: 100%; display: flex; align-items: center; gap: 14px; padding: 14px; border: 0; background: transparent; color: #F6F1E9; font-family: inherit; text-align: left; cursor: pointer"><span style="flex-grow: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 18px; font-weight: 700">Your voice</span><span style="font-size: 13px; line-height: 1.45; color: #8D8475">{{ digest }}</span></span><span style="flex-shrink: 0; padding: 6px 12px; border-radius: 99px; border: 1px solid rgba(255,255,255,0.12); font-size: 12.5px; color: #D8CFC2">{{ vLabel }}</span></button><sc-if value="{{ vClosed }}" hint-placeholder-val="{{ false }}"><div style="padding: 0 14px 14px; display: flex; flex-direction: column"><sc-for list="{{ plain }}" as="f" hint-placeholder-count="5"><span style="display: flex; gap: 14px; padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 13.5px"><span style="flex-shrink: 0; width: 104px; color: #6E675C">{{ f.k }}</span><span style="line-height: 1.4">{{ f.v }}</span></span></sc-for></div></sc-if><sc-if value="{{ vOpen }}" hint-placeholder-val="{{ true }}"><div class="pop" style="padding: 0 14px 16px; display: flex; flex-direction: column; gap: 16px"><div style="display: grid; grid-template-columns: 1fr; gap: 10px"><sc-for list="{{ sum }}" as="f" hint-placeholder-count="4"><label style="display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: #8D8475">{{ f.k }}<input class="fld" value="{{ f.v }}" placeholder="{{ f.ph }}" style="font-size: 14px"></label></sc-for></div><sc-for list="{{ tags }}" as="g" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 7px"><span style="font-size: 12.5px; color: #8D8475">{{ g.k }}</span><div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center"><sc-for list="{{ g.items }}" as="t" hint-placeholder-count="3"><button type="button" onClick="{{ t.rm }}" class="pop" style="padding: 6px 10px; border-radius: 99px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #E6DED2; font-family: inherit; font-size: 13px; cursor: pointer">{{ t.t }} <span style="color: #6E675C">×</span></button></sc-for><input class="fld" placeholder="+ add" style="padding: 6px 11px; border-radius: 99px; font-size: 13px; width: 110px"></div></div></sc-for><label style="display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: #8D8475">What you push against (your “enemy”)<input class="fld" value="{{ enemy }}" placeholder="The bad advice or take you argue against" style="font-size: 14px"></label><sc-for list="{{ tags2 }}" as="g" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 7px"><span style="font-size: 12.5px; color: #8D8475">{{ g.k }}</span><div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center"><sc-for list="{{ g.items }}" as="t" hint-placeholder-count="3"><button type="button" onClick="{{ t.rm }}" class="pop" style="padding: 6px 10px; border-radius: 99px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #E6DED2; font-family: inherit; font-size: 13px; cursor: pointer">{{ t.t }} <span style="color: #6E675C">×</span></button></sc-for><input class="fld" placeholder="+ add" style="padding: 6px 11px; border-radius: 99px; font-size: 13px; width: 110px"></div></div></sc-for><span style="font-size: 12.5px; color: #8FEDE3">We’ll sharpen this from how you actually talk on camera within a few minutes. Your spoken voice is the strongest signal.</span></div></sc-if></section>
+</div>
+<div style="position: sticky; bottom: 0; margin-top: 22px; padding: 14px 20px 26px; background: linear-gradient(180deg, rgba(11,11,14,0), #0B0B0E 30%); display: flex; gap: 8px"><a href="MStories.dc.html" class="btnG" style="padding: 14px 16px">←</a><a href="MCreate.dc.html" class="cta gbtn" style="flex-grow: 1; display: flex; justify-content: center; padding: 15px; border-radius: 14px; color: #0B0B0E; font-size: 15.5px; font-weight: 700; text-decoration: none">This is me, enter the studio →</a></div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2000}}'>
+class Component extends DCLogic {
+  componentDidMount() { this.t = setInterval(() => { const s = this.state || {}; const L = this.hooks()[s.h || 0].length; if ((s.k || 0) < L) this.setState({ k: (s.k || 0) + 2 }); }, 30); }
+  componentWillUnmount() { clearInterval(this.t); }
+  hooks() { return ['Everyone asks what roast is strongest. Honestly? You’ve been lied to.', 'I roast in batches smaller than your kitchen sink. Here’s why that matters.', 'It’s 5am and nobody films this part of running a coffee cart.']; }
+  renderVals() {
+    const s = this.state || {}; const man = !!s.man; const prod = s.prod || 'guess'; const cl = s.cl || {}; const rm = s.rm || {}; const pr = s.pr || {};
+    const vOpen = s.vo === undefined ? man : s.vo; const H = this.hooks(); const h = s.h || 0;
+    const CL = [['No guaranteed outcomes', true], ['No medical or health claims', true], ['No income or earnings claims', false], ['Never the word “cure”', false], ['No before-and-after comparisons', false], ['Must say “consult a professional”', false], ['No naming competitors', true]];
+    const isOn = (i) => cl[i] === undefined ? (man ? false : CL[i][1]) : cl[i];
+    const PIECES = [['Signature Blend beans', 'product'], ['Single-Origin Colombia', 'product'], ['Weekend coffee cart', 'service / advice'], ['Free home-brewing guide', 'free content']];
+    const pieces = PIECES.map((x, i) => ({ t: x[0], k: x[1], rm: () => this.setState({ pr: Object.assign({}, pr, { [i]: true }) }), i })).filter(x => !pr[x.i]);
+    const sellable = pieces.filter(x => x.k !== 'free content').length;
+    const F = [['Niche', 'Micro coffee roasting and a home-started coffee cart'], ['Tone', 'Warm, dry, a bit self-deprecating'], ['Pacing', 'Relaxed, about 45 seconds, one idea per video'], ['Opening style', 'A real question people ask, answered straight']];
+    const ENEMY = 'The idea that you need big money and fancy gear to start';
+    const TAGS = [['Signature words', ['honestly', 'tiny batch', 'from my kitchen', 'figure-out-able', 'here’s the thing', 'no plan, just start', 'smell that?']], ['Recurring endings', ['Come find the cart this weekend', 'Tell me your brew method', 'Save this for your next bag']], ['Do', ['Show the real mess', 'Name the actual gear', 'Give the price']], ['Don’t', ['Sound like an ad', 'Use coffee-snob words', 'Talk down to beginners']]];
+    const TAGS2 = [['Your point of view', ['Start small beats waiting for money', 'Fresh beats fancy']], ['Openings you use', ['A question people ask me', 'A myth, then the truth', 'A confession']], ['Your video formats', ['Talking at the counter', 'Behind the scenes roast day', 'Taste test with a customer']]];
+    const mk = (G, off) => G.map((x, gi) => ({ k: x[0], items: (man ? [] : x[1]).map((t, j) => ({ t, key: (gi + off) + '.' + j })).filter(o => !rm[o.key]).map(o => ({ t: o.t, rm: () => this.setState({ rm: Object.assign({}, rm, { [o.key]: true }) }) })) }));
+    const nSig = man ? 0 : TAGS[0][1].filter((t, j) => !rm['0.' + j]).length; const nEnd = man ? 0 : TAGS[1][1].filter((t, j) => !rm['1.' + j]).length;
+    return {
+      man, auto: !man, previews: [['scan', 'From a scan'], ['man', 'Manual path (empty)']].map(x => ({ t: x[1], pick: () => this.setState({ man: x[0] === 'man', vo: undefined, cl: {}, rm: {} }), bg: (x[0] === 'man') === man ? '#F6F1E9' : 'transparent', fg: (x[0] === 'man') === man ? '#0B0B0E' : '#8D8475' })),
+      title: man ? 'Here’s how you sound' : 'Warm, honest coffee talk from a tiny roastery, for people who dream of starting their own.',
+      hook: H[h].slice(0, s.k || 0), hook2: H[(h + 1) % H.length], nextHook: () => this.setState({ h: (h + 1) % H.length, k: 0 }),
+      prodGuess: prod === 'guess', prodYes: prod === 'yes', prodNo: prod === 'no', prodSplit: prod === 'split',
+      pYes: () => this.setState({ prod: 'yes' }), pNo: () => this.setState({ prod: 'no' }), pSplit: () => this.setState({ prod: 'split', pr: {} }), pUndo: () => this.setState({ prod: 'guess' }),
+      pieces, saveSplit: 'Add ' + sellable + ' as separate ' + (sellable === 1 ? 'item' : 'items'),
+      claims: CL.map((x, i) => { const o = isOn(i); return { t: x[0], tog: () => this.setState({ cl: Object.assign({}, cl, { [i]: !o }) }), box: o ? '#65E5D8' : 'transparent', bd: o ? '#65E5D8' : 'rgba(255,255,255,0.25)', mark: o ? '✓' : '', cbg: o ? 'rgba(101,229,216,0.06)' : '#0E0E12' }; }),
+      otherClaim: man ? '' : 'Never name our green-coffee importer', found: !man && !s.fok, fOk: () => this.setState({ fok: true }),
+      vOpen, vClosed: !vOpen, vLabel: vOpen ? 'Hide' : 'Show', togV: () => this.setState({ vo: !vOpen }),
+      digest: man ? 'The scan found nothing to fill these in. Add them now or leave them, and Twin will learn them from how you talk on camera.' : 'Coffee roasting · Warm, dry · ' + nSig + ' signature phrases · ' + nEnd + ' recurring endings. Tap Show to change anything.',
+      plain: [...F, ['What you push against', ENEMY]].map(x => ({ k: x[0], v: man ? '—' : x[1] })),
+      sum: F.map(x => ({ k: x[0], v: man ? '' : x[1], ph: man ? 'In your words' : '' })),
+      enemy: man ? '' : ENEMY,
+      tags: mk(TAGS, 0), tags2: mk(TAGS2, 10)
+    };
+  }
+}
+</script>
+</body>
+</html>
