@@ -35,6 +35,8 @@ import { voicePolishBrief, voicePolishVerdict, polishFactChecks, type VoiceCard 
 import { reorderEnding, reorderCheck } from '../generated/spineComplete.js'
 import { runQualityController, qcLogRecord, type QcProfile } from '../generated/qualityController.js'
 import { panelFinalPass } from '../generated/panelFinalPass.js'
+import { setUrlSafeSplitting } from '../generated/urlSafe.js'
+import { scriptCleanupV1, finalPassCuts } from '../generated/scriptCleanupV1.js'
 
 const PANEL_STORY_ORIGINS = new Set(['her_story', 'her_answer'])
 /** ⚖️ PANEL FINAL PASS (panel 13b, 9 Nov). Runs right after the QC, only when
@@ -61,6 +63,32 @@ export function applyPanelFinalPass(bp: Record<string, unknown>, extra: Record<s
   } catch (e) {
     bp.panel_final_pass = { error: true }
     console.warn(JSON.stringify({ event: 'panel_final_pass_failed', generation_id: generationId, error: String((e as Error)?.name ?? 'error') }))
+  }
+}
+
+/** ⚖️ SCRIPT CLEANUP V1 (panel 13c; default OFF). Runs last, only when the
+ *  edge put `script_cleanup_v1: true` on the job (SCRIPT_CLEANUP_V1=on there).
+ *  Cuts only; never fails the job. Logs counts only. */
+export function applyScriptCleanupV1(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: ReadonlyArray<{ origin?: unknown; product_id?: unknown; text?: unknown }>, products: Array<{ id: string; name: string }>, generationId: string): void {
+  if (extra.script_cleanup_v1 !== true || !Array.isArray(bp.script)) return
+  try {
+    const items = ledger.filter((it) => String(it.text ?? '').trim())
+    const r = scriptCleanupV1(bp.script as Array<Record<string, unknown>>, {
+      stories: items.filter((it) => PANEL_STORY_ORIGINS.has(String(it.origin))).map((it) => String(it.text)),
+      products: products.map((p) => ({ id: p.id, name: p.name, facts: items.filter((it) => it.origin === 'product_fact' && String(it.product_id ?? '') === p.id).map((it) => String(it.text)) })),
+      offers: items.filter((it) => it.origin === 'offer').map((it) => String(it.text)),
+    }, 3, {
+      // Cuts never stack: the edge's running total (its final pass and cleanup)
+      // plus this job's final pass count against the same cap of 2.
+      priorCuts: (Number(bp.script_cuts_total) || 0) + (extra.panel_final_pass ? finalPassCuts(bp.panel_final_pass) : 0),
+    })
+    bp.script_cuts_total = r.cut.total
+    if (r.cut.dangling_last + r.cut.fact_repeat + r.cut.story_repeat) { bp.script = r.beats; resyncShotListToScript(bp) }
+    bp.script_cleanup_v1 = r.cut
+    console.log(JSON.stringify({ event: 'script_cleanup_v1', where: 'worker', generation_id: generationId, ...r.cut }))
+  } catch (e) {
+    bp.script_cleanup_v1 = { error: true }
+    console.warn(JSON.stringify({ event: 'script_cleanup_v1_failed', generation_id: generationId, error: String((e as Error)?.name ?? 'error') }))
   }
 }
 
@@ -274,6 +302,8 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
   }
 
   const extra = rec(payload.ledger)
+  // SCRIPT_CLEANUP_V1 (default OFF): URL-safe splitting for this job only when the edge flagged it.
+  setUrlSafeSplitting(extra.script_cleanup_v1 === true)
   const used = await deps.loadKnowledge(generationId)
   // ⚖️ PLAN v5.4 §20 (owner): her ONBOARDING ANSWERS (niche, profile, story,
   // product slot, pillars, background) are first-party items. A line that says
@@ -419,6 +449,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
     bp.invention_gate = gate.record
     applyQualityController(bp, extra, ledger, products, target, generationId)
     applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
+    applyScriptCleanupV1(bp, extra, ledger, products, generationId)
     bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
     await chain
     await deps.saveBlueprint(generationId, bp)
@@ -491,6 +522,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
   }
   applyQualityController(bp, extra, ledger, products, target, generationId)
   applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
+  applyScriptCleanupV1(bp, extra, ledger, products, generationId)
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
   // No progress write may land after (and clobber) the result.
   await chain

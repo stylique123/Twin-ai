@@ -2,6 +2,7 @@
 // Run: node scripts/ci/generate_shared_pilot_core.mjs
 // Edit the source instead. CI regenerates this file and fails on a diff.
 // @ts-nocheck
+import { sentenceMatch } from './urlSafe.ts'
 // A LINE SAID IN TWO OF HER LAST FIVE SCRIPTS RESTS (owner 2026-10-07).
 //
 // Paired set: "no clean formula" in 7 of 37 scripts, "start small from home"
@@ -38,7 +39,7 @@ export function repeatedSentences(lines: readonly string[], recentScripts: reado
   const recent = recentScripts.map((s) => grams(s))
   const out: string[] = []
   for (const line of lines) {
-    for (const sentence of line.match(/[^.!?]+[.!?]*/g) ?? []) {
+    for (const sentence of sentenceMatch(line, /[^.!?]+[.!?]*/g) ?? []) {
       const s = sentence.trim()
       if (norm(s).length < 5) continue
       const seen = recent.filter((r) => overlap(s, r) >= LINE_REPEAT_OVERLAP).length
@@ -56,7 +57,7 @@ export function restRepeatedLines<B extends { line?: unknown }>(beats: readonly 
   const removed: string[] = []
   let out: B[] = beats.map((b, i) => {
     if (typeof b.line !== 'string' || i === 0 || i === beats.length - 1) return b
-    const sents = b.line.match(/[^.!?]+[.!?]*/g) ?? []
+    const sents = sentenceMatch(b.line, /[^.!?]+[.!?]*/g) ?? []
     const kept = sents.filter((s) => !bad.has(s.trim()))
     if (kept.length === sents.length) return b
     removed.push(...sents.filter((s) => bad.has(s.trim())).map((s) => s.trim()))

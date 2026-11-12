@@ -323,6 +323,11 @@ const SOURCES = [
   ['packages/shared/src/script/panelFinalPass.ts', 'worker/src/generated/panelFinalPass.ts'],
   ['packages/shared/src/script/scriptHygiene.ts', 'worker/src/generated/scriptHygiene.ts'],
   ['packages/shared/src/script/productFactScope.ts', 'worker/src/generated/productFactScope.ts'],
+  // SCRIPT_CLEANUP_V1 (panel 13c, default off): URL-safe splitting and the cut-only cleanup.
+  ['packages/shared/src/script/urlSafe.ts', 'supabase/functions/_shared/urlSafe.ts'],
+  ['packages/shared/src/script/urlSafe.ts', 'worker/src/generated/urlSafe.ts'],
+  ['packages/shared/src/script/scriptCleanupV1.ts', 'supabase/functions/_shared/scriptCleanupV1.ts'],
+  ['packages/shared/src/script/scriptCleanupV1.ts', 'worker/src/generated/scriptCleanupV1.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

@@ -2,6 +2,7 @@
 // Run: node scripts/ci/generate_shared_pilot_core.mjs
 // Edit the source instead. CI regenerates this file and fails on a diff.
 // @ts-nocheck
+import { sentenceMatch } from './urlSafe.ts'
 // LEFTOVERS THE OWNER FOUND IN BLIND SET 1 (2026-10-05), removed after writing.
 //
 // · An empty bridge opening a beat — "And this is the part people miss." /
@@ -38,7 +39,7 @@ export function stripClaimIntensifiers(line: string): string {
 // comments?" Two sentences in one line repeating the same 4-word ask: the
 // earlier one is dropped, the question kept.
 export function dropRepeatedAsk(line: string): string {
-  const sents = line.match(/[^.!?]+[.!?]*/g)?.map((x) => x.trim()).filter(Boolean) ?? []
+  const sents = sentenceMatch(line, /[^.!?]+[.!?]*/g)?.map((x) => x.trim()).filter(Boolean) ?? []
   if (sents.length < 2) return line
   const grams = (t: string) => {
     const w = t.toLowerCase().replace(/[^a-z' ]+/g, ' ').split(/\s+/).filter(Boolean)
@@ -180,7 +181,7 @@ const STOCK_CLOSER = /(?:,\s*|^|(?<=[.!?])\s+)(?:(?:and|so)\s+)?(?:that(?:'s| is
 export const QUESTION_CAP_MAX = 2
 const TAG_Q = /,\s*(?:right|isn'?t it|don'?t you think|you know|huh|no)\?\s*$/i
 
-const sentencesOfLine = (s: string) => (s.match(/[^.!?]+[.!?]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
+const sentencesOfLine = (s: string) => (sentenceMatch(s, /[^.!?]+[.!?]*/g) ?? []).map((x) => x.trim()).filter(Boolean)
 const isQuestion = (s: string) => /\?\s*$/.test(s)
 
 export function questionCap(sentences: number): number {
