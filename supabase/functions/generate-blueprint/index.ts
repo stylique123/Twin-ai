@@ -10789,7 +10789,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const factsOnlyAll = factsOnlyNow() && !chosenRows
       ? kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered' && factsOnlyKeepsRow(k as never, new Set(uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids))))
       : null
-    const speakableAll = factsOnlyAll ?? chosenRows ?? [
+    const speakableAll = chosenRows ?? factsOnlyAll ?? [
       ...askedHold.reserved,
       ...selectSpeakable(
         askedHold.pool,
