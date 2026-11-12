@@ -11,6 +11,10 @@ on:
       label:
         description: 'Panel batch label to export (e.g. panel-13c)'
         required: true
+      trace:
+        description: 'Also write trace.json (read-only: per-line origin, stages, handed vs stored counts) as a separate artifact'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,7 +41,7 @@ jobs:
       - name: Build the blind pack (key stays on the runner)
         run: |
           case "$LABEL" in *[!A-Za-z0-9._-]*|'') echo "::error::label must be letters, digits, . _ -"; exit 1;; esac
-          node scripts/ops/panelBlindPack.mjs "$LABEL" --out="$RUNNER_TEMP/pack"
+          node scripts/ops/panelBlindPack.mjs "$LABEL" --out="$RUNNER_TEMP/pack" ${{ inputs.trace && '--trace' || '' }}
           mkdir -p "$RUNNER_TEMP/upload"
           cp "$RUNNER_TEMP/pack/blind.md" "$RUNNER_TEMP/pack/report.json" "$RUNNER_TEMP/upload/"
         env:
@@ -49,5 +53,13 @@ jobs:
         with:
           name: panel-blind-${{ inputs.label }}
           path: ${{ runner.temp }}/upload/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload trace.json (read-only trace, only when asked)
+        if: ${{ inputs.trace }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-trace-${{ inputs.label }}
+          path: ${{ runner.temp }}/pack/trace.json
           if-no-files-found: error
           retention-days: 14
