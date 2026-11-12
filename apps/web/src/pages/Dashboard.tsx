@@ -1,62 +1,80 @@
+// Home (/dashboard), built from the Home board (>=768) and MHome (<768).
+// Real data only: every number and line comes from the creator's own scripts,
+// posts and connections. Pieces the app has no data for are left out (see the
+// Part 3a PR's backend list) rather than filled with an example.
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import {
-  Wand2, LayoutGrid, Clapperboard, Send, Sparkles, ArrowUpRight, FileText, Loader2, TrendingUp, Zap,
-  Gift, Copy, Check, Clock, Eye, Trophy, ChevronDown,
-} from 'lucide-react'
+import { Eye, Check, ChevronDown, Trophy, Loader2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, recordPostStats, validateClaim, resolveFinishedOutputsResult, type BrandStats, type DashboardStats, type FinishedOutput, type OutcomeClaim, type Post } from '../lib/api'
+import {
+  claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listConnections, listGenerations, listPosts,
+  recordPostStats, validateClaim, resolveFinishedOutputsResult,
+  type BrandStats, type DashboardStats, type FinishedOutput, type OutcomeClaim, type PlatformConnection, type Post,
+} from '../lib/api'
 import type { BrandVoice, Generation } from '../lib/types'
-import { draftTitle } from '@twinai/shared'
-import { Aurora } from '../components/Aurora'
+import { draftTitle, estimateDurationSec } from '@twinai/shared'
 import { AddYourProductCard } from '../components/AddYourProductCard'
 import { OutcomeHistory } from '../components/OutcomeHistory'
-import { Reveal, Stagger, RevealItem } from '../components/motion'
-import { Counter } from '../components/Counter'
+import { OPEN_SHELL_MENU } from '../components/AppShell'
 import { cn } from '../lib/cn'
+import '../styles/onboarding.css'
+import '../styles/app.css'
 
 // Stale-while-revalidate cache (module-scoped, survives route changes) so hopping
-// back to the Dashboard is INSTANT — it renders last data immediately and refetches
-// in the background — instead of blanking to skeletons and re-hitting four endpoints
-// every single visit (the "everything takes so long between screens" complaint).
-let DASH_CACHE: { stats: DashboardStats | null; recent: Generation[]; gens: Generation[]; posts: Post[]; voices: BrandVoice[] } | null = null
+// back to Home is INSTANT — it renders last data immediately and refetches in the
+// background instead of blanking and re-hitting every endpoint on each visit.
+let DASH_CACHE: { stats: DashboardStats | null; gens: Generation[]; posts: Post[]; voices: BrandVoice[] } | null = null
+
+/** Spoken length of a script, from its own lines (the teleprompter's estimate). */
+function runtimeSec(g: Generation): number {
+  const lines = g.blueprint?.script ?? []
+  return Math.round(lines.reduce((t, b) => t + estimateDurationSec(b.line || null), 0))
+}
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+const lengthLabel = (s: number) => (s < 60 ? `${s}-second video` : `${mmss(s)} video`)
+function placesOf(g: Generation): number {
+  const set = new Set((g.blueprint?.script ?? []).map((b) => (b.location ?? '').trim().toLowerCase()).filter(Boolean))
+  return set.size
+}
+function firstLines(g: Generation): string[] {
+  return (g.blueprint?.script ?? []).map((b) => (b.line ?? '').trim()).filter(Boolean).slice(0, 3)
+}
+function greeting(d = new Date()): string {
+  const h = d.getHours()
+  return h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening'
+}
 
 export default function Dashboard() {
   const { profile } = useAuth()
   const [stats, setStats] = useState<DashboardStats | null>(() => DASH_CACHE?.stats ?? null)
-  const [recent, setRecent] = useState<Generation[]>(() => DASH_CACHE?.recent ?? [])
   const [gens, setGens] = useState<Generation[]>(() => DASH_CACHE?.gens ?? [])
-  // OUTPUT-1: the week deltas below counted `edit_path` only, so an editor-v2
-  // render landed in "Drafts" on the creator's own dashboard.
+  // OUTPUT-1: an editor-v2 render must count as finished, not as a draft.
   const [finished, setFinished] = useState<Map<string, FinishedOutput>>(new Map())
-  // See `outputsKnown` below: an empty `finished` is ambiguous on its own.
+  // An empty `finished` is ambiguous on its own: did the lookup run?
   const [finishedComplete, setFinishedComplete] = useState(true)
   const [posts, setPosts] = useState<Post[]>(() => DASH_CACHE?.posts ?? [])
   const [voices, setVoices] = useState<BrandVoice[]>(() => DASH_CACHE?.voices ?? [])
+  const [conns, setConns] = useState<PlatformConnection[] | null>(null)
   const [selectedBrand, setSelectedBrand] = useState('') // '' = all brands
   const [brandStats, setBrandStats] = useState<BrandStats | null>(null)
-  // Only block on the skeleton when there's nothing cached to show.
   const [loading, setLoading] = useState(() => !DASH_CACHE)
   const [error, setError] = useState(false)
 
   const credits = profile?.credits ?? 0
 
-  // Extracted so a failed load surfaces a real retry instead of leaving every
-  // stat stuck on "…" with no way to recover. With cached data present we refetch
-  // SILENTLY (no skeleton flash); only a cold load shows the loading state.
+  // A failed load surfaces a real retry. With cached data present we refetch
+  // SILENTLY; only a cold load shows the loading state.
   const load = () => {
     if (!DASH_CACHE) setLoading(true)
     setError(false)
     Promise.all([getDashboardStats(credits), listGenerations(), listPosts(), listBrandVoices().catch(() => [])])
       .then(([s, g, p, vs]) => {
         const readyVoices = (vs as BrandVoice[]).filter((v) => v.status === 'ready')
-        const recent5 = g.slice(0, 5)
-        setStats(s); setRecent(recent5); setGens(g); setPosts(p); setVoices(readyVoices)
+        setStats(s); setGens(g); setPosts(p); setVoices(readyVoices)
         resolveFinishedOutputsResult(g)
           .then((r) => { setFinished(r.outputs); setFinishedComplete(r.complete) })
           .catch(() => setFinishedComplete(false))
-        DASH_CACHE = { stats: s, recent: recent5, gens: g, posts: p, voices: readyVoices }
+        DASH_CACHE = { stats: s, gens: g, posts: p, voices: readyVoices }
       })
       .catch(() => { if (!DASH_CACHE) setError(true) })
       .finally(() => setLoading(false))
@@ -66,6 +84,9 @@ export default function Dashboard() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credits])
+  // Whether TikTok is connected decides the Posted line and the Connect card.
+  // Fails soft to "unknown" (null), which shows neither claim.
+  useEffect(() => { listConnections().then(setConns).catch(() => setConns(null)) }, [])
 
   // Agency view: scope the headline counts to one client brand.
   useEffect(() => {
@@ -76,306 +97,312 @@ export default function Dashboard() {
   const brand = voices.find((v) => v.is_default) ?? voices[0] ?? null
   const isAgency = profile?.plan === 'agency'
   const scoped = !!(selectedBrand && brandStats)
-  // Stage tiles — mutually exclusive, derived from the generation lifecycle (same
-  // source as the Library chips). draft = script only; ready = finished video;
-  // published = posted. drafts + ready + published = total remixes.
-  // `undefined` means UNKNOWN, and `StatCard` already renders that as "…" —
-  // which is what these two must show when the readiness lookup did not run.
-  // Drafts and Ready are derived from it; a failed resolve makes every video
-  // look unfinished, so `drafts` would silently absorb the whole library and
-  // the home screen would tell a creator none of their work is done. Published
-  // comes from `posts` and is unaffected.
+  // `undefined` means UNKNOWN: a failed readiness lookup makes every video look
+  // unfinished, so the counts it feeds are withheld rather than shown wrong.
   const outputsKnown = scoped || (stats?.outputsComplete ?? true)
   const draftsVal = scoped ? brandStats!.drafts : (outputsKnown ? stats?.drafts : undefined)
   const readyVal = scoped ? brandStats!.ready : (outputsKnown ? stats?.ready : undefined)
   const publishedVal = scoped ? brandStats!.published : stats?.published
+  const writtenVal = draftsVal !== undefined && readyVal !== undefined && publishedVal !== undefined ? draftsVal + readyVal + publishedVal : undefined
   const streak = postingStreak(posts)
-  // The learning loop (panel: analytics that actually TEACHES): tie each post's
-  // self-reported views back to the FORMAT it was built from, and surface the
-  // format that's winning for this creator. Available to everyone (not paywalled).
   const formatInsight = useMemo(() => computeFormatInsight(posts, gens), [posts, gens])
-  // Creator-facing value: hours saved (~30 min per script written + ~90 min per
-  // finished video) and the top-performing post by their self-reported views.
-  const totalRemixes = stats ? stats.drafts + stats.ready + stats.published : 0
-  const finishedVideos = stats ? stats.ready + stats.published : 0
-  const hoursSaved = Math.round(totalRemixes * 0.5 + finishedVideos * 1.5)
   const topId = posts.reduce((best, p) => ((p.views ?? 0) > 0 && (p.views ?? 0) > (posts.find((x) => x.id === best)?.views ?? 0) ? p.id : best), '')
 
-  // Greet with the ACTIVE BRAND VOICE handle first (@itsabd_63) — the identity the
-  // creator cares about — then a set display name. The email prefix is a LAST
-  // resort AND only once brand voices have finished loading: otherwise the name
-  // flashed the email ("abd63…") for a beat before the handle arrived. While the
-  // voices are still loading we show no name rather than the wrong one.
+  // Greet with the ACTIVE BRAND VOICE handle first, then a set display name;
+  // the email prefix only once voices have loaded, so it never flashes.
   const rawName = (brand?.handle ? `@${brand.handle}` : '')
-    || (loading ? '' : (profile?.display_name?.trim() || profile?.email?.split('@')[0] || 'creator'))
+    || (loading ? '' : (profile?.display_name?.trim() || profile?.email?.split('@')[0] || ''))
   const name = !rawName ? '' : rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
+  const initial = (name.replace(/^@/, '')[0] ?? '').toUpperCase()
 
-  // "+N this week" deltas per stage, from the rows we already fetched — real
-  // counts, not decorations. A generation with a finished video counts toward
-  // Ready (not Drafts); a posted one toward Published.
   const weekAgo = Date.now() - 7 * 24 * 3600 * 1000
   const publishedIds = new Set(posts.filter((p) => p.status === 'posted' && p.generation_id).map((p) => p.generation_id))
-  const newThisWeek = gens.filter((g) => +new Date(g.created_at) > weekAgo)
-  // A MISS is only meaningful if the lookup ran. `wkDrafts` counts misses, so
-  // without this it reports every new video of the week as a draft the moment
-  // the resolve fails — a delta chip stating a falsehood in bold coloured text.
-  // `undefined` suppresses the chip; `wkReady` counts HITS, which are still
-  // real, but a partial resolve can only undercount them so it is suppressed
-  // too rather than shown as a quiet undercount.
-  const wkDrafts = finishedComplete
-    ? newThisWeek.filter((g) => !finished.has(g.id) && !publishedIds.has(g.id)).length
-    : undefined
-  const wkReady = finishedComplete
-    ? newThisWeek.filter((g) => finished.has(g.id) && !publishedIds.has(g.id)).length
-    : undefined
-  const wkPublished = posts.filter((p) => p.status === 'posted' && p.posted_at && +new Date(p.posted_at) > weekAgo).length
+  const wkWritten = gens.filter((g) => +new Date(g.created_at) > weekAgo).length
+  // Ready to film = written, not finished, not posted. Only claimed when the
+  // readiness lookup actually ran; otherwise nothing is listed as ready.
+  const toFilm = finishedComplete ? gens.filter((g) => !finished.has(g.id) && !publishedIds.has(g.id) && (g.blueprint?.script?.length ?? 0) > 0) : []
+  const next = toFilm[0] ?? null
+  const also = toFilm.slice(1, 5)
+  const tiktok = conns === null ? null : conns.some((c) => c.platform === 'tiktok' && c.status !== 'revoked' && c.status !== 'error')
+
+  const sub = loading ? '' : toFilm.length > 0
+    ? `${toFilm.length} ${toFilm.length === 1 ? 'script is' : 'scripts are'} ready for you. Film one today.`
+    : gens.length === 0 ? 'Make your first script, and it will wait for you here.' : 'Everything you wrote is filmed. Make the next one.'
 
   return (
-    <main className="relative min-h-screen overflow-clip">
-      <Aurora className="opacity-70" />
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <div className="absolute left-1/2 top-1/3 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-teal/10 blur-[180px]" />
-      </div>
-      <div className="relative mx-auto max-w-6xl px-5 py-14 lg:py-20">
-        <Reveal>
-          <p className="eyebrow tracking-widest">Dashboard</p>
-          <h1 className="mt-4 font-display text-4xl leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
-            Welcome back{name && <>,{' '}<span className="gradient-text">{name}</span></>}.
-          </h1>
-          <p className="mt-4 max-w-md text-base text-stone">
-            Everything you've shipped, and what to make next.
-          </p>
-          {/* ⚖️ OWNER, 2026-09-30: the "what your twin knows / what we could
-              read / what works" cards were taken off the dashboard. */}
-          <div className="mt-6 max-w-md space-y-3">
-            {/* ⚠️ THE CARD THAT PAYS FOR A REMOVAL. Onboarding stopped asking
-                thirteen options about what a creator sells and now asks one
-                yes/no. Somebody who answers yes has stated a commercial fact
-                with nowhere to put it, and the Product Library is the page this
-                repo measured nobody visits. This is the reason to go.
+    <main className="page-glow relative min-h-[100dvh] overflow-clip leading-[normal] text-cream">
+      <div className="ob-aur ob-drift1 left-[-120px] top-[-160px] h-[560px] w-[560px] rounded-full bg-[radial-gradient(circle,rgba(255,91,123,0.16),rgba(255,91,123,0)_65%)] [animation-duration:16s]" aria-hidden="true" />
+      <div className="ob-aur ob-drift2 right-[-140px] top-[240px] hidden h-[620px] w-[620px] rounded-full bg-[radial-gradient(circle,rgba(101,229,216,0.10),rgba(101,229,216,0)_65%)] [animation-duration:20s] md:block" aria-hidden="true" />
 
-                It appears only for a creator who SAID yes and has no product
-                row yet, and it stops the moment they add one — see the card for
-                why "not right now" and "never answered" are both silence. */}
-            <AddYourProductCard voiceId={brand?.id ?? null} />
-          </div>
-          {/* The welcome name is the brand handle; show its platform so it's clear
-              which brand voice is active. No email — that's not the creator identity. */}
-          {brand?.platform && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 capitalize text-sand">
-                <Sparkles className="h-3 w-3 text-coral" /> {brand.platform}
-              </span>
-            </div>
-          )}
-          {(isAgency && brand) || streak > 0 || hoursSaved > 0 ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {hoursSaved > 0 && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-3 py-1.5 text-xs font-semibold text-teal">
-                  <Clock className="h-3.5 w-3.5" /> ~{hoursSaved}h saved
-                </span>
-              )}
-              {/* "Working as / Switch" is an AGENCY concept (one voice per client).
-                  A solo/free creator has a single voice — showing a brand switcher
-                  there is noise, so this chip is agency-only. */}
-              {isAgency && brand && (
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
-                  <Sparkles className="h-3.5 w-3.5 text-amber" /> Working as <span className="font-semibold text-cream">@{brand.handle}</span>
-                  <Link to="/brands" className="text-amber transition-colors hover:text-cream">Switch →</Link>
-                </span>
-              )}
-              {streak > 0 && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber/30 bg-amber/10 px-3 py-1.5 text-xs font-semibold text-amber">
-                  <TrendingUp className="h-3.5 w-3.5" /> {streak}-day streak
-                </span>
-              )}
-            </div>
-          ) : null}
-          {/* Real "little things about you" from the handle scan: followers, videos
-              read, and average reach/likes for the active brand. */}
-          {brand?.stats && (brand.stats.followers > 0 || brand.stats.videos > 0) && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {brand.stats.followers > 0 && <BrandStat value={fmtNum(brand.stats.followers)} label="followers" />}
-              {brand.stats.videos > 0 && <BrandStat value={fmtNum(brand.stats.videos)} label="videos read" />}
-              {brand.stats.avg_views > 0 && <BrandStat value={fmtNum(brand.stats.avg_views)} label="avg views" />}
-              {brand.stats.avg_likes > 0 && <BrandStat value={fmtNum(brand.stats.avg_likes)} label="avg likes" />}
-            </div>
-          )}
-        </Reveal>
-        {error && !loading && (
-          <div className="mt-6 flex flex-col gap-3 rounded-card border border-coral/30 bg-coral/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-cream">We couldn't load your dashboard just now — usually a brief connection hiccup.</p>
-            <button onClick={load} className="btn-gradient shrink-0 self-start text-sm sm:self-auto">Try again</button>
-          </div>
-        )}
-        {isAgency && voices.length > 1 && (
-          <Reveal>
-            <div className="mt-8 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-stone">View:</span>
-              <button onClick={() => setSelectedBrand('')} className={cn('chip', !selectedBrand ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:text-cream')}>All brands</button>
-              {voices.map((v) => (
-                <button key={v.id} onClick={() => setSelectedBrand(v.id)} className={cn('chip', selectedBrand === v.id ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:text-cream')}>@{v.handle}</button>
-              ))}
-            </div>
-          </Reveal>
-        )}
-        {/* Remixes-left moved to Settings → Usage (it's a billing detail, not an
-            achievement). These three are what they've shipped. */}
-        <Stagger className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4" gap={0.07}>
-          <StatCard icon={FileText} glow="amber" label="Drafts" value={draftsVal} loading={loading} week={wkDrafts} />
-          <StatCard icon={Clapperboard} glow="coral" label="Ready" value={readyVal} loading={loading} week={wkReady} />
-          <StatCard icon={Send} glow="teal" label="Published" value={publishedVal} loading={loading} week={wkPublished} />
-        </Stagger>
-        <Reveal delay={0.1}>
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New script" desc="Paste a reference and get a shootable script in seconds." primary />
-            <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Find a format" desc="See what's winning in your niche, remix it in one tap." />
-            <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="My remixes" desc="Every remix — drafts, ready, and published." />
-            <ActionCard to="/calendar" icon={Clock} iconGlow="from-coral/35 to-coral/10" iconColor="text-coral" title="Schedule a post" desc="Plan your content calendar and post on time." />
-          </div>
-        </Reveal>
-        {formatInsight && (
-          <Reveal delay={0.12}>
-            <div className="glass mt-6 flex flex-col gap-3 border border-teal/20 bg-teal/[0.04] p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-teal/15"><TrendingUp className="h-4 w-4 text-teal" /></span>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-teal">What's working for you</p>
-                  <p className="mt-1 text-sm text-cream">
-                    Your <span className="font-semibold">{formatInsight.format}</span> videos average <span className="font-semibold">{formatInsight.avg.toLocaleString()}</span> views — <span className="font-semibold text-teal">{formatInsight.multiple}×</span> your other formats.
-                  </p>
-                  {/* The qualification comes from the contract, not from this
-                      screen, so the same claim reads the same wherever it is
-                      shown. It carries the N because a pattern across three
-                      videos and one across thirty are different things. */}
-                  <p className="mt-1 text-xs text-stone">{claimQualifier(formatInsight.claim)}</p>
-                </div>
-              </div>
-              <Link to="/gallery" className="btn-gradient shrink-0 self-start text-sm sm:self-auto"><Wand2 className="h-4 w-4" /> Make another</Link>
-            </div>
-          </Reveal>
-        )}
-        <InviteCard />
-        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_0.65fr]">
-          <Reveal>
-            <div className="glass relative h-full overflow-hidden p-6">
-              <div className="relative flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber/15"><Clapperboard className="h-3.5 w-3.5 text-amber" /></span>
-                  <h2 className="font-heading text-base text-cream">Recent scripts</h2>
-                </div>
-                <Link to="/history" className="group flex items-center gap-1 text-xs text-stone transition-colors hover:text-cream">
-                  View all <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+      {/* <768: MHome. */}
+      <div className="relative flex flex-col md:hidden">
+        <header className="pin d1 flex items-center justify-between px-5 pt-[max(12px,env(safe-area-inset-top))]">
+          <h1 className="m-0 text-[26px] font-bold tracking-[-0.03em]">{greeting()}{name && <>, <span className="ob-grad">{name}</span></>}</h1>
+          <button type="button" onClick={() => window.dispatchEvent(new Event(OPEN_SHELL_MENU))} aria-label="Open menu"
+            className="-my-1 -mr-1 flex h-11 w-11 items-center justify-center border-0 bg-transparent p-0">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FFB347,#FF5B7B)] text-[14px] font-extrabold text-ink">{initial}</span>
+          </button>
+        </header>
+        {error && !loading && <LoadError onRetry={load} className="mx-5 mt-5" />}
+        <div className="mx-5 mt-4 empty:hidden"><AddYourProductCard voiceId={brand?.id ?? null} /></div>
+        {loading ? <Spinner /> : next ? (
+          <div className="pin d2 relative mx-5 mt-5 overflow-hidden rounded-[20px] p-[1.5px]">
+            <Spinner6 size={900} />
+            <section aria-label="Film this next" className="relative flex flex-col gap-3 rounded-[18.5px] bg-[#131318] p-[18px]">
+              <span className="text-[12px] font-bold tracking-[.08em] text-amber">FILM THIS NEXT</span>
+              <p className="m-0 text-[20px] font-semibold leading-[1.28] tracking-[-0.015em]">{draftTitle(next.blueprint)}</p>
+              <span className="text-[13px] text-[#9C9384]">{runtimeSec(next)} seconds</span>
+              <div className="mt-[2px] flex items-center gap-3">
+                <Link to={`/record/${next.id}`} className="ob-cta ob-gbtn inline-flex min-h-11 items-center gap-2 rounded-[12px] px-[18px] py-[11px] text-[14.5px] font-bold text-ink no-underline">
+                  <span className="app-recdot h-2 w-2 rounded-full bg-ink" />Record
                 </Link>
+                <Link to={`/result/${next.id}`} className="flex min-h-11 items-center text-[14px] font-semibold text-sand no-underline">Open script</Link>
               </div>
-              {loading ? (
-                <div className="flex items-center justify-center py-14 text-stone"><Loader2 className="h-5 w-5 animate-spin" /></div>
-              ) : recent.length === 0 ? <EmptyBlueprints /> : (
-                <div className="relative mt-5 space-y-2">
-                  {recent.map((g, i) => (
-                    <motion.div key={g.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}>
-                      <Link to={`/result/${g.id}`} className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3.5 transition-all duration-200 hover:border-white/[0.14] hover:bg-white/[0.05]">
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-amber/20 to-coral/10"><Clapperboard className="h-4 w-4 text-amber" /></span>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate font-heading text-sm text-cream">{draftTitle(g.blueprint)}</div>
-                          <div className="mt-0.5 truncate text-xs text-stone">{g.reference_url}</div>
-                        </div>
-                        <span className="shrink-0 text-xs text-stone/70">{new Date(g.created_at).toLocaleDateString()}</span>
-                        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-stone/50 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-cream" />
+            </section>
+          </div>
+        ) : <FirstScript className="mx-5 mt-5" />}
+        {also.length > 0 && (
+          <section className="pin d3 mx-5 mt-7 flex flex-col">
+            <div className="mb-1 flex items-baseline justify-between">
+              <h2 className="m-0 text-[16px] font-bold">Ready to film</h2>
+              <Link to="/history" className="text-[13px] text-[#9C9384] no-underline">All {toFilm.length}</Link>
+            </div>
+            {also.slice(0, 3).map((g) => (
+              <Link key={g.id} to={`/result/${g.id}`} className="app-row flex items-center gap-3 border-b border-white/[0.06] px-[2px] py-[14px] text-cream no-underline">
+                <span className="flex-grow text-[15px] leading-[1.35]">{draftTitle(g.blueprint)}</span>
+                <span className="text-[12.5px] text-label">{mmss(runtimeSec(g))}</span>
+              </Link>
+            ))}
+          </section>
+        )}
+        {tiktok === false && (
+          <Link to="/calendar" className="pin d4 mx-5 mt-6 flex items-center justify-between rounded-[12px] border border-[rgba(101,229,216,0.18)] bg-[rgba(101,229,216,0.07)] px-[14px] py-3 text-[13.5px] no-underline">
+            <span className="text-sand">Connect TikTok to auto-post</span><span className="font-bold text-teal-soft">Connect</span>
+          </Link>
+        )}
+        <div className="flex flex-col gap-5 px-5 pb-7 pt-7">
+          <Extras isAgency={isAgency} voices={voices} selectedBrand={selectedBrand} setSelectedBrand={setSelectedBrand}
+            formatInsight={formatInsight} posts={posts} topId={topId} streak={streak} />
+          <InviteCard />
+        </div>
+      </div>
+
+      {/* >=768: the Home board. 768-1023 keeps the structure, one column fewer. */}
+      <div className="relative mx-auto hidden w-full max-w-[1192px] flex-col gap-7 px-8 py-12 md:flex lg:px-10 xl:px-16">
+        <div className="pin d1 flex items-end justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <h1 className="m-0 text-[36px] font-bold tracking-[-0.03em]">{greeting()}{name && <>, <span className="ob-grad">{name}</span></>}</h1>
+            <p className="m-0 text-[15px] text-sand-muted">{sub}</p>
+          </div>
+          <Link to="/app" className="ob-lift shrink-0 rounded-[10px] bg-cream px-[18px] py-[11px] text-[14px] font-semibold text-ink no-underline">New script</Link>
+        </div>
+        {error && !loading && <LoadError onRetry={load} />}
+        <AddYourProductCard voiceId={brand?.id ?? null} />
+        {isAgency && voices.length > 1 && <BrandFilter voices={voices} selectedBrand={selectedBrand} setSelectedBrand={setSelectedBrand} />}
+
+        <section aria-label="Your pipeline" className="pin d2 grid grid-cols-2 overflow-hidden rounded-[14px] border border-white/[0.07] bg-[#111115] lg:grid-cols-4">
+          <div className="flex flex-col gap-[6px] border-b border-r border-white/[0.06] px-[22px] py-5 lg:border-b-0">
+            <span className="text-[13px] text-sand-muted">Written</span>
+            <span className="text-[30px] font-bold tracking-[-0.02em]">{writtenVal ?? '…'}</span>
+            <span className="app-grow block h-1 rounded-[9px] bg-[linear-gradient(90deg,#FFB347,#FF5B7B)]" />
+            {wkWritten > 0 && <span className="text-[12.5px] text-label">+{wkWritten} this week</span>}
+          </div>
+          <div className="flex flex-col gap-[6px] border-b border-white/[0.06] bg-[rgba(255,91,123,0.05)] px-[22px] py-5 lg:border-b-0 lg:border-r">
+            <span className="flex items-center gap-2 text-[13px] text-coral-soft">
+              <span className="ob-ringp h-2 w-2 rounded-full bg-coral" />Filmed
+              <span className="ml-auto whitespace-nowrap rounded-full bg-[rgba(255,91,123,0.15)] px-2 py-[2px] text-[12px] font-bold">START HERE</span>
+            </span>
+            {next
+              ? <Link to={`/record/${next.id}`} className="text-[13px] font-semibold text-coral-soft no-underline">Record the next one →</Link>
+              : <span className="text-[12.5px] text-sand-muted">Most people get stuck here</span>}
+          </div>
+          <div className="flex flex-col gap-[6px] border-r border-white/[0.06] px-[22px] py-5">
+            <span className="text-[13px] text-sand-muted">Edited</span>
+            <span className={cn('text-[30px] font-semibold tracking-[-0.02em]', !readyVal && 'text-label')}>{readyVal ?? '…'}</span>
+            <span className="text-[12.5px] text-label">Automatic after filming</span>
+          </div>
+          <div className="flex flex-col gap-[6px] px-[22px] py-5">
+            <span className="text-[13px] text-sand-muted">Posted</span>
+            <span className={cn('text-[30px] font-semibold tracking-[-0.02em]', !publishedVal && 'text-label')}>{publishedVal ?? '…'}</span>
+            {tiktok !== null && <span className="text-[12.5px] text-label">{tiktok ? 'TikTok connected' : 'TikTok not connected'}</span>}
+          </div>
+        </section>
+
+        {loading ? <Spinner /> : next ? (
+          <div className="pin d3 relative overflow-hidden rounded-[18px] p-[1.5px]">
+            <Spinner6 size={1600} />
+            <section aria-label="Up next" className="relative flex flex-col overflow-hidden rounded-[16.5px] bg-[#131318] lg:flex-row">
+              <div className="flex flex-grow basis-0 flex-col gap-[18px] px-8 py-[30px]">
+                <span className="app-bob inline-flex items-center gap-2 self-start rounded-full bg-[rgba(255,179,71,0.12)] px-3 py-[5px] text-[13px] font-bold text-amber">Film this one next</span>
+                <p className="m-0 text-[28px] font-semibold leading-[1.25] tracking-[-0.02em]">“{draftTitle(next.blueprint)}”</p>
+                <div className="flex flex-wrap gap-2">
+                  {[lengthLabel(runtimeSec(next)), `${next.blueprint.script.length} scenes`, ...(placesOf(next) > 0 ? [`${placesOf(next)} ${placesOf(next) === 1 ? 'place' : 'places'}`] : [])].map((c) => (
+                    <span key={c} className="rounded-full bg-white/[0.05] px-[11px] py-[5px] text-[13px] text-sand-muted">{c}</span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-[10px] pt-1">
+                  <Link to={`/record/${next.id}`} className="ob-cta ob-gbtn inline-flex items-center gap-[10px] rounded-[12px] px-[22px] py-[13px] text-[14.5px] font-bold text-ink no-underline">
+                    <span className="app-recdot h-[9px] w-[9px] rounded-full bg-white" />Start recording
+                  </Link>
+                  <Link to={`/result/${next.id}`} className="rounded-[10px] border border-white/[0.12] px-[18px] py-3 text-[14px] font-semibold text-cream no-underline">Open the script</Link>
+                </div>
+              </div>
+              {firstLines(next).length > 0 && (
+                <div className="flex shrink-0 flex-col justify-center gap-[14px] border-t border-white/[0.06] bg-[#0E0E12] p-7 lg:w-[300px] lg:border-l lg:border-t-0 xl:w-[360px]">
+                  <span className="text-[12px] text-label">First lines</span>
+                  {firstLines(next).map((l, i) => (
+                    <p key={i} className={cn('pin m-0', i === 0 ? 'd5 border-l-[3px] border-coral pl-3 text-[17px] font-semibold leading-[1.45]' : i === 1 ? 'd6 pl-[15px] text-[15px] leading-[1.5] text-label' : 'd7 pl-[15px] text-[15px] leading-[1.5] text-[#57524A]')}>“{l}”</p>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        ) : <FirstScript />}
+
+        <div className="pin d4 flex flex-col items-start gap-5 xl:flex-row">
+          <section aria-label="Ready to film" className="flex w-full flex-grow basis-0 flex-col gap-3">
+            {also.length > 0 && (
+              <>
+                <div className="flex items-baseline justify-between">
+                  <h2 className="m-0 text-[17px] font-semibold">Also ready to film</h2>
+                  <Link to="/history" className="text-[13.5px] text-sand-muted">See all {toFilm.length}</Link>
+                </div>
+                <div className="flex flex-col rounded-[14px] border border-white/[0.07] bg-[#111115]">
+                  {also.map((g, i) => (
+                    <div key={g.id} className={cn('app-row flex items-center gap-4 px-[18px] py-[15px]', i < also.length - 1 && 'border-b border-white/[0.05]')}>
+                      <Link to={`/result/${g.id}`} className="flex-grow text-[14.5px] text-cream no-underline">{draftTitle(g.blueprint)}</Link>
+                      <span className="text-[13px] text-label">{mmss(runtimeSec(g))}</span>
+                      <Link to={`/record/${g.id}`} className="inline-flex items-center gap-[6px] text-[13px] font-semibold text-coral-soft no-underline">
+                        <span className="h-[7px] w-[7px] rounded-full bg-coral" />Record
                       </Link>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
-              )}
-            </div>
-          </Reveal>
-          <Reveal delay={0.06}>
-            <div className="glass relative flex h-full flex-col overflow-hidden p-6">
-              <div className="relative flex items-center gap-2.5">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal/15"><Send className="h-3.5 w-3.5 text-teal" /></span>
-                <h2 className="font-heading text-base text-cream">Publishing</h2>
+              </>
+            )}
+            <Extras isAgency={false} voices={voices} selectedBrand={selectedBrand} setSelectedBrand={setSelectedBrand}
+              formatInsight={formatInsight} posts={posts} topId={topId} streak={streak} />
+          </section>
+          <aside className="grid w-full shrink-0 gap-[14px] md:grid-cols-2 xl:flex xl:w-[340px] xl:flex-col">
+            {tiktok === false && (
+              <div className="ob-lift flex flex-col gap-[10px] rounded-[14px] border border-white/[0.07] bg-[#111115] p-5">
+                <span className="flex items-center gap-[10px] text-[15px] font-semibold">
+                  <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[9px] bg-[rgba(101,229,216,0.14)] text-teal">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg>
+                  </span>Connect TikTok
+                </span>
+                <span className="text-[13.5px] leading-[1.55] text-sand-muted">So finished videos go out on their own at the time you pick.</span>
+                <Link to="/calendar" className="self-start rounded-[9px] border border-white/[0.12] px-[14px] py-2 text-[13px] font-semibold text-cream no-underline">Connect</Link>
               </div>
-              {posts.length === 0 ? <EmptyPublishing /> : (
-                <div className="relative mt-5 space-y-2">
-                  {posts.slice(0, 6).map((p, i) => (
-                    <PostRow key={p.id} p={p} isTop={p.id === topId} seq={i + 1} />
-                  ))}
-                </div>
-              )}
-              <div className="relative mt-auto pt-5">
-                <div className="flex items-start gap-3 rounded-xl bg-gradient-to-r from-amber/10 to-amber/5 p-3.5 ring-1 ring-amber/20">
-                  <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-amber" />
-                  <p className="text-xs leading-relaxed text-sand">
-                    {streak > 0
-                      ? `You're on a ${streak}-day posting streak. Ship one more today to keep it alive.`
-                      : 'Consistent posting compounds. Log a publish today to start your streak.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Reveal>
+            )}
+            <InviteCard />
+          </aside>
         </div>
       </div>
     </main>
   )
 }
 
-const glowMap = { amber: 'from-amber/[0.12] via-amber/[0.06] to-transparent shadow-glow', coral: 'from-coral/[0.12] via-coral/[0.06] to-transparent', teal: 'from-teal/[0.12] via-teal/[0.06] to-transparent shadow-glow-teal' } as const
-const iconBgMap = { amber: 'bg-amber/15', coral: 'bg-coral/15', teal: 'bg-teal/15' } as const
-const iconColorMap = { amber: 'text-amber', coral: 'text-coral', teal: 'text-teal' } as const
-
-function StatCard({ icon: Icon, glow, label, value, loading, week }: { icon: React.ComponentType<{ className?: string }>; glow: keyof typeof glowMap; label: string; value: number | undefined; loading: boolean; week?: number }) {
+function Spinner() {
+  return <div className="flex items-center justify-center py-14 text-stone"><Loader2 className="h-5 w-5 animate-spin" aria-label="Loading" /></div>
+}
+function Spinner6({ size }: { size: number }) {
   return (
-    <RevealItem>
-      <motion.div whileHover={{ y: -4, scale: 1.015 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} className="h-full">
-        <div className={cn('relative h-full overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br p-5 backdrop-blur-md transition-colors hover:border-white/[0.14]', glowMap[glow])}>
-          <div className="absolute inset-0 -z-10 bg-ink2/80" />
-          <span className={cn('inline-flex h-9 w-9 items-center justify-center rounded-xl', iconBgMap[glow])}>
-            <Icon className={cn('h-[18px] w-[18px]', iconColorMap[glow])} />
-          </span>
-          <div className="mt-4 font-display text-4xl tracking-tight text-cream">
-            {loading || value === undefined ? <span className="text-stone/50">…</span> : <Counter to={value} />}
-          </div>
-          <div className="mt-1.5 text-xs font-medium tracking-wide text-stone">{label}</div>
-          {!loading && !!week && week > 0 && (
-            <div className={cn('mt-1 text-[11px] font-semibold', iconColorMap[glow])}>+{week} this week</div>
-          )}
-        </div>
-      </motion.div>
-    </RevealItem>
+    <div aria-hidden="true" className="app-spin6 absolute left-1/2 top-1/2 bg-[conic-gradient(from_0deg,rgba(255,179,71,0),rgba(255,179,71,0.9),rgba(255,91,123,0.9),rgba(101,229,216,0.8),rgba(255,179,71,0)_40%)]"
+      style={{ width: size, height: size, margin: `-${size / 2}px 0 0 -${size / 2}px` }} />
+  )
+}
+function LoadError({ onRetry, className }: { onRetry: () => void; className?: string }) {
+  return (
+    <div className={cn('flex flex-col gap-3 rounded-[14px] border border-coral/30 bg-coral/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between', className)}>
+      <p className="m-0 text-[14px] text-cream">We couldn't load your home screen just now. Usually a brief connection hiccup.</p>
+      <button type="button" onClick={onRetry} className="btn-board-light shrink-0 self-start !px-4 !py-2 !text-[13px] sm:self-auto">Try again</button>
+    </div>
+  )
+}
+/** No scripts yet: the Up next frame, pointing at Create. */
+function FirstScript({ className }: { className?: string }) {
+  return (
+    <div className={cn('flex flex-col items-start gap-3 rounded-[18px] border border-white/[0.07] bg-[#131318] p-[18px] md:px-8 md:py-[30px]', className)}>
+      <span className="text-[12px] font-bold tracking-[.08em] text-amber">NOTHING TO FILM YET</span>
+      <p className="m-0 text-[20px] font-semibold leading-[1.28] md:text-[28px]">Make your first script.</p>
+      <Link to="/app" className="ob-cta ob-gbtn inline-flex min-h-11 items-center rounded-[12px] px-[18px] py-[11px] text-[14.5px] font-bold text-ink no-underline">New script</Link>
+    </div>
+  )
+}
+function BrandFilter({ voices, selectedBrand, setSelectedBrand }: { voices: BrandVoice[]; selectedBrand: string; setSelectedBrand: (v: string) => void }) {
+  const chip = (on: boolean) => cn('min-h-11 rounded-full border px-[14px] py-[7px] text-[13px] md:min-h-0', on ? 'border-[rgba(255,91,123,0.6)] bg-[rgba(255,91,123,0.12)] text-cream' : 'border-white/10 bg-transparent text-sand-muted')
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-[13px] text-label">View:</span>
+      <button type="button" onClick={() => setSelectedBrand('')} className={chip(!selectedBrand)}>All brands</button>
+      {voices.map((v) => <button key={v.id} type="button" onClick={() => setSelectedBrand(v.id)} className={chip(selectedBrand === v.id)}>@{v.handle}</button>)}
+    </div>
   )
 }
 
-function ActionCard({ to, icon: Icon, iconGlow, iconColor, title, desc, primary }: { to: string; icon: React.ComponentType<{ className?: string }>; iconGlow: string; iconColor: string; title: string; desc: string; primary?: boolean }) {
+/** What Home did before the boards and the boards do not show: the agency
+ *  filter (phone), the format insight and the publishing log, where views are
+ *  entered. Kept, in board styling. */
+function Extras({ isAgency, voices, selectedBrand, setSelectedBrand, formatInsight, posts, topId, streak }: {
+  isAgency: boolean; voices: BrandVoice[]; selectedBrand: string; setSelectedBrand: (v: string) => void
+  formatInsight: FormatInsight | null; posts: Post[]; topId: string; streak: number
+}) {
   return (
-    <motion.div whileHover={{ y: -5, scale: 1.01 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} className="h-full">
-      <Link to={to} className={cn('group relative flex h-full flex-col gap-4 overflow-hidden rounded-2xl p-5 transition-all duration-200', primary ? 'gradient-border bg-ink2 shadow-glow' : 'border border-white/[0.08] bg-ink2/70 backdrop-blur-md hover:border-white/[0.16] hover:bg-white/[0.04]')}>
-        {primary && <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-amber/15 blur-[50px]" />}
-        <span className={cn('relative inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br', iconGlow)}><Icon className={cn('h-5 w-5', iconColor)} /></span>
-        <div className="relative flex-1">
-          <div className="flex items-center gap-2 font-heading text-sm text-cream">
-            {title}{primary && <span className="rounded-full bg-amber/20 px-2 py-0.5 text-[10px] font-medium text-amber">Start here</span>}
-          </div>
-          <p className="mt-1.5 text-xs leading-relaxed text-stone">{desc}</p>
+    <>
+      {isAgency && voices.length > 1 && <BrandFilter voices={voices} selectedBrand={selectedBrand} setSelectedBrand={setSelectedBrand} />}
+      {formatInsight && (
+        <div className="flex flex-col gap-2 rounded-[14px] border border-[rgba(101,229,216,0.2)] bg-[rgba(101,229,216,0.05)] p-5">
+          <span className="text-[12px] font-bold tracking-[.12em] text-teal">WHAT'S WORKING FOR YOU</span>
+          <p className="m-0 text-[14.5px] leading-[1.5] text-cream">
+            Your <b>{formatInsight.format}</b> videos average <b>{formatInsight.avg.toLocaleString()}</b> views, <b className="text-teal">{formatInsight.multiple}×</b> your other formats.
+          </p>
+          {/* The qualification comes from the contract, so the same claim reads
+              the same wherever it is shown, with its N. */}
+          <p className="m-0 text-[12.5px] text-label">{claimQualifier(formatInsight.claim)}</p>
+          <Link to="/gallery" className="self-start text-[13px] font-semibold text-teal-soft no-underline">Make another →</Link>
         </div>
-        <ArrowUpRight className={cn('h-4 w-4 self-end transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5', primary ? 'text-amber/70 group-hover:text-amber' : 'text-stone/50 group-hover:text-cream')} />
-      </Link>
-    </motion.div>
+      )}
+      {posts.length > 0 && (
+        <section aria-label="Posted" className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="m-0 text-[17px] font-semibold">Posted</h2>
+            {streak > 0 && <span className="text-[13px] text-amber">{streak}-day streak</span>}
+          </div>
+          <div className="flex flex-col gap-2">
+            {posts.slice(0, 6).map((p, i) => <PostRow key={p.id} p={p} isTop={p.id === topId} seq={i + 1} />)}
+          </div>
+        </section>
+      )}
+    </>
   )
 }
 
-function EmptyBlueprints() {
+// Viral loop: the two-sided referral, as the Home board's invite card. "2"
+// mirrors REFERRAL_REWARD_CREDITS (20 credits = 2 videos) on the edge fn.
+function InviteCard() {
+  const [code, setCode] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { getReferralCode().then(setCode).catch(() => {}) }, [])
+  const link = code ? `${window.location.origin}/auth?mode=signup&ref=${code}` : ''
+  const copy = async () => {
+    if (!link) return
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ }
+  }
   return (
-    <div className="relative mt-6 flex flex-col items-center justify-center py-12 text-center">
-      <div className="relative mb-6 flex h-20 w-20 items-center justify-center">
-        <motion.div animate={{ scale: [1, 1.12, 1], opacity: [0.3, 0.5, 0.3] }} transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }} className="absolute inset-0 rounded-full bg-amber/20 blur-xl" />
-        <motion.div animate={{ scale: [1, 1.06, 1] }} transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }} className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber/30 to-coral/20 ring-1 ring-white/10">
-          <Zap className="h-6 w-6 text-amber" />
-        </motion.div>
+    <div id="invite" className="ob-lift flex flex-col gap-[10px] rounded-[14px] border border-white/[0.07] bg-[#111115] p-5">
+      <span className="flex items-center gap-[10px] text-[15px] font-semibold">
+        <span className="app-bob flex h-[30px] w-[30px] items-center justify-center rounded-[9px] bg-[rgba(255,179,71,0.14)] text-amber">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="2" /><path d="M12 8v13M3 12h18M12 8S10 3 7.5 4 9 8 12 8zM12 8s2-5 4.5-4S15 8 12 8z" /></svg>
+        </span>Get 2 more free videos
+      </span>
+      <span className="text-[13.5px] leading-[1.55] text-sand-muted">Invite a creator. You both get 2 when they join.</span>
+      <div className="flex gap-2">
+        <span className="flex-grow rounded-[9px] border border-white/[0.08] bg-ink px-3 py-2 text-[13.5px] tracking-[0.08em]">{code ?? '········'}</span>
+        <button type="button" onClick={copy} disabled={!code} className="btn-board-light !rounded-[9px] !px-[14px] !py-2 !text-[13px] !font-semibold disabled:opacity-50">
+          {copied ? 'Copied' : 'Copy link'}
+        </button>
       </div>
-      <p className="font-heading text-sm text-cream">No scripts yet</p>
-      <p className="mt-2 max-w-[220px] text-xs leading-relaxed text-stone">Paste any video link and get a shootable script tailored to your style.</p>
-      <Link to="/app" className="btn-gradient mt-5 inline-flex items-center gap-2 text-sm"><Wand2 className="h-3.5 w-3.5" /> Make your first one</Link>
     </div>
   )
 }
@@ -493,19 +520,6 @@ function computeFormatInsight(posts: Post[], gens: Generation[]): FormatInsight 
   return { format: top.f, avg: Math.round(top.avg), multiple: rounded, n: top.n, claim }
 }
 
-const fmtNum = (n: number) =>
-  n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M'
-  : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'K'
-  : String(n)
-
-function BrandStat({ value, label }: { value: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
-      <span className="font-semibold text-cream">{value}</span> {label}
-    </span>
-  )
-}
-
 function postingStreak(posts: Post[]): number {
   const days = new Set(posts.map((p) => new Date(p.posted_at ?? p.created_at).toDateString()))
   const d = new Date()
@@ -513,66 +527,4 @@ function postingStreak(posts: Post[]): number {
   let streak = 0
   while (days.has(d.toDateString())) { streak++; d.setDate(d.getDate() - 1) }
   return streak
-}
-
-// Viral loop: a two-sided referral. Shows the short CODE prominently (not just a
-// long URL), stays usable while the code loads, and teases the creator-payout
-// program. The "2 free remixes" mirrors REFERRAL_REWARD_CREDITS on the edge fn.
-function InviteCard() {
-  const [code, setCode] = useState<string | null>(null)
-  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
-  useEffect(() => { getReferralCode().then(setCode).catch(() => {}) }, [])
-  const link = code ? `${window.location.origin}/auth?mode=signup&ref=${code}` : ''
-  const copy = async (what: 'code' | 'link') => {
-    const text = what === 'code' ? code : link
-    if (!text) return
-    try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(null), 1600) } catch { /* clipboard blocked */ }
-  }
-  return (
-    <Reveal delay={0.08}>
-      <div className="glass relative mt-6 overflow-hidden border border-teal/15 p-6">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-teal/10 blur-3xl" />
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal/15"><Gift className="h-5 w-5 text-teal" /></span>
-            <div>
-              <h2 className="font-heading text-base text-cream">Invite a creator — you both get 2 free remixes</h2>
-              <p className="mt-1 text-sm text-stone">Share your code or link. The moment they sign up, 2 remixes land on each of you — every time.</p>
-            </div>
-          </div>
-        </div>
-        {/* The short code, prominent + copyable — plus the full link. */}
-        <div className="relative mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <button
-            onClick={() => copy('code')}
-            disabled={!code}
-            className="group flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3.5 py-2.5 transition-colors hover:border-teal/40 disabled:opacity-50 sm:min-w-[200px]"
-            title="Copy your referral code"
-          >
-            <span className="font-mono text-lg tracking-widest text-cream">{code ?? '••••••'}</span>
-            {copied === 'code' ? <Check className="h-4 w-4 text-teal" /> : <Copy className="h-4 w-4 text-stone group-hover:text-cream" />}
-          </button>
-          <button onClick={() => copy('link')} disabled={!code} className="btn-gradient shrink-0 text-sm disabled:opacity-50">
-            {copied === 'link' ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy invite link</>}
-          </button>
-        </div>
-      </div>
-    </Reveal>
-  )
-}
-
-
-function EmptyPublishing() {
-  return (
-    <div className="relative mt-5 flex flex-1 flex-col items-center justify-center py-10 text-center">
-      <div className="relative mb-4 flex h-16 w-16 items-center justify-center">
-        <motion.div animate={{ scale: [1, 1.15, 1], opacity: [0.25, 0.45, 0.25] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} className="absolute inset-0 rounded-full bg-teal/25 blur-xl" />
-        <motion.div animate={{ scale: [1, 1.07, 1] }} transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }} className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-teal/30 to-teal/10 ring-1 ring-white/10">
-          <Send className="h-5 w-5 text-teal" />
-        </motion.div>
-      </div>
-      <p className="font-heading text-sm text-cream">Nothing published yet</p>
-      <p className="mt-1.5 max-w-[190px] text-xs leading-relaxed text-stone">Open a script, then hit <span className="text-cream">Publish</span> to log your post here.</p>
-    </div>
-  )
 }
