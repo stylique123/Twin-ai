@@ -328,6 +328,12 @@ const SOURCES = [
   ['packages/shared/src/script/urlSafe.ts', 'worker/src/generated/urlSafe.ts'],
   ['packages/shared/src/script/scriptCleanupV1.ts', 'supabase/functions/_shared/scriptCleanupV1.ts'],
   ['packages/shared/src/script/scriptCleanupV1.ts', 'worker/src/generated/scriptCleanupV1.ts'],
+  // FACTS_ONLY_WRITER (panel 14, default off): her whole material, every line traced, stop and ask.
+  ['packages/shared/src/script/meaningOverlap.ts', 'supabase/functions/_shared/meaningOverlap.ts'],
+  ['packages/shared/src/script/meaningOverlap.ts', 'worker/src/generated/meaningOverlap.ts'],
+  ['packages/shared/src/script/lineSources.ts', 'worker/src/generated/lineSources.ts'],
+  ['packages/shared/src/script/factsOnly.ts', 'supabase/functions/_shared/factsOnly.ts'],
+  ['packages/shared/src/script/factsOnly.ts', 'worker/src/generated/factsOnly.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */

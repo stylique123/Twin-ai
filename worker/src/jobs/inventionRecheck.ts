@@ -37,6 +37,7 @@ import { runQualityController, qcLogRecord, type QcProfile } from '../generated/
 import { panelFinalPass } from '../generated/panelFinalPass.js'
 import { setUrlSafeSplitting } from '../generated/urlSafe.js'
 import { scriptCleanupV1, finalPassCuts } from '../generated/scriptCleanupV1.js'
+import { writerItems, styleItems, backgroundItems, traceAndCut } from '../generated/factsOnly.js'
 
 const PANEL_STORY_ORIGINS = new Set(['her_story', 'her_answer'])
 /** ⚖️ PANEL FINAL PASS (panel 13b, 9 Nov). Runs right after the QC, only when
@@ -89,6 +90,30 @@ export function applyScriptCleanupV1(bp: Record<string, unknown>, extra: Record<
   } catch (e) {
     bp.script_cleanup_v1 = { error: true }
     console.warn(JSON.stringify({ event: 'script_cleanup_v1_failed', generation_id: generationId, error: String((e as Error)?.name ?? 'error') }))
+  }
+}
+
+/** ⚖️ FACTS_ONLY_WRITER (default OFF). Runs last, only when the edge put
+ *  `facts_only: true` on the job: the polish, the QC and the gate's refills can
+ *  add a line after the edge's pass, so every sentence is traced to the facts
+ *  layer again (the gate's ledger, same ids). Cuts only; never fails the job,
+ *  and a failure is recorded on the blueprint, never silent. Counts in logs. */
+export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: Parameters<typeof writerItems>[0], generationId: string): void {
+  if (extra.facts_only !== true || !Array.isArray(bp.script)) return
+  try {
+    const layers = rec(extra.facts_only_layers)
+    const style = styleItems(Array.isArray(layers.style) ? layers.style.map(String) : [])
+    const items = writerItems(ledger)
+    const background = backgroundItems(Array.isArray(layers.background) ? layers.background.map(String) : [], items.filter((it) => it.layer === 'background').length + 1)
+    const r = traceAndCut(bp.script as Array<Record<string, unknown>>, items, { style, background })
+    bp.script = r.beats
+    resyncShotListToScript(bp)
+    bp.facts_only = { ...rec(bp.facts_only), worker: r.record }
+    const { examples: _ex, ...counts } = r.record
+    console.log(JSON.stringify({ event: 'facts_only_trace', where: 'worker', generation_id: generationId, ...counts }))
+  } catch (e) {
+    bp.facts_only = { ...rec(bp.facts_only), worker: { error: true } }
+    console.warn(JSON.stringify({ event: 'facts_only_trace_failed', generation_id: generationId, error: String((e as Error)?.name ?? 'error') }))
   }
 }
 
@@ -450,6 +475,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
     applyQualityController(bp, extra, ledger, products, target, generationId)
     applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
     applyScriptCleanupV1(bp, extra, ledger, products, generationId)
+    applyFactsOnly(bp, extra, ledger, generationId)
     bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
     await chain
     await deps.saveBlueprint(generationId, bp)
@@ -523,6 +549,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
   applyQualityController(bp, extra, ledger, products, target, generationId)
   applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
   applyScriptCleanupV1(bp, extra, ledger, products, generationId)
+  applyFactsOnly(bp, extra, ledger, generationId)
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
   // No progress write may land after (and clobber) the result.
   await chain

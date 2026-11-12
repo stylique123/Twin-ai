@@ -111,6 +111,7 @@ import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
 import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
+import { factsOnlyWriterOn, factsOnlyKeepsRow, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, decideFactsOnly, traceAndCut, layerCounts, type WriterItem } from '../_shared/factsOnly.ts'
 import { scriptCleanupV1, finalPassCuts } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
@@ -5890,6 +5891,20 @@ const blueprintSchema = obj(
     'production_sprint',
   ],
 )
+// FACTS_ONLY_WRITER (default off): the same schema, with each script beat's
+// layer tag and the ids of the facts-layer items it uses. Used only with the flag on.
+const blueprintSchemaFactsOnly = (() => {
+  const c = JSON.parse(JSON.stringify(blueprintSchema)) as { properties: { script: { items: { properties: Record<string, unknown> } } } }
+  c.properties.script.items.properties.source_ids = arr(str)
+  c.properties.script.items.properties.layer_tag = str
+  return c
+})()
+const isBlueprintSchema = (s: unknown) => s === blueprintSchema || s === blueprintSchemaFactsOnly
+// ⚠️ ONE MODULE-LEVEL VALUE (like urlSafe's switch): reset at the start of every
+// request and set only when the facts-only block is in the brief. Two requests
+// interleaving in one isolate with different flag values could see each other's
+// value; with FACTS_ONLY_WRITER the same for every request it cannot differ.
+let factsOnlySchemaOn = false
 
 const SHOT_TYPE_LINE_INLINE = `- shot_type: specify either 'talking_head' (camera on creator speaking) or 'cover_frame' (the thumbnail image/first frame). There is no third option: Twin does not plan overlay or cutaway footage, so never invent a shot the creator has no way to supply.`
 const SHOT_LIST_LINE_INLINE = 'Every shot is either the creator on camera or the cover frame — never an insert or cutaway they would have to source.'
@@ -6416,8 +6431,10 @@ interface WriterLadder { retryPrompt?: string; usedAttempt?: number
 
 // Deadline arithmetic lives in _shared/writerDeadline.ts (generated, tested).
 
-async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
-  return inStage(stageOfCall(system, schema === blueprintSchema), () => callModelStaged(apiKey, system, prompt, schema, record, ladder))
+async function callModel(apiKey: string, system: string, prompt: string, schema0: unknown = blueprintSchema, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
+  // FACTS_ONLY_WRITER (default off): the writer's schema gains layer_tag + source_ids.
+  const schema = schema0 === blueprintSchema && factsOnlySchemaOn ? blueprintSchemaFactsOnly : schema0
+  return inStage(stageOfCall(system, isBlueprintSchema(schema)), () => callModelStaged(apiKey, system, prompt, schema, record, ladder))
 }
 
 async function callModelStaged(apiKey: string, system: string, prompt: string, schema: unknown, record?: AttemptRecorder, ladder?: WriterLadder): Promise<string> {
@@ -6466,7 +6483,7 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
   // Attempt 0 runs to the 84 s end; past WRITER_HEDGE_AT_MS the fallback runs
   // beside it and the first complete blueprint wins; the loser is aborted.
   // Both rows land in script_attempts; the counts go on the ladder and a log.
-  if (ladder?.hedge === true && ladder.async === true && ladder.startedAt != null && schema === blueprintSchema && attempts.length >= 2) {
+  if (ladder?.hedge === true && ladder.async === true && ladder.startedAt != null && isBlueprintSchema(schema) && attempts.length >= 2) {
     const rows: Array<string | null> = [null, null]
     const mk = (i: 0 | 1) => ({
       // Panel-current-9: the fallback's own 55 s cap cut it at 54 s on 6 of 6
@@ -6529,7 +6546,7 @@ async function callModelInner(apiKey: string, system: string, prompt: string, sc
       // them to the blueprint check marked every one incomplete, re-ran it on
       // the fallback model and shipped the fallback's answer — about three
       // wasted calls per script.
-      if (schema !== blueprintSchema || blueprintComplete(parsed)) {
+      if (!isBlueprintSchema(schema) || blueprintComplete(parsed)) {
         await record?.settled(rowId, 'succeeded')
         if (ladder) ladder.usedAttempt = i
         return text // complete → accept
@@ -7006,6 +7023,8 @@ async function handle(req: Request): Promise<Response> {
         savedAnswers: ((kRows ?? []) as Array<Record<string, unknown>>).filter((r) => r.source === 'asked').map((r) => String(r.text ?? '')),
         profileMissing: !String(prof?.audience ?? '').trim() && !rows.some((r) => r.slot_id === 'mn:profile'),
         voiceCard: false,
+        // FACTS_ONLY_WRITER (default off; test/panel accounts): only gap questions, up to 3, no sharpeners.
+        factsOnly: factsOnlyWriterOn(Deno.env.get('FACTS_ONLY_WRITER'), isPanelAccount(user) || (Deno.env.get('HEARTBEAT_USER_ID') ?? '') === user.id),
       } : null
       // The engine replaces the older planner; with QUESTION_ENGINE=off the
       // planner (and its ladder / problem-question flags) asks instead.
@@ -7184,6 +7203,15 @@ async function handle(req: Request): Promise<Response> {
   // for every splitter routed through sentenceMatch. Off = the old split.
   const cleanupV1 = scriptCleanupV1On(Deno.env.get('SCRIPT_CLEANUP_V1'))
   setUrlSafeSplitting(cleanupV1)
+  factsOnlySchemaOn = false
+  // FACTS_ONLY_WRITER (panel 14; default OFF, exactly 'on' + test/panel accounts
+  // only): four layers, her whole material, every line traced, stop and ask.
+  // Off = every branch below is skipped and the request is unchanged.
+  const factsOnlyNow = (): boolean => factsOnlyWriterOn(Deno.env.get('FACTS_ONLY_WRITER'), trialOn)
+  // The layers the writer was handed (set at the brief; read by the final pass and the trace).
+  let foItems: WriterItem[] = []
+  let foStyle: WriterItem[] = []
+  let foBackground: WriterItem[] = []
   const isHeartbeat = (heartbeatUserId !== '' && user.id === heartbeatUserId) || isPanel
   // ⚖️ TRIAL FIRST (owner 2026-10-04: "fix and keep re-running before it goes
   // to everyone"). A writing change under trial runs for the test account
@@ -7251,7 +7279,19 @@ async function handle(req: Request): Promise<Response> {
   // invention_recheck job runs the polish before the gate and sets check_status.
   let asyncPolish = false
   const polishDeferred: string[] = []
+  // FACTS_ONLY_WRITER (spread after panel7GateExtras): no word budget for the
+  // worker's refill, and the worker re-runs the trace pass after polish/QC/gate.
+  const factsOnlyGateExtras = (): Record<string, unknown> => (factsOnlyNow()
+    ? { word_budget: undefined, facts_only: true, facts_only_layers: { style: foStyle.map((x) => x.text), background: foBackground.map((x) => x.text) } }
+    : {})
   const optionalPassTime = (step: string): boolean => {
+    // FACTS_ONLY_WRITER: no lengthen passes (length follows her material) and no
+    // payoff repair (a model rewrite that can add what she never said). Dropped,
+    // not deferred: the worker never runs them, and the blueprint says so.
+    if ((step === 'late_extend' || step === 'extension' || step === 'payoff_repair') && factsOnlyNow()) {
+      console.log(JSON.stringify({ event: 'optional_pass_dropped_facts_only', step }))
+      return false
+    }
     if (asyncPolish && isDeferredStep(step)) {
       if (!polishDeferred.includes(step)) polishDeferred.push(step)
       console.log(JSON.stringify({ event: 'optional_pass_deferred', step, elapsed_ms: Date.now() - reqStartedAt }))
@@ -7796,7 +7836,7 @@ function clipAtSentence(t: string, max = 240): string {
 // angle_answer mode, and the Quality Controller's thin-material answer (plan
 // v6.8 §33, key 'mn:qc:*') arriving in a generate request's readiness_answers.
 // Same answer gate, same answerFactRow (source 'asked'), same question_asks row.
-async function storeAngleAnswer(sb: ReturnType<typeof createClient>, user: { id: string }, b: { key?: unknown; piece?: unknown; answer?: unknown; skip?: unknown; ask_id?: unknown }, pid: string | null): Promise<{ outcome: string; saved: boolean }> {
+async function storeAngleAnswer(sb: ReturnType<typeof createClient>, user: { id: string }, b: { key?: unknown; piece?: unknown; answer?: unknown; skip?: unknown; ask_id?: unknown }, pid: string | null, tag?: { topicKey: string; question?: string | null }): Promise<{ outcome: string; saved: boolean }> {
       const key = String(b.key ?? '').slice(0, 160)
       const piece = String(b.piece ?? '').slice(0, 40)
       const herAnswer = b.skip === true || typeof b.answer !== 'string' ? '' : b.answer.trim().slice(0, 2000)
@@ -7812,7 +7852,14 @@ async function storeAngleAnswer(sb: ReturnType<typeof createClient>, user: { id:
       }
       let saved = false
       if (row) {
-        const { error } = await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true })
+        // FACTS_ONLY_WRITER (tag set only with the flag on): the answer carries the
+        // question key and wording (0298). Until 0298 is applied the columns are
+        // missing, so the row is saved without them (source_ref still holds the key).
+        const tagged = tag ? { topic_key: tag.topicKey.slice(0, 160), question_text: tag.question ? tag.question.slice(0, 400) : null } : null
+        let { error } = tagged
+          ? await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true, ...tagged })
+          : await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true })
+        if (error && tagged && (error.code === '42703' || error.code === 'PGRST204')) ({ error } = await sb.from('creator_knowledge').insert({ ...row, sensitive: gate?.sensitive === true }))
         saved = !error || error.code === '23505'
       }
       console.log(JSON.stringify({ event: 'mn_answer', outcome, piece, saved }))
@@ -8132,6 +8179,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const row = r as { id?: unknown; sensitive?: unknown; creator_excluded_at?: unknown; basis?: unknown }
     if (row.sensitive !== true && !row.creator_excluded_at && !excludedIds.has(String(row.id ?? ''))
       && row.basis !== 'inferred') entitlementPool.push(r)
+    // FACTS_ONLY_WRITER: no purpose filter; only her exclusions and sensitive rows stay out.
+    if (factsOnlyNow()) return factsOnlyKeepsRow(row as never, excludedIds)
     if (!servesObjective(r as never, purposeGoal, herOnIds)) { offPurpose++; return false }
     // ⚠️ OWNER REVIEW 2026-10-04 (script D): "shipping is free and you can mix
     // and match" came from a garbled transcript ("chipping his free…") and was
@@ -8339,7 +8388,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   const ownedEntity = declinedAProduct ? null : chosenEntity
   // Owner 2026-10-05 (blind set 2 #13, #15): scanned rows must share a
   // distinctive word with THIS product and ask, or they stay out (trial).
-  if (trialOn && (ownedEntity || String(reference_note ?? '').trim())) {
+  if (trialOn && !factsOnlyNow() && (ownedEntity || String(reference_note ?? '').trim())) {
     const e = (ownedEntity ?? {}) as { name?: unknown; offer?: unknown; creator_summary?: unknown }
     const askText = [e.name, e.offer, e.creator_summary, reference_note, (body as { focus?: unknown }).focus, (body as { outcome?: unknown }).outcome].filter((x) => typeof x === 'string').join(' ')
     const rel = relevantToAsk(knowledgeRows as Array<{ text?: unknown; source?: unknown; id?: unknown }>, askText, {
@@ -9339,6 +9388,42 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     if (nsa.ask) {
       console.log(JSON.stringify({ event: 'feature_fired', feature: 'needs_story_ask', topic: nsa.topic, material_rows: material.filter((m) => m.trim()).length }))
       return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', error: 'One question first: nothing you have told Twin covers this yet.', questions: [{ field: 'story', question: storyQuestion(askNote) }] }, 409)
+    }
+  }
+  // ⚖️ FACTS_ONLY_WRITER — THE GAP LAYER (default off). What this request needs
+  // (a story, a number, a proof, a product fact) is matched against the FACTS
+  // layer only. An uncovered need stops the request before anything is
+  // charged: up to 3 specific questions, never a key she answered or skipped,
+  // never one a saved answer already says. Her answers come back under the
+  // question key (readiness_answers), are saved to her knowledge with that
+  // key, and are reused in every later script.
+  if (factsOnlyNow()) {
+    const pid = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+    const gapLedger = nuL(buildInventionLedger({
+      knowledge: (knowledgeRows as Array<{ id?: unknown; kind?: unknown; text?: unknown; basis?: unknown }>).filter((k) => k.basis !== 'inferred' && k.kind !== 'covered'),
+      answers: { ...((body as { mn_answers?: Record<string, unknown> }).mn_answers ?? {}), ...(body.readiness_answers ?? {}) },
+      note: reference_note,
+      products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+      targetProductId: pid, offer: typeof readyOffer === 'string' ? readyOffer : '', now: Date.now(),
+    }))
+    const [{ data: hist }, { data: saved }] = await Promise.all([
+      admin.from('question_asks').select('slot_id, outcome').eq('owner_id', user.id).in('outcome', ['answered', 'skipped', 'filler']).limit(500),
+      admin.from('creator_knowledge').select('text, source_ref').eq('owner_id', user.id).eq('source', 'asked').is('superseded_at', null).limit(400),
+    ]).catch(() => [{ data: null }, { data: null }] as const)
+    const savedRows = (saved ?? []) as Array<{ text?: unknown; source_ref?: unknown }>
+    const closedKeys = [
+      ...((hist ?? []) as Array<{ slot_id?: unknown }>).map((r) => String(r.slot_id ?? '')),
+      ...savedRows.map((r) => String(r.source_ref ?? '').replace(/^asked:/, '')),
+    ].filter(Boolean)
+    const d = decideFactsOnly(
+      { note: String(reference_note ?? ''), goal: body.goal ?? null, product: pid ? { id: pid, name: String((ownedEntity as { name?: unknown }).name ?? '') } : null },
+      writerItems(gapLedger), { ledger: gapLedger, closedKeys, savedAnswers: savedRows.map((r) => String(r.text ?? '')) })
+    console.log(JSON.stringify({ event: 'facts_only_gap', action: d.action, relevant: d.relevant.length, questions: d.questions.length }))
+    if (d.action === 'ask') {
+      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, error: 'A few questions first: what you have told Twin does not cover this yet.', questions: d.questions.map((q) => ({ field: q.key, kind: q.kind, question: q.question })) }, 409)
+    }
+    if (d.action === 'stop') {
+      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, error: 'Not enough of your own material for this request yet, so nothing was written.', questions: [] }, 409)
     }
   }
   // The panel final pass's view of her material (panel 13b; read at the end).
@@ -10700,7 +10785,11 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       ? useIds.map((id) => kRows.find((k) => String((k as { id?: unknown }).id ?? '') === id))
         .filter((k): k is (typeof kRows)[number] => !!k && k.basis !== 'inferred')
       : null
-    const speakableAll = chosenRows ?? [
+    // FACTS_ONLY_WRITER: her whole material, no ten-slot cap, no one-story cut, no topic scoping.
+    const factsOnlyAll = factsOnlyNow() && !chosenRows
+      ? kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered' && factsOnlyKeepsRow(k as never, new Set(uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids))))
+      : null
+    const speakableAll = factsOnlyAll ?? chosenRows ?? [
       ...askedHold.reserved,
       ...selectSpeakable(
         askedHold.pool,
@@ -10717,7 +10806,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       ? askedStory(storyGate.kept as Array<{ id?: unknown; kind: string; text?: unknown }>, String(reference_note ?? ''))
       : null
     if (namedStory && !speakableAll.some((k) => String((k as { text?: unknown }).text ?? '') === String(namedStory.text ?? ''))) speakableAll.unshift(namedStory as (typeof speakableAll)[number])
-    const storyCut = trialOn && !chosenRows
+    const storyCut = trialOn && !chosenRows && !factsOnlyAll
       ? oneStory(speakableAll as Array<{ id?: unknown; kind: string; text?: unknown }>, { recent: recentStorySupply, last: lastStorySupply, idsByText: storyTwins(kRows as Array<{ id?: unknown; kind: string; text?: unknown }>), topicText: ownedEntity && !storyFirstOn ? null : String(reference_note ?? '') })
       : null
     // Set 4 #18: "no numbers, just first steps" was her note TO Twin stored
@@ -13031,11 +13120,13 @@ This is the video's position. Every field below must serve it. If the reference'
     // every account, 'off' = nobody. Logs: counts only.
     const writerLoopBlock = writerLoopOn(writerLoopFlag, trialOn, user.id) ? (() => {
       try {
-        const answers = answersForThisVideo((body as { mn_answers?: unknown }).mn_answers, body.readiness_answers)
-        const pillars = pillarsFrom(brief)
+        const uncapped = factsOnlyNow()
+        const answers = answersForThisVideo((body as { mn_answers?: unknown }).mn_answers, body.readiness_answers, { uncapped })
+        const pillars = pillarsFrom(brief, { uncapped })
         const pr = (vp ?? {}) as { style_note?: unknown; samples?: unknown; voice_samples?: unknown }
-        const sampleLines = sampleLinesFrom(pr.samples, pr.voice_samples ?? (dna as { voice_samples?: unknown } | null)?.voice_samples)
+        const sampleLines = sampleLinesFrom(pr.samples, pr.voice_samples ?? (dna as { voice_samples?: unknown } | null)?.voice_samples, uncapped ? Infinity : 3)
         const block = renderWriterLoop({
+          uncapped,
           answers, pillars, painThemes: loopPainThemes, profile: loopProfileForSeconds(lengthTarget ?? body.target_seconds),
           voice: { cardBlock: voiceCard ? voiceCardBrief(voiceCard) : null, styleNote: typeof pr.style_note === 'string' ? pr.style_note : null, sampleLines },
         })
@@ -13055,13 +13146,49 @@ This is the video's position. Every field below must serve it. If the reference'
       extras: realisticReq.panel_extras as PanelExtras | null,
     })
     realisticUse = realisticCtx
+    // ⚖️ FACTS_ONLY_WRITER (default off): the four labelled layers, appended
+    // to the brief and the retry. Facts = the ledger of everything she gave;
+    // storytelling = her own lines and style note (wording only); background =
+    // niche, audience, pillars, pains and outside items (angle only).
+    let factsOnlyBlock = ''
+    if (factsOnlyNow()) {
+      try {
+        const pid = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+        const ledgerFO = nuL(buildInventionLedger({
+          knowledge: provenanceSupply,
+          answers: { ...((body as { mn_answers?: Record<string, unknown> }).mn_answers ?? {}), ...(answers ?? {}), ...(body.readiness_answers ?? {}) },
+          note: reference_note,
+          products: (libraryRows ?? []) as Array<{ id?: unknown; name?: unknown; offer?: unknown; knowledge?: unknown }>,
+          targetProductId: pid, offer: typeof readyOffer === 'string' ? readyOffer : '',
+          outside: boardMaterial.map((m, n) => ({ id: m.id ?? `${m.kind}:${n}`, kind: m.kind, text: m.text })), now: Date.now(),
+        }))
+        foItems = writerItems(ledgerFO)
+        const pr = (vp ?? {}) as { style_note?: unknown; samples?: unknown; voice_samples?: unknown; niche?: unknown; audience?: unknown }
+        foStyle = styleItems([
+          ...(typeof pr.style_note === 'string' ? [`Her style note: ${pr.style_note}`] : []),
+          ...sampleLinesFrom(pr.samples, pr.voice_samples ?? (dna as { voice_samples?: unknown } | null)?.voice_samples, Infinity),
+        ])
+        foBackground = backgroundItems([
+          ...(typeof pr.niche === 'string' && pr.niche.trim() ? [`Her niche: ${pr.niche}`] : []),
+          ...(typeof pr.audience === 'string' && pr.audience.trim() ? [`Her audience: ${pr.audience}`] : []),
+          ...pillarsFrom(brief, { uncapped: true }).map((p) => `Her content pillar: ${p}`),
+          ...loopPainThemes.map((t) => `Her audience says (outside research, never her experience): ${t}`),
+        ], foItems.filter((it) => it.layer === 'background').length + 1)
+        factsOnlyBlock = renderFactsOnlyBlock(foItems, foStyle, foBackground)
+        console.log(JSON.stringify({ event: 'facts_only_layers', ...layerCounts(foItems, foStyle, foBackground) }))
+      } catch (e) { console.warn('facts_only_layers_failed', String((e as Error)?.message ?? e).slice(0, 120)) }
+    }
+    // The writer's schema gains layer_tag + source_ids for this request only.
+    factsOnlySchemaOn = factsOnlyBlock !== ''
     const buildWriterBrief = (hookRule: string) => withRealisticContext(`${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${directionGuidance}${softwareBlockTrial}
 
 ${hookRule}${writerLoopBlock ? `
 
-${writerLoopBlock}` : ''}
+${writerLoopBlock}` : ''}${factsOnlyBlock ? `
+
+${factsOnlyBlock}` : ''}
 
 ${positionBlock}${referenceBlock}${historyBlock ? `
 
@@ -17509,7 +17636,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     if (trialOn && blueprint && typeof blueprint === 'object') {
       const bpw = blueprint as Record<string, unknown>
       try {
-        if (Array.isArray(bpw.script)) {
+        // FACTS_ONLY_WRITER: no fixed word budget; nothing is added to hit a count.
+        if (Array.isArray(bpw.script) && !factsOnlyNow()) {
           const targetId = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
           const ledgerForBudget = templateLedger.length ? templateLedger : nuL(buildInventionLedger({
             knowledge: provenanceSupply, answers: { ...(answers ?? {}), ...(body.readiness_answers ?? {}) }, note: reference_note,
@@ -17789,6 +17917,20 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         } catch { /* storing her answer never fails a build */ }
       }
     }
+    // FACTS_ONLY_WRITER: her answers to the gap questions (keys mn:fo:*) are saved
+    // to her knowledge under the question key, and the key is closed, so the
+    // question is never asked again and the answer is reused in later scripts.
+    if (factsOnlyNow()) {
+      for (const [key, v] of Object.entries((body.readiness_answers ?? {}) as Record<string, unknown>)) {
+        if (!/^mn:fo:[a-z_]+:/i.test(key) || typeof v !== 'string') continue
+        try {
+          const kind = key.split(':')[2] ?? 'story'
+          const pidQ = kind === 'product_fact' && (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const r = await storeAngleAnswer(admin, user, { key, piece: kind === 'story' ? 'story' : kind, answer: v }, pidQ, { topicKey: key })
+          console.log(JSON.stringify({ event: 'facts_only_answer_stored', kind, outcome: r.outcome, saved: r.saved }))
+        } catch { /* storing her answer never fails a build */ }
+      }
+    }
     if (isHeartbeat && realisticUse?.block && blueprint && typeof blueprint === 'object') (blueprint as Record<string, unknown>).realistic_use = realisticUse.used
     let planBShipped = false
     const planBTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
@@ -18023,6 +18165,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // Test accounts: repair trial (16 Oct); GATE_REPAIR_TRIAL='false' = measure.
       const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
       inventionRecheck = { reason: 'queued', ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
+      // FACTS_ONLY_WRITER (default off): no word budget; the worker re-runs the trace pass.
+      Object.assign(inventionRecheck.ledger, factsOnlyGateExtras())
       // Async polish: the draft ships now; the worker polishes, then checks.
       if (asyncPolish) {
         ;(inventionRecheck.ledger as Record<string, unknown>).polish = { goal: String((body as { goal?: unknown }).goal ?? ''), subject: String((ownedEntity as { name?: unknown } | null)?.name ?? reference_note ?? '').slice(0, 80), ...(voicePolish ? { voice: { card: voicePolish.card, style_note: voicePolish.styleNote, samples: voicePolish.samples } } : {}), ...(qualityProfile() ? (polishReorderOn(trialOn, isHeartbeat, qFlag('POLISH_REORDER')) ? { reorder: true } : {}) : { ...(polishReorderOn(trialOn, isHeartbeat, Deno.env.get('POLISH_REORDER')) ? { reorder: true } : {}) }) }
@@ -18147,6 +18291,28 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         console.log(JSON.stringify({ event: 'feature_fired', feature: 'script_cleanup_v1', where: 'edge', ...r.cut }))
       } catch { /* a cleanup never fails a build */ }
     }
+    // ⚖️ FACTS_ONLY_WRITER, LAST (default off): every spoken sentence traced to
+    // the FACTS layer by the writer's tags and source ids and by traceLines.
+    // Dropped: no source (hook, CTA and plain connecting/style lines excepted),
+    // an event or number resting only on storytelling/background, a link to a
+    // story she never stored, an audience problem told as hers, unearned first
+    // person, a number or scene beyond its source. Cuts only; her text is
+    // never reworded. Counts and reasons in logs; examples on the blueprint.
+    if (factsOnlyNow() && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+      const bpo = blueprint as Record<string, unknown>
+      try {
+        const r = traceAndCut(bpo.script as Array<Record<string, unknown>>, foItems, { style: foStyle, background: foBackground })
+        bpo.script = r.beats
+        if (Array.isArray(bpo.shot_list)) bpo.shot_list = syncShotListSpokenText(bpo.shot_list as Array<{ spoken_text?: unknown }>, bpo.script as Array<{ line?: unknown }>).shots
+        bpo.facts_only = { ...r.record, layers_handed: layerCounts(foItems, foStyle, foBackground), word_budget: 'off', lengthen: 'off', payoff_repair: 'dropped' }
+        const { examples: _ex, ...counts } = r.record
+        console.log(JSON.stringify({ event: 'facts_only_trace', where: 'edge', ...counts }))
+      } catch (e) {
+        // A safety pass is never skipped silently: the blueprint says it failed.
+        bpo.facts_only = { error: true }
+        console.warn(JSON.stringify({ event: 'facts_only_trace_failed', error: String((e as Error)?.name ?? 'error') }))
+      }
+    }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
     // W12.2 niche pack banned claims, REPORT ONLY (NICHE_PACKS, default OFF):
     // the shipped script's lines are flagged, never edited. Indexes and reasons only.
@@ -18166,7 +18332,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // Owner plan B2 floor (set 4 #17, a hook plus one line): a script needs a body, a payoff and a close (trial).
       const floor = trialOn ? 3 : 2
       // Checks never empty a script (panel-current-9): refill from her items first.
-      if (trialOn && spoken.length < floor && Array.isArray((blueprint as { script?: unknown }).script)) {
+      // FACTS_ONLY_WRITER: no refill; length follows her material.
+      if (trialOn && !factsOnlyNow() && spoken.length < floor && Array.isArray((blueprint as { script?: unknown }).script)) {
         try {
           const tgt = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
           const ledgerF = templateLedger.length ? templateLedger : nuL(buildInventionLedger({
@@ -18414,6 +18581,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             const gateMeasure = gateMeasureOnly({ isTestAccount: isHeartbeat, isPanel, requested: (body as { gate_mode?: unknown }).gate_mode, repairTrial: gateRepairTrialOn(Deno.env.get('GATE_REPAIR_TRIAL')) })
             rbp.gate_mode = gateModeLabel(gateMeasure)
             rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
+            // FACTS_ONLY_WRITER (default off): no word budget; the worker re-runs the trace pass.
+            Object.assign(rescueRecheck.ledger, factsOnlyGateExtras())
             console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
           } catch { /* the gate bookkeeping never loses a rescued script */ }
         }

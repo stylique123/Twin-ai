@@ -1,6 +1,6 @@
 // Self-test for the single-arm panel blind pack. No network, no database.
 import assert from 'node:assert/strict'
-import { buildBlindPack, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems } from './panelBlindPack.mjs'
+import { buildBlindPack, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems, storedLayers } from './panelBlindPack.mjs'
 
 let seed = 7
 const rand = (n) => { const b = Buffer.alloc(n); for (let i = 0; i < n; i++) b[i] = (seed = (seed * 1103515245 + 12345) & 0xff); return b }
@@ -53,4 +53,8 @@ assert.ok(supportScore('Two of them simply swapped digits and fabricated totals.
 assert.equal(supportScore('Hi.', []), null)
 const tr2 = buildTrace([row(1)], { g1: { script: [{ line: 'I skipped warm-ups for a year.' }] } }, {}, {}, { 'clay-kiln': coach })
 assert.equal(typeof tr2[0].lines[0].support, 'number')
+// Layers: handed (from the facts-only record) next to stored.
+assert.deepEqual(storedLayers([{ kind: 'experience' }, { kind: 'opinion' }, { kind: 'fact', basis: 'inferred' }, { kind: 'fact', sensitive: true }], [{ knowledge: [{}, {}] }], { sample_hooks: ['a', 'b'], niche: 'x' }), { fact: 3, style: 2, background: 3 })
+const tr3 = buildTrace([row(1)], { g1: { facts_only: { layers_handed: { fact: 9, style: 3, background: 4 } } } }, { g1: 'u1' }, { u1: { layers: { fact: 11, style: 3, background: 6 } } })
+assert.deepEqual(tr3[0].layers, { handed: { fact: 9, style: 3, background: 4 }, stored: { fact: 11, style: 3, background: 6 } })
 console.log('panelBlindPack selftest: ok')
