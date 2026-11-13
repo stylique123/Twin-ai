@@ -1,0 +1,5 @@
+Home-1024 11.89% (board 1024x1100, app 1024x1147)
+Home-1440 5.27% (board 1440x1100, app 1440x1100)
+Home-390 20.21% (board 390x806 after the fake status bar is cropped, app 390x928)
+Home-820 29.90% (board 820x1100, app 820x1415)
+Sidebar-1440 2.35% (board 248x1100, app sidebar 248x1100)

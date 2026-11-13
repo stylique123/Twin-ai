@@ -1,0 +1,14 @@
+/* App shell + Home boards' CSS, values verbatim; prefixed app-. Hover only
+   where hover exists (rule C). The global reduced-motion rule stops animations. */
+.app-row { transition: background .2s ease, padding .2s ease; }
+.app-grow { transform-origin: left; animation: app-grow 1.2s cubic-bezier(.22,1,.36,1) .4s both; }
+.app-bob { animation: app-bob 3s ease-in-out infinite; }
+.app-recdot { animation: app-recp 1.4s ease-out infinite; }
+.app-spin6 { animation: ob-spinb 6s linear infinite; }
+@media (hover: hover) {
+  .app-row:hover { background: rgba(255,255,255,.04); padding-left: 24px !important; }
+  .app-hover-row:hover { background: rgba(255,255,255,.04); color: #F6F1E9; }
+}
+@keyframes app-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes app-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes app-recp { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.7); } 100% { box-shadow: 0 0 0 8px rgba(255,255,255,0); } }
