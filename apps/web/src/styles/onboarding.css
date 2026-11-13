@@ -1,0 +1,53 @@
+/* Ported from the Welcome / Connect / Reading / Stories / Meet boards' CSS,
+   values verbatim; class and keyframe names prefixed ob-. Hover effects only
+   where hover exists (rule C). The global reduced-motion rule stops animations. */
+.ob-aur { position: absolute; z-index: 0; pointer-events: none; }
+.ob-caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -2px; background: #FF5B7B; animation: ob-blink 1s steps(1) infinite; }
+.ob-cta { position: relative; overflow: hidden; transition: transform .2s ease, box-shadow .2s ease; }
+.ob-cta::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation: ob-shine 3.2s ease-in-out infinite; pointer-events: none; }
+.ob-gbtn { background: linear-gradient(110deg, #FFB347, #FF5B7B 55%, #65E5D8); background-size: 200% 100%; animation: ob-hue 5s ease infinite; }
+.ob-grad { background: linear-gradient(110deg, #FFB347, #FF5B7B, #65E5D8, #FFB347); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: ob-hue 6s ease infinite; }
+.ob-inp { transition: border-color .2s ease, box-shadow .2s ease; }
+.ob-inp:focus { border-color: rgba(255,91,123,.6) !important; box-shadow: 0 0 0 4px rgba(255,91,123,.14); outline: none; }
+.ob-lift { transition: transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, border-color .25s ease; }
+.ob-ringp { animation: ob-ring 1.8s ease-out infinite; }
+.ob-wsCard { animation: ob-wsCard .6s cubic-bezier(.22,1,.36,1) both; }
+.ob-wsFade { animation: ob-wsFade .45s ease both; }
+.ob-wsRise { animation: ob-wsRise .7s cubic-bezier(.22,1,.36,1) both; }
+.ob-wsSlide { animation: ob-wsSlide .7s cubic-bezier(.22,1,.36,1) both; }
+.ob-drift1 { animation: ob-drift1 18s ease-in-out infinite; }
+.ob-drift2 { animation: ob-drift2 22s ease-in-out infinite; }
+@media (hover: hover) {
+  .ob-cta:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 16px 40px -12px rgba(255,91,123,.7); }
+  .ob-lift:hover { transform: translateY(-4px); box-shadow: 0 18px 40px -18px rgba(0,0,0,.9); border-color: rgba(255,255,255,.18) !important; }
+}
+@keyframes ob-blink { 50% { opacity: 0; } }
+@keyframes ob-drift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(80px,40px) scale(1.15); } }
+@keyframes ob-drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-70px,-50px) scale(1.1); } }
+@keyframes ob-hue { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes ob-ring { 0% { box-shadow: 0 0 0 0 rgba(255,91,123,.45); } 100% { box-shadow: 0 0 0 14px rgba(255,91,123,0); } }
+@keyframes ob-shine { 0% { transform: translateX(-120%) skewX(-20deg); } 60%,100% { transform: translateX(260%) skewX(-20deg); } }
+@keyframes ob-wsCard { 0% { opacity: 0; transform: translateY(16px) scale(.96); } 100% { opacity: 1; transform: none; } }
+@keyframes ob-wsFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ob-wsRise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+@keyframes ob-wsSlide { from { opacity: 0; transform: translateX(-40px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+/* Reading board: spinning gradient border, waiting dots, indeterminate bar. */
+.ob-spinb { animation: ob-spinb 8s linear infinite; }
+@keyframes ob-spinb { to { transform: rotate(360deg); } }
+.ob-dots span { display: inline-block; width: 5px; height: 5px; border-radius: 9px; background: #FF8FA4; animation: ob-dot 1.2s infinite; }
+.ob-dots span:nth-child(2) { animation-delay: .15s; } .ob-dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes ob-dot { 0%,80%,100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.ob-indet { position: relative; overflow: hidden; }
+.ob-indet::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); animation: ob-bar 1.4s linear infinite; }
+@keyframes ob-bar { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.ob-pop { animation: ob-popin .5s cubic-bezier(.22,1,.36,1) both; }
+@keyframes ob-popin { 0% { opacity: 0; transform: translateY(10px) scale(.94); } 100% { opacity: 1; transform: none; } }
+
+/* Meet board: .btnL / .btnG / .fld. Size overrides use ! utilities. */
+.btn-board-light, .btn-board-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border-radius: 12px; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: none; touch-action: manipulation; white-space: nowrap; }
+.btn-board-light { border: 0; background: #F6F1E9; color: #0B0B0E; }
+.btn-board-ghost { padding: 12px 16px; border: 1px solid rgba(255,255,255,0.12); background: transparent; color: #D8CFC2; font-weight: 600; }
+.ob-fld { min-width: 0; padding: 12px 14px; border-radius: 11px; border: 1px solid rgba(255,255,255,0.1); background: #0B0B0E; color: #F6F1E9; font-family: inherit; font-size: 16px; outline: none; }
+@media (min-width: 768px) { .ob-fld { font-size: 14px; } }
+.ob-fld:focus { border-color: rgba(255,91,123,.6); box-shadow: 0 0 0 4px rgba(255,91,123,.12); }
+@media (max-width: 767px) { .btn-board-light, .btn-board-ghost { white-space: normal; text-align: left; } }

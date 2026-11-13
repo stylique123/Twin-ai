@@ -110,7 +110,7 @@ describe('and they stay together where they can be changed', () => {
     // ⚠️ Seeded from the draft. Re-asking from empty would present a creator's
     // own answer back to them as unanswered, which reads as the app losing it.
     expect(CONFIRM).toMatch(/useState<Q4Answer \| null>\(draft\.q4 \?\? null\)/)
-    expect(CONFIRM).toMatch(/useState<boolean \| null>\(draft\.canRecordScreen\)/)
-    expect(CONFIRM).toMatch(/useState<boolean \| null>\(draft\.canFilmObjects\)/)
+    expect(CONFIRM).toMatch(/: boolean \| null = draft\.canRecordScreen/)
+    expect(CONFIRM).toMatch(/: boolean \| null = draft\.canFilmObjects/)
   })
 })

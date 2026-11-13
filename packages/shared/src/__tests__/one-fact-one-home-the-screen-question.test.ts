@@ -62,7 +62,9 @@ describe('the screen question has one home, and it is the one with a referent', 
     // ⚠️ A REMOVED QUESTION MUST NOT BECOME A REMOVED FIELD. A creator who
     // answered before this change keeps their answer, and the draft still
     // carries it to everything downstream.
-    expect(ONBOARDING).toMatch(/const \[canRecordScreen\] = useState<boolean \| null>\(draft\.canRecordScreen\)/)
+    // ⚖️ PART 2: read live from the draft rather than captured at mount, so the
+    // product-on-camera answer given on this screen cannot be overwritten.
+    expect(ONBOARDING).toMatch(/const canRecordScreen: boolean \| null = draft\.canRecordScreen/)
     expect(ONBOARDING).toMatch(/caps\.can_record_screen = canRecordScreen/)
   })
 })

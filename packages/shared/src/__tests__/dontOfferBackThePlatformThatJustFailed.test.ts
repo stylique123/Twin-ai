@@ -63,8 +63,11 @@ describe('nothing to suggest means nothing is said', () => {
     // `otherPlatforms(draft.platform).length > 0`. The TEST was wrong, not the
     // change: what must hold is that the block is GUARDED on there being
     // somewhere to send them -- by either form -- never rendered unconditionally.
+    // ⚖️ PART 2 (Connect board): the failure now shows on the handle screen as
+    // one button per other platform, so the guard is on that list instead.
     const guarded = /otherPlatformsSentence\(draft\.platform\) !== ''/.test(code)
       || /otherPlatforms\(draft\.platform\)\.length > 0/.test(code)
+      || (/const others = otherPlatforms\(platform\)/.test(code) && /others\.length > 0 && others\.map/.test(code))
     expect(guarded, 'the cross-platform block must be gated on having somewhere to send them').toBe(true)
   })
 })
@@ -78,8 +81,11 @@ describe('the screen actually calls it', () => {
     expect(code).not.toMatch(/YouTube, TikTok or Instagram/)
   })
 
-  it('renders the computed sentence instead', () => {
-    expect(code).toMatch(/otherPlatformsSentence\(draft\.platform\)/)
+  // ⚖️ PART 2: the Connect board replaces the sentence with one button per
+  // remaining platform, built from the same shared list and label map.
+  it('renders the computed list instead', () => {
+    expect(code).toMatch(/otherPlatforms\(platform\)/)
+    expect(code).toMatch(/Try on \{PLATFORM_LABEL\[p\]\}/)
   })
 
   it('is exported from the package index', () => {

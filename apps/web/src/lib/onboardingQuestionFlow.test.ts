@@ -53,16 +53,24 @@ describe('finishing is something the creator does', () => {
   })
 
   it('and only Done or Skip all sets it', () => {
+    // ⚖️ UPDATED FOR THE READING BOARD (design-handoff Part 2): three fixed steps
+    // (About you, Your audience, Only you know) replace the one-at-a-time queue.
+    // Finishing is still only ever a tap: Next off the last chip step, Skip all,
+    // and the depth question's own Done/Skip. No timer or comparison sets it.
     const sets = SRC.match(/setFinished\(true\)/g) ?? []
-    expect(sets.length).toBe(2)
+    expect(sets.length).toBe(3)
+    expect(SRC).toMatch(/const skipEverything = \(\) => \{ setFinished\(true\); setDepthDone\(true\) \}/)
+    expect(SRC).toMatch(/onDone=\{\(\) => \{ setFinished\(true\); setDepthDone\(true\) \}\}/)
   })
 
-  it('a shrinking list clamps rather than throwing them out of the set', () => {
-    // ⚖️ STANDING ON QUESTION FIVE WHEN THE LIST BECOMES FOUR means seeing
-    // question four — not being skipped past the remaining ones.
-    expect(SRC).toMatch(/const qAt = Math\.min\(qIndex, Math\.max\(asked\.length - 1, 0\)\)/)
-    expect(SRC).toMatch(/While we read · \{qAt \+ 1\} of \{asked\.length\}/)
-    expect(SRC).toMatch(/id=\{asked\[qAt\]\}/)
+  it('the three Reading steps are fixed, so nothing can shrink out from under them', () => {
+    // ⚖️ UPDATED FOR THE READING BOARD. The old screen walked a list that could
+    // shrink as answers arrived, so it clamped its index. The board asks three
+    // fixed steps instead; the step a creator stands on never disappears.
+    expect(SRC).toMatch(/WHILE WE READ · 3 QUICK STEPS/)
+    expect(SRC).toMatch(/\{ short: 'About you'/)
+    expect(SRC).toMatch(/\{ short: 'Your audience'/)
+    expect(SRC).toMatch(/\{ short: 'Only you know'/)
   })
 
   it('and the finished scan still waits rather than interrupting', () => {
