@@ -18301,7 +18301,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       try {
         // Rule C: her product and brand names (a sentence naming them needs a source).
         const foNames = [...((libraryRows ?? []) as Array<{ name?: unknown }>).map((r) => String(r.name ?? '')), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')].filter((n) => n.trim())
-        const r = traceAndCut(bpo.script as Array<Record<string, unknown>>, foItems, { style: foStyle, background: foBackground, names: foNames })
+        const r = traceAndCut(bpo.script as Array<Record<string, unknown>>, foItems, { style: foStyle, background: foBackground, names: foNames, hasProduct: !!ownedEntity })
         bpo.script = r.beats
         if (Array.isArray(bpo.shot_list)) bpo.shot_list = syncShotListSpokenText(bpo.shot_list as Array<{ spoken_text?: unknown }>, bpo.script as Array<{ line?: unknown }>).shots
         bpo.facts_only = { ...r.record, layers_handed: layerCounts(foItems, foStyle, foBackground), word_budget: 'off', lengthen: 'off', payoff_repair: 'dropped' }

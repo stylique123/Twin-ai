@@ -295,7 +295,7 @@ describe('Fix B: numbers written in words', () => {
 describe('Rule C: unsourced general sentences', () => {
   const ex = { names: ['Signal Daily Newsletter', 'Signal Daily'] }
   // No words shared with her items, so they reach rule C (not the tracer).
-  const gen = ['Polished sentences do not guarantee accurate information.', 'True utility is not about speed.', 'Speedy replies conceal flimsy references.']
+  const gen = ['Polished sentences do not guarantee accurate information.', 'True utility is not about speed.', 'Speedy replies never prove flimsy references.']
   it(`keeps at most ${GENERAL_MAX} per script`, () => {
     const r = traceAndCut(beats(['Hook.'], ...gen.map((g) => [g] as [string]), ['Link in bio.']), items, ex)
     expect(r.record.general_kept).toBe(2)
@@ -354,5 +354,42 @@ describe('Rule 5: hook and CTA are exempt only when they state no fact', () => {
       const r = traceAndCut(beats([hook], ['Ask for its sources.', [ref('k2')]], [cta]), items)
       expect(r.beats.map((b) => b.line).join(' | ')).not.toMatch(/Nine out of ten|furious|200 readers/)
     }
+  })
+})
+
+// ── Second review (13 Nov): the free pass. Sentences share no words with her items. ──
+describe('the free pass is tighter', () => {
+  const run = (line: string, extra: Parameters<typeof traceAndCut>[2] = {}) => traceAndCut(beats(['Hook.'], ['Ask for its sources.', [ref('k2')]], [line], ['Link in bio.']), items, extra)
+  it('1. a first-person pronoun needs a source (connecting or Rule C)', () => {
+    for (const line of ['Tell me below.', 'We just make noise together.', 'Grandma never trusted our toaster.']) {
+      const r = run(line)
+      expect(r.beats.map((b) => b.line)).not.toContain(line)
+      expect(r.record.cut.first_person_no_source).toBe(1)
+    }
+  })
+  it('2. any capitalised word of her product or brand name blocks the free pass', () => {
+    const r = run('Sprocket refuses to behave on Tuesdays.', { names: ['Pip and Sprocket Live'] })
+    expect(r.record.cut.names_product).toBe(1)
+    expect(run('Sprocket refuses to behave on Tuesdays.').record.cut.names_product).toBe(0)
+  })
+  it('3. with a product in the request, It/This/That/These/They openings get no free pass', () => {
+    for (const line of ['It protects delicate skin without harsh wiping.', 'They never pill or fade.']) {
+      expect(run(line, { hasProduct: true }).record.cut.product_pronoun).toBe(1)
+      expect(run(line).record.cut.product_pronoun).toBe(0)
+    }
+  })
+  it('4. Rule C must be advice-shaped; a plain descriptive scene needs a source', () => {
+    expect(run('Weak yarn snaps quickly.').record.cut.not_advice).toBe(1)
+    expect(run('A warm, steady smell drifts across the kitchen.').record.cut.not_advice).toBe(1)
+    for (const line of ['Never buy yarn that squeaks.', 'Buy yarn that feels soft in your hands.', 'Cheap yarn should not squeak.', 'Do your scarves pill?']) {
+      expect(run(line).beats.map((b) => b.line)).toContain(line)
+    }
+  })
+  it('the grid settings are honoured', () => {
+    const line = 'Ask for its sources while the espresso machine hisses behind a cluttered desk lamp.'
+    const strict = traceAndCut(beats(['Hook.'], [line, [ref('k2')]], ['Link in bio.']), items, { tuning: { addedMinWords: 3, addedMinShare: 0.5 } })
+    const loose = traceAndCut(beats(['Hook.'], [line, [ref('k2')]], ['Link in bio.']), items, { tuning: { addedMinWords: 50, addedMinShare: 0.6 } })
+    expect(strict.record.cut.added_detail).toBe(1)
+    expect(loose.record.cut.added_detail).toBe(0)
   })
 })

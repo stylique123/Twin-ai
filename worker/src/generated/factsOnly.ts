@@ -290,7 +290,7 @@ export function bestItem(sentence: string, pool: readonly WriterItem[], ignore: 
   return best
 }
 
-export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored'
+export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'first_person_no_source' | 'product_pronoun' | 'not_advice' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored'
 export interface FoTraceRecord {
   sentences: number; sourced: number; connecting: number; hook_cta_free: number; general_kept: number; viewer_questions: number
   tags: Record<LineTag | 'untagged', number>
@@ -304,6 +304,31 @@ export const ADDED_MIN_SHARE = 0.5
 export const CONNECT_MAX_NEW = 2
 /** Rule C: unsourced general sentences (no number, first person, feeling, result, product or brand) kept per script; questions to the viewer are not counted. */
 export const GENERAL_MAX = 2
+
+// ── The free pass (owner, 13 Nov, second review) ──────────────────────────
+// A no-source sentence passes as connecting, as Rule C, or as a hook/CTA
+// with no fact ONLY when none of these apply:
+/** 1. First-person pronouns: such a sentence needs a source. */
+export const FIRST_PERSON_PRONOUN = /\b(?:i|me|my|mine|we|us|our|ours)\b/i
+/** 3. With a product in the request, a sentence starting with one of these is a product claim in disguise. */
+export const PRODUCT_PRONOUN_START = /^\s*(?:it|this|that|these|they)\b/i
+const NAME_STOP = new Set(['The', 'And', 'Of', 'For', 'With', 'A', 'An', 'To', 'In', 'On', 'At', 'By', 'My', 'Our', 'Your'])
+/** 2. Every capitalised word of her product and brand names (Pip, Sprocket, Live…). */
+export function nameTokens(names: readonly string[]): string[] {
+  const out = new Set<string>()
+  for (const n of names) for (const w of String(n ?? '').split(/[^A-Za-z0-9'’]+/)) if (/^[A-Z]/.test(w) && w.length >= 2 && !NAME_STOP.has(w)) out.add(w.replace(/['’]s$/, ''))
+  return [...out]
+}
+/** 4. Advice-shaped: addresses the viewer, is an instruction, a question, or has a modal or a negation. */
+const MODAL_OR_NEGATION = /\b(?:can|could|should|would|will|must|might|may|shall|not|never|no|nothing|nobody|don['’]t|doesn['’]t|isn['’]t|aren['’]t|won['’]t|can['’]t|didn['’]t|wasn['’]t|\w+n['’]t)\b/i
+const IMPERATIVE_START = /^\s*(?:(?:so|and|then|now|just|first|next|always|never|please)[,\s]+)?(?:ask|check|try|stop|start|keep|make|take|use|read|look|watch|write|save|open|find|test|pick|choose|skip|add|put|let|go|get|give|grab|remember|think|notice|imagine|swap|drop|leave|wash|store|run|set|turn|hold|bring|send|follow|learn|warm|patch|brew|smell|taste|count|list|label|tag|plan|break|split|cut|walk|breathe|focus|do|don['’]t|never|avoid|forget|trust|treat|compare|measure|note|track|tell|show|share|wait)\b/i
+export function adviceShaped(s: string): boolean {
+  return /\byou(?:r|rs|rself|['’](?:re|ll|ve|d))?\b/i.test(s) || /\?\s*$/.test(s) || IMPERATIVE_START.test(s) || MODAL_OR_NEGATION.test(s)
+}
+
+/** The three settings tuned from the owner's fixed grid. */
+export interface TraceTuning { addedMinWords: number; addedMinShare: number; generalMax: number }
+export const TRACE_TUNING_GRID = { addedMinWords: [3, 4, 5], addedMinShare: [0.5, 0.6], generalMax: [2, 3] } as const
 /** Fix A: a story paraphrase counts as her source for first person at this meaning overlap (the gate's HER_MIN). */
 export const STORY_PARAPHRASE_MEANING = 0.34
 
@@ -338,8 +363,8 @@ const tagOf = (v: unknown): LineTag | null => ((LINE_TAGS as readonly string[]).
  * Kept text is her text: nothing is reworded, only cut. A beat left with no
  * sentence is dropped. Each kept beat carries `source_ids` (facts layer).
  */
-export function traceAndCut<B extends { section?: unknown; line?: unknown; source_ids?: unknown; layer_tag?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { style?: readonly WriterItem[]; background?: readonly WriterItem[]; names?: readonly string[]; maxExamples?: number } = {}): { beats: Array<B & { source_ids: string[] }>; record: FoTraceRecord } {
-  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0 }, beats_dropped: 0, examples: [] }
+export function traceAndCut<B extends { section?: unknown; line?: unknown; source_ids?: unknown; layer_tag?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { style?: readonly WriterItem[]; background?: readonly WriterItem[]; names?: readonly string[]; maxExamples?: number; hasProduct?: boolean; tuning?: Partial<TraceTuning> } = {}): { beats: Array<B & { source_ids: string[] }>; record: FoTraceRecord } {
+  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, first_person_no_source: 0, product_pronoun: 0, not_advice: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0 }, beats_dropped: 0, examples: [] }
   const facts = items.filter((it) => it.layer === 'fact')
   const opinions = items.filter((it) => it.opinion)
   const nonSource = [...items.filter((it) => it.layer !== 'fact' && !it.opinion), ...(extra.style ?? []), ...(extra.background ?? [])]
@@ -354,7 +379,15 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
   const styleWords = new Set((extra.style ?? []).flatMap((it) => wordsOf(it.text)).map(stem))
   // Rule C: her product and brand names (a sentence naming them needs a source).
   const names = (extra.names ?? []).map((n) => String(n ?? '').trim().toLowerCase()).filter((n) => n.length >= 3)
-  const namesProduct = (s: string) => { const low = s.toLowerCase(); return names.some((n) => low.includes(n)) }
+  const tokens = nameTokens(extra.names ?? [])
+  const tokenRe = tokens.length ? new RegExp(`\\b(?:${tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`) : null
+  const namesProduct = (s: string) => { const low = s.toLowerCase(); return names.some((n) => low.includes(n)) || (!!tokenRe && tokenRe.test(s)) }
+  const tune: TraceTuning = { addedMinWords: extra.tuning?.addedMinWords ?? ADDED_MIN_WORDS, addedMinShare: extra.tuning?.addedMinShare ?? ADDED_MIN_SHARE, generalMax: extra.tuning?.generalMax ?? GENERAL_MAX }
+  // The free pass is blocked by: first-person pronouns (1), a name token (2), or,
+  // with a product in the request, an It/This/That/These/They opening (3).
+  const freePassBlocked = (s: string): FoCutReason | null => FIRST_PERSON_PRONOUN.test(s) ? 'first_person_no_source'
+    : namesProduct(s) ? 'names_product'
+      : extra.hasProduct && PRODUCT_PRONOUN_START.test(s) ? 'product_pronoun' : null
   let generalKept = 0
   const bgInputs = toInputs(nonSource.filter((it) => it.layer === 'background'))
   const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
@@ -401,28 +434,29 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
         }
       }
       if (!src.length) {
+        if (fact) { cutOne(i, 'no_source', sentence); continue }
+        // No free pass with a first-person pronoun, a name token, or (with a
+        // product in the request) an It/This/That/These/They opening.
+        const blocked = freePassBlocked(sentence)
+        if (blocked) { cutOne(i, blocked, sentence); continue }
         // A plain connecting line: states nothing, adds at most 2 new words.
-        if (!fact && addedBeyond(sentence, allTexts, styleWords).words.length <= CONNECT_MAX_NEW) { rec.connecting++; kept.push(sentence); continue }
+        if (addedBeyond(sentence, allTexts, styleWords).words.length <= CONNECT_MAX_NEW) { rec.connecting++; kept.push(sentence); continue }
         // Rule 5: the hook and the CTA are exempt only when they state no fact.
-        if (free && !fact) { rec.hook_cta_free++; kept.push(sentence); continue }
-        // Rule C: a general sentence may stay, at most 2 per script; a
-        // question to the viewer is not counted. Never with a number, first
-        // person, a feeling or a result, and never naming her product or brand
-        // (what her product does needs a source).
-        if (namesProduct(sentence)) { cutOne(i, 'names_product', sentence); continue }
-        if (!fact) {
-          if (/\?\s*$/.test(sentence)) { rec.viewer_questions++; kept.push(sentence); continue }
-          if (generalKept < GENERAL_MAX) { generalKept++; rec.general_kept++; kept.push(sentence); continue }
-          cutOne(i, 'general_over_cap', sentence); continue
-        }
-        cutOne(i, 'no_source', sentence); continue
+        if (free) { rec.hook_cta_free++; kept.push(sentence); continue }
+        // Rule C: advice-shaped only (to the viewer, an instruction, a question,
+        // a modal or a negation); plain descriptive scenes need a source.
+        if (!adviceShaped(sentence)) { cutOne(i, 'not_advice', sentence); continue }
+        // Questions to the viewer are not counted toward the cap.
+        if (/\?\s*$/.test(sentence)) { rec.viewer_questions++; kept.push(sentence); continue }
+        if (generalKept < tune.generalMax) { generalKept++; rec.general_kept++; kept.push(sentence); continue }
+        cutOne(i, 'general_over_cap', sentence); continue
       }
       // Fix A: added detail is measured against the closest of its sources.
       const add = [addedBeyond(sentence, src.map((it) => it.text), styleWords), ...src.map((it) => addedBeyond(sentence, [it.text], styleWords))]
         .sort((x, y) => x.numbers.length - y.numbers.length || x.words.length - y.words.length)[0]!
       // Numbers stay strict, on every line.
       if (add.numbers.length) { cutOne(i, 'added_number', sentence); continue }
-      if (add.words.length >= ADDED_MIN_WORDS && add.share >= ADDED_MIN_SHARE && !free) { cutOne(i, 'added_detail', sentence); continue }
+      if (add.words.length >= tune.addedMinWords && add.share >= tune.addedMinShare && !free) { cutOne(i, 'added_detail', sentence); continue }
       rec.sourced++
       for (const it of src) ids.add(it.id)
       kept.push(sentence)
