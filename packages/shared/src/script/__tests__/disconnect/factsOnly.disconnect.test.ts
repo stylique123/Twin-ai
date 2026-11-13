@@ -40,7 +40,7 @@ describe('FACTS_ONLY_WRITER wiring', () => {
   })
   it('both worker enqueues carry the facts-only extras, empty when off', () => {
     expect(EDGE.match(/Object\.assign\((?:inventionRecheck|rescueRecheck)\.ledger, factsOnlyGateExtras\(\)\)/g)).toHaveLength(2)
-    expect(EDGE).toMatch(/const factsOnlyGateExtras = \(\): Record<string, unknown> => \(factsOnlyNow\(\)\n[\s\S]{0,300}: \{\}\)/)
+    expect(EDGE).toMatch(/const factsOnlyGateExtras = \(\): Record<string, unknown> => \(factsOnlyNow\(\)\n[\s\S]{0,600}: \{\}\)/)
   })
   it('the worker runs the trace pass last, only when the job says facts_only', () => {
     expect(WORKER).toContain("if (extra.facts_only !== true || !Array.isArray(bp.script)) return")

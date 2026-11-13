@@ -22,7 +22,7 @@
 // (`buildLedger`, ids included); the per-sentence match is `traceLines`; the
 // meaning check is the question engine's `overlap`. Nothing here is a second
 // copy of any of them.
-import type { LedgerItem } from './inventionGate.js'
+import { normalizeNumbers, type LedgerItem } from './inventionGate.js'
 import { traceLines, type LineSourceInput } from './lineSources.js'
 import { overlap } from './meaningOverlap.js'
 
@@ -230,7 +230,7 @@ export function decideFactsOnly(req: FoRequest, items: readonly WriterItem[], op
 // ── 3. EVERY LINE TRACED ───────────────────────────────────────────────────
 const FEELING = /\b(?:love[ds]?|hate[ds]?|felt|feel|scared|afraid|proud|terrified|nervous|excited|thrilled|angry|cried|happy|sad|worried|relieved|embarrass\w*)\b/i
 /** A first-person event, habit or origin (the substance check's "personal history"). */
-export const FIRST_PERSON_HISTORY = /\b(?:i|we)\s+(?:\w+\s+){0,2}(?:was|were|had|did|made|built|lost|found|tried|started|threw|sold|spent|learned|realised|realized|bought|opened|fixed|glazed|roasted|answered|got|went|used to|grew up|quit|moved|stood|watched|remember|noticed|decided|switched)\b|\b(?:i|we)\s+(?:just\s+|once\s+|finally\s+)?[a-z]{3,}ed\b|\bmy (?:first|last) \w+/i
+export const FIRST_PERSON_HISTORY = /\b(?:i|we)\s+(?:\w+\s+){0,2}(?:was|were|had|did|made|built|lost|found|tried|started|threw|sold|spent|learned|realised|realized|bought|opened|fixed|glazed|roasted|answered|got|went|used to|grew up|quit|moved|stood|watched|remember|noticed|decided|switched)\b|\b(?:i|we)\s+(?:just\s+|once\s+|finally\s+)?[a-z]{3,}ed\b|\bmy (?:first|last) \w+|\b(?:my|our)\s+(?:\w+\s+){0,2}(?:went|was|were|got|came|fell|broke|ran|sat|[a-z]{3,}ed)\b/i
 const RESULT = /\b(?:so that|which means|that means|until|resulting|now|suddenly|never again|ever since|that(?:'s| is) why|because of (?:that|this))\b/i
 const SENTENCES = /(?<=[.!?])\s+/
 
@@ -242,20 +242,57 @@ export function statesAFact(s: string): boolean {
 const STOP = new Set('a an the and or but so to of in on at for with from by is are was were be it its this that you your i my me we our they their how what why when who do does did not no have has had just about into over more most then than there here very really can will would could should one all out up off get got'.split(' '))
 const contentWords = (t: string) => [...new Set(String(t ?? '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length >= 4 && !STOP.has(w)))]
 const stem = (w: string) => (w.length > 4 ? w.replace(/(ing|ed|es|s)$/, '') : w)
-const numbersOf = (t: string) => (String(t ?? '').match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(',', '.'))
+// Fix B (owner, 13 Nov): numbers written in words are compared as numbers
+// ("eighty five dollars" = "$85"), with the invention gate's normalizeNumbers.
+const numbersOf = (t: string) => (normalizeNumbers(t).match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(',', '.'))
+const wordsOf = (t: string) => contentWords(normalizeNumbers(t).replace(/\d+(?:[.,]\d+)?/g, ' '))
 
-/** Words the sentence adds beyond its sources (stems), and numbers not in them. */
-export function addedBeyond(sentence: string, sources: readonly string[]): { words: string[]; numbers: string[]; share: number } {
-  const src = new Set(contentWords(sources.join(' ')).map(stem))
+/**
+ * Rule E (owner, 13 Nov): common connecting and framing words never count as
+ * added detail. A FIXED list; her own storytelling-layer words are added per
+ * script (`ignore`). Numbers are never ignored.
+ */
+export const FRAMING_WORDS: readonly string[] = [
+  'here', 'thing', 'things', 'part', 'parts', 'point', 'whole', 'truth', 'honestly', 'basically', 'actually', 'literally', 'simply',
+  'first', 'second', 'third', 'fourth', 'last', 'next', 'then', 'finally', 'also', 'still', 'even', 'every', 'everyone', 'everything',
+  'option', 'options', 'step', 'steps', 'habit', 'habits', 'check', 'checks', 'reason', 'reasons', 'rule', 'rules', 'trick', 'tricks', 'tip', 'tips', 'way', 'ways',
+  'most', 'people', 'many', 'some', 'always', 'never', 'often', 'usually', 'really', 'pretty', 'kind', 'sort', 'mean', 'means', 'meant',
+  'what', 'which', 'when', 'where', 'while', 'because', 'since', 'though', 'although', 'however', 'anyway', 'okay', 'yeah', 'right', 'well',
+  'think', 'know', 'notice', 'remember', 'imagine', 'guess', 'feel', 'look', 'looks', 'see', 'seen', 'let', 'lets', 'tell', 'told', 'said', 'says', 'call',
+  'today', 'video', 'story', 'nobody', 'somebody', 'someone', 'anyone', 'something', 'anything', 'nothing', 'exactly', 'crucial', 'key', 'important', 'matter', 'matters',
+]
+const FRAMING = new Set(FRAMING_WORDS.map((w) => stem(w)))
+
+/** Words the sentence adds beyond its sources (stems), and numbers not in them. `ignore` adds words that never count (her storytelling words). */
+export function addedBeyond(sentence: string, sources: readonly string[], ignore: ReadonlySet<string> = new Set()): { words: string[]; numbers: string[]; share: number } {
+  const src = new Set(wordsOf(sources.join(' ')).map(stem))
   const srcNums = new Set(numbersOf(sources.join(' ')))
-  const ws = contentWords(sentence)
+  const ws = wordsOf(sentence).filter((w) => !FRAMING.has(stem(w)) && !ignore.has(stem(w)))
   const words = ws.filter((w) => !src.has(stem(w)))
   return { words, numbers: numbersOf(sentence).filter((n) => !srcNums.has(n)), share: ws.length ? words.length / ws.length : 0 }
 }
 
-export type FoCutReason = 'no_source' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored'
+/**
+ * Fix A (owner, 13 Nov): the item across ALL her facts (and stated opinions)
+ * that the sentence adds least to: fewest new numbers, then fewest new words,
+ * then most shared meaning. Not limited to the tracer's first three hits.
+ */
+export function bestItem(sentence: string, pool: readonly WriterItem[], ignore: ReadonlySet<string> = new Set()): { item: WriterItem; added: ReturnType<typeof addedBeyond>; meaning: number } | null {
+  let best: { item: WriterItem; added: ReturnType<typeof addedBeyond>; meaning: number } | null = null
+  for (const item of pool) {
+    const added = addedBeyond(sentence, [item.text], ignore)
+    const meaning = overlap(sentence, item.text)
+    const better = !best || added.numbers.length < best.added.numbers.length
+      || (added.numbers.length === best.added.numbers.length && (added.words.length < best.added.words.length
+        || (added.words.length === best.added.words.length && meaning > best.meaning)))
+    if (better) best = { item, added, meaning }
+  }
+  return best
+}
+
+export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored'
 export interface FoTraceRecord {
-  sentences: number; sourced: number; connecting: number; hook_cta_free: number
+  sentences: number; sourced: number; connecting: number; hook_cta_free: number; general_kept: number; viewer_questions: number
   tags: Record<LineTag | 'untagged', number>
   cut: Record<FoCutReason, number>; beats_dropped: number
   examples: Array<{ beat: number; reason: FoCutReason; text: string }>
@@ -265,6 +302,10 @@ export const ADDED_MIN_WORDS = 3
 export const ADDED_MIN_SHARE = 0.5
 /** A sentence with no source is "connecting" only if it adds at most this many new content words. */
 export const CONNECT_MAX_NEW = 2
+/** Rule C: unsourced general sentences (no number, first person, feeling, result, product or brand) kept per script; questions to the viewer are not counted. */
+export const GENERAL_MAX = 2
+/** Fix A: a story paraphrase counts as her source for first person at this meaning overlap (the gate's HER_MIN). */
+export const STORY_PARAPHRASE_MEANING = 0.34
 
 const isCtaSection = (s: unknown) => /\b(?:cta|call to action|close)\b/i.test(String(s ?? ''))
 const tagOf = (v: unknown): LineTag | null => ((LINE_TAGS as readonly string[]).includes(String(v ?? '').toLowerCase()) ? String(v).toLowerCase() as LineTag : null)
@@ -281,15 +322,24 @@ const tagOf = (v: unknown): LineTag | null => ((LINE_TAGS as readonly string[]).
  *  - first-person history that rests on an audience/background item and on
  *    none of her stories is dropped (an audience problem never becomes hers);
  *    any other first-person history without one of her stories is cut too;
- *  - no source → cut, unless it is the hook or the CTA (no number), or a
- *    connecting/style sentence that states no fact and adds at most 2 new words;
- *  - a number not in its sources → cut; an added effect/scene/consequence
- *    (≥3 new content words making up ≥half the sentence) → cut.
+ *  - sources: the best-matching item across ALL her facts (Fix A), the
+ *    writer's confirmed citations and the tracer's hits; numbers written in
+ *    words are compared as numbers (Fix B);
+ *  - first person needs one of her stories, or a paraphrase of one (Fix A);
+ *  - no source → cut, unless: a connecting line (states nothing, ≤2 new
+ *    words); the hook or the CTA stating no fact (rule 5); a question to the
+ *    viewer; or a general sentence with no number, first person, feeling or
+ *    result that does not name her product or brand, at most 2 per script
+ *    (rule C);
+ *  - a number not in its sources → cut, on every line; an added
+ *    effect/scene/consequence (≥3 new content words making up ≥half the
+ *    sentence, framing words and her storytelling words not counted, rule E)
+ *    → cut.
  * Kept text is her text: nothing is reworded, only cut. A beat left with no
  * sentence is dropped. Each kept beat carries `source_ids` (facts layer).
  */
-export function traceAndCut<B extends { section?: unknown; line?: unknown; source_ids?: unknown; layer_tag?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { style?: readonly WriterItem[]; background?: readonly WriterItem[] } = {}): { beats: Array<B & { source_ids: string[] }>; record: FoTraceRecord } {
-  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0 }, beats_dropped: 0, examples: [] }
+export function traceAndCut<B extends { section?: unknown; line?: unknown; source_ids?: unknown; layer_tag?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { style?: readonly WriterItem[]; background?: readonly WriterItem[]; names?: readonly string[]; maxExamples?: number } = {}): { beats: Array<B & { source_ids: string[] }>; record: FoTraceRecord } {
+  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0 }, beats_dropped: 0, examples: [] }
   const facts = items.filter((it) => it.layer === 'fact')
   const opinions = items.filter((it) => it.opinion)
   const nonSource = [...items.filter((it) => it.layer !== 'fact' && !it.opinion), ...(extra.style ?? []), ...(extra.background ?? [])]
@@ -298,6 +348,14 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
   const allTexts = all.map((it) => it.text)
   const toInputs = (xs: readonly WriterItem[]): LineSourceInput[] => xs.map((it) => ({ kind: 'fact', label: it.ref, text: it.text, id: it.id }))
   const factInputs = toInputs([...facts, ...opinions])
+  const factPool = [...facts, ...opinions]
+  const storyPool = facts.filter((it) => STORY_ORIGINS.has(it.origin))
+  // Rule E: her storytelling-layer words never count as added detail.
+  const styleWords = new Set((extra.style ?? []).flatMap((it) => wordsOf(it.text)).map(stem))
+  // Rule C: her product and brand names (a sentence naming them needs a source).
+  const names = (extra.names ?? []).map((n) => String(n ?? '').trim().toLowerCase()).filter((n) => n.length >= 3)
+  const namesProduct = (s: string) => { const low = s.toLowerCase(); return names.some((n) => low.includes(n)) }
+  let generalKept = 0
   const bgInputs = toInputs(nonSource.filter((it) => it.layer === 'background'))
   const spokenIdx = beats.map((b, i) => (typeof b?.line === 'string' && b.line.trim() ? i : -1)).filter((i) => i >= 0)
   const first = spokenIdx[0] ?? -1
@@ -305,7 +363,7 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
   const out: Array<B & { source_ids: string[] }> = []
   const cutOne = (beat: number, reason: FoCutReason, text: string) => {
     rec.cut[reason]++
-    if (rec.examples.length < 12) rec.examples.push({ beat, reason, text: text.slice(0, 160) })
+    if (rec.examples.length < (extra.maxExamples ?? 12)) rec.examples.push({ beat, reason, text: text.slice(0, 160) })
   }
   beats.forEach((b, i) => {
     const line = typeof b?.line === 'string' ? b.line.trim() : ''
@@ -326,18 +384,44 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
       const traced = traceLines([{ line: sentence }], factInputs)[0]?.from.map((h) => h.id).filter((x): x is string => !!x) ?? []
       // A cited item counts when the tracer agrees, or the sentence shares meaning with it.
       const confirmed = cited.filter((id) => traced.includes(id) || overlap(sentence, byId.get(id)?.text ?? '') >= 0.5)
-      const src = [...new Set([...confirmed, ...traced])].map((id) => byId.get(id)).filter((x): x is WriterItem => !!x)
-      if (FIRST_PERSON_HISTORY.test(sentence) && !src.some((it) => STORY_ORIGINS.has(it.origin) && it.layer === 'fact')) {
-        const fromAudience = (traceLines([{ line: sentence }], bgInputs)[0]?.from.length ?? 0) > 0
-        cutOne(i, fromAudience ? 'background_as_experience' : 'unearned_first_person', sentence); continue
+      // Fix A: the best-matching item across ALL her facts. It is a source when
+      // the sentence adds nothing to it (a short line inside her story), or
+      // shares meaning with it.
+      const best = bestItem(sentence, factPool, styleWords)
+      const bestIsSource = !!best && !best.added.numbers.length && (best.added.words.length === 0 || best.meaning >= 0.5 || traced.includes(best.item.id))
+      const src = [...new Set([...confirmed, ...traced, ...(bestIsSource ? [best!.item.id] : [])])].map((id) => byId.get(id)).filter((x): x is WriterItem => !!x)
+      const fact = statesAFact(normalizeNumbers(sentence))
+      if (FIRST_PERSON_HISTORY.test(sentence)) {
+        // Fix A: her story, or a paraphrase of it (shared meaning), earns first person.
+        const storyBacked = src.some((it) => STORY_ORIGINS.has(it.origin) && it.layer === 'fact')
+          || storyPool.some((it) => overlap(sentence, it.text) >= STORY_PARAPHRASE_MEANING)
+        if (!storyBacked) {
+          const fromAudience = (traceLines([{ line: sentence }], bgInputs)[0]?.from.length ?? 0) > 0
+          cutOne(i, fromAudience ? 'background_as_experience' : 'unearned_first_person', sentence); continue
+        }
       }
       if (!src.length) {
-        if (!statesAFact(sentence) && addedBeyond(sentence, allTexts).words.length <= CONNECT_MAX_NEW) { rec.connecting++; kept.push(sentence); continue }
-        if (free && !/\d/.test(sentence)) { rec.hook_cta_free++; kept.push(sentence); continue }
+        // A plain connecting line: states nothing, adds at most 2 new words.
+        if (!fact && addedBeyond(sentence, allTexts, styleWords).words.length <= CONNECT_MAX_NEW) { rec.connecting++; kept.push(sentence); continue }
+        // Rule 5: the hook and the CTA are exempt only when they state no fact.
+        if (free && !fact) { rec.hook_cta_free++; kept.push(sentence); continue }
+        // Rule C: a general sentence may stay, at most 2 per script; a
+        // question to the viewer is not counted. Never with a number, first
+        // person, a feeling or a result, and never naming her product or brand
+        // (what her product does needs a source).
+        if (namesProduct(sentence)) { cutOne(i, 'names_product', sentence); continue }
+        if (!fact) {
+          if (/\?\s*$/.test(sentence)) { rec.viewer_questions++; kept.push(sentence); continue }
+          if (generalKept < GENERAL_MAX) { generalKept++; rec.general_kept++; kept.push(sentence); continue }
+          cutOne(i, 'general_over_cap', sentence); continue
+        }
         cutOne(i, 'no_source', sentence); continue
       }
-      const add = addedBeyond(sentence, src.map((it) => it.text))
-      if (add.numbers.length && !free) { cutOne(i, 'added_number', sentence); continue }
+      // Fix A: added detail is measured against the closest of its sources.
+      const add = [addedBeyond(sentence, src.map((it) => it.text), styleWords), ...src.map((it) => addedBeyond(sentence, [it.text], styleWords))]
+        .sort((x, y) => x.numbers.length - y.numbers.length || x.words.length - y.words.length)[0]!
+      // Numbers stay strict, on every line.
+      if (add.numbers.length) { cutOne(i, 'added_number', sentence); continue }
       if (add.words.length >= ADDED_MIN_WORDS && add.share >= ADDED_MIN_SHARE && !free) { cutOne(i, 'added_detail', sentence); continue }
       rec.sourced++
       for (const it of src) ids.add(it.id)

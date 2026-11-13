@@ -7282,7 +7282,7 @@ async function handle(req: Request): Promise<Response> {
   // FACTS_ONLY_WRITER (spread after panel7GateExtras): no word budget for the
   // worker's refill, and the worker re-runs the trace pass after polish/QC/gate.
   const factsOnlyGateExtras = (): Record<string, unknown> => (factsOnlyNow()
-    ? { word_budget: undefined, facts_only: true, facts_only_layers: { style: foStyle.map((x) => x.text), background: foBackground.map((x) => x.text) } }
+    ? { word_budget: undefined, facts_only: true, facts_only_layers: { style: foStyle.map((x) => x.text), background: foBackground.map((x) => x.text), names: [...((libraryRows ?? []) as Array<{ name?: unknown }>).map((r) => String(r.name ?? '')), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')].filter((n) => n.trim()) } }
     : {})
   const optionalPassTime = (step: string): boolean => {
     // FACTS_ONLY_WRITER: no lengthen passes (length follows her material) and no
@@ -18299,7 +18299,9 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     if (factsOnlyNow() && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       const bpo = blueprint as Record<string, unknown>
       try {
-        const r = traceAndCut(bpo.script as Array<Record<string, unknown>>, foItems, { style: foStyle, background: foBackground })
+        // Rule C: her product and brand names (a sentence naming them needs a source).
+        const foNames = [...((libraryRows ?? []) as Array<{ name?: unknown }>).map((r) => String(r.name ?? '')), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')].filter((n) => n.trim())
+        const r = traceAndCut(bpo.script as Array<Record<string, unknown>>, foItems, { style: foStyle, background: foBackground, names: foNames })
         bpo.script = r.beats
         if (Array.isArray(bpo.shot_list)) bpo.shot_list = syncShotListSpokenText(bpo.shot_list as Array<{ spoken_text?: unknown }>, bpo.script as Array<{ line?: unknown }>).shots
         bpo.facts_only = { ...r.record, layers_handed: layerCounts(foItems, foStyle, foBackground), word_budget: 'off', lengthen: 'off', payoff_repair: 'dropped' }

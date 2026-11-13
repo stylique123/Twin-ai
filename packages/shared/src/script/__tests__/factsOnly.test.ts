@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import { buildLedger } from '../inventionGate'
 import {
   factsOnlyWriterOn, factsOnlyKeepsRow, writerItems, renderFactsOnlyBlock, resolveSourceIds,
-  needsFor, decideFactsOnly, closedKeysFrom, traceAndCut, statesAFact, suppliedCounts, styleItems, backgroundItems, layerCounts,
+  needsFor, decideFactsOnly, closedKeysFrom, bestItem, addedBeyond, GENERAL_MAX, traceAndCut, statesAFact, suppliedCounts, styleItems, backgroundItems, layerCounts,
 } from '../factsOnly'
 import { answersForThisVideo, pillarsFrom, sampleLinesFrom, renderWriterLoop } from '../planner/writerLoop'
 import { pickTwo } from '../questionEngine'
@@ -116,7 +116,8 @@ describe('2. every line traced', () => {
     const r = traceAndCut(beats(['Hook.'], ['I asked an AI tool to summarize my newsletter. My coffee went cold while the cursor blinked on a fake quote and my stomach dropped.', [ref('k1')]], ['Link in bio.']), items)
     expect(r.beats[1].line).toMatch(/summarize my newsletter/)
     expect(r.beats[1].line).not.toMatch(/coffee went cold/)
-    expect(r.record.cut.no_source).toBe(1)
+    // An invented scene with "my coffee went cold": first person nobody backs, or no source.
+    expect(r.record.cut.no_source + r.record.cut.unearned_first_person).toBe(1)
     // Traced to her item, but most of it is new: a scene she never described.
     const r2 = traceAndCut(beats(['Hook.'], ['I asked an AI tool to summarize my own newsletter while my coffee went cold on the counter beside a blinking cursor.', [ref('k1')]], ['Ask for its sources.', [ref('k2')]], ['Link in bio.']), items)
     expect(r2.record.cut.added_detail).toBe(1)
@@ -243,5 +244,115 @@ describe('3. stop and ask', () => {
     for (const q of fo) expect(q.key).toMatch(/^mn:gap:/)
     const nothingMissing = pickTwo({ ...input, factsOnly: true, angleNeeds: ['story'] as never, material: [{ slot: 'story', text: 'x', source: 'her_material' }, { slot: 'hook', text: 'y', source: 'her_material' }, { slot: 'proof', text: 'z', source: 'her_material' }] as never })
     expect(nothingMissing).toEqual([])
+  })
+})
+
+// ── Owner review of #1364 (13 Nov): five changes, each with its cases ───────
+describe('Fix A: the best-matching item across all her facts', () => {
+  const many = buildLedger({ knowledge: [
+    ...Array.from({ length: 8 }, (_, i) => ({ id: `f${i}`, kind: 'fact', text: `Our shared inbox gets roasted beans questions number ${i} every single day.` })),
+    { id: 'tue', kind: 'fact', text: 'Roasted on Tuesdays and shipped within two days of roasting' },
+    { id: 'count', kind: 'experience', text: 'We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.' },
+    { id: 'warm', kind: 'experience', text: 'I skipped warm-ups for a whole year and pulled a hamstring sprinting for a bus.' },
+  ] })
+  const its = writerItems(many)
+  it('picks her verbatim item even when the tracer\'s first hits are other items', () => {
+    expect(bestItem('Roasted on Tuesdays and shipped within two days of roasting.', its)!.item.id).toBe('tue')
+    const r = traceAndCut(beats(['Hook.'], ['Roasted on Tuesdays and shipped within two days of roasting.'], ['Link in bio.']), its)
+    expect(r.beats).toHaveLength(3)
+    expect(r.beats[1].source_ids).toContain('tue')
+  })
+  it('a short sentence that sits inside one of her stories counts as sourced ("We counted.")', () => {
+    const r = traceAndCut(beats(['Hook.'], ['We counted.'], ['Link in bio.']), its)
+    expect(r.beats[1].line).toBe('We counted.')
+    expect(r.record.cut.unearned_first_person).toBe(0)
+  })
+  it('a paraphrase of her story counts as sourced for first person', () => {
+    const r = traceAndCut(beats(['Hook.'], ['I skipped my warm-ups for a year and paid for it with a pulled hamstring.'], ['Link in bio.']), its)
+    expect(r.record.cut.unearned_first_person).toBe(0)
+  })
+  it('first person with nothing of hers behind it is still cut', () => {
+    const r = traceAndCut(beats(['Hook.'], ['I opened a second shop in Lisbon last spring.'], ['Link in bio.']), its)
+    expect(r.record.cut.unearned_first_person).toBe(1)
+  })
+})
+
+describe('Fix B: numbers written in words', () => {
+  const loom = writerItems(buildLedger({ products: [{ id: 'scarf', name: 'Harbor Fog Scarf', knowledge: [{ field: 'price', value: '$85' }] }], targetProductId: 'scarf' }))
+  it('"eighty five dollars" matches "$85"', () => {
+    expect(addedBeyond('It is eighty five dollars.', ['$85']).numbers).toEqual([])
+    const r = traceAndCut(beats(['Hook.'], ['It is eighty five dollars.'], ['Link in bio.']), loom)
+    expect(r.beats[1].line).toBe('It is eighty five dollars.')
+  })
+  it('a different number, in words or digits, is still cut', () => {
+    for (const line of ['It is ninety dollars.', 'It is $90.']) {
+      const r = traceAndCut(beats(['Hook.'], [line], ['Link in bio.']), loom)
+      expect(r.beats.map((b) => b.line)).not.toContain(line)
+    }
+  })
+})
+
+describe('Rule C: unsourced general sentences', () => {
+  const ex = { names: ['Signal Daily Newsletter', 'Signal Daily'] }
+  // No words shared with her items, so they reach rule C (not the tracer).
+  const gen = ['Polished sentences do not guarantee accurate information.', 'True utility is not about speed.', 'Speedy replies conceal flimsy references.']
+  it(`keeps at most ${GENERAL_MAX} per script`, () => {
+    const r = traceAndCut(beats(['Hook.'], ...gen.map((g) => [g] as [string]), ['Link in bio.']), items, ex)
+    expect(r.record.general_kept).toBe(2)
+    expect(r.record.cut.general_over_cap).toBe(1)
+  })
+  it('questions to the viewer do not count toward the cap', () => {
+    const r = traceAndCut(beats(['Hook.'], ['Do you ever check where a quote came from?'], ...gen.slice(0, 2).map((g) => [g] as [string]), ['Link in bio.']), items, ex)
+    expect(r.record.viewer_questions).toBe(1)
+    expect(r.record.general_kept).toBe(2)
+    expect(r.record.cut.general_over_cap).toBe(0)
+  })
+  it('never with a number, first person, a feeling or a result', () => {
+    for (const line of ['Nine in ten summaries swap a digit.', 'I watched a summary invent a total.', 'Readers felt betrayed by the summary.', 'That is why the summaries never again matched.']) {
+      const r = traceAndCut(beats(['Hook.'], [line], ['Link in bio.']), items, ex)
+      expect(r.beats.map((b) => b.line)).not.toContain(line)
+    }
+  })
+  it('a sentence naming her product or brand still needs a source', () => {
+    // A name with no item behind it: cut as naming her product.
+    const r = traceAndCut(beats(['Hook.'], ['Morning Brief Pro makes busy mornings calmer.'], ['Link in bio.']), items, { names: ['Morning Brief Pro'] })
+    expect(r.record.cut.names_product).toBe(1)
+    // Her real product, with a claim her items do not hold: cut as added detail.
+    const r2 = traceAndCut(beats(['Hook.'], ['Signal Daily is the calmest newsletter on the internet.'], ['Link in bio.']), items, ex)
+    expect(r2.beats.map((b) => b.line)).not.toContain('Signal Daily is the calmest newsletter on the internet.')
+  })
+})
+
+describe('Rule E: framing words and her storytelling words are not added detail', () => {
+  it('her fact with framing words around it is kept', () => {
+    const r = traceAndCut(beats(['Hook.'], ['Here is the thing, the first check is to ask for its sources, open one, and find the exact sentence.', [ref('k2')]], ['Link in bio.']), items)
+    expect(r.record.cut.added_detail).toBe(0)
+  })
+  it('her own storytelling words are not counted', () => {
+    const style = styleItems(['Real talk, no fluff, straight up.'])
+    const line = 'Real talk, no fluff: ask for its sources and open one.'
+    expect(traceAndCut(beats(['Hook.'], [line, [ref('k2')]], ['Link in bio.']), items, { style }).record.cut.added_detail).toBe(0)
+  })
+  it('new content words beyond framing are still cut', () => {
+    const r = traceAndCut(beats(['Hook.'], ['Ask for its sources while the espresso machine hisses behind a cluttered desk lamp.', [ref('k2')]], ['Link in bio.']), items)
+    expect(r.record.cut.added_detail).toBe(1)
+  })
+  it('numbers stay strict, even inside framing', () => {
+    const r = traceAndCut(beats(['Hook.'], ['Here is the thing: ask for its 3 sources.', [ref('k2')]], ['Link in bio.']), items)
+    expect(r.record.cut.added_number).toBe(1)
+  })
+})
+
+describe('Rule 5: hook and CTA are exempt only when they state no fact', () => {
+  it('a hook with no fact and no source stays', () => {
+    const r = traceAndCut(beats(['Stop scrolling and think hard before believing chatbots.'], ['Ask for its sources.', [ref('k2')]], ['Link in bio.']), items)
+    expect(r.beats[0].line).toBe('Stop scrolling and think hard before believing chatbots.')
+    expect(r.record.hook_cta_free).toBeGreaterThanOrEqual(1)
+  })
+  it('a hook or CTA stating a number, a feeling or a result with no source is cut', () => {
+    for (const [hook, cta] of [['Nine out of ten AI answers are wrong.', 'Link in bio.'], ['Readers felt furious.', 'Link in bio.'], ['Stop trusting fast answers.', 'That is why 200 readers subscribed.']]) {
+      const r = traceAndCut(beats([hook], ['Ask for its sources.', [ref('k2')]], [cta]), items)
+      expect(r.beats.map((b) => b.line).join(' | ')).not.toMatch(/Nine out of ten|furious|200 readers/)
+    }
   })
 })

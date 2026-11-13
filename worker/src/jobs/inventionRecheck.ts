@@ -105,7 +105,8 @@ export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string
     const style = styleItems(Array.isArray(layers.style) ? layers.style.map(String) : [])
     const items = writerItems(ledger)
     const background = backgroundItems(Array.isArray(layers.background) ? layers.background.map(String) : [], items.filter((it) => it.layer === 'background').length + 1)
-    const r = traceAndCut(bp.script as Array<Record<string, unknown>>, items, { style, background })
+    const names = Array.isArray(layers.names) ? layers.names.map(String) : []
+    const r = traceAndCut(bp.script as Array<Record<string, unknown>>, items, { style, background, names })
     bp.script = r.beats
     resyncShotListToScript(bp)
     bp.facts_only = { ...rec(bp.facts_only), worker: r.record }
