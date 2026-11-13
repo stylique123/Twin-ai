@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import { buildLedger } from '../inventionGate'
 import {
   factsOnlyWriterOn, factsOnlyKeepsRow, writerItems, renderFactsOnlyBlock, resolveSourceIds,
-  needsFor, decideFactsOnly, traceAndCut, statesAFact, suppliedCounts, styleItems, backgroundItems, layerCounts,
+  needsFor, decideFactsOnly, closedKeysFrom, traceAndCut, statesAFact, suppliedCounts, styleItems, backgroundItems, layerCounts,
 } from '../factsOnly'
 import { answersForThisVideo, pillarsFrom, sampleLinesFrom, renderWriterLoop } from '../planner/writerLoop'
 import { pickTwo } from '../questionEngine'
@@ -204,6 +204,26 @@ describe('3. stop and ask', () => {
     const withAnswer = buildLedger({ knowledge: [{ id: 'c1', kind: 'fact', text: 'We roast on Tuesdays in small batches.' }], answers: { [q.key]: 'My first batch burned because I left the roaster on while I answered the door; the beans went black.' }, note: 'The day my first batch of beans burned' })
     const d = decideFactsOnly({ note: 'The day my first batch of beans burned' }, writerItems(withAnswer), { ledger: withAnswer, closedKeys: [q.key] })
     expect(d.action).toBe('write')
+  })
+  it('answer, then the build fails, then the same request again: not re-asked', () => {
+    const note = 'The day my first batch of beans burned'
+    // 1. The gap check asks.
+    const first = decideFactsOnly({ note }, cItems, { ledger: coffee })
+    expect(first.action).toBe('ask')
+    const q = first.questions[0]!
+    // 2. She answers. The answer is saved at the START of the next request
+    //    (answerFactRow: source 'asked', source_ref 'asked:<key>'), then the
+    //    build fails: no question_asks row is written, nothing else is kept.
+    const answer = 'My first batch burned because I left the roaster on while I answered the door; the beans went black.'
+    const savedRow = { kind: 'experience', text: answer, source: 'asked', source_ref: `asked:${q.key}` }
+    // 3. The same request again, without the answer in the body.
+    const knowledge = [{ id: 'c1', kind: 'fact', text: 'We roast on Tuesdays in small batches.' }, { id: 'saved1', kind: savedRow.kind, text: savedRow.text }]
+    const ledger2 = buildLedger({ knowledge, note })
+    const again = decideFactsOnly({ note }, writerItems(ledger2), { ledger: ledger2, closedKeys: closedKeysFrom([], [savedRow]), savedAnswers: [savedRow.text] })
+    expect(again.questions.map((x) => x.key)).not.toContain(q.key)
+    expect(again.action).toBe('write')
+    // Closed by the saved row alone, and by answered / skipped / filler asks; a shown ask stays open.
+    expect(closedKeysFrom([{ slot_id: 'a', outcome: 'skipped' }, { slot_id: 'b', outcome: 'shown' }], [{ source_ref: `asked:${q.key}` }, { source_ref: 'onboarding:x' }])).toEqual(['a', q.key])
   })
   it('everything already asked and still too thin: no script, no question', () => {
     const keys = needsFor({ note: 'The day my first batch of beans burned' }).map((q) => q.key)

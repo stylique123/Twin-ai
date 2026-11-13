@@ -21,7 +21,17 @@ describe('FACTS_ONLY_WRITER wiring', () => {
       "if (factsOnlyNow() && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {",
     ]) expect(EDGE).toContain(needle)
     // The stop-and-ask and the layers block.
-    expect(EDGE.match(/if \(factsOnlyNow\(\)\) \{/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(EDGE.match(/if \(factsOnlyNow\(\)\) \{/g)?.length).toBe(2)
+  })
+  it('her gap answers are saved first, before the gap check reads what is closed', () => {
+    const save = EDGE.indexOf("const r = await storeAngleAnswer(admin, user, { key, piece: kind === 'story' ? 'story' : kind, answer: v }, pidQ, { topicKey: key })")
+    const check = EDGE.indexOf('const closedKeys = closedKeysFrom(')
+    const decide = EDGE.indexOf('const d = decideFactsOnly(')
+    expect(save).toBeGreaterThan(0)
+    expect(save).toBeLessThan(check)
+    expect(check).toBeLessThan(decide)
+    // Saved once only: not again after the build.
+    expect(EDGE.match(/topicKey: key \}\)/g)).toHaveLength(1)
   })
   it('the schema gains layer_tag and source_ids only when the facts-only block is in the brief, reset every request', () => {
     expect(EDGE).toContain('const schema = schema0 === blueprintSchema && factsOnlySchemaOn ? blueprintSchemaFactsOnly : schema0')

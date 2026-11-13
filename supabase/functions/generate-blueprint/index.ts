@@ -111,7 +111,7 @@ import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
 import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
-import { factsOnlyWriterOn, factsOnlyKeepsRow, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, decideFactsOnly, traceAndCut, layerCounts, type WriterItem } from '../_shared/factsOnly.ts'
+import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, decideFactsOnly, traceAndCut, layerCounts, type WriterItem } from '../_shared/factsOnly.ts'
 import { scriptCleanupV1, finalPassCuts } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
@@ -9398,6 +9398,21 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // question key (readiness_answers), are saved to her knowledge with that
   // key, and are reused in every later script.
   if (factsOnlyNow()) {
+    // FIRST, before the gap check (owner, 13 Nov): her answers to the gap
+    // questions (keys mn:fo:*) are saved to her knowledge under the question
+    // key, and the key is closed, BEFORE anything can fail. A build that fails
+    // later never loses them, and the same request never re-asks.
+    {
+      for (const [key, v] of Object.entries((body.readiness_answers ?? {}) as Record<string, unknown>)) {
+        if (!/^mn:fo:[a-z_]+:/i.test(key) || typeof v !== 'string') continue
+        try {
+          const kind = key.split(':')[2] ?? 'story'
+          const pidQ = kind === 'product_fact' && (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+          const r = await storeAngleAnswer(admin, user, { key, piece: kind === 'story' ? 'story' : kind, answer: v }, pidQ, { topicKey: key })
+          console.log(JSON.stringify({ event: 'facts_only_answer_stored', kind, outcome: r.outcome, saved: r.saved }))
+        } catch { /* storing her answer never fails a build */ }
+      }
+    }
     const pid = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
     const gapLedger = nuL(buildInventionLedger({
       knowledge: (knowledgeRows as Array<{ id?: unknown; kind?: unknown; text?: unknown; basis?: unknown }>).filter((k) => k.basis !== 'inferred' && k.kind !== 'covered'),
@@ -9411,10 +9426,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       admin.from('creator_knowledge').select('text, source_ref').eq('owner_id', user.id).eq('source', 'asked').is('superseded_at', null).limit(400),
     ]).catch(() => [{ data: null }, { data: null }] as const)
     const savedRows = (saved ?? []) as Array<{ text?: unknown; source_ref?: unknown }>
-    const closedKeys = [
-      ...((hist ?? []) as Array<{ slot_id?: unknown }>).map((r) => String(r.slot_id ?? '')),
-      ...savedRows.map((r) => String(r.source_ref ?? '').replace(/^asked:/, '')),
-    ].filter(Boolean)
+    const closedKeys = closedKeysFrom((hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown }>, savedRows)
     const d = decideFactsOnly(
       { note: String(reference_note ?? ''), goal: body.goal ?? null, product: pid ? { id: pid, name: String((ownedEntity as { name?: unknown }).name ?? '') } : null },
       writerItems(gapLedger), { ledger: gapLedger, closedKeys, savedAnswers: savedRows.map((r) => String(r.text ?? '')) })
@@ -17914,20 +17926,6 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
           const pidQ = qa.product && (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
           const r = await storeAngleAnswer(admin, user, { key: qa.key, piece: qa.piece, answer: qa.answer }, pidQ)
           console.log(JSON.stringify({ event: 'qc_answer_stored', piece: qa.piece, outcome: r.outcome, saved: r.saved }))
-        } catch { /* storing her answer never fails a build */ }
-      }
-    }
-    // FACTS_ONLY_WRITER: her answers to the gap questions (keys mn:fo:*) are saved
-    // to her knowledge under the question key, and the key is closed, so the
-    // question is never asked again and the answer is reused in later scripts.
-    if (factsOnlyNow()) {
-      for (const [key, v] of Object.entries((body.readiness_answers ?? {}) as Record<string, unknown>)) {
-        if (!/^mn:fo:[a-z_]+:/i.test(key) || typeof v !== 'string') continue
-        try {
-          const kind = key.split(':')[2] ?? 'story'
-          const pidQ = kind === 'product_fact' && (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
-          const r = await storeAngleAnswer(admin, user, { key, piece: kind === 'story' ? 'story' : kind, answer: v }, pidQ, { topicKey: key })
-          console.log(JSON.stringify({ event: 'facts_only_answer_stored', kind, outcome: r.outcome, saved: r.saved }))
         } catch { /* storing her answer never fails a build */ }
       }
     }

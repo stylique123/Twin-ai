@@ -185,6 +185,21 @@ function covered(n: FoQuestion, rel: readonly WriterItem[], all: readonly Writer
 }
 
 /**
+ * The keys that are closed for this creator: every key in question_asks she
+ * answered, skipped or gave filler to, and every key one of her saved answers
+ * is stored under (source_ref 'asked:<key>'). The saved row alone closes the
+ * key: when an answer is saved at the start of a request and the build then
+ * fails, the same request does not ask again.
+ */
+export function closedKeysFrom(asks: ReadonlyArray<{ slot_id?: unknown; outcome?: unknown }>, saved: ReadonlyArray<{ source_ref?: unknown }>): string[] {
+  const keys = [
+    ...asks.filter((r) => ['answered', 'skipped', 'filler'].includes(String(r.outcome ?? ''))).map((r) => String(r.slot_id ?? '')),
+    ...saved.map((r) => String(r.source_ref ?? '')).filter((x) => x.startsWith('asked:')).map((x) => x.slice('asked:'.length)),
+  ]
+  return [...new Set(keys.filter(Boolean))]
+}
+
+/**
  * Write, or stop and ask. A question is never asked when its key is closed
  * (answered, skipped or filler in question_asks, or saved under that key) or
  * when one of her saved answers already says it (meaning overlap ≥ 0.6, the
