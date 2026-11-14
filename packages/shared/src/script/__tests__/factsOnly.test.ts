@@ -295,16 +295,16 @@ describe('Fix B: numbers written in words', () => {
 describe('Rule C: unsourced general sentences', () => {
   const ex = { names: ['Signal Daily Newsletter', 'Signal Daily'] }
   // No words shared with her items, so they reach rule C (not the tracer).
-  const gen = ['Polished sentences do not guarantee accurate information.', 'True utility is not about speed.', 'Speedy replies never prove flimsy references.']
+  const gen = ['Polished sentences do not guarantee accurate information.', 'True utility is not about speed.', 'Speedy replies never prove flimsy references.', 'Glossy formatting rarely signals careful checking.']
   it(`keeps at most ${GENERAL_MAX} per script`, () => {
     const r = traceAndCut(beats(['Hook.'], ...gen.map((g) => [g] as [string]), ['Link in bio.']), items, ex)
-    expect(r.record.general_kept).toBe(2)
+    expect(r.record.general_kept).toBe(GENERAL_MAX)
     expect(r.record.cut.general_over_cap).toBe(1)
   })
   it('questions to the viewer do not count toward the cap', () => {
-    const r = traceAndCut(beats(['Hook.'], ['Do you ever check where a quote came from?'], ...gen.slice(0, 2).map((g) => [g] as [string]), ['Link in bio.']), items, ex)
+    const r = traceAndCut(beats(['Hook.'], ['Do you ever check where a quote came from?'], ...gen.slice(0, GENERAL_MAX).map((g) => [g] as [string]), ['Link in bio.']), items, ex)
     expect(r.record.viewer_questions).toBe(1)
-    expect(r.record.general_kept).toBe(2)
+    expect(r.record.general_kept).toBe(GENERAL_MAX)
     expect(r.record.cut.general_over_cap).toBe(0)
   })
   it('never with a number, first person, a feeling or a result', () => {
@@ -318,8 +318,14 @@ describe('Rule C: unsourced general sentences', () => {
     const r = traceAndCut(beats(['Hook.'], ['Morning Brief Pro makes busy mornings calmer.'], ['Link in bio.']), items, { names: ['Morning Brief Pro'] })
     expect(r.record.cut.names_product).toBe(1)
     // Her real product, with a claim her items do not hold: cut as added detail.
-    const r2 = traceAndCut(beats(['Hook.'], ['Signal Daily is the calmest newsletter on the internet.'], ['Link in bio.']), items, ex)
+    // Her real product with a claim her items do not hold is SOURCED (it names her
+    // product, which is in her items), so Rule E judges it: cut when the new words
+    // reach the threshold. At the chosen 5 / 0.6 a 3-word claim like this one is
+    // kept (owner report, 14 Nov); at 3 / 0.5 it is cut.
+    const r2 = traceAndCut(beats(['Hook.'], ['Signal Daily is the calmest newsletter on the internet.'], ['Link in bio.']), items, { ...ex, tuning: { addedMinWords: 3, addedMinShare: 0.5 } })
     expect(r2.beats.map((b) => b.line)).not.toContain('Signal Daily is the calmest newsletter on the internet.')
+    const r3 = traceAndCut(beats(['Hook.'], ['Signal Daily is the calmest newsletter on the internet.'], ['Link in bio.']), items, ex)
+    expect(r3.beats.map((b) => b.line)).toContain('Signal Daily is the calmest newsletter on the internet.')
   })
 })
 
@@ -361,7 +367,7 @@ describe('Rule 5: hook and CTA are exempt only when they state no fact', () => {
 describe('the free pass is tighter', () => {
   const run = (line: string, extra: Parameters<typeof traceAndCut>[2] = {}) => traceAndCut(beats(['Hook.'], ['Ask for its sources.', [ref('k2')]], [line], ['Link in bio.']), items, extra)
   it('1. a first-person pronoun needs a source (connecting or Rule C)', () => {
-    for (const line of ['Tell me below.', 'We just make noise together.', 'Grandma never trusted our toaster.']) {
+    for (const line of ['We just make noise together.', 'Grandma never trusted our toaster.', 'That one is mine, sorry.']) {
       const r = run(line)
       expect(r.beats.map((b) => b.line)).not.toContain(line)
       expect(r.record.cut.first_person_no_source).toBe(1)
@@ -378,12 +384,19 @@ describe('the free pass is tighter', () => {
       expect(run(line).record.cut.product_pronoun).toBe(0)
     }
   })
-  it('4. Rule C must be advice-shaped; a plain descriptive scene needs a source', () => {
-    expect(run('Weak yarn snaps quickly.').record.cut.not_advice).toBe(1)
-    expect(run('A warm, steady smell drifts across the kitchen.').record.cut.not_advice).toBe(1)
-    for (const line of ['Never buy yarn that squeaks.', 'Buy yarn that feels soft in your hands.', 'Cheap yarn should not squeak.', 'Do your scarves pill?']) {
-      expect(run(line).beats.map((b) => b.line)).toContain(line)
+  it('viewer asks are never cut by the pronoun rule or by Rule C', () => {
+    for (const line of ['Tell me in the comments.', 'Send me a message for the dates.', 'Comment below.', 'Follow for more.', 'DM me.', 'Grab it, link in bio.']) {
+      const r = run(line)
+      expect(r.beats.map((b) => b.line)).toContain(line)
+      expect(r.record.cut.first_person_no_source + r.record.cut.general_over_cap).toBe(0)
     }
+  })
+  it('a viewer ask with a number or a product claim follows the normal rules', () => {
+    expect(run('Tell me in the comments if 3 drafts beat 1.').beats.map((b) => b.line)).not.toContain('Tell me in the comments if 3 drafts beat 1.')
+    expect(run('Follow Sprocket for more.', { names: ['Pip and Sprocket Live'] }).record.cut.names_product).toBe(1)
+  })
+  it('without Rule 4, a plain descriptive sentence with no fact can pass as Rule C', () => {
+    expect(run('Weak yarn snaps quickly.').beats.map((b) => b.line)).toContain('Weak yarn snaps quickly.')
   })
   it('the grid settings are honoured', () => {
     const line = 'Ask for its sources while the espresso machine hisses behind a cluttered desk lamp.'

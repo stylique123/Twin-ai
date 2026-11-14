@@ -291,20 +291,20 @@ export function bestItem(sentence: string, pool: readonly WriterItem[], ignore: 
   return best
 }
 
-export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'first_person_no_source' | 'product_pronoun' | 'not_advice' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored'
+export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'first_person_no_source' | 'product_pronoun' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored'
 export interface FoTraceRecord {
-  sentences: number; sourced: number; connecting: number; hook_cta_free: number; general_kept: number; viewer_questions: number
+  sentences: number; sourced: number; connecting: number; hook_cta_free: number; general_kept: number; viewer_questions: number; viewer_asks: number
   tags: Record<LineTag | 'untagged', number>
   cut: Record<FoCutReason, number>; beats_dropped: number
   examples: Array<{ beat: number; reason: FoCutReason; text: string }>
 }
 /** Added detail beyond its source: at least this many new content words AND this share of the sentence. */
-export const ADDED_MIN_WORDS = 3
-export const ADDED_MIN_SHARE = 0.5
+export const ADDED_MIN_WORDS = 5
+export const ADDED_MIN_SHARE = 0.6
 /** A sentence with no source is "connecting" only if it adds at most this many new content words. */
 export const CONNECT_MAX_NEW = 2
 /** Rule C: unsourced general sentences (no number, first person, feeling, result, product or brand) kept per script; questions to the viewer are not counted. */
-export const GENERAL_MAX = 2
+export const GENERAL_MAX = 3
 
 // ── The free pass (owner, 13 Nov, second review) ──────────────────────────
 // A no-source sentence passes as connecting, as Rule C, or as a hook/CTA
@@ -320,12 +320,14 @@ export function nameTokens(names: readonly string[]): string[] {
   for (const n of names) for (const w of String(n ?? '').split(/[^A-Za-z0-9'’]+/)) if (/^[A-Z]/.test(w) && w.length >= 2 && !NAME_STOP.has(w)) out.add(w.replace(/['’]s$/, ''))
   return [...out]
 }
-/** 4. Advice-shaped: addresses the viewer, is an instruction, a question, or has a modal or a negation. */
-const MODAL_OR_NEGATION = /\b(?:can|could|should|would|will|must|might|may|shall|not|never|no|nothing|nobody|don['’]t|doesn['’]t|isn['’]t|aren['’]t|won['’]t|can['’]t|didn['’]t|wasn['’]t|\w+n['’]t)\b/i
-const IMPERATIVE_START = /^\s*(?:(?:so|and|then|now|just|first|next|always|never|please)[,\s]+)?(?:ask|check|try|stop|start|keep|make|take|use|read|look|watch|write|save|open|find|test|pick|choose|skip|add|put|let|go|get|give|grab|remember|think|notice|imagine|swap|drop|leave|wash|store|run|set|turn|hold|bring|send|follow|learn|warm|patch|brew|smell|taste|count|list|label|tag|plan|break|split|cut|walk|breathe|focus|do|don['’]t|never|avoid|forget|trust|treat|compare|measure|note|track|tell|show|share|wait)\b/i
-export function adviceShaped(s: string): boolean {
-  return /\byou(?:r|rs|rself|['’](?:re|ll|ve|d))?\b/i.test(s) || /\?\s*$/.test(s) || IMPERATIVE_START.test(s) || MODAL_OR_NEGATION.test(s)
-}
+/**
+ * Viewer asks (owner, 14 Nov): a CTA-shaped sentence ("Tell me in the
+ * comments", "Send me a message", "Comment below", "Follow", "DM me", "link in
+ * bio") is never cut by the first-person pronoun rule or by Rule C. With a
+ * number or a product claim in it, the normal rules apply.
+ */
+export const VIEWER_ASK = /\b(?:tell me|let me know|send me|dm me|message me|drop (?:me|a comment|it)|comment(?:s)?(?: below| down below)?|in the comments|follow(?: me| along| for)?|link in (?:my |the )?bio|subscribe|save this|share (?:this|your|it)|hit (?:follow|subscribe|the link)|tap the link)\b/i
+export const isViewerAsk = (s: string): boolean => VIEWER_ASK.test(s)
 
 /** The three settings tuned from the owner's fixed grid. */
 export interface TraceTuning { addedMinWords: number; addedMinShare: number; generalMax: number }
@@ -365,7 +367,7 @@ const tagOf = (v: unknown): LineTag | null => ((LINE_TAGS as readonly string[]).
  * sentence is dropped. Each kept beat carries `source_ids` (facts layer).
  */
 export function traceAndCut<B extends { section?: unknown; line?: unknown; source_ids?: unknown; layer_tag?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { style?: readonly WriterItem[]; background?: readonly WriterItem[]; names?: readonly string[]; maxExamples?: number; hasProduct?: boolean; tuning?: Partial<TraceTuning> } = {}): { beats: Array<B & { source_ids: string[] }>; record: FoTraceRecord } {
-  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, first_person_no_source: 0, product_pronoun: 0, not_advice: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0 }, beats_dropped: 0, examples: [] }
+  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, viewer_asks: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, first_person_no_source: 0, product_pronoun: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0 }, beats_dropped: 0, examples: [] }
   const facts = items.filter((it) => it.layer === 'fact')
   const opinions = items.filter((it) => it.opinion)
   const nonSource = [...items.filter((it) => it.layer !== 'fact' && !it.opinion), ...(extra.style ?? []), ...(extra.background ?? [])]
@@ -436,6 +438,9 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
       }
       if (!src.length) {
         if (fact) { cutOne(i, 'no_source', sentence); continue }
+        // A viewer ask (no number, no fact, not naming her product) always
+        // stays: not cut by the pronoun rule or by Rule C, not counted.
+        if (isViewerAsk(sentence) && !namesProduct(sentence)) { rec.viewer_asks++; kept.push(sentence); continue }
         // No free pass with a first-person pronoun, a name token, or (with a
         // product in the request) an It/This/That/These/They opening.
         const blocked = freePassBlocked(sentence)
@@ -444,9 +449,6 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
         if (addedBeyond(sentence, allTexts, styleWords).words.length <= CONNECT_MAX_NEW) { rec.connecting++; kept.push(sentence); continue }
         // Rule 5: the hook and the CTA are exempt only when they state no fact.
         if (free) { rec.hook_cta_free++; kept.push(sentence); continue }
-        // Rule C: advice-shaped only (to the viewer, an instruction, a question,
-        // a modal or a negation); plain descriptive scenes need a source.
-        if (!adviceShaped(sentence)) { cutOne(i, 'not_advice', sentence); continue }
         // Questions to the viewer are not counted toward the cap.
         if (/\?\s*$/.test(sentence)) { rec.viewer_questions++; kept.push(sentence); continue }
         if (generalKept < tune.generalMax) { generalKept++; rec.general_kept++; kept.push(sentence); continue }
