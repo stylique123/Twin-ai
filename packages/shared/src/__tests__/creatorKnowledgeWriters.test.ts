@@ -156,7 +156,10 @@ describe('creator_knowledge writers', () => {
     const mn = allInserts.filter((i) => /^\s*\.\.\.row\b/.test(i))
     // SPINE_COMPLETE (trial, default off): her answer to the missing_problem
     // question, read from readiness_answers['spine.problem'], same pure row.
-    expect(mn).toHaveLength(2)
+    // FACTS_ONLY_WRITER (default off): the angle store's same row, with the
+    // question key (0298) when the flag is on, and the plain insert if 0298 is
+    // not applied yet. Still her answer, built only by answerFactRow.
+    expect(mn).toHaveLength(4)
     expect(code).toMatch(/const row = [\s\S]{0,200}answerFactRow\(\{ ownerId: user\.id[^}]*answer: herAnswer/)
     expect(code).toMatch(/const row = answerFactRow\(\{ ownerId, [\s\S]{0,200}key: 'spine:problem'[\s\S]{0,60}answer: problemAnswer\.text/)
     expect(code).toMatch(/let problemAnswer = problemAnswerItem\(rawProblem\)/)

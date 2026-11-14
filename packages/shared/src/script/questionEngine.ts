@@ -12,6 +12,7 @@
 // answer is not asked. Never asks for dates or scarcity. Pure; no I/O.
 import type { Slot } from './itemFormat.js'
 import type { PlanQuestion, QuestionKind, QuestionSource } from './questionUsefulness.js'
+import { overlap } from './meaningOverlap.js'
 
 /** QC thin-material question keys → the engine gap they fill (and back). */
 export const QC_KEY_ALIASES: Readonly<Record<string, string>> = { 'mn:qc:story': 'mn:gap:story', 'mn:qc:product_fact': 'mn:gap:what_it_is' }
@@ -41,6 +42,12 @@ export interface EngineInput {
   /** Onboarding gaps (audience, offer) when known. */
   profileMissing?: boolean
   voiceCard?: boolean
+  /**
+   * FACTS_ONLY_WRITER (default off): up to 3 questions, each naming one missing
+   * piece of THIS request (story, problem, proof, product fact…). No pain
+   * question, no profile question, no sharpeners.
+   */
+  factsOnly?: boolean
 }
 
 export interface SlotInventory { slot: Slot; status: SlotStatus; gap: GapSource | null }
@@ -70,15 +77,9 @@ export function inventory(i: EngineInput): SlotInventory[] {
   }))
 }
 
-const STOP = new Set('a an the and or but so to of in on at for with from by is are was were be it its this that you your i my me we our they their how what why when who do does did not no have has had just about into over more most'.split(' '))
-const words = (t: string) => new Set(String(t ?? '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)))
-const overlap = (a: string, b: string) => {
-  const x = words(a); const y = words(b)
-  if (!x.size || !y.size) return 0
-  let n = 0
-  for (const w of x) if (y.has(w)) n++
-  return n / Math.min(x.size, y.size)
-}
+// The meaning check lives in meaningOverlap.ts so the facts-only writer (edge and
+// worker) uses the same rule without the rest of this module.
+export { overlap }
 
 /** The pain that fits this topic best (shares a content word), or null. */
 export function fitPain(themes: readonly PainTheme[], topic: string): PainTheme | null {
@@ -175,12 +176,13 @@ export function pickTwo(i: EngineInput): PlanQuestion[] {
   const saved = i.savedAnswers ?? []
   const said = (text: string) => saved.some((a) => overlap(a, text) >= 0.6)
   const out: PlanQuestion[] = []
+  const max = i.factsOnly ? 3 : 2
   const push = (key: string, text: string, kind: QuestionKind, source: QuestionSource, piece: string) => {
-    if (out.length >= 2 || closed.has(key) || out.some((q) => q.key === key) || said(text)) return
+    if (out.length >= max || closed.has(key) || out.some((q) => q.key === key) || said(text)) return
     out.push({ key, kind, source, piece, text, skippable: true })
   }
-  // Q1 — pain
-  const pain = fitPain(i.painThemes ?? [], topic)
+  // Q1 — pain (not with the facts-only writer: it asks only for what is missing)
+  const pain = i.factsOnly ? null : fitPain(i.painThemes ?? [], topic)
   if (pain) { const q = painToQuestion(pain); push(q.key, q.text, 'niche', 'pain_map', 'story') }
   // Q2 — gaps, in value order
   const inv = inventory(i)
@@ -190,6 +192,7 @@ export function pickTwo(i: EngineInput): PlanQuestion[] {
     push(`mn:gap:${slot}`, gapQuestion(slot, door, subject, i.productKind), slot === 'what_it_is' || slot === 'close' || slot === 'show_it' ? 'product_slot' : 'story',
       row.gap === 'product' ? 'product' : 'her_material', PIECE[slot] ?? slot)
   }
+  if (i.factsOnly) return out
   // Onboarding gap, once
   if (i.profileMissing) push('mn:profile', 'Who is this video for, in one line: who they are and what they want?', 'profile', 'profile', 'audience')
   // Sharpeners when nothing is missing

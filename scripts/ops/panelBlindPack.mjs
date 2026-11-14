@@ -145,6 +145,9 @@ export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixt
       beat_trace: Array.isArray(bp.beat_trace) ? bp.beat_trace : null,
       handed: { knowledge: (ws.knowledge_ids ?? []).length, product_facts: (ws.product_fact_ids ?? []).length, answers: (ws.answer_keys ?? []).length, note: !!ws.note },
       stored: stored[owners[r.generation_id]] ?? null,
+      // FACTS_ONLY_WRITER: per layer, what the writer received next to what the account stores.
+      layers: { handed: bp.facts_only?.layers_handed ?? { fact: (ws.knowledge_ids ?? []).length + (ws.product_fact_ids ?? []).length + (ws.answer_keys ?? []).length, style: null, background: null }, stored: stored[owners[r.generation_id]]?.layers ?? null },
+      facts_only: bp.facts_only ? { cut: bp.facts_only.cut ?? null, tags: bp.facts_only.tags ?? null, beats_dropped: bp.facts_only.beats_dropped ?? null } : null,
       word_budget: bp.word_budget ?? null,
       floor_refill: bp.floor_refill ?? null,
       panel_final_pass: bp.panel_final_pass ?? null,
@@ -154,6 +157,18 @@ export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixt
       plan_b: !!bp.plan_b, qc: bp.qc_report ? { words_before: bp.qc_report.words_before ?? null, words_after: bp.qc_report.words_after ?? null, added: (bp.qc_report.added ?? []).length } : null,
     }
   })
+}
+
+const BACKGROUND_KINDS = new Set(['opinion', 'belief', 'topic'])
+/** Pure: what an account stores, per layer (the facts-only writer's layers). Counts only. */
+export function storedLayers(knowledge = [], products = [], profile = null) {
+  const usable = knowledge.filter((k) => !k.sensitive && !k.creator_excluded_at && k.kind !== 'covered')
+  const fact = usable.filter((k) => k.basis !== 'inferred' && !BACKGROUND_KINDS.has(k.kind)).length
+    + products.reduce((n, p) => n + (Array.isArray(p.knowledge) ? p.knowledge.length : 0), 0)
+  const p = profile ?? {}
+  const style = (Array.isArray(p.samples) ? p.samples.length : 0) + (Array.isArray(p.sample_hooks) ? p.sample_hooks.length : 0) + (p.style_note ? 1 : 0) + (p.hook_style ? 1 : 0)
+  const background = usable.filter((k) => k.basis === 'inferred' || BACKGROUND_KINDS.has(k.kind)).length + (p.niche ? 1 : 0) + (p.audience ? 1 : 0)
+  return { fact, style, background }
 }
 
 async function loadCraft() {
@@ -206,8 +221,10 @@ async function main() {
         if (k.sensitive) c.sensitive++
         if (k.creator_excluded_at) c.excluded++
       }
-      const { count: products } = await admin.from('product_entities').select('id', { count: 'exact', head: true }).eq('owner_id', owner)
-      c.products = products ?? 0
+      const { data: prods } = await admin.from('product_entities').select('knowledge').eq('owner_id', owner)
+      c.products = (prods ?? []).length
+      const { data: bv } = await admin.from('brand_voices').select('profile').eq('owner_id', owner).eq('status', 'ready').order('updated_at', { ascending: false }).limit(1).maybeSingle()
+      c.layers = storedLayers(ks ?? [], prods ?? [], bv?.profile ?? null)
       stored[owner] = c
     }
     // The fictional fixture (in the repo) for the line-level support score.

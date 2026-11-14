@@ -54,11 +54,12 @@ export function profileForSeconds(sec: unknown): DurationProfile {
 }
 
 /** The beat order with purposes and budgets. Sprint keeps the re-hook only past 60 words. */
-export function renderHouseStructure(profile: DurationProfile): string {
+export function renderHouseStructure(profile: DurationProfile, opts: { noWordBudget?: boolean } = {}): string {
   const beats = HOUSE_STRUCTURE.filter((b) => b.words[profile] !== null)
   const lines = beats.map((b, i) => {
     const w = b.words[profile] as [number, number]
-    const budget = w[0] === 0 ? `up to ${w[1]} words, only if she has it` : `${w[0]}–${w[1]} words`
+    // FACTS_ONLY_WRITER (default off): no word counts; a step is as long as her material for it.
+    const budget = opts.noWordBudget ? 'as long as her material for it, no longer' : w[0] === 0 ? `up to ${w[1]} words, only if she has it` : `${w[0]}–${w[1]} words`
     return `${i + 1}. ${b.label} (${budget}): ${b.purpose}. Rule: ${b.rule}.`
   })
   return [
@@ -73,14 +74,16 @@ export function renderHouseStructure(profile: DurationProfile): string {
 export interface LoopAnswer { key: string; text: string }
 
 /** This request's answers: angle answers (mn:*) first, then readiness answers. Text only, capped. */
-export function answersForThisVideo(mn: unknown, readiness: unknown): LoopAnswer[] {
+export function answersForThisVideo(mn: unknown, readiness: unknown, opts: { uncapped?: boolean } = {}): LoopAnswer[] {
   const out: LoopAnswer[] = []
   const seen = new Set<string>()
   const take = (obj: unknown, keyOk: (k: string) => boolean) => {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return
     for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
       if (!keyOk(k) || typeof v !== 'string') continue
-      const text = v.replace(/\s+/g, ' ').trim().slice(0, 600)
+      const flat = v.replace(/\s+/g, ' ').trim()
+      // FACTS_ONLY_WRITER (default off): her whole answer, every answer.
+      const text = opts.uncapped ? flat : flat.slice(0, 600)
       const norm = text.toLowerCase()
       if (!text || seen.has(norm) || /^(skip|skipped|n\/a|none|-)$/i.test(text)) continue
       seen.add(norm)
@@ -89,15 +92,15 @@ export function answersForThisVideo(mn: unknown, readiness: unknown): LoopAnswer
   }
   take(mn, (k) => /^mn:/.test(k))
   take(readiness, () => true)
-  return out.slice(0, 6)
+  return opts.uncapped ? out : out.slice(0, 6)
 }
 
-/** Her pillars from onboarding: strings, deduped, at most 5. */
-export function pillarsFrom(brief: unknown): string[] {
+/** Her pillars from onboarding: strings, deduped, at most 5 (all of them with `uncapped`). */
+export function pillarsFrom(brief: unknown, opts: { uncapped?: boolean } = {}): string[] {
   const raw = brief && typeof brief === 'object' ? (brief as { contentPillars?: unknown }).contentPillars : null
   const list = (Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(/[,;\n]/) : [])
     .map((p) => String(p ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean)
-  return [...new Set(list.map((p) => p.toLowerCase()))].slice(0, 5).map((l) => list.find((p) => p.toLowerCase() === l) as string)
+  return [...new Set(list.map((p) => p.toLowerCase()))].slice(0, opts.uncapped ? undefined : 5).map((l) => list.find((p) => p.toLowerCase() === l) as string)
 }
 
 export interface VoiceForWriter { styleNote?: string | null; sampleLines?: readonly string[] | null; cardBlock?: string | null }
@@ -161,17 +164,19 @@ export function loopBucket(userId: string): number {
 const fence = (label: string, body: string) => `<<<${label}\n${body}\n>>>`
 
 /** The whole block. Empty sections are left out; the structure is always present. */
-export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: readonly string[]; profile: DurationProfile; voice?: VoiceForWriter | null; painThemes?: readonly string[] }): string {
+export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: readonly string[]; profile: DurationProfile; voice?: VoiceForWriter | null; painThemes?: readonly string[]; uncapped?: boolean }): string {
   const parts: string[] = []
   const v = a.voice ?? null
-  const samples = (v?.sampleLines ?? []).map((s) => String(s).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3)
+  // FACTS_ONLY_WRITER (default off): `uncapped` hands over every sample line and pain theme.
+  const cap = (n: number) => (a.uncapped ? undefined : n)
+  const samples = (v?.sampleLines ?? []).map((s) => String(s).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, cap(3))
   const note = String(v?.styleNote ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
   if (v?.cardBlock || note || samples.length) {
     parts.push([
       'HER VOICE (highest priority for wording; it overrides any generic style rule below).',
       v?.cardBlock ? String(v.cardBlock).trim() : '',
       note ? `Her own style note: ${note}` : '',
-      samples.length ? `Lines she actually said or wrote (match their rhythm and word choice; never copy a claim from them):\n${samples.map((s) => `- ${s.slice(0, 240)}`).join('\n')}` : '',
+      samples.length ? `Lines she actually said or wrote (match their rhythm and word choice; never copy a claim from them):\n${samples.map((s) => `- ${a.uncapped ? s : s.slice(0, 240)}`).join('\n')}` : '',
     ].filter(Boolean).join('\n'))
   }
   if (a.answers.length) {
@@ -184,12 +189,12 @@ export function renderWriterLoop(a: { answers: readonly LoopAnswer[]; pillars: r
   // Plan v7.1 WP6: what her audience struggles with, from research (Reddit and
   // public posts), as TOPICS ONLY. Labelled outside, never her experience,
   // never quoted, never "most people" or a number.
-  const pains = (a.painThemes ?? []).map((t) => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 3)
+  const pains = (a.painThemes ?? []).map((t) => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, cap(3))
   if (pains.length) {
-    parts.push(fence('what her audience struggles with (outside research; topics only)', pains.map((t) => `- ${t.slice(0, 160)}`).join('\n'))
+    parts.push(fence('what her audience struggles with (outside research; topics only)', pains.map((t) => `- ${a.uncapped ? t : t.slice(0, 160)}`).join('\n'))
       + '\nUse one of these only to name the problem (step 2) or shape the hook, in your own words. Never present it as her experience, never quote it, never say "most people", "everyone" or a number about it.')
   }
-  parts.push(renderHouseStructure(a.profile))
+  parts.push(renderHouseStructure(a.profile, { noWordBudget: a.uncapped === true }))
   return parts.join('\n\n')
 }
 

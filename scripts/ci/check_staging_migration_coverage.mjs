@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0298_facts_only_ledger':
+    'Additive nullable columns (creator_knowledge.question_text/topic_key, question_asks.topic_key/request_key) and two partial indexes for the facts-only writer (FACTS_ONLY_WRITER, default off, panel and test accounts only); NOT yet applied (file only, owner applies by hand). The editor never reads them. No staging-only surface.',
   '0297_writer_usage_ledger':
     'Service-role-only price row (gemini-embedding-001) and the ai_cost_by_day view over ai_usage_ledger; applied by hand. No staging-only surface.',
   '0295_apify_tiers_billing_cycle':
