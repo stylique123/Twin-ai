@@ -113,6 +113,9 @@ const SOURCES = [
   ['packages/shared/src/socialStats.ts', 'supabase/functions/_shared/socialStats.ts'],
   ['packages/shared/src/postQuestions.ts', 'supabase/functions/_shared/postQuestions.ts'],
   ['packages/shared/src/outstand.ts', 'supabase/functions/_shared/outstand.ts'],
+  // Owner-folder check for service-role storage reads (security audit #2/#3: `../` escaped the prefix check).
+  ['packages/shared/src/storagePath.ts', 'supabase/functions/_shared/storagePath.ts'],
+  ['packages/shared/src/storagePath.ts', 'worker/src/generated/storagePath.ts'],
   ['packages/shared/src/script/actionPacing.ts', 'supabase/functions/_shared/actionPacing.ts'],
   ['packages/shared/src/customerReviews.ts', 'supabase/functions/_shared/customerReviews.ts'],
   ['packages/shared/src/script/voiceGate.ts', 'supabase/functions/_shared/voiceGate.ts'],

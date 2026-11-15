@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 import { db } from '../db.js'
 import { PermanentJobError } from '../errors.js'
 import { projectBrandSnapshot, brandSnapshotSha256, type EditorBrandSnapshotV1 } from './brandSnapshot.js'
+import { isOwnedStoragePath } from '../generated/storagePath.js'
 
 // The brand logo is a storage `logo_path` (brand_kit.logo_path, `edits` bucket). It is
 // VERIFIED only when (a) owned by this creator (the object key is prefixed with the
@@ -17,8 +18,7 @@ async function resolveVerifiedLogo(
   kit: Parameters<typeof projectBrandSnapshot>[1],
 ): Promise<{ path: string; sha256: string } | null> {
   const path = kit && typeof kit === 'object' ? (kit as { logo_path?: unknown }).logo_path : null
-  if (typeof path !== 'string' || path.length === 0 || path.length > 512) return null
-  if (!path.startsWith(`${ownerId}/`)) return null
+  if (!isOwnedStoragePath(ownerId, path)) return null
   const { data, error } = await db.storage.from('edits').download(path)
   if (error) {
     // A genuine "object not found" means the logo legitimately isn't there → none.
