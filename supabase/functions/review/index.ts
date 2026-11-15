@@ -15,6 +15,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { isOwnedStoragePath } from '../_shared/storagePath.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -104,14 +105,15 @@ Deno.serve(async (req: Request) => {
       if (g.brand_voice_id) {
         const { data: bv } = await db
           .from('brand_voices')
-          .select('label, handle, brand_kit')
+          .select('label, handle, brand_kit, owner_id')
           .eq('id', g.brand_voice_id)
           .maybeSingle()
         brand = (bv?.label && bv.label.trim()) || (bv?.handle ? `@${bv.handle}` : brand)
         // White-label: show the CLIENT's own logo (from their brand kit) so the
         // approval page reads as the agency's, not TwinAI's.
         const logoPath = (bv?.brand_kit as { logo_path?: string } | null)?.logo_path
-        if (logoPath) brand_logo = await sign(db, logoPath)
+        // logo_path is creator-writable; only sign a key inside the voice owner's own folder (audit #3).
+        if (bv?.owner_id && isOwnedStoragePath(bv.owner_id, logoPath)) brand_logo = await sign(db, logoPath)
       }
 
       const bp = (g.blueprint ?? {}) as Record<string, unknown>

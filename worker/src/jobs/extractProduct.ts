@@ -39,6 +39,7 @@ import { ldPriceLines } from '../ldProductPrices.js'
 import { ldReviews, type CustomerReviews } from '../ldProductReviews.js'
 import { SCHEMA, SYSTEM } from './extractPrompt.js'
 import { withoutSiteButtons, labelUnlabeledPrices } from '../pageFactHygiene.js'
+import { isOwnedStoragePath } from '../generated/storagePath.js'
 import { readExtractedFact, EXTRACTED_FIELDS, EXTRACTION_SOURCES, imageFactAllowed,
   type ExtractedFact, type ExtractedField, type ExtractionSource }
   from './productExtractionContract.js'
@@ -466,7 +467,7 @@ async function extractProduct(job: Job): Promise<Record<string, unknown>> {
   // photo, not the whole extraction they are waiting on.
   const images: InlineImage[] = []
   for (const path of imagePaths.slice(0, MAX_IMAGES)) {
-    if (!path.startsWith(`${ownerId}/`)) {
+    if (!isOwnedStoragePath(ownerId, path)) {
       console.warn('extract_product: refusing a path outside the owner folder')
       continue
     }
