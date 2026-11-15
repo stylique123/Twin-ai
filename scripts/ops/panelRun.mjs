@@ -55,7 +55,8 @@ export function panelSelection(fixture, { modes = [], range = '' } = {}) {
   let inRange = () => true
   const spec = String(range ?? '').trim()
   if (spec) {
-    const parts = spec.split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
+    // Panel 14: '+' and ';' separate parts too, so a list fits in the comma-split group field.
+    const parts = spec.split(/[,+;]/).map((p) => p.trim()).filter(Boolean).map((p) => {
       const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(p)
       if (!m) throw new Error(`panel: bad PANEL_RANGE part "${p}" (use e.g. 48-63)`)
       const a = Number(m[1]), b = Number(m[2] ?? m[1])
@@ -333,6 +334,27 @@ export function questionSummary(records) {
   }
 }
 
+const PANEL14_ANSWERS = new URL('./fixtures/panel14-answers.json', import.meta.url)
+let panel14Doc = null
+/**
+ * Panel 14 (facts-only writer): answers for a NEEDS_STORY stop with facts-only
+ * questions. Each question's key (field) is answered from panel14-answers.json
+ * for this request; a fixture "skip", or a key the fixture does not hold, is
+ * sent as the skip text, which the edge stores as skipped and closes.
+ */
+export function panel14Answers(questions, body, requestId, doc = null) {
+  const d = doc ?? (panel14Doc ??= JSON.parse(readFileSync(PANEL14_ANSWERS, 'utf8')))
+  const fixture = d?.requests?.[requestId]?.answers ?? {}
+  const out = { ...(body.readiness_answers ?? {}) }
+  for (const q of questions ?? []) {
+    if (!q?.field) continue
+    const v = fixture[q.field]
+    out[q.field] = typeof v === 'string' && v.trim() && v !== 'skip' ? v : PANEL_SKIP_ANSWER
+  }
+  return { readiness_answers: out }
+}
+export const isFactsOnlyStop = (r) => r?.status === 409 && r?.json?.code === 'NEEDS_STORY' && r?.json?.facts_only === true && Array.isArray(r?.json?.questions)
+
 /** Answers for a 409: skip every question; the product pick is the request's own product, else the last option (none). */
 export function skipAnswers(questions, body) {
   const out = { ...(body.readiness_answers ?? {}) }
@@ -458,6 +480,17 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
       await new Promise((res) => setTimeout(res, 6000))
       try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
     }
+    // Panel 14: a facts-only stop. Its questions are recorded; in fixture mode
+    // (pass 2) they are answered from panel14-answers.json and the request is
+    // sent again (at most 3 rounds). In skip mode (pass 1) the stop stands.
+    for (let round = 0; isFactsOnlyStop(r) && r.json.questions.length && round < 3; round++) {
+      asked.push(...r.json.questions.map((q) => q.question))
+      fields.push(...r.json.questions.map((q) => q?.field).filter(Boolean))
+      if (mode !== 'fixture') break
+      body = { ...body, ...panel14Answers(r.json.questions, body, fixture.requests[sc.request_n ?? sc.n]?.id) }
+      await new Promise((res) => setTimeout(res, 6000))
+      try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
+    }
     // Async polish (trial): read the script only after the worker has polished and checked it.
     let bp = r.json?.blueprint ?? null
     // Panel 13 (advisor): with the viewer arms on, the OFF arm is captured only
@@ -487,7 +520,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (r.json?.id && !viewerArms) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     const row = (arm, armBp, armLines, extra = {}) => ({
       batch, n: sc.n,
-      scenario: { group: 'panel', ...(arm ? { viewer_arm: arm, ...extra } : {}), mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
+      scenario: { group: 'panel', ...(arm ? { viewer_arm: arm, ...extra } : {}), mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, ...(asked.length ? { asked_questions: asked.slice(0, 9) } : {}), template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [
