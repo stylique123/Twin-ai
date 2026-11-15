@@ -21,6 +21,9 @@ assert.equal(panelSelection(fixture, { modes: ['reference'] }).length, 16)
 assert.equal(panelSelection(fixture, { modes: ['idea'] }).length, 8)
 assert.equal(panelSelection(fixture, { modes: ['panel'] }).length, 63, 'panel = the 47 pre-modes requests + the 16 panel-13 idea/product requests')
 // Panel 13 (owner 5 Nov): 24 fresh requests, run as PANEL_RANGE=64-87.
+// Panel 14: '+' separates parts too (the group field is comma-split).
+assert.deepEqual(panelSelection(fixture, { range: '1+5+9+13+17+21+25+29' }).map((n) => fixture.requests[n].id), ['panel-01', 'panel-05', 'panel-09', 'panel-13', 'panel-17', 'panel-21', 'panel-25', 'panel-29'])
+assert.deepEqual(panelFilterFromEnv({}, 'panel,panel-range:1+5+9').range, '1+5+9')
 assert.deepEqual(panelSelection(fixture, { range: '64-87' }).map((n) => fixture.requests[n].id), Array.from({ length: 24 }, (_, i) => `panel-${64 + i}`))
 assert.throws(() => panelSelection(fixture, { modes: ['remix'] }), /unknown mode/)
 // Range: 1-based request numbers, as in panel-NN.

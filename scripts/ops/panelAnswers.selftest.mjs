@@ -2,7 +2,7 @@
 //   node scripts/ops/panelAnswers.selftest.mjs
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { fixtureAnswers, skipAnswers, panelAnswerMode, panelPlanB, panelQuestionUse, questionRecord, questionSummary, ANSWER_KEY_FOR_FIELD, PANEL_SKIP_ANSWER } from './panelRun.mjs'
+import { panel14Answers, isFactsOnlyStop, fixtureAnswers, skipAnswers, panelAnswerMode, panelPlanB, panelQuestionUse, questionRecord, questionSummary, ANSWER_KEY_FOR_FIELD, PANEL_SKIP_ANSWER } from './panelRun.mjs'
 import { panelQuestions } from './exportPanel.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
@@ -73,3 +73,14 @@ console.log('panelAnswers selftest ok')
 
 // Plan v7.1 WP12: the angle loop's self-test rides this CI step.
 await import('./panelAngleLoop.selftest.mjs')
+
+// Panel 14: facts-only stops are answered from panel14-answers.json by question key.
+const doc = { requests: { 'panel-21': { answers: { 'mn:fo:opinion:x': 'I think sources matter.', 'mn:fo:story:y': 'skip' } } } }
+const p14 = panel14Answers([{ field: 'mn:fo:opinion:x' }, { field: 'mn:fo:story:y' }, { field: 'mn:fo:proof:z' }], { readiness_answers: { a: 'b' } }, 'panel-21', doc)
+assert.deepEqual(p14.readiness_answers, { a: 'b', 'mn:fo:opinion:x': 'I think sources matter.', 'mn:fo:story:y': PANEL_SKIP_ANSWER, 'mn:fo:proof:z': PANEL_SKIP_ANSWER })
+assert.equal(isFactsOnlyStop({ status: 409, json: { code: 'NEEDS_STORY', facts_only: true, questions: [] } }), true)
+assert.equal(isFactsOnlyStop({ status: 409, json: { code: 'NEEDS_STORY', questions: [] } }), false)
+assert.equal(isFactsOnlyStop({ status: 409, json: { code: 'READINESS_INCOMPLETE', facts_only: true, questions: [] } }), false)
+// The real fixture loads and every request has answers.
+assert.ok(Object.keys(panel14Answers([{ field: 'nope' }], {}, 'panel-01').readiness_answers).length === 1)
+console.log('panel14 answers selftest: ok')
