@@ -140,6 +140,10 @@ export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixt
       n: r.n, label: r.scenario?.label ?? null, creator: r.scenario?.creator ?? null, status: r.status, code: r.code ?? null,
       request: { note: body.reference_note ?? body.note ?? null, goal: body.goal ?? null, product: r.scenario?.product ?? null, angle: body.readiness_answers?.angle ?? null, answers: Object.keys(body.readiness_answers ?? {}), mn_answers: Object.keys(body.mn_answers ?? {}) },
       lines: shipped.map((line) => ({ line, origin: lineOrigin(line, draft), support: supportScore(line, fixtureItems(fixture[r.scenario?.creator])) })),
+      // Panel 14: a shipped script with fewer than 3 spoken lines (a line of 3+
+      // words, the edge's floor rule) is flagged thin, so it can be counted.
+      thin: shipped.filter((l) => l.trim().split(/\s+/).length >= 3).length < 3 && r.status === 200,
+      spoken_lines: shipped.filter((l) => l.trim().split(/\s+/).length >= 3).length,
       first_draft_recorded: !!draft,
       first_draft_lines: draft ? draft.length : null,
       beat_trace: Array.isArray(bp.beat_trace) ? bp.beat_trace : null,
