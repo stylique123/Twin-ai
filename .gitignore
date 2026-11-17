@@ -25,3 +25,6 @@ scripts/ops/.*.bundle.mjs
 
 # batchAudit private leak pattern (real creator details; never commit)
 scripts/ops/.private/
+# Supabase CLI local state (supabase start)
+supabase/.temp/
+supabase/.branches/

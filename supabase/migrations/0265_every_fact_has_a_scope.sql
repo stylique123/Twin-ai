@@ -90,9 +90,12 @@ create trigger creator_knowledge_scope before insert on public.creator_knowledge
 update public.creator_knowledge k set fact_scope = 'product',
        brand_id = coalesce(k.brand_id, (select e.brand_id from public.product_entities e where e.id = k.product_entity_id))
  where k.product_entity_id is not null and k.fact_scope is null;
+-- An UPDATE's FROM may not reference the target row (42P10), so scope each row in a subquery and join on id.
 update public.creator_knowledge k set fact_scope = s.scope, product_entity_id = s.product_id, brand_id = s.brand_id
-  from lateral public.scope_fact(k.owner_id, k.text, k.evidence) s
- where k.fact_scope is null;
+  from (select c.id, f.scope, f.product_id, f.brand_id
+          from public.creator_knowledge c cross join lateral public.scope_fact(c.owner_id, c.text, c.evidence) f
+         where c.fact_scope is null) s
+ where k.fact_scope is null and s.id = k.id;
 
 -- The writer reads this view; it must carry the scope (columns appended, same filter).
 create or replace view public.creator_knowledge_writable with (security_invoker = true) as
