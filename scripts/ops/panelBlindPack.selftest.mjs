@@ -1,6 +1,6 @@
 // Self-test for the single-arm panel blind pack. No network, no database.
 import assert from 'node:assert/strict'
-import { buildBlindPack, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems, storedLayers } from './panelBlindPack.mjs'
+import { questionSource, questionCounts, buildBlindPack, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems, storedLayers } from './panelBlindPack.mjs'
 
 let seed = 7
 const rand = (n) => { const b = Buffer.alloc(n); for (let i = 0; i < n; i++) b[i] = (seed = (seed * 1103515245 + 12345) & 0xff); return b }
@@ -63,4 +63,12 @@ assert.equal(thinRow[0].thin, true)
 assert.equal(thinRow[0].spoken_lines, 2)
 const fullRow = buildTrace([row(1)], { g1: { script: [{ line: 'One two three.' }, { line: 'Four five six.' }, { line: 'Seven eight nine.' }] } })
 assert.equal(fullRow[0].thin, false)
+// Panel 14: facts-only questions are told apart from the older readiness ones.
+assert.equal(questionSource('For "how I started weaving": what actually happened? One real moment…'), 'facts_only')
+assert.equal(questionSource('What is the one fact about Tide Mug this video should say: what it is, what it does, or what it costs?'), 'facts_only')
+assert.equal(questionSource('What was missing that made you build it?'), 'readiness')
+assert.equal(questionSource('Which one is this video about?'), 'readiness')
+assert.deepEqual(questionCounts([{ scenario: { asked_questions: ['For "x": what is your own view, and what made you think that?', 'Which one is this video about?'] } }, { scenario: {} }]), { facts_only: 1, readiness: 1, requests_with_readiness: 1 })
+const tq = buildTrace([row(1, { scenario: { ...row(1).scenario, asked_questions: ['For "a": what are the exact steps you follow, in order?', 'Who is this video for?'] } })], { g1: { script: [] } })
+assert.deepEqual(tq[0].questions.map((q) => q.source), ['facts_only', 'readiness'])
 console.log('panelBlindPack selftest: ok')
