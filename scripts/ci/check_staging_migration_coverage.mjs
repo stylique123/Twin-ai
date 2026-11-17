@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0299_a_reference_row_is_written_by_the_server':
+    'Security audit #7: drops the "gallery own insert" policy and revokes insert on gallery_items from anon/authenticated, guarded on to_regclass. Staging has no gallery_items table and the editor never reads it; NOT yet applied (file only, owner applies by hand).',
   '0298_facts_only_ledger':
     'Additive nullable columns (creator_knowledge.question_text/topic_key, question_asks.topic_key/request_key) and two partial indexes for the facts-only writer (FACTS_ONLY_WRITER, default off, panel and test accounts only); NOT yet applied (file only, owner applies by hand). The editor never reads them. No staging-only surface.',
   '0297_writer_usage_ledger':
