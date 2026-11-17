@@ -44,6 +44,27 @@ const round = (x) => Math.round(x * 100) / 100
  * Pure: rows (script_batch_results) + blueprints by generation id → { blind, key, report }.
  * `craft(lines)` returns the 1–7 pre-score or null; `rand(n)` returns n random bytes.
  */
+/**
+ * Panel 14: where a question came from. The facts-only gap check asks from a
+ * fixed set of templates (factsOnly.needsFor): `For "<request>": …` or `What is
+ * the one fact about <product> this video should say…`. Anything else came
+ * from the older readiness check (a known defect while FACTS_ONLY_WRITER is on).
+ */
+export function questionSource(text) {
+  const t = String(text ?? '').trim()
+  return /^For ".*?":/.test(t) || /^What is the one fact about .+ this video should say/.test(t) ? 'facts_only' : 'readiness'
+}
+export function questionCounts(rows) {
+  const out = { facts_only: 0, readiness: 0, requests_with_readiness: 0 }
+  for (const r of rows) {
+    const qs = Array.isArray(r?.scenario?.asked_questions) ? r.scenario.asked_questions : []
+    let readiness = 0
+    for (const q of qs) { const s = questionSource(q); out[s]++; if (s === 'readiness') readiness++ }
+    if (readiness) out.requests_with_readiness++
+  }
+  return out
+}
+
 export function buildBlindPack(rows, blueprints = {}, craft = () => null, rand = (n) => randomBytes(n)) {
   const panel = rows.filter((r) => r.scenario?.group === 'panel')
   const report = { rows: panel.length, scripts: 0, asked: 0, failures: [], invented_lines: 0, scripts_with_invented: 0, invented_unknown: 0, craft_prescore_mean: null, craft_prescored: 0, check_status: {}, final_pass: {}, headline: null }
@@ -66,6 +87,8 @@ export function buildBlindPack(rows, blueprints = {}, craft = () => null, rand =
     scored.push(r)
   }
   report.craft_prescored = crafts.length
+  // Panel 14: questions asked, by source (readiness = known defect, counted apart).
+  report.questions = questionCounts(panel)
   report.craft_prescore_mean = crafts.length ? round(crafts.reduce((a, b) => a + b, 0) / crafts.length) : null
   const requests = report.scripts + report.asked + report.failures.length
   report.headline = {
@@ -144,6 +167,7 @@ export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixt
       // words, the edge's floor rule) is flagged thin, so it can be counted.
       thin: shipped.filter((l) => l.trim().split(/\s+/).length >= 3).length < 3 && r.status === 200,
       spoken_lines: shipped.filter((l) => l.trim().split(/\s+/).length >= 3).length,
+      questions: (Array.isArray(r.scenario?.asked_questions) ? r.scenario.asked_questions : []).map((q) => ({ text: q, source: questionSource(q) })),
       first_draft_recorded: !!draft,
       first_draft_lines: draft ? draft.length : null,
       beat_trace: Array.isArray(bp.beat_trace) ? bp.beat_trace : null,
