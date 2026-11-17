@@ -53,6 +53,7 @@ import {
 } from '../_shared/knowledgeResolver.ts'
 import { inStage, currentStageUsage, stageOfCall, setLedgerContext, withScriptLedger } from '../_shared/aiUsage.ts'
 import { buildProvenance } from '../_shared/provenance.ts'
+import { readinessAsksUnderFactsOnly } from '../_shared/readinessUnderFactsOnly.ts'
 import { dropInventedCauses, isSubjectOnlyTopic, subjectsLine } from '../_shared/inventedCause.ts'
 import { checkSupport } from '../_shared/supportCheck.ts'
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
@@ -9458,11 +9459,18 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       offers: [...products.map((p) => p.offer), String(readyOffer ?? '')].filter((o) => o.trim()),
     }
   }
-  if (readyMissing.length) {
+  // Facts-only writer on: the readiness story, angle and goal questions stand
+  // down (the gap layer asks for her material); audience, CTA and offer stay.
+  const readyAsks = readinessAsksUnderFactsOnly(readyMissing, factsOnlyNow(), [
+    ...Object.values(READY_OBJECTIVE_QUESTIONS),
+    ...Object.values(PURPOSE_LABEL).map((l) => `Nothing Twin knows about you fits ${l} yet. What is one real thing this video should say?`),
+  ])
+  if (readyAsks.length !== readyMissing.length) console.log(JSON.stringify({ event: 'readiness_facts_only_stood_down', fields: readyMissing.filter((m) => !readyAsks.includes(m)).map((m) => m.field) }))
+  if (readyAsks.length) {
     // ⚖️ ORDERED BY WHAT UNBLOCKS THE MOST, capped at three. A creator asked
     // eight questions abandons; a creator asked two answers them.
     const ORDER = ['goal', 'offer', 'angle', 'relationship', 'cta', 'claims', 'audience', 'screen']
-    const ask = readyMissing
+    const ask = readyAsks
       .slice()
       .sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field))
       .slice(0, 3)
