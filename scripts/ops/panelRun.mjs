@@ -473,21 +473,21 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
     const asked = []
     const fields = []
-    for (let round = 0; round < 3 && r.status === 409 && r.json?.code === 'READINESS_INCOMPLETE' && Array.isArray(r.json.questions); round++) {
+    // One loop for both stops, in whatever order the edge returns them (Panel 14:
+    // a facts-only answer can be followed by a readiness question, and the reverse).
+    // Readiness: answered as before (fixture or skip) and sent again. Facts-only
+    // (Panel 14): questions recorded; in fixture mode (pass 2) answered from
+    // panel14-answers.json and sent again; in skip mode (pass 1) the stop stands.
+    // At most 5 rounds in all.
+    for (let round = 0; round < 5; round++) {
+      const readiness = r.status === 409 && r.json?.code === 'READINESS_INCOMPLETE' && Array.isArray(r.json.questions)
+      const factsOnly = isFactsOnlyStop(r) && r.json.questions.length > 0
+      if (!readiness && !factsOnly) break
       asked.push(...r.json.questions.map((q) => q.question))
       fields.push(...r.json.questions.map((q) => q?.field).filter((f) => f && f !== 'selected_product'))
-      body = { ...body, ...(mode === 'fixture' ? fixtureAnswers(r.json.questions, body, answersBy.get(sc.creator)) : skipAnswers(r.json.questions, body)) }
-      await new Promise((res) => setTimeout(res, 6000))
-      try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
-    }
-    // Panel 14: a facts-only stop. Its questions are recorded; in fixture mode
-    // (pass 2) they are answered from panel14-answers.json and the request is
-    // sent again (at most 3 rounds). In skip mode (pass 1) the stop stands.
-    for (let round = 0; isFactsOnlyStop(r) && r.json.questions.length && round < 3; round++) {
-      asked.push(...r.json.questions.map((q) => q.question))
-      fields.push(...r.json.questions.map((q) => q?.field).filter(Boolean))
-      if (mode !== 'fixture') break
-      body = { ...body, ...panel14Answers(r.json.questions, body, fixture.requests[sc.request_n ?? sc.n]?.id) }
+      if (factsOnly && mode !== 'fixture') break
+      body = { ...body, ...(factsOnly ? panel14Answers(r.json.questions, body, fixture.requests[sc.request_n ?? sc.n]?.id)
+        : mode === 'fixture' ? fixtureAnswers(r.json.questions, body, answersBy.get(sc.creator)) : skipAnswers(r.json.questions, body)) }
       await new Promise((res) => setTimeout(res, 6000))
       try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
     }
