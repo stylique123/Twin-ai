@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0300_an_invite_asks_and_a_teammate_can_leave':
+    'Security audit #1: plan checks on create/accept_workspace_invite and a member-leave policy on workspace_members. Staging has no workspace or profiles tables (0049 is not applied there) and the editor never reads them; NOT yet applied (file only, owner applies by hand).',
   '0299_a_reference_row_is_written_by_the_server':
     'Security audit #7: drops the "gallery own insert" policy and revokes insert on gallery_items from anon/authenticated, guarded on to_regclass. Staging has no gallery_items table and the editor never reads it; NOT yet applied (file only, owner applies by hand).',
   '0298_facts_only_ledger':

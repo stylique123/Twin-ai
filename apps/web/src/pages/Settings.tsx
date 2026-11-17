@@ -1424,6 +1424,12 @@ function TeamSeats() {
     setWs((w) => (w ? { ...w, members: w.members.filter((m) => m.member_id !== memberId) } : w))
     await removeWorkspaceMember(memberId).catch(() => {})
   }
+  // A teammate can remove her own membership (0300 "wm_member_leave"); reload shows whether it stuck.
+  const leave = async () => {
+    if (!profile?.id || !window.confirm("Leave this shared workspace? You'll lose access to its voices and scripts.")) return
+    await removeWorkspaceMember(profile.id).catch(() => {})
+    load()
+  }
 
   // A teammate in someone else's workspace — show status, no invite controls.
   // (Shown regardless of the teammate's own plan; it's just informational.)
@@ -1435,6 +1441,7 @@ function TeamSeats() {
           <p className="eyebrow !text-sand">Team</p>
         </div>
         <p className="mt-4 text-sm text-sand">You're a teammate in a shared workspace. You can create and edit in the workspace's brand voices — billing stays with the workspace owner.</p>
+        <button onClick={leave} className="btn-ghost mt-4">Leave workspace</button>
       </section>
     )
   }

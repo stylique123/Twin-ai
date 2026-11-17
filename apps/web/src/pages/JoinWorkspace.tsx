@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams, Navigate } from 'react-router-dom'
 import { Loader2, Check, Users } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -7,12 +7,14 @@ import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 
 // A teammate opens /join/:token. If signed out, we bounce them through signup
-// (preserving the token) so they land back here authenticated, then accept.
+// (preserving the token) so they land back here authenticated. Joining is never
+// automatic: the inviter gains edit access to her voices, scripts and posts, so
+// she must say yes on this screen (security audit #1).
 export default function JoinWorkspace() {
   const { token = '' } = useParams()
   const { session, refreshProfile } = useAuth()
   const navigate = useNavigate()
-  const [state, setState] = useState<'idle' | 'joining' | 'done' | 'error'>('idle')
+  const [state, setState] = useState<'confirm' | 'joining' | 'done' | 'error'>('confirm')
   const [msg, setMsg] = useState('')
 
   const join = async () => {
@@ -32,8 +34,10 @@ export default function JoinWorkspace() {
     }
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when session + token are ready
-  useEffect(() => { if (session && token) join() }, [session, token])
+  const decline = () => {
+    try { localStorage.removeItem('twinai_pending_join') } catch { /* ignore */ }
+    navigate('/app')
+  }
 
   // Not signed in → stash the invite and send them to signup; they return here.
   // (Placed AFTER all hooks so hook order stays stable across renders.)
@@ -58,10 +62,22 @@ export default function JoinWorkspace() {
             <p className="mt-1 text-sm text-coral">{msg}</p>
             <button onClick={() => navigate('/app')} className="btn-ghost mt-5">Go to your studio</button>
           </>
-        ) : (
+        ) : state === 'joining' ? (
           <>
             <p className="mt-4 inline-flex items-center gap-2 font-heading text-lg text-cream"><Loader2 className="h-5 w-5 animate-spin" /> Joining the workspace…</p>
             <p className="mt-1 text-sm text-stone">One moment.</p>
+          </>
+        ) : (
+          <>
+            <p className="mt-4 font-heading text-lg text-cream">Join a shared workspace?</p>
+            <p className="mt-2 text-sm text-stone">
+              The person who sent this link will be able to see and edit your brand voices, scripts and posts, and you'll see theirs.
+              Only join if you know them. You can leave anytime in Settings.
+            </p>
+            <div className="mt-5 flex justify-center gap-3">
+              <button onClick={decline} className="btn-ghost">No thanks</button>
+              <button onClick={join} disabled={!token} className="btn-primary">Join workspace</button>
+            </div>
           </>
         )}
         <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-stone">Powered by <Logo className="h-3.5" /></div>
