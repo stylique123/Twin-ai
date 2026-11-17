@@ -42,6 +42,10 @@ describe('FACTS_ONLY_WRITER wiring', () => {
     expect(EDGE.match(/Object\.assign\((?:inventionRecheck|rescueRecheck)\.ledger, factsOnlyGateExtras\(\)\)/g)).toHaveLength(2)
     expect(EDGE).toMatch(/const factsOnlyGateExtras = \(\): Record<string, unknown> => \(factsOnlyNow\(\)\n[\s\S]{0,600}: \{\}\)/)
   })
+  it('Panel 14 wiring: the older panel story stop stands down for the gap layer; a rescued script carries the cleanup flag', () => {
+    expect(EDGE).toContain('if (isPanel && !factsOnlyNow()) {')
+    expect(EDGE).toMatch(/Object\.assign\(rescueRecheck\.ledger, factsOnlyGateExtras\(\)\)\n[\s\S]{0,200}if \(cleanupV1\) rescueRecheck\.ledger\.script_cleanup_v1 = true/)
+  })
   it('the worker runs the trace pass last, only when the job says facts_only', () => {
     expect(WORKER).toContain("if (extra.facts_only !== true || !Array.isArray(bp.script)) return")
     expect(WORKER.match(/applyScriptCleanupV1\(bp, extra, ledger, products, generationId\)\n\s*applyFactsOnly\(bp, extra, ledger, generationId\)/g)).toHaveLength(2)

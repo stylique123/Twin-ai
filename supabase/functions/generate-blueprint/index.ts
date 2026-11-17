@@ -9372,7 +9372,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // A request that asks WHY or for THE DAY I… needs her own truth. When none of
   // her stories or answers touches its topic, she is asked first and nothing
   // is written; the panel records the request as needs_answers.
-  if (isPanel) {
+  // FACTS_ONLY_WRITER: the gap layer below asks the specific questions; this older generic stop stands down.
+  if (isPanel && !factsOnlyNow()) {
     const askNote = String(reference_note ?? '')
     const storyAnswer = String((body.readiness_answers as Record<string, unknown> | undefined)?.story ?? '')
     const answerTexts = Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String).concat(storyAnswer)
@@ -18583,6 +18584,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
             // FACTS_ONLY_WRITER (default off): no word budget; the worker re-runs the trace pass.
             Object.assign(rescueRecheck.ledger, factsOnlyGateExtras())
+            // SCRIPT_CLEANUP_V1 (default off): the worker's cleanup runs on a rescued script too.
+            if (cleanupV1) rescueRecheck.ledger.script_cleanup_v1 = true
             console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
           } catch { /* the gate bookkeeping never loses a rescued script */ }
         }
