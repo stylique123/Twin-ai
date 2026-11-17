@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0301_a_profile_is_read_by_who_can_see_the_video':
+    'Security audit #4: replaces the `using (true)` read policy on reference_content_profiles with "caller can see the URL in gallery_items, scraped_posts, generations or her ingest jobs". Staging has no gallery or scraped_posts tables and the editor never reads reference profiles as a user; NOT yet applied (file only, owner applies by hand).',
   '0300_an_invite_asks_and_a_teammate_can_leave':
     'Security audit #1: plan checks on create/accept_workspace_invite and a member-leave policy on workspace_members. Staging has no workspace or profiles tables (0049 is not applied there) and the editor never reads them; NOT yet applied (file only, owner applies by hand).',
   '0299_a_reference_row_is_written_by_the_server':
