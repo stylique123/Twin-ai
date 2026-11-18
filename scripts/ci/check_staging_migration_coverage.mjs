@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0305_a_post_points_only_at_her_own_video':
+    'Security audit #14: posts insert/update policies also require media_path in the owner\'s folder and generation/edit project/output asset visible to the caller. The editor matrix never writes posts as a user; NOT yet applied (file only, owner applies by hand).',
   '0304_only_twin_changes_a_voice_status':
     'Security audit #13: BEFORE UPDATE trigger on brand_voices lets a signed-in user change status only from building to ready (the manual voice form); service role unaffected. Staging has no brand_voices fixture path that writes status as a user and the editor never does; NOT yet applied (file only, owner applies by hand).',
   '0303_a_job_that_kills_the_worker_stops':
