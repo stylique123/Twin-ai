@@ -70,3 +70,26 @@ export async function safeFetch(raw: string, init: RequestInit = {}, maxHops = 5
   }
   throw new UnsafeUrlError('too many redirects')
 }
+
+/** Page text, read only up to `maxBytes` of decoded body, then the download is cancelled.
+ *  `res.text()` buffers everything, so a small gzip that expands to gigabytes crashed the
+ *  worker on every retry (security audit #8). The cut text is still usable: readers want the top. */
+export async function readTextCapped(res: Response, maxBytes = 5_000_000): Promise<string> {
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let out = ''
+  let seen = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    seen += value.byteLength
+    if (seen > maxBytes) {
+      out += decoder.decode(value.subarray(0, value.byteLength - (seen - maxBytes)))
+      await reader.cancel().catch(() => {})
+      break
+    }
+    out += decoder.decode(value, { stream: true })
+  }
+  return out + decoder.decode()
+}

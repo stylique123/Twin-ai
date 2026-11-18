@@ -2,6 +2,7 @@
 // ⚖️ ADDITIVE: it only ever APPENDS one `object_shape` fact; it never rewrites
 // what extraction found, and a product it cannot read is stamped and left alone.
 import { db } from '../db.js'
+import { readTextCapped } from '../safeFetch.js'
 import { geminiJson } from '../gemini.js'
 import { modelForTask } from '../modelRouting.js'
 import { shopifyJsUrl } from '../productAvailability.js'
@@ -23,7 +24,7 @@ async function photoUrl(productUrl: string): Promise<string | null> {
   }
   try {
     const r = await fetch(productUrl, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(15_000), redirect: 'follow' })
-    return r.ok ? ogImage((await r.text()).slice(0, 400_000)) : null
+    return r.ok ? ogImage(await readTextCapped(r, 400_000)) : null
   } catch { return null }
 }
 

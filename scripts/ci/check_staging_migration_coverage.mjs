@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0303_a_job_that_kills_the_worker_stops':
+    'Security audit #8: claim_job fails a stale running job that used all its attempts and only re-picks one with attempts left. The matrix does not apply 0004/0066 (staging\'s claim_job comes from its fixture), so this body change is not applied there either; NOT yet applied (file only, owner applies by hand).',
   '0302_one_rate_check_at_a_time':
     'Security audit #6: check_rate_limit takes a per-(user, action) advisory lock so simultaneous calls cannot all pass. Function-body change only; the editor matrix never calls check_rate_limit and 0003 is not in its list. NOT yet applied (file only, owner applies by hand).',
   '0301_a_profile_is_read_by_who_can_see_the_video':

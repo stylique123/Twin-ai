@@ -12,7 +12,7 @@
 // has just read persuasive copy is the worst available judge of whether that
 // copy is persuasive, and asking it to self-assess would make the whole split
 // decorative.
-import { safeFetch } from '../safeFetch.js'
+import { safeFetch, readTextCapped } from '../safeFetch.js'
 import { brandIsHers, IDENTITY_FIELDS } from './imageBrandCheck.js'
 import { subpagesByRole, wantsSubpages } from '../productSubpages.js'
 import { ldFaqLines } from '../ldFaq.js'
@@ -146,7 +146,7 @@ async function fetchPageText(url: string): Promise<string | null> {
     if (!res.ok) return null
     const ct = res.headers.get('content-type') ?? ''
     if (!ct.includes('html') && !ct.includes('text')) return null
-    const html = await res.text()
+    const html = await readTextCapped(res)
 
     // ⚠️ HEAD FIRST, AND BEFORE ANY STRIPPING. See `harvestHead`.
     const head = harvestHead(html)
