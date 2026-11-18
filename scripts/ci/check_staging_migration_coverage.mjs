@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0306_a_running_scan_is_not_stuck':
+    'Security audit #17: reap_stuck_scrape_dna fails a running scrape_dna job only after the 40-minute lease, and reap_stuck_dna_builds skips voices with a live scrape_dna job. Function bodies only; the editor matrix never runs DNA scans or these crons; NOT yet applied (file only, owner applies by hand).',
   '0305_a_post_points_only_at_her_own_video':
     'Security audit #14: posts insert/update policies also require media_path in the owner\'s folder and generation/edit project/output asset visible to the caller. The editor matrix never writes posts as a user; NOT yet applied (file only, owner applies by hand).',
   '0304_only_twin_changes_a_voice_status':
