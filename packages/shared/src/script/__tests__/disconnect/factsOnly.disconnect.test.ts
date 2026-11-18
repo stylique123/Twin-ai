@@ -48,6 +48,25 @@ describe('FACTS_ONLY_WRITER wiring', () => {
   })
   it('the worker runs the trace pass last, only when the job says facts_only', () => {
     expect(WORKER).toContain("if (extra.facts_only !== true || !Array.isArray(bp.script)) return")
-    expect(WORKER.match(/applyScriptCleanupV1\(bp, extra, ledger, products, generationId\)\n\s*applyFactsOnly\(bp, extra, ledger, generationId\)/g)).toHaveLength(2)
+    expect(WORKER.match(/applyScriptCleanupV1\(bp, extra, ledger, products, generationId\)\n\s*applyFactsOnly\(bp, extra, ledger, generationId, products, target\)/g)).toHaveLength(2)
+  })
+  it('Panel 14 fixes: target product, strict hook, hooks traced and the cleanup run on the edge and in the worker', () => {
+    for (const src of [EDGE, WORKER]) {
+      expect(src).toContain('traceAndCut(')
+      expect(src).toMatch(/strictHook: true/)
+      expect(src).toMatch(/targetProductId: (?:foTarget|target), products(?:: foProducts)? \}/)
+      expect(src).toContain('const pol = polishFactsOnly(r.beats as Array<Record<string, unknown> & { line?: unknown }>)')
+      expect(src).toContain('traceHooks((')
+    }
+  })
+  it('Panel 14 fixes on the edge sit inside the facts-only block: rotation, repeated openings, thin stop', () => {
+    const block = EDGE.slice(EDGE.indexOf("if (factsOnlyNow() && blueprint && typeof blueprint === 'object'"), EDGE.indexOf("traceBeats('shipped',"))
+    expect(block).toContain('dropRepeatedOpening(')
+    expect(block).toContain('suppliedKnowledgeIds = suppliedKnowledgeIds.filter((id) => usedIds.has(id))')
+    expect(block).toContain("const thin = scriptThin(bpo.script as Array<{ line?: unknown }>)")
+    expect(block).toContain("await refundOnce('facts_only_thin')")
+    expect(block).toMatch(/code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true/)
+    expect(EDGE).toContain('const foResting = factsOnlyNow() && !chosenRows ? restingStoryIds(')
+    expect(EDGE).toContain("!foResting.has(String((k as { id?: unknown }).id ?? ''))")
   })
 })

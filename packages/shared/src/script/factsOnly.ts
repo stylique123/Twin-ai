@@ -50,7 +50,7 @@ export type Layer = 'fact' | 'style' | 'background'
 const FACT_ORIGINS = new Set(['her_story', 'her_fact', 'her_answer', 'product_fact', 'offer', 'urgency'])
 /** Ledger kinds that are her stated opinions: background, citable only as `opinion`. */
 const OPINION_FIELDS = new Set(['opinion', 'belief', 'stance', 'take'])
-export interface WriterItem { ref: string; id: string; origin: string; text: string; layer: Layer; opinion?: boolean }
+export interface WriterItem { ref: string; id: string; origin: string; text: string; layer: Layer; opinion?: boolean; productId?: string | null; field?: string | null }
 
 /** Her facts layer (refs F1…) plus her stated opinions (background refs B…, opinion only). */
 export function writerItems(ledger: readonly LedgerItem[]): WriterItem[] {
@@ -64,8 +64,9 @@ export function writerItems(ledger: readonly LedgerItem[]): WriterItem[] {
     if (!text || seen.has(it.id) || (it.first_party === false && it.origin !== 'outside_research' && it.origin !== 'outside_moment' && it.origin !== 'niche_note' && it.origin !== 'audience_question')) continue
     seen.add(it.id)
     const opinion = it.origin === 'her_fact' && OPINION_FIELDS.has(String(it.field ?? '').toLowerCase())
-    if (FACT_ORIGINS.has(String(it.origin)) && !opinion) out.push({ ref: `F${++f}`, id: it.id, origin: String(it.origin), text, layer: 'fact' })
-    else out.push({ ref: `B${++b}`, id: it.id, origin: String(it.origin), text, layer: 'background', ...(opinion ? { opinion: true } : {}) })
+    const pid = it.product_id ? { productId: String(it.product_id), ...(it.field ? { field: String(it.field) } : {}) } : {}
+    if (FACT_ORIGINS.has(String(it.origin)) && !opinion) out.push({ ref: `F${++f}`, id: it.id, origin: String(it.origin), text, layer: 'fact', ...pid })
+    else out.push({ ref: `B${++b}`, id: it.id, origin: String(it.origin), text, layer: 'background', ...(opinion ? { opinion: true } : {}), ...pid })
   }
   return out
 }
@@ -287,7 +288,7 @@ export function bestItem(sentence: string, pool: readonly WriterItem[], ignore: 
   return best
 }
 
-export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'first_person_no_source' | 'product_pronoun' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored'
+export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'first_person_no_source' | 'product_pronoun' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored' | 'other_product' | 'hook_untraced'
 export interface FoTraceRecord {
   sentences: number; sourced: number; connecting: number; hook_cta_free: number; general_kept: number; viewer_questions: number; viewer_asks: number
   tags: Record<LineTag | 'untagged', number>
@@ -331,6 +332,62 @@ export const TRACE_TUNING_GRID = { addedMinWords: [3, 4, 5], addedMinShare: [0.5
 /** Fix A: a story paraphrase counts as her source for first person at this meaning overlap (the gate's HER_MIN). */
 export const STORY_PARAPHRASE_MEANING = 0.34
 
+// ── PANEL 14 FIX 2: A PRODUCT'S FACTS AND STORIES STAY WITH THAT PRODUCT ──
+// In a script about one product, an item about ANOTHER product (its product
+// facts, or a story that uses that product's words) is not a source, and a
+// sentence that uses another product's words is cut. Panel 14: a buyer story
+// about a mug told for the Moss Bowl; the moisturizer's origin story and
+// "fragrance free" on the balm; mug/bowl, cream/balm, jar/tin, cleansers/creams.
+// "Another product's words": its name and size/packaging words, plus words and
+// word pairs from its facts that neither the target product (name, facts,
+// offer, the request) nor her general material (items about no product) uses.
+const pstem = (w: string) => (w.length > 4 ? w.replace(/(?:ers|er|ing|ed|es|s)$/, '') : w.length > 3 ? w.replace(/s$/, '') : w)
+const ptokens = (t: string): string[] => String(t ?? '').toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3 && !STOP.has(w)).map(pstem)
+const pbigrams = (t: string): string[] => { const w = ptokens(t); return w.slice(1).map((x, i) => `${w[i]} ${x}`) }
+export interface ProductScope { target: string; words: Set<string>; pairs: Set<string> }
+
+/** The words that belong to products other than `target`. Null when the script has no target product. */
+export function productScope(target: string | null | undefined, products: ReadonlyArray<{ id: string; name: string }>, items: readonly WriterItem[]): ProductScope | null {
+  if (!target) return null
+  const facts = (pid: string) => items.filter((it) => it.productId === pid && (it.origin === 'product_fact' || it.origin === 'offer')).map((it) => it.text)
+  const tName = products.find((p) => p.id === target)?.name ?? ''
+  const targetText = [tName, ...facts(target), ...items.filter((it) => it.id === 'note' || it.id === 'offer').map((it) => it.text)].join(' ')
+  const tWords = new Set(ptokens(targetText))
+  const tPairs = new Set(pbigrams(targetText))
+  const others = products.filter((p) => p.id !== target)
+  const nameWords = new Set([
+    ...others.flatMap((p) => ptokens(p.name)),
+    // Size and packaging (jar, tin, glass): the product's own container words.
+    ...items.filter((it) => it.productId && it.productId !== target && it.field === 'size').flatMap((it) => ptokens(it.text)),
+  ].filter((w) => !tWords.has(w)))
+  // Her general material: items about no product that do not use another product's name.
+  const general = items.filter((it) => !it.productId && it.id !== 'note' && !ptokens(it.text).some((w) => nameWords.has(w))).map((it) => it.text).join(' ')
+  const gWords = new Set(ptokens(general))
+  const gPairs = new Set(pbigrams(general))
+  const words = new Set(nameWords)
+  const pairs = new Set<string>()
+  for (const p of others) {
+    for (const f of facts(p.id)) {
+      for (const w of ptokens(f)) if (!tWords.has(w) && !gWords.has(w)) words.add(w)
+      for (const b of pbigrams(f)) if (!tPairs.has(b) && !gPairs.has(b)) pairs.add(b)
+    }
+  }
+  return { target, words, pairs }
+}
+
+/** The other product's words this text uses (empty when none, or with no scope). */
+export function otherProductWords(text: string, scope: ProductScope | null): string[] {
+  if (!scope) return []
+  return [...new Set([...ptokens(text).filter((w) => scope.words.has(w)), ...pbigrams(text).filter((b) => scope.pairs.has(b))])]
+}
+
+/** An item that belongs to another product: attached to it, or using its words. */
+export function belongsElsewhere(item: WriterItem, scope: ProductScope | null): boolean {
+  if (!scope || item.id === 'note') return false
+  if (item.productId && item.productId !== scope.target) return true
+  return otherProductWords(item.text, scope).length > 0
+}
+
 const isCtaSection = (s: unknown) => /\b(?:cta|call to action|close)\b/i.test(String(s ?? ''))
 const tagOf = (v: unknown): LineTag | null => ((LINE_TAGS as readonly string[]).includes(String(v ?? '').toLowerCase()) ? String(v).toLowerCase() as LineTag : null)
 
@@ -362,14 +419,18 @@ const tagOf = (v: unknown): LineTag | null => ((LINE_TAGS as readonly string[]).
  * Kept text is her text: nothing is reworded, only cut. A beat left with no
  * sentence is dropped. Each kept beat carries `source_ids` (facts layer).
  */
-export function traceAndCut<B extends { section?: unknown; line?: unknown; source_ids?: unknown; layer_tag?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { style?: readonly WriterItem[]; background?: readonly WriterItem[]; names?: readonly string[]; maxExamples?: number; hasProduct?: boolean; tuning?: Partial<TraceTuning> } = {}): { beats: Array<B & { source_ids: string[] }>; record: FoTraceRecord } {
-  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, viewer_asks: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, first_person_no_source: 0, product_pronoun: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0 }, beats_dropped: 0, examples: [] }
-  const facts = items.filter((it) => it.layer === 'fact')
-  const opinions = items.filter((it) => it.opinion)
+export function traceAndCut<B extends { section?: unknown; line?: unknown; source_ids?: unknown; layer_tag?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { style?: readonly WriterItem[]; background?: readonly WriterItem[]; names?: readonly string[]; maxExamples?: number; hasProduct?: boolean; tuning?: Partial<TraceTuning>; targetProductId?: string | null; products?: ReadonlyArray<{ id: string; name: string }>; strictHook?: boolean } = {}): { beats: Array<B & { source_ids: string[] }>; record: FoTraceRecord } {
+  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, viewer_asks: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, first_person_no_source: 0, product_pronoun: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0, other_product: 0, hook_untraced: 0 }, beats_dropped: 0, examples: [] }
+  // Fix 2: with a target product, another product's items are never a source.
+  const scope = productScope(extra.targetProductId, extra.products ?? [], items)
+  const elsewhere = items.filter((it) => belongsElsewhere(it, scope))
+  const elsewhereIds = new Set(elsewhere.map((it) => it.id))
+  const facts = items.filter((it) => it.layer === 'fact' && !elsewhereIds.has(it.id))
+  const opinions = items.filter((it) => it.opinion && !elsewhereIds.has(it.id))
   const nonSource = [...items.filter((it) => it.layer !== 'fact' && !it.opinion), ...(extra.style ?? []), ...(extra.background ?? [])]
   const all = [...items, ...(extra.style ?? []), ...(extra.background ?? [])]
   const byId = new Map(all.map((it) => [it.id, it]))
-  const allTexts = all.map((it) => it.text)
+  const allTexts = all.filter((it) => !elsewhereIds.has(it.id)).map((it) => it.text)
   const toInputs = (xs: readonly WriterItem[]): LineSourceInput[] => xs.map((it) => ({ kind: 'fact', label: it.ref, text: it.text, id: it.id }))
   const factInputs = toInputs([...facts, ...opinions])
   const factPool = [...facts, ...opinions]
@@ -402,9 +463,13 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
     if (!line) { out.push({ ...b, source_ids: [] }); return }
     const tag = tagOf(b.layer_tag)
     rec.tags[tag ?? 'untagged']++
-    const free = i === first || i === last || isCtaSection(b.section)
+    // Fix 4 (Panel 14): the hook traces like any line. Only the CTA keeps the
+    // free pass; a hook with no source stays only as a question, a viewer ask
+    // or a plain connecting line.
+    const hook = extra.strictHook === true && i === first && !isCtaSection(b.section)
+    const free = !hook && (i === first || i === last || isCtaSection(b.section))
     const citedAll = resolveSourceIds(b.source_ids, all)
-    const cited = citedAll.filter((id) => byId.get(id)?.layer === 'fact' || byId.get(id)?.opinion)
+    const cited = citedAll.filter((id) => (byId.get(id)?.layer === 'fact' || byId.get(id)?.opinion) && !elsewhereIds.has(id))
     // Guard: an event or number resting only on storytelling/background items.
     if (citedAll.length && !cited.length && statesAFact(line)) { cutOne(i, 'borrowed_layer', line); rec.beats_dropped++; return }
     // Guard: a cross-story link must point at one of her STORED stories.
@@ -413,6 +478,8 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
     const ids = new Set<string>()
     for (const sentence of line.split(SENTENCES).map((s) => s.trim()).filter(Boolean)) {
       rec.sentences++
+      // Fix 2: a sentence using another product's words is cut.
+      if (otherProductWords(sentence, scope).length) { cutOne(i, 'other_product', sentence); continue }
       const traced = traceLines([{ line: sentence }], factInputs)[0]?.from.map((h) => h.id).filter((x): x is string => !!x) ?? []
       // A cited item counts when the tracer agrees, or the sentence shares meaning with it.
       const confirmed = cited.filter((id) => traced.includes(id) || overlap(sentence, byId.get(id)?.text ?? '') >= 0.5)
@@ -432,6 +499,9 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
           cutOne(i, fromAudience ? 'background_as_experience' : 'unearned_first_person', sentence); continue
         }
       }
+      // Fix 2: a sentence retelling another product's item in other words (closer to it than to any of its own sources).
+      const otherMeaning = Math.max(0, ...elsewhere.filter((it) => it.layer === 'fact').map((it) => overlap(sentence, it.text)))
+      if (otherMeaning >= STORY_PARAPHRASE_MEANING && otherMeaning > Math.max(0, ...src.map((it) => overlap(sentence, it.text)))) { cutOne(i, 'other_product', sentence); continue }
       if (!src.length) {
         if (fact) { cutOne(i, 'no_source', sentence); continue }
         // A viewer ask (no number, no fact, not naming her product) always
@@ -443,6 +513,11 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
         if (blocked) { cutOne(i, blocked, sentence); continue }
         // A plain connecting line: states nothing, adds at most 2 new words.
         if (addedBeyond(sentence, allTexts, styleWords).words.length <= CONNECT_MAX_NEW) { rec.connecting++; kept.push(sentence); continue }
+        // Fix 4: a hook with no source is a question to the viewer or nothing.
+        if (hook) {
+          if (/\?\s*$/.test(sentence)) { rec.viewer_questions++; kept.push(sentence); continue }
+          cutOne(i, 'hook_untraced', sentence); continue
+        }
         // Rule 5: the hook and the CTA are exempt only when they state no fact.
         if (free) { rec.hook_cta_free++; kept.push(sentence); continue }
         // Questions to the viewer are not counted toward the cap.
@@ -475,4 +550,131 @@ export function layerCounts(items: readonly WriterItem[], style: readonly Writer
 export function suppliedCounts(items: readonly WriterItem[], extra: { pillars?: number; painThemes?: number; sampleLines?: number; answers?: number } = {}) {
   const by = (o: string) => items.filter((it) => it.origin === o && it.layer === 'fact').length
   return { items: items.filter((it) => it.layer === 'fact').length, opinions: items.filter((it) => it.opinion).length, stories: by('her_story'), facts: by('her_fact'), answers: by('her_answer'), product_facts: by('product_fact') + by('offer') + by('urgency'), ...extra }
+}
+
+// ── PANEL 14 FIXES (owner verdict, 18 Nov) ─────────────────────────────────
+
+/** Fix 4: hook options trace like script lines (no free pass). A hook keeps only its traced sentences; a hook with none left is dropped. */
+export function traceHooks(hooks: readonly string[], items: readonly WriterItem[], extra: Omit<Parameters<typeof traceAndCut>[2], 'strictHook'> = {}): { hooks: string[]; dropped: number } {
+  const out: string[] = []
+  for (const h of hooks) {
+    if (typeof h !== 'string' || !h.trim()) continue
+    const r = traceAndCut([{ section: 'Hook', line: h }], items, { ...extra, strictHook: true })
+    const line = typeof r.beats[0]?.line === 'string' ? String(r.beats[0].line).trim() : ''
+    if (line) out.push(line)
+  }
+  return { hooks: out, dropped: hooks.filter((h) => typeof h === 'string' && h.trim()).length - out.length }
+}
+
+/** Fix 1: a script under 40 spoken words, or under 3 spoken lines (3+ words), is thin. */
+export const THIN_MIN_WORDS = 40
+export const THIN_MIN_LINES = 3
+export function scriptThin(beats: ReadonlyArray<{ line?: unknown }>): { words: number; lines: number; thin: boolean } {
+  const spoken = beats.map((b) => (typeof b?.line === 'string' ? b.line.trim() : '')).filter(Boolean)
+  const words = spoken.reduce((n, l) => n + l.split(/\s+/).filter(Boolean).length, 0)
+  const lines = spoken.filter((l) => l.split(/\s+/).filter(Boolean).length >= 3).length
+  return { words, lines, thin: words < THIN_MIN_WORDS || lines < THIN_MIN_LINES }
+}
+
+/** Fix 1: the one question to ask instead of writing a thin script: the first open need for this request, a story first. Null when every key is closed. */
+export function thinQuestion(req: FoRequest, opts: { closedKeys?: readonly string[]; savedAnswers?: readonly string[] } = {}): FoQuestion | null {
+  const closed = new Set(opts.closedKeys ?? [])
+  const saved = opts.savedAnswers ?? []
+  const needs = needsFor(req)
+  const general: FoQuestion = { key: `mn:fo:story:thin:${slug(String(req.note ?? '') || req.product?.name || 'general')}`, kind: 'story', question: `For ${quote(String(req.note ?? '').trim() || req.product?.name || 'this video')}: what is one real thing that happened to you or a customer that shows this? A sentence or two is enough.` }
+  const pool = [...needs.filter((n) => n.kind === 'story'), ...needs.filter((n) => n.kind !== 'story'), general]
+  return pool.find((n) => !closed.has(n.key) && !saved.some((a) => overlap(a, n.question) >= 0.6)) ?? null
+}
+
+/** Fix 3: story rows resting on the facts-only path: supplied in `restAfter` (2) of her last five scripts. */
+export function restingStoryIds(rows: ReadonlyArray<{ id?: unknown; kind?: unknown }>, recent: ReadonlyMap<string, number>, storyKinds: ReadonlySet<string>, restAfter: number): Set<string> {
+  const out = new Set<string>()
+  for (const r of rows) {
+    const id = String(r?.id ?? '')
+    if (id && storyKinds.has(String(r?.kind ?? '')) && (recent.get(id) ?? 0) >= restAfter) out.add(id)
+  }
+  return out
+}
+
+const normLine = (t: string) => String(t ?? '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+/** Fix 3: the opening sentence of a script, normalised (for comparing openings across her scripts). */
+export function openingOf(beats: ReadonlyArray<{ line?: unknown }>): string {
+  const first = beats.map((b) => (typeof b?.line === 'string' ? b.line.trim() : '')).find(Boolean) ?? ''
+  return normLine(first.split(SENTENCES)[0] ?? '')
+}
+const sameOpening = (a: string, b: string) => {
+  if (!a || !b) return false
+  if (a === b) return true
+  const wa = new Set(a.split(' ').filter((w) => w.length >= 3))
+  const wb = new Set(b.split(' ').filter((w) => w.length >= 3))
+  const inter = [...wa].filter((w) => wb.has(w)).length
+  return inter / Math.max(1, new Set([...wa, ...wb]).size) >= 0.8
+}
+/** Fix 3: no two scripts for the same creator open with the same line. The repeated opening sentence is cut (cuts only), until the opening is new. */
+export function dropRepeatedOpening<B extends { line?: unknown }>(beats: readonly B[], priorOpenings: readonly string[]): { beats: B[]; cut: number } {
+  const prior = priorOpenings.map(normLine).filter(Boolean)
+  let out = beats.slice()
+  let cut = 0
+  for (let guard = 0; guard < 20; guard++) {
+    const i = out.findIndex((b) => typeof b?.line === 'string' && b.line.trim())
+    if (i < 0) break
+    const sentences = String(out[i]!.line).trim().split(SENTENCES)
+    if (!prior.some((p) => sameOpening(normLine(sentences[0] ?? ''), p))) break
+    cut++
+    const rest = sentences.slice(1).join(' ').trim()
+    out = rest ? out.map((b, k) => (k === i ? { ...b, line: rest } : b)) : out.filter((_, k) => k !== i)
+  }
+  return { beats: out, cut }
+}
+
+// Fix 4: quality cleanup, applied after the trace. Cuts and strips only; one
+// exception: an ordinal with no earlier step becomes "Another".
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth']
+const ORDINAL_NOUN = '(step|steps|mistake|mistakes|check|checks|thing|things|item|items|tip|tips|rule|rules|reason|reasons|way|ways|sign|signs|lesson|lessons|habit|habits|question|questions|part|parts|point|points|option|options)'
+const ORDINAL_RE = new RegExp(`\\b(?:the\\s+|my\\s+|your\\s+|a\\s+)?(${ORDINALS.join('|')})\\s+${ORDINAL_NOUN}\\b`, 'gi')
+/** Spoken filler copied from her transcripts: "um", "uh", "so yeah", "like," between commas. */
+export function stripFiller(sentence: string, onStrip: () => void = () => {}): string {
+  const hit = (r: string) => { onStrip(); return r }
+  return sentence
+    .replace(/,\s*like,\s*/gi, () => hit(', '))
+    .replace(/^like,\s*/i, () => hit(""))
+    .replace(/\b(?:um+|uh+|erm+)\b[,.]?\s*/gi, () => hit(''))
+    .replace(/\bso yeah\b[,.]?\s*/gi, () => hit(''))
+    .replace(/\s{2,}/g, ' ').replace(/\s+([,.!?])/g, '$1').replace(/,([.!?])/g, '$1').replace(/^[\s,]+/, '').trim()
+}
+const EMPTY_FRAGMENT = /^(?:look|listen|okay|ok|so|right|well|honestly|anyway|yeah|now|see|alright|here|wait|and|but|um+|uh+)[.!?…,]*$/i
+/** Fix 4e: a link with trailing "." or "!" (teleprompter and copy-paste). */
+export const LINK_TRAILING = /\b((?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s]*?)?)[.!]+(?=\s|$)/gi
+export interface FoPolishRecord { filler: number; fragments: number; ordinals: number; links: number; beats_dropped: number }
+
+export function polishFactsOnly<B extends { line?: unknown }>(beats: readonly B[]): { beats: B[]; record: FoPolishRecord } {
+  const rec: FoPolishRecord = { filler: 0, fragments: 0, ordinals: 0, links: 0, beats_dropped: 0 }
+  const seen = new Set<number>()
+  const out: B[] = []
+  for (const b of beats) {
+    if (typeof b?.line !== 'string' || !b.line.trim()) { out.push(b); continue }
+    const kept: string[] = []
+    for (let sentence of b.line.trim().split(SENTENCES)) {
+      // 4b: strip copied filler.
+      const noFiller = stripFiller(sentence, () => { rec.filler++ })
+      sentence = noFiller ? noFiller.charAt(0).toUpperCase() + noFiller.slice(1) : ''
+      // 4c: an empty fragment ("Look.") is dropped.
+      if (!sentence || EMPTY_FRAGMENT.test(sentence)) { if (sentence) rec.fragments++; continue }
+      // 4a: an ordinal with no earlier step becomes "Another".
+      sentence = sentence.replace(ORDINAL_RE, (m, ord: string, noun: string) => {
+        const k = ORDINALS.indexOf(ord.toLowerCase()) + 1
+        const ok = k === 1 || [...Array(k - 1).keys()].every((j) => seen.has(j + 1))
+        if (ok) { seen.add(k); return m }
+        rec.ordinals++
+        return `another ${noun.replace(/s$/i, '')}`
+      })
+      sentence = sentence.replace(/(^|[.!?]\s+)another\b/g, (_m, lead: string) => `${lead}Another`)
+      // 4e: links never end in "." or "!".
+      sentence = sentence.replace(LINK_TRAILING, (_m, url: string) => { rec.links++; return url })
+      kept.push(sentence)
+    }
+    if (!kept.length) { rec.beats_dropped++; continue }
+    out.push({ ...b, line: kept.join(' ') })
+  }
+  return { beats: out, record: rec }
 }

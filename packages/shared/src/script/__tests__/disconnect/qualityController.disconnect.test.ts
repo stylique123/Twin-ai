@@ -29,7 +29,7 @@ describe('quality profile + QC disconnect', () => {
     expect(EDGE).toContain(".quality_controller = {")
     expect(EDGE).toContain("if (qFlag('QUALITY_CONTROLLER') === 'on') {")
     // Panel 13b/13c/14: only the panel final pass, the cleanup and the facts-only trace (all edge-flagged, off by default) may sit between the QC and the save.
-    const i = WORKER.indexOf("applyQualityController(bp, extra, ledger, products, target, generationId)\n  applyPanelFinalPass(bp, extra, ledger, products, target, generationId)\n  applyScriptCleanupV1(bp, extra, ledger, products, generationId)\n  applyFactsOnly(bp, extra, ledger, generationId)\n  bp.gate_progress = gateProgress('done'")
+    const i = WORKER.indexOf("applyQualityController(bp, extra, ledger, products, target, generationId)\n  applyPanelFinalPass(bp, extra, ledger, products, target, generationId)\n  applyScriptCleanupV1(bp, extra, ledger, products, generationId)\n  applyFactsOnly(bp, extra, ledger, generationId, products, target)\n  bp.gate_progress = gateProgress('done'")
     expect(i).toBeGreaterThan(0)
     expect(WORKER).toContain("if (!q || typeof q !== 'object' || !Array.isArray(bp.script)) return")
   })
