@@ -17,11 +17,14 @@ No production access was used.
    simulated and the project "completes" with no video.
 3. **On staging every stage runs for real**, including the renderer, and the CI
    matrix passed on 13, 14, 17 and 18 Nov.
-4. **In production the start switch was turned on on 5 Aug** (repo record), and
-   the app offers "start edit" to every creator. The two stage switches are not
-   set anywhere in the repo. If the worker server does not set them, every real
-   creator's edit stops after analysing and shows "This run finished without
-   producing a video", with no retry button. **Please check (questions below).**
+4. **Production has never finished an AI-edited video.** Read-only check of the
+   production database (18 Nov): exactly **one** edit has ever run, on 30 Sep. It
+   ran every stage for real (both stage switches were on) and **failed at
+   compiling** with "accepted capture windows overlap or touch". That bug was
+   fixed the next day (1 Oct, commit `43026be7`, with a test) and has been
+   deployed since, but **no edit has been run in production since**, so the full
+   chain is still unproven there. The start switch was on as of 30 Sep, and the
+   app offers "start edit" to every creator.
 5. **The editor never charges or refunds a credit.** The credit is taken when the
    script is written. The "reserve at start, release on failure" design in
    Section 2.8.1 is not built.
@@ -50,7 +53,23 @@ Evidence:
 | Environment | Directing | Compiling / rendering / validating | Evidence |
 |---|---|---|---|
 | Staging CI (`staging-integration.yml`) | Real (Phase 7 sets the switch per worker) | Real (Phase 8, asserts real bytes in storage and ffprobe streams) | workflow lines 929-943; runs passed 13, 14, 17, 18 Nov |
-| Production | Unknown: the switch is not in the repo | Unknown: the switch is not in the repo | Phase 7 comment: switch set "never a Supabase secret, so production stays simulated" |
+| Production | Real (`simulated=false` on the one project, 30 Sep) | Compiling started for real (`simulated=false`), then failed; rendering and validating never reached | production `edit_events` for that project, read 18 Nov (see below) |
+
+### The one production edit, step by step (read-only, 18 Nov)
+
+| Step | Result | Time |
+|---|---|---|
+| inspecting, transcribing, analyzing (4 components) | real, recorded | 19:16:25 → 19:16:43 |
+| directing (Gemini `gemini-3.5-flash`, director v2) | real, succeeded | 19:16:43 → 19:16:47 |
+| compiling | real, **failed**: `edit_plan_divergent` — "accepted capture windows overlap or touch" | 19:16:48 |
+| rendering, validating | not reached | — |
+
+Cause: the compiler treated two recording segments that touch end-to-start as
+overlapping, so every teleprompter take with back-to-back scenes failed. Fixed in
+`worker/src/jobs/editorCompile.ts:840-853` (audit 2026-10-01 E1, commit
+`43026be7`), covered by `worker/src/__tests__/compile-source-domain.test.ts`
+("accepted windows that touch are legal; only true overlap fails"). `deploy-worker`
+has succeeded 97 times since 1 Oct (latest 14 Nov), so production has the fix.
 
 ## Who can start an edit in production
 
@@ -86,21 +105,31 @@ Evidence:
 
 ## Problems found, worst first (candidates for the Section 2.2 repairs)
 
-1. **No retry after a no-video run.** If a run "completes" without a video (switches off), Result says "This run finished without producing a video" (`Result.tsx:1286`) but hides the start button: it only reappears for `failed` or `cancelled` (`Result.tsx:1184`), although the comment above it says it should also reappear "unless that edit ended without a video" (`:1182`). Small fix in the app.
-2. **Production may be offering an editor that cannot finish.** Start switch on (5 Aug record) + stage switches possibly off = every real edit ends with no video. Needs the answers below before anything else in 2.2.
+1. **Production has never produced a finished AI edit.** The only run failed on a bug fixed the next day; nothing has run since, while every creator can press "start edit". Next step (Section 2.8.3, owner's own account first): run one real edit end to end on the owner's account and confirm a video in storage, before any creator relies on it.
+2. **No retry after a no-video run.** If a run "completes" without a video (stage switches off), Result says "This run finished without producing a video" (`Result.tsx:1286`) but hides the start button: it only reappears for `failed` or `cancelled` (`Result.tsx:1184`), although the comment above it says it should also reappear "unless that edit ended without a video" (`:1182`). Lower impact in production today because both switches are on. Small fix in the app.
 3. **Credit model is not the one in the Agreement** (table above). The writer-side part (150 s kill) sits in the frozen writer; the editor side needs the reserve/release design.
 4. **Design documents are out of date**: `docs/ai-editor-rebuild-status.md` (3 Aug), `docs/editor-v2-analysis.md` (22 Jul), `docs/editor-v2-phase8-gate0.md` (28 Jul); editor code last changed 1 Oct. The `editorV2.ts` header is also stale.
 5. **The analyzing stage has no test of its own**, only tests of its parts.
 
-## Questions for the owner
+## Answered from production (read-only, 18 Nov)
 
-1. Is `EDITOR_V2_START_ENABLED` set to `true` in the production Supabase secrets today? (Quick check: run the `verify-prod-gate` workflow; a 404 means on, a 503 means off.)
-2. Does the production worker server's env set `EDITOR_DIRECTOR_ENABLED` and `EDITOR_RENDER_ENABLED`?
-3. How many production `edit_projects` exist, and how many completed with an `output_asset_id`?
-4. Should the editor be off for real creators until the stage switches are proven on production (as Section 2.7.6 assumes), or on with the switches set?
+| Question | Answer |
+|---|---|
+| Is the start switch on? | Yes as of 30 Sep (an edit was started then; 5 Aug record agrees). Today's value is a function secret and cannot be read from the database; check its digest on the Secrets page if needed. |
+| Are the worker's stage switches on? | Yes: directing and compiling ran with `simulated=false` |
+| How many edits, how many with a video? | 1 ever (30 Sep), failed, no video |
+| Context | 76 profiles (54 onboarded, including test and panel accounts), 2,184 scripts, 5 published posts |
+
+## Decisions for the owner
+
+1. OK to run one real edit end to end on your own account in production now that the 30 Sep bug is fixed (Section 2.8.3: owner's own account first)?
+2. Until that edit succeeds, keep "start edit" on for every creator, or switch `EDITOR_V2_START_ENABLED` off?
 
 ## How this was checked
 
 Read-only: the files cited above, the worker job registry, the staging CI
-workflow and its recent runs, and the production gate workflow history. The
-local test stack and browser were not needed. Production was not accessed.
+workflow and its recent runs, and the production gate workflow history.
+Production was read on 18 Nov with GET requests only, using a key held in a
+local file outside the repo (never printed), and only counts, statuses, stage
+flags, dates and the one project's failure code and message were read; no
+creator content.
