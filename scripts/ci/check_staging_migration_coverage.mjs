@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0302_one_rate_check_at_a_time':
+    'Security audit #6: check_rate_limit takes a per-(user, action) advisory lock so simultaneous calls cannot all pass. Function-body change only; the editor matrix never calls check_rate_limit and 0003 is not in its list. NOT yet applied (file only, owner applies by hand).',
   '0301_a_profile_is_read_by_who_can_see_the_video':
     'Security audit #4: replaces the `using (true)` read policy on reference_content_profiles with "caller can see the URL in gallery_items, scraped_posts, generations or her ingest jobs". Staging has no gallery or scraped_posts tables and the editor never reads reference profiles as a user; NOT yet applied (file only, owner applies by hand).',
   '0300_an_invite_asks_and_a_teammate_can_leave':
