@@ -1,6 +1,6 @@
 // Self-test for the single-arm panel blind pack. No network, no database.
 import assert from 'node:assert/strict'
-import { questionSource, questionCounts, buildBlindPack, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems, storedLayers } from './panelBlindPack.mjs'
+import { questionSource, questionCounts, buildBlindPack, buildMixedPack, batchesOf, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems, storedLayers } from './panelBlindPack.mjs'
 
 let seed = 7
 const rand = (n) => { const b = Buffer.alloc(n); for (let i = 0; i < n; i++) b[i] = (seed = (seed * 1103515245 + 12345) & 0xff); return b }
@@ -71,4 +71,15 @@ assert.equal(questionSource('Which one is this video about?'), 'readiness')
 assert.deepEqual(questionCounts([{ scenario: { asked_questions: ['For "x": what is your own view, and what made you think that?', 'Which one is this video about?'] } }, { scenario: {} }]), { facts_only: 1, readiness: 1, requests_with_readiness: 1 })
 const tq = buildTrace([row(1, { scenario: { ...row(1).scenario, asked_questions: ['For "a": what are the exact steps you follow, in order?', 'Who is this video for?'] } })], { g1: { script: [] } })
 assert.deepEqual(tq[0].questions.map((q) => q.source), ['facts_only', 'readiness'])
+// Mixed pack (owner, 18 Nov): new and old writer in one blind pack; only the key says which.
+assert.deepEqual(batchesOf('panel-15-new+panel-15-old'), ['panel-15-new', 'panel-15-old'])
+assert.deepEqual(batchesOf('panel-14-p2'), ['panel-14-p2'])
+const mixRows = [row(1, { batch: 'new', generation_id: 'n1' }), row(2, { batch: 'new', generation_id: 'n2' }), row(1, { batch: 'old', generation_id: 'o1' }), row(2, { batch: 'old', generation_id: 'o2', status: 409, code: 'NEEDS_STORY', script_text: null })]
+const mix = buildMixedPack(mixRows, {}, () => null, rand)
+assert.equal(Object.keys(mix.key).length, 3)
+assert.deepEqual(Object.values(mix.key).map((k) => k.batch).sort(), ['new', 'new', 'old'])
+assert.ok(!/\bnew\b|\bold\b/.test(mix.blind), 'the blind pack never names the batch')
+assert.equal(mix.report.new.scripts, 2)
+assert.equal(mix.report.old.scripts, 1)
+assert.equal(mix.report.old.asked, 1)
 console.log('panelBlindPack selftest: ok')
