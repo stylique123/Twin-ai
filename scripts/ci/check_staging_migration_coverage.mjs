@@ -72,6 +72,8 @@ const MIGRATIONS = join(REPO, 'supabase', 'migrations')
  * the case this guard exists to surface.
  */
 export const EXCLUDED = {
+  '0304_only_twin_changes_a_voice_status':
+    'Security audit #13: BEFORE UPDATE trigger on brand_voices lets a signed-in user change status only from building to ready (the manual voice form); service role unaffected. Staging has no brand_voices fixture path that writes status as a user and the editor never does; NOT yet applied (file only, owner applies by hand).',
   '0303_a_job_that_kills_the_worker_stops':
     'Security audit #8: claim_job fails a stale running job that used all its attempts and only re-picks one with attempts left. The matrix does not apply 0004/0066 (staging\'s claim_job comes from its fixture), so this body change is not applied there either; NOT yet applied (file only, owner applies by hand).',
   '0302_one_rate_check_at_a_time':
