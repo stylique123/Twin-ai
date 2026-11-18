@@ -901,6 +901,12 @@ Deno.serve(async (req: Request) => {
       let acc: { id: string; username: string | null; avatar: string | null } | null = null
       const accountId = q.get('account_id') ?? q.get('accountId')
       if (accountId) {
+        // account_id comes from the URL, so anyone can type one. Refuse an account
+        // already linked to a different Twin user (audit #15).
+        const { data: taken, error: takenErr } = await admin.from('platform_connections')
+          .select('owner_id').eq('external_account_id', accountId).neq('owner_id', nonce.owner_id).limit(1)
+        if (takenErr) { console.error('social: outstand ownership check failed', takenErr.message); return back('connect_error=save_failed') }
+        if ((taken ?? []).length > 0) return back('connect_error=taken')
         acc = { id: accountId, username: q.get('username'), avatar: null }
       } else {
         // The other documented shape: a pending session to finalize.

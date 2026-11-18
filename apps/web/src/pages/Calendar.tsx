@@ -118,6 +118,7 @@ export default function Calendar() {
         no_account: 'no account of that type was found on that login.',
         unconfigured: 'this platform is not set up yet.',
         save_failed: 'the account was approved but could not be saved. Please try again.',
+        taken: 'that account is already connected to a different Twin login.',
         connect_failed: 'something went wrong on our side. Please try again.',
       }
       setConnMsg(`Couldn't connect: ${why[err] ?? err}`)
