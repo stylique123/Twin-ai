@@ -14,6 +14,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { serviceKeyFrom } from '../_shared/serviceKey.ts'
+import { shouldRefill, LS_ACTIVE_STATUSES } from '../_shared/billingRefill.ts'
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -82,7 +83,7 @@ async function verifyAndParse(
       ok: true,
       eventId: String(lsEventId),
       userId,
-      active: /created|payment_success|updated/.test(name) && /active|paid|on_trial/.test(status || 'active'),
+      active: /created|payment_success|updated/.test(name) && LS_ACTIVE_STATUSES.includes(status || 'active'),
       externalId: body?.data?.id ? String(body.data.id) : undefined,
       periodEnd: body?.data?.attributes?.renews_at ?? null,
       variantId: body?.data?.attributes?.variant_id != null ? String(body.data.attributes.variant_id) : undefined,
@@ -180,7 +181,7 @@ Deno.serve(async (req: Request) => {
     }
     return null
   }
-  const { data: sub } = await admin.from('subscriptions').select('plan').eq('user_id', parsed.userId).maybeSingle()
+  const { data: sub } = await admin.from('subscriptions').select('plan, current_period_end').eq('user_id', parsed.userId).maybeSingle()
   const verifiedPlan = planFromVariant(parsed.variantId)
   // Enforce what the comment above promises: the seeded-plan fallback is ONLY for
   // deployments with no variant→plan mapping configured at all. If a mapping IS
@@ -200,37 +201,54 @@ Deno.serve(async (req: Request) => {
     await admin.from('ops_events').insert({ kind: 'billing_plan_unverified', severity: 'warn', user_id: parsed.userId, detail: { granted: plan, variant: parsed.variantId ?? null, reason: 'no variant map configured; granted from seeded intent' } }).then(() => {}, () => {})
   }
 
+  // A save failed after the event was recorded: forget the event so the
+  // provider's retry is processed instead of skipped as a duplicate (audit #9).
+  const retryLater = async (what: string, err: unknown) => {
+    console.error(`billing-webhook: saving ${what} failed`, err)
+    const { error: delErr } = await admin.from('billing_events').delete().eq('provider', provider).eq('external_event_id', parsed.eventId)
+    if (delErr) console.error('billing-webhook: could not forget the event; the retry will be skipped as a duplicate', parsed.eventId, delErr)
+    return json({ error: `Could not save ${what}; please retry` }, 503)
+  }
+
   if (parsed.active) {
-    await admin.from('subscriptions').upsert(
+    const { data: prof, error: readErr } = await admin.from('profiles').select('credits, plan').eq('id', parsed.userId).maybeSingle()
+    if (readErr) return await retryLater('profile', readErr)
+    // Grant the plan; refill credits only on a new period, a first grant or an
+    // upgrade (audit #5), never on a card update. Set the balance to the monthly
+    // allowance with max(), never add, so events cannot stack credits.
+    // account_type flips to agency for the agency plan so multi-brand workspaces unlock.
+    const grant = PLAN_CREDITS[plan] ?? 0
+    const refill = shouldRefill(sub?.current_period_end, parsed.periodEnd, PLAN_CREDITS[prof?.plan ?? 'free'] ?? 0, grant)
+    // Profile before subscription: if the subscription save fails, the retry
+    // still sees the old period and makes the same refill decision.
+    const { error: profErr } = await admin
+      .from('profiles')
+      .update({
+        plan,
+        ...(refill ? { credits: Math.max(prof?.credits ?? 0, grant) } : {}),
+        ...(plan === 'agency' ? { account_type: 'agency' } : {}),
+      })
+      .eq('id', parsed.userId)
+    if (profErr) return await retryLater('plan', profErr)
+    const { error: subErr } = await admin.from('subscriptions').upsert(
       {
         user_id: parsed.userId,
         provider,
         plan,
         status: 'active',
         external_id: parsed.externalId ?? null,
-        current_period_end: parsed.periodEnd ?? null,
+        // An event without a period (an invoice) must not erase the known one.
+        current_period_end: parsed.periodEnd ?? sub?.current_period_end ?? null,
       },
       { onConflict: 'user_id' },
     )
-    // Grant the plan + top up credits. account_type flips to agency for the
-    // agency plan so multi-brand workspaces unlock.
-    const grant = PLAN_CREDITS[plan] ?? 0
-    const { data: prof } = await admin.from('profiles').select('credits').eq('id', parsed.userId).maybeSingle()
-    // Set the balance to the monthly allowance (with modest carryover), NOT add it
-    // every event — otherwise renewals + subscription.updated stack credits unbounded.
-    // max() guarantees they always have at least the full month, never less.
-    await admin
-      .from('profiles')
-      .update({
-        plan,
-        credits: Math.max(prof?.credits ?? 0, grant),
-        ...(plan === 'agency' ? { account_type: 'agency' } : {}),
-      })
-      .eq('id', parsed.userId)
+    if (subErr) return await retryLater('subscription', subErr)
   } else {
     // Cancellation / failure: drop to free, keep any remaining credits.
-    await admin.from('subscriptions').update({ status: 'canceled' }).eq('user_id', parsed.userId)
-    await admin.from('profiles').update({ plan: 'free' }).eq('id', parsed.userId)
+    const { error: subErr } = await admin.from('subscriptions').update({ status: 'canceled' }).eq('user_id', parsed.userId)
+    if (subErr) return await retryLater('subscription', subErr)
+    const { error: profErr } = await admin.from('profiles').update({ plan: 'free' }).eq('id', parsed.userId)
+    if (profErr) return await retryLater('plan', profErr)
   }
 
   await markProcessed(admin, parsed.eventId, null)

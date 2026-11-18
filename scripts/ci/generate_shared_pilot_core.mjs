@@ -116,6 +116,8 @@ const SOURCES = [
   // Owner-folder check for service-role storage reads (security audit #2/#3: `../` escaped the prefix check).
   ['packages/shared/src/storagePath.ts', 'supabase/functions/_shared/storagePath.ts'],
   ['packages/shared/src/storagePath.ts', 'worker/src/generated/storagePath.ts'],
+  // Credit refill rule for billing-webhook (security audit #5).
+  ['packages/shared/src/billingRefill.ts', 'supabase/functions/_shared/billingRefill.ts'],
   ['packages/shared/src/script/actionPacing.ts', 'supabase/functions/_shared/actionPacing.ts'],
   ['packages/shared/src/customerReviews.ts', 'supabase/functions/_shared/customerReviews.ts'],
   ['packages/shared/src/script/voiceGate.ts', 'supabase/functions/_shared/voiceGate.ts'],
