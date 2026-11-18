@@ -211,7 +211,7 @@ export async function scrapeTikTokProfile(
   const h = handle.replace(/^@/, '')
   const url = `https://www.tiktok.com/@${h}`
   assertAllowedUrl(url)
-  const { stdout } = await run('yt-dlp', ['--flat-playlist', '-J', '--playlist-end', String(limit), url], 60_000)
+  const { stdout } = await run('yt-dlp', ['--flat-playlist', '-J', '--playlist-end', String(limit), '--', url], 60_000)
   const data = JSON.parse(stdout) as {
     entries?: Record<string, unknown>[]
     channel?: unknown; uploader?: unknown; uploader_id?: unknown
@@ -851,6 +851,8 @@ export async function downloadReference(
   route: DownloadRoute,
   opts: { medium: DownloadMedium; outPath: string; timeoutMs?: number },
 ): Promise<DownloadTrace> {
+  // The only yt-dlp path that skipped the allowed-sites check (audit #18).
+  assertAllowedUrl(rawUrl)
   const startedMs = Date.now()
   try {
     await run(
@@ -867,7 +869,7 @@ export async function downloadReference(
        // `residential_proxy` that actually ran locally would poison the only
        // measurement this exists for.
        ...downloadArgsFor(route, env.apifyProxyPassword),
-       '--max-filesize', '200M', '-o', opts.outPath, rawUrl],
+       '--max-filesize', '200M', '-o', opts.outPath, '--', rawUrl],
       opts.timeoutMs ?? 180_000,
     )
   } catch (e) {
@@ -929,7 +931,7 @@ export async function readReferenceVideoFacts(
     assertAllowedUrl(rawUrl)
     const { stdout } = await run(
       'yt-dlp',
-      ['-J', '--no-playlist', '--skip-download', '--impersonate', IMPERSONATE_TARGET, rawUrl],
+      ['-J', '--no-playlist', '--skip-download', '--impersonate', IMPERSONATE_TARGET, '--', rawUrl],
       timeoutMs,
     )
     const d = JSON.parse(stdout) as Record<string, unknown>
