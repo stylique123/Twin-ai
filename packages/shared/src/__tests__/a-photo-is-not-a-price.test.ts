@@ -113,7 +113,9 @@ describe('the worker enforces what the prompt asks', () => {
   })
 
   it('refuses a storage path outside the owner folder', () => {
-    expect(JOB).toMatch(/if \(!path\.startsWith\(`\$\{ownerId\}\/`\)\)/)
+    // The owner-folder check is the shared isOwnedStoragePath (audit #2): a bare
+    // startsWith let `<me>/../<other>/x` through.
+    expect(JOB).toMatch(/if \(!isOwnedStoragePath\(ownerId, path\)\)/)
     expect(JOB).toMatch(/select\('product_url, owner_id, name, creator_summary, type'\)/)
   })
 
