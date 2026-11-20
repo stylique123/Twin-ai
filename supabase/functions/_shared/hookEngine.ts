@@ -21,7 +21,7 @@
 
 import type { LedgerItem, ProductName } from './inventionGate.ts'
 import { contentWords, wordCount, ruleRead, splitSentences, inventedElement, FIRST_PERSON_ELEMENTS } from './inventionGate.ts'
-import { hookClaimRisk } from './checkLines.ts'
+import { hookClaimRisk, hookClaimRiskV2 } from './checkLines.ts'
 import { hookShape, eligibleShapes, checkHookAgainstShape, hookNumbers, type HookShape } from './hookShapes.ts'
 
 export const HOOK_CANDIDATE_MIN = 8
@@ -406,6 +406,10 @@ export interface HookEngineOptions {
    *  wrong-product fact, unbacked timeframe/number, unsourced generalisation)
    *  is dropped before scoring, so it is never picked. */
   claimGate?: boolean
+  /** HELD (flag HOOK_GATE_V2, default off, test accounts only): the claim gate
+   *  reads hookClaimRiskV2 (number promises, invented scene details, broad
+   *  "a lot of brands" claims). Needs claimGate. */
+  claimGateV2?: boolean
   /** The request (topic / note) used to match stories and facts. */
   request?: string
   products?: readonly ProductName[]
@@ -425,7 +429,7 @@ function runTrial(
     ...opens.filter((c) => !writerTexts.has(String(c.text).toLowerCase())),
     ...writer.slice(0, HOOK_CANDIDATE_MAX).map((c) => ({ ...c, source: 'writer' as const })),
   ].filter((c) => !bareGen(c))
-    .filter((c) => !opts.claimGate || !hookClaimRisk(typeof c?.text === 'string' ? c.text : '', ledger, opts.products ?? []))
+    .filter((c) => !opts.claimGate || !(opts.claimGateV2 ? hookClaimRiskV2 : hookClaimRisk)(typeof c?.text === 'string' ? c.text : '', ledger, opts.products ?? []))
   const records: HookCandidateRecord[] = []
   const texts: string[] = []
   all.forEach((c, index) => {
