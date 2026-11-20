@@ -107,7 +107,7 @@ export function buildBlindPack(rows, blueprints = {}, craft = () => null, rand =
     return { id, sort: rand(4).readUInt32BE(0), r }
   }).sort((x, y) => x.sort - y.sort)
   const blind = withId.map(({ id, r }) => [`## ${id}`, `**Creator:** ${r.scenario?.creator ?? ''} · **Goal:** ${r.scenario?.body?.goal ?? ''} · **Request:** ${r.scenario?.body?.reference_note ?? r.scenario?.body?.note ?? ''}`, r.script_text, '', `Hooks: ${(r.hooks ?? []).join(' · ')}`, ''].join('\n')).join('\n')
-  const key = Object.fromEntries(withId.map(({ id, r }) => [id, { n: r.n, label: r.scenario?.label ?? null, creator: r.scenario?.creator ?? null, generation_id: r.generation_id ?? null }]))
+  const key = Object.fromEntries(withId.map(({ id, r }) => [id, { n: r.n, label: r.scenario?.label ?? null, creator: r.scenario?.creator ?? null, generation_id: r.generation_id ?? null, ...(r.batch ? { batch: r.batch } : {}) }]))
   return { blind: `# Panel — blind scripts (${withId.length})\n\n${blind}`, key, report }
 }
 
@@ -207,6 +207,21 @@ async function loadCraft() {
   return (await import(target)).scoreCraft
 }
 
+/**
+ * Mixed pack (owner, 18 Nov): `a+b` reads several batches (e.g. the new writer
+ * and the old writer on the same requests) into ONE blind pack. Ids are random
+ * and the order shuffled across all of them; only key.json says which batch
+ * each id came from. report.json is per batch.
+ */
+export const batchesOf = (arg) => String(arg ?? '').split('+').map((b) => b.trim()).filter(Boolean)
+export function buildMixedPack(rows, blueprints = {}, craft = () => null, rand = (n) => randomBytes(n)) {
+  const pack = buildBlindPack(rows, blueprints, craft, rand)
+  const batches = [...new Set(rows.map((r) => r.batch).filter(Boolean))]
+  if (batches.length < 2) return pack
+  const report = Object.fromEntries(batches.map((b) => [b, buildBlindPack(rows.filter((r) => r.batch === b), blueprints, craft, rand).report]))
+  return { ...pack, report }
+}
+
 async function main() {
   const batch = process.argv[2]
   const outArg = process.argv.find((a) => a.startsWith('--out='))?.slice(6)
@@ -215,7 +230,7 @@ async function main() {
   if ((existsSync(out) ? realpathSync(out) : out).startsWith(realpathSync(REPO))) throw new Error('refusing to write the answer key inside the repository')
   const { createClient } = await import('@supabase/supabase-js')
   const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
-  const { data, error } = await admin.from('script_batch_results').select('n, status, code, scenario, script_text, hooks, generation_id').eq('batch', batch)
+  const { data, error } = await admin.from('script_batch_results').select('batch, n, status, code, scenario, script_text, hooks, generation_id').in('batch', batchesOf(batch))
   if (error) throw new Error(error.message)
   const ids = [...new Set((data ?? []).map((r) => r.generation_id).filter(Boolean))]
   const blueprints = {}
@@ -225,7 +240,7 @@ async function main() {
     for (const g of gs ?? []) blueprints[g.id] = g.blueprint ?? {}
   }
   const scoreCraft = await loadCraft()
-  const pack = buildBlindPack(data ?? [], blueprints, (lines) => { try { return scoreCraft(lines).craft } catch { return null } })
+  const pack = buildMixedPack(data ?? [], blueprints, (lines) => { try { return scoreCraft(lines).craft } catch { return null } })
   mkdirSync(out, { recursive: true })
   writeFileSync(join(out, 'blind.md'), pack.blind)
   writeFileSync(join(out, 'report.json'), JSON.stringify(pack.report, null, 1))

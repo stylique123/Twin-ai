@@ -3,13 +3,15 @@ name: panel-export
 # THE BLIND PACK, BUILT WHERE THE KEY LIVES (owner, 11 Nov). Reads a finished
 # fictional panel batch (script_batch_results) and uploads ONLY blind.md and
 # report.json as a downloadable artifact. key.json (the answer key) is written
-# to the runner's temp directory and never uploaded; it dies with the runner.
+# to the runner's temp directory and never uploaded (it dies with the runner),
+# except for a mixed pack (label a+b), whose key the owner asked to keep: its
+# own artifact, never in the blind one.
 # Manual dispatch only, from main only, by the repository owner only.
 on:
   workflow_dispatch:
     inputs:
       label:
-        description: 'Panel batch label to export (e.g. panel-13c)'
+        description: 'Panel batch label to export (e.g. panel-13c). Several joined with + (new+old) build ONE mixed blind pack; its key is kept as a separate artifact.'
         required: true
       trace:
         description: 'Also write trace.json (read-only: per-line origin, stages, handed vs stored counts) as a separate artifact'
@@ -40,10 +42,14 @@ jobs:
       - run: npm ci
       - name: Build the blind pack (key stays on the runner)
         run: |
-          case "$LABEL" in *[!A-Za-z0-9._-]*|'') echo "::error::label must be letters, digits, . _ -"; exit 1;; esac
+          case "$LABEL" in *[!A-Za-z0-9._+-]*|'') echo "::error::label must be letters, digits, . _ - (+ joins batches)"; exit 1;; esac
           node scripts/ops/panelBlindPack.mjs "$LABEL" --out="$RUNNER_TEMP/pack" ${{ inputs.trace && '--trace' || '' }}
           mkdir -p "$RUNNER_TEMP/upload"
           cp "$RUNNER_TEMP/pack/blind.md" "$RUNNER_TEMP/pack/report.json" "$RUNNER_TEMP/upload/"
+          # MIXED PACK (owner, 18 Nov): the owner asked for the key to be KEPT as a
+          # separate file. Only for a mixed pack (label with +), its own artifact,
+          # never inside the blind pack's artifact.
+          case "$LABEL" in *+*) mkdirP="$RUNNER_TEMP/key"; mkdir -p "$mkdirP"; cp "$RUNNER_TEMP/pack/key.json" "$mkdirP/";; esac
         env:
           LABEL: ${{ inputs.label }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -53,6 +59,14 @@ jobs:
         with:
           name: panel-blind-${{ inputs.label }}
           path: ${{ runner.temp }}/upload/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload key.json separately (mixed pack only; which id is which batch)
+        if: ${{ contains(inputs.label, '+') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-key-${{ inputs.label }}
+          path: ${{ runner.temp }}/key/key.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload trace.json (read-only trace, only when asked)
