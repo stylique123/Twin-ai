@@ -590,6 +590,69 @@ export function thinQuestion(req: FoRequest, opts: { closedKeys?: readonly strin
   return pool.find((n) => !closed.has(n.key) && !saved.some((a) => overlap(a, n.question) >= 0.6)) ?? null
 }
 
+// ── THE NEXT STEP WHEN THERE IS NOTHING LEFT TO ASK (owner, later list) ────
+// When a request is too thin and every question for it is already closed,
+// the stop used to say only "not enough of your own material". Now it names,
+// per need that is still missing, what to add and where in the app to add it,
+// and always offers a topic she has already talked about. FACTS_ONLY_WRITER
+// only; no gate or score reads this.
+
+/** Where in the app a creator adds each kind of material. One map, so the owner can move a door in one place. */
+export const NEXT_STEP_PLACES = {
+  products: { path: '/products', label: 'Product Library' },
+  create: { path: '/v2', label: 'Create' },
+  my_twin: { path: '/brain', label: 'My Twin' },
+} as const
+export type NextStepPlace = keyof typeof NEXT_STEP_PLACES
+export interface FoNextStep { kind: NeedKind | 'video' | 'other_topic'; suggestion: string; where: { path: string; label: string } }
+
+const at = (k: NextStepPlace) => ({ ...NEXT_STEP_PLACES[k] })
+
+/**
+ * The clear next steps for a thin request with no question left to ask: one
+ * per missing need (in needsFor order, deduplicated by kind), then "a video
+ * where you tell it", then "a topic you have already covered". `missing`
+ * defaults to every need of the request (the thin-script stop knows none
+ * more precisely). At most 4.
+ */
+export function thinNextSteps(req: FoRequest, missing?: readonly NeedKind[]): FoNextStep[] {
+  const topic = quote(String(req.note ?? '').trim() || req.product?.name || 'this video')
+  const kinds = [...new Set(missing && missing.length ? missing : needsFor(req).map((n) => n.kind))]
+  const out: FoNextStep[] = []
+  for (const k of kinds) {
+    switch (k) {
+      case 'product_fact':
+        if (req.product?.name) out.push({ kind: k, suggestion: `Add one fact about ${req.product.name} to its page: what it is, what it does, or what it costs.`, where: at('products') })
+        break
+      case 'story': out.push({ kind: k, suggestion: `Tell Twin one real moment behind ${topic}: when it happened, what went on, and what you did.`, where: at('create') }); break
+      case 'number': out.push({ kind: k, suggestion: `Add the exact number behind ${topic} and where it comes from.`, where: at('create') }); break
+      case 'proof': out.push({ kind: k, suggestion: `Add one result you or a customer actually saw for ${topic}.`, where: at('create') }); break
+      case 'steps': out.push({ kind: k, suggestion: `Write down the steps you really follow for ${topic}, in order.`, where: at('create') }); break
+      case 'opinion': out.push({ kind: k, suggestion: `Say your own view on ${topic} and what made you think it.`, where: at('create') }); break
+    }
+  }
+  out.push({ kind: 'video', suggestion: `Paste a link to one of your own videos where you talk about ${topic}, and Twin will learn it from you.`, where: at('create') })
+  out.push({ kind: 'other_topic', suggestion: 'Or pick a topic you have already talked about: My Twin lists them.', where: at('my_twin') })
+  return out.slice(0, 4)
+}
+
+/** The kinds of need still missing for a request (for the gap stop's next steps). */
+export function missingNeedKinds(req: FoRequest, items: readonly WriterItem[], opts: { ledger?: readonly LedgerItem[] } = {}): NeedKind[] {
+  const rel = relevantItems(req, items, opts.ledger ?? [])
+  const ask = `${req.note ?? ''} ${req.product?.name ?? ''}`
+  const opinions = items.filter((it) => it.opinion && overlap(it.text, ask) > 0)
+  return [...new Set(needsFor(req).filter((n) => !covered(n, rel, items, opinions)).map((n) => n.kind))]
+}
+
+/** The 409 body for a thin stop with nothing left to ask: the next steps, also as plain sentences (`remedies`). */
+export function thinStopBody(steps: readonly FoNextStep[], thin: boolean): Record<string, unknown> {
+  return {
+    code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, ...(thin ? { thin: true } : {}),
+    error: 'Not enough of your own material for this request yet, so nothing was written. Here is what would let Twin write it.',
+    questions: [], next_steps: steps, remedies: steps.map((s) => `${s.suggestion} (${s.where.label})`),
+  }
+}
+
 /** Fix 3: story rows resting on the facts-only path: supplied in `restAfter` (2) of her last five scripts. */
 export function restingStoryIds(rows: ReadonlyArray<{ id?: unknown; kind?: unknown }>, recent: ReadonlyMap<string, number>, storyKinds: ReadonlySet<string>, restAfter: number): Set<string> {
   const out = new Set<string>()
