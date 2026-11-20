@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { thinNextSteps, thinStopBody, missingNeedKinds, NEXT_STEP_PLACES, type WriterItem } from '../factsOnly'
 
-const routes = new Set(Object.values(NEXT_STEP_PLACES).map((p) => p.path))
+const routes = new Set<string>(Object.values(NEXT_STEP_PLACES).map((p) => p.path))
 
 describe('facts-only thin stop: next steps when nothing is left to ask', () => {
   it('a product request points at the Product Library for that product', () => {
