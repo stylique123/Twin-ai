@@ -37,7 +37,7 @@ import { runQualityController, qcLogRecord, type QcProfile } from '../generated/
 import { panelFinalPass } from '../generated/panelFinalPass.js'
 import { setUrlSafeSplitting } from '../generated/urlSafe.js'
 import { scriptCleanupV1, finalPassCuts } from '../generated/scriptCleanupV1.js'
-import { writerItems, styleItems, backgroundItems, traceAndCut } from '../generated/factsOnly.js'
+import { writerItems, styleItems, backgroundItems, traceAndCut, traceHooks, polishFactsOnly } from '../generated/factsOnly.js'
 
 const PANEL_STORY_ORIGINS = new Set(['her_story', 'her_answer'])
 /** ⚖️ PANEL FINAL PASS (panel 13b, 9 Nov). Runs right after the QC, only when
@@ -98,7 +98,7 @@ export function applyScriptCleanupV1(bp: Record<string, unknown>, extra: Record<
  *  add a line after the edge's pass, so every sentence is traced to the facts
  *  layer again (the gate's ledger, same ids). Cuts only; never fails the job,
  *  and a failure is recorded on the blueprint, never silent. Counts in logs. */
-export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: Parameters<typeof writerItems>[0], generationId: string): void {
+export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: Parameters<typeof writerItems>[0], generationId: string, products: Array<{ id: string; name: string }> = [], target: string | null = null): void {
   if (extra.facts_only !== true || !Array.isArray(bp.script)) return
   try {
     const layers = rec(extra.facts_only_layers)
@@ -106,10 +106,18 @@ export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string
     const items = writerItems(ledger)
     const background = backgroundItems(Array.isArray(layers.background) ? layers.background.map(String) : [], items.filter((it) => it.layer === 'background').length + 1)
     const names = Array.isArray(layers.names) ? layers.names.map(String) : []
-    const r = traceAndCut(bp.script as Array<Record<string, unknown>>, items, { style, background, names, hasProduct: typeof extra.target_product_id === 'string' && extra.target_product_id !== '' })
-    bp.script = r.beats
+    // Panel 14 fixes 2 and 4: another product's facts and words stay out, the
+    // hook traces like any line, then the quality cleanup (cuts only).
+    const opts = { style, background, names, hasProduct: typeof extra.target_product_id === 'string' && extra.target_product_id !== '', targetProductId: target, products }
+    const r = traceAndCut(bp.script as Array<Record<string, unknown>>, items, { ...opts, strictHook: true })
+    const pol = polishFactsOnly(r.beats as Array<Record<string, unknown> & { line?: unknown }>)
+    bp.script = pol.beats
+    if (Array.isArray(bp.hook_options)) {
+      const th = traceHooks((bp.hook_options as unknown[]).filter((h): h is string => typeof h === 'string'), items, opts)
+      bp.hook_options = th.hooks.map((h) => polishFactsOnly([{ line: h }]).beats[0]?.line).filter((h): h is string => typeof h === 'string' && !!h.trim())
+    }
     resyncShotListToScript(bp)
-    bp.facts_only = { ...rec(bp.facts_only), worker: r.record }
+    bp.facts_only = { ...rec(bp.facts_only), worker: { ...r.record, polish: pol.record } }
     const { examples: _ex, ...counts } = r.record
     console.log(JSON.stringify({ event: 'facts_only_trace', where: 'worker', generation_id: generationId, ...counts }))
   } catch (e) {
@@ -476,7 +484,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
     applyQualityController(bp, extra, ledger, products, target, generationId)
     applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
     applyScriptCleanupV1(bp, extra, ledger, products, generationId)
-    applyFactsOnly(bp, extra, ledger, generationId)
+    applyFactsOnly(bp, extra, ledger, generationId, products, target)
     bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
     await chain
     await deps.saveBlueprint(generationId, bp)
@@ -550,7 +558,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
   applyQualityController(bp, extra, ledger, products, target, generationId)
   applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
   applyScriptCleanupV1(bp, extra, ledger, products, generationId)
-  applyFactsOnly(bp, extra, ledger, generationId)
+  applyFactsOnly(bp, extra, ledger, generationId, products, target)
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
   // No progress write may land after (and clobber) the result.
   await chain

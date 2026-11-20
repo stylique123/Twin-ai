@@ -334,6 +334,7 @@ const SOURCES = [
   ['packages/shared/src/script/lineSources.ts', 'worker/src/generated/lineSources.ts'],
   ['packages/shared/src/script/factsOnly.ts', 'supabase/functions/_shared/factsOnly.ts'],
   ['packages/shared/src/script/factsOnly.ts', 'worker/src/generated/factsOnly.ts'],
+  ['packages/shared/src/script/readinessUnderFactsOnly.ts', 'supabase/functions/_shared/readinessUnderFactsOnly.ts'],
 ]
 
 /** Destinations the Node worker imports, which resolve `.js` — not Deno. */
