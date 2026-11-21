@@ -68,5 +68,9 @@ describe('FACTS_ONLY_WRITER wiring', () => {
     expect(block).toMatch(/code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true/)
     expect(EDGE).toContain('const foResting = factsOnlyNow() && !chosenRows ? restingStoryIds(')
     expect(EDGE).toContain("!foResting.has(String((k as { id?: unknown }).id ?? ''))")
+    // compare-1: the named story is kept out of the resting set.
+    expect(EDGE).toContain('restingStoryIds(kRows as Array<{ id?: unknown; kind?: unknown }>, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, foKeep)')
+    expect(EDGE).toMatch(/const foNamed = factsOnlyNow\(\) && !chosenRows\n\s*\? askedStory\(/)
+    expect(WORKER).toContain('thin_after_worker')
   })
 })

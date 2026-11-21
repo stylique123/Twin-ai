@@ -37,7 +37,7 @@ import { runQualityController, qcLogRecord, type QcProfile } from '../generated/
 import { panelFinalPass } from '../generated/panelFinalPass.js'
 import { setUrlSafeSplitting } from '../generated/urlSafe.js'
 import { scriptCleanupV1, finalPassCuts } from '../generated/scriptCleanupV1.js'
-import { writerItems, styleItems, backgroundItems, traceAndCut, traceHooks, polishFactsOnly } from '../generated/factsOnly.js'
+import { writerItems, styleItems, backgroundItems, traceAndCut, traceHooks, polishFactsOnly, scriptThin } from '../generated/factsOnly.js'
 
 const PANEL_STORY_ORIGINS = new Set(['her_story', 'her_answer'])
 /** ⚖️ PANEL FINAL PASS (panel 13b, 9 Nov). Runs right after the QC, only when
@@ -117,7 +117,10 @@ export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string
       bp.hook_options = th.hooks.map((h) => polishFactsOnly([{ line: h }]).beats[0]?.line).filter((h): h is string => typeof h === 'string' && !!h.trim())
     }
     resyncShotListToScript(bp)
-    bp.facts_only = { ...rec(bp.facts_only), worker: { ...r.record, polish: pol.record } }
+    // compare-1: the worker's cuts can leave a script thin after the edge let it
+    // through. Recorded on the blueprint (counts only) so the trace shows it.
+    const thin = scriptThin(bp.script as Array<{ line?: unknown; section?: unknown }>)
+    bp.facts_only = { ...rec(bp.facts_only), worker: { ...r.record, polish: pol.record, ...(thin.thin ? { thin_after_worker: { words: thin.words, lines: thin.lines } } : {}) } }
     const { examples: _ex, ...counts } = r.record
     console.log(JSON.stringify({ event: 'facts_only_trace', where: 'worker', generation_id: generationId, ...counts }))
   } catch (e) {
