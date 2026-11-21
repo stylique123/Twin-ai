@@ -160,13 +160,23 @@ describe('panel account guards (wiring)', () => {
     expect(read('worker/src/aiUsage.ts')).toMatch(/twin_test_account === 'fictional_panel'/)
     expect(read('worker/src/index.ts')).toMatch(/isPanelOwner\(db as never, j\.owner_id\)/)
   })
-  it('script-batch is manual, main-only, owner-only', () => {
+  it('script-batch is manual, main-only, owner-only (or bot for auto-* presets)', () => {
     for (const wf of ['script-batch.yml']) {
       const y = read(`.github/workflows/${wf}`)
       expect(y).toMatch(/^on:\n {2}workflow_dispatch:/m)
       expect(y).not.toMatch(/^\s*(pull_request|pull_request_target|push|schedule):/m)
       expect(y).toMatch(/\[ "\$REF" != "refs\/heads\/main" \]/)
-      expect(y).toMatch(/\[ "\$ACTOR" != "\$OWNER" \]/)
+      expect(y).toMatch(/\[ "\$EVENT" != "workflow_dispatch" \]/)
+      // Owner passes; the only other actor is the self-start bot, fail-closed.
+      expect(y).toMatch(/\[ "\$ACTOR" = "\$OWNER" \]; then exit 0; fi/)
+      expect(y).toMatch(/\[ "\$ACTOR" != "github-actions\[bot\]" \]; then .*exit 1; fi/)
+      expect(y).toContain("re='^auto-(panel-reference|panel-idea|panel-mixed-small)-[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+      expect(y).toMatch(/\[ "\$COST_MODE" = "test" \] \|\| fail/)
+      expect(y).toMatch(/\[ "\$INTAKE" = "false" \] \|\| fail/)
+      expect(y).toMatch(/\[ "\$PANEL_SEED" = "false" \] \|\| fail/)
+      expect(y).toMatch(/\[ "\$DRAFTS" = "1" \] \|\| fail/)
+      expect(y).toMatch(/\[ -z "\$JUDGE_ONLY" \] \|\| fail/)
+      expect(y).toMatch(/b \+ 0 <= 2\.5/)
       expect(y).not.toMatch(/set -x|printenv|toJSON\(secrets\)/)
     }
   })
