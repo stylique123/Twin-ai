@@ -10813,7 +10813,12 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // Panel 14 fix 3: story rotation on the facts-only path. A story supplied in
     // 2 of her last 5 scripts rests (the spend ledger records only the stories a
     // facts-only script actually used; see below).
-    const foResting = factsOnlyNow() && !chosenRows ? restingStoryIds(kRows as Array<{ id?: unknown; kind?: unknown }>, recentStorySupply, STORY_KINDS, STORY_REST_AFTER) : new Set<string>()
+    // compare-1 (advisor): the story the request names is never rested.
+    const foNamed = factsOnlyNow() && !chosenRows
+      ? askedStory((kRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))), String(reference_note ?? ''))
+      : null
+    const foKeep = new Set(foNamed?.id ? [String(foNamed.id)] : [])
+    const foResting = factsOnlyNow() && !chosenRows ? restingStoryIds(kRows as Array<{ id?: unknown; kind?: unknown }>, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, foKeep) : new Set<string>()
     if (foResting.size) console.log(JSON.stringify({ event: 'facts_only_stories_resting', resting: foResting.size }))
     const factsOnlyAll = factsOnlyNow() && !chosenRows
       ? kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered' && !foResting.has(String((k as { id?: unknown }).id ?? '')) && factsOnlyKeepsRow(k as never, new Set(uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids))))

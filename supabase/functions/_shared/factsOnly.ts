@@ -212,6 +212,18 @@ export function decideFactsOnly(req: FoRequest, items: readonly WriterItem[], op
   const ask = `${req.note ?? ''} ${req.product?.name ?? ''}`
   const opinions = items.filter((it) => it.opinion && overlap(it.text, ask) > 0)
   const missing = needsFor(req).filter((n) => !covered(n, rel, items, opinions))
+  // compare-1 (advisor): a creator with no stories on file (none stored, none
+  // answered) gets no confident script: ask for one real story first, and stop
+  // if every story question is already closed.
+  const hasStory = items.some((it) => it.layer === 'fact' && it.id !== 'note' && STORY_ORIGINS.has(it.origin))
+  if (!hasStory) {
+    const closedNS = new Set(opts.closedKeys ?? [])
+    const savedNS = opts.savedAnswers ?? []
+    const general: FoQuestion = { key: `mn:fo:story:first:${slug(String(req.note ?? '') || req.product?.name || 'general')}`, kind: 'story', question: `For ${quote(String(req.note ?? '').trim() || req.product?.name || 'this video')}: what is one real thing that happened to you or a customer that shows this? A sentence or two is enough.` }
+    const storyNeeds = needsFor(req).filter((n) => n.kind === 'story')
+    const q = (storyNeeds.length ? storyNeeds : [general]).find((n) => !closedNS.has(n.key) && !savedNS.some((a) => overlap(a, n.question) >= 0.6))
+    return q ? { action: 'ask', relevant, questions: [q], reason: 'too_little_material' } : { action: 'stop', relevant, questions: [], reason: 'too_little_material_all_asked' }
+  }
   // Thin: nothing fits, or fewer than the minimum and none of them is one of her stories or answers.
   const thin = rel.length === 0 || (rel.length < (opts.minItems ?? FACTS_ONLY_MIN_ITEMS) && !rel.some((it) => STORY_ORIGINS.has(it.origin)))
   if (!missing.length && !thin) return { action: 'write', relevant, questions: [] }
@@ -573,8 +585,11 @@ export function traceHooks(hooks: readonly string[], items: readonly WriterItem[
 /** Fix 1: a script under 40 spoken words, or under 3 spoken lines (3+ words), is thin. */
 export const THIN_MIN_WORDS = 40
 export const THIN_MIN_LINES = 3
-export function scriptThin(beats: ReadonlyArray<{ line?: unknown }>): { words: number; lines: number; thin: boolean } {
-  const spoken = beats.map((b) => (typeof b?.line === 'string' ? b.line.trim() : '')).filter(Boolean)
+// compare-1 (advisor): a link line or a call to action is not content. A
+// script carried by its CTA and a URL ("Harbor Fog Scarf at https://…") is thin.
+const NOT_CONTENT = (l: string) => /https?:\/\/|\b(?:[a-z0-9-]+\.)+(?:com|shop|co|net|org|store)\b/i.test(l) || isViewerAsk(l)
+export function scriptThin(beats: ReadonlyArray<{ line?: unknown; section?: unknown }>): { words: number; lines: number; thin: boolean } {
+  const spoken = beats.filter((b) => !isCtaSection(b?.section)).map((b) => (typeof b?.line === 'string' ? b.line.trim() : '')).filter((l) => l && !NOT_CONTENT(l))
   const words = spoken.reduce((n, l) => n + l.split(/\s+/).filter(Boolean).length, 0)
   const lines = spoken.filter((l) => l.split(/\s+/).filter(Boolean).length >= 3).length
   return { words, lines, thin: words < THIN_MIN_WORDS || lines < THIN_MIN_LINES }
@@ -591,11 +606,12 @@ export function thinQuestion(req: FoRequest, opts: { closedKeys?: readonly strin
 }
 
 /** Fix 3: story rows resting on the facts-only path: supplied in `restAfter` (2) of her last five scripts. */
-export function restingStoryIds(rows: ReadonlyArray<{ id?: unknown; kind?: unknown }>, recent: ReadonlyMap<string, number>, storyKinds: ReadonlySet<string>, restAfter: number): Set<string> {
+export function restingStoryIds(rows: ReadonlyArray<{ id?: unknown; kind?: unknown }>, recent: ReadonlyMap<string, number>, storyKinds: ReadonlySet<string>, restAfter: number, keep: ReadonlySet<string> = new Set()): Set<string> {
   const out = new Set<string>()
   for (const r of rows) {
     const id = String(r?.id ?? '')
-    if (id && storyKinds.has(String(r?.kind ?? '')) && (recent.get(id) ?? 0) >= restAfter) out.add(id)
+    // compare-1 (advisor): the story the request names never rests.
+    if (id && !keep.has(id) && storyKinds.has(String(r?.kind ?? '')) && (recent.get(id) ?? 0) >= restAfter) out.add(id)
   }
   return out
 }
@@ -653,7 +669,7 @@ export interface FoPolishRecord { filler: number; fragments: number; ordinals: n
 
 export function polishFactsOnly<B extends { line?: unknown }>(beats: readonly B[]): { beats: B[]; record: FoPolishRecord } {
   const rec: FoPolishRecord = { filler: 0, fragments: 0, ordinals: 0, links: 0, beats_dropped: 0 }
-  const seen = new Set<number>()
+  const counts = new Map<string, number>()
   const out: B[] = []
   for (const b of beats) {
     if (typeof b?.line !== 'string' || !b.line.trim()) { out.push(b); continue }
@@ -664,15 +680,19 @@ export function polishFactsOnly<B extends { line?: unknown }>(beats: readonly B[
       sentence = noFiller ? noFiller.charAt(0).toUpperCase() + noFiller.slice(1) : ''
       // 4c: an empty fragment ("Look.") is dropped.
       if (!sentence || EMPTY_FRAGMENT.test(sentence)) { if (sentence) rec.fragments++; continue }
-      // 4a: an ordinal with no earlier step becomes "Another".
+      // 4a (compare-1, advisor): ordinals are numbered in the order the script
+      // says them, per list noun ("second check, third check" with no first
+      // becomes "first check, second check"), never a run of "Another".
       sentence = sentence.replace(ORDINAL_RE, (m, ord: string, noun: string) => {
-        const k = ORDINALS.indexOf(ord.toLowerCase()) + 1
-        const ok = k === 1 || [...Array(k - 1).keys()].every((j) => seen.has(j + 1))
-        if (ok) { seen.add(k); return m }
+        const key = noun.toLowerCase().replace(/s$/, '')
+        const k = (counts.get(key) ?? 0) + 1
+        counts.set(key, k)
+        const want = ORDINALS[k - 1]
+        if (!want || want === ord.toLowerCase()) return m
         rec.ordinals++
-        return `another ${noun.replace(/s$/i, '')}`
+        const out = m.replace(new RegExp(`\\b${ord}\\b`), ord[0] === ord[0]!.toUpperCase() ? want[0]!.toUpperCase() + want.slice(1) : want)
+        return out
       })
-      sentence = sentence.replace(/(^|[.!?]\s+)another\b/g, (_m, lead: string) => `${lead}Another`)
       // 4e: links never end in "." or "!".
       sentence = sentence.replace(LINK_TRAILING, (_m, url: string) => { rec.links++; return url })
       kept.push(sentence)

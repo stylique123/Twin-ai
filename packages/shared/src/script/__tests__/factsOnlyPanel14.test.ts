@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   traceAndCut, traceHooks, productScope, otherProductWords, belongsElsewhere, scriptThin, thinQuestion,
-  restingStoryIds, dropRepeatedOpening, openingOf, polishFactsOnly, stripFiller, type WriterItem,
+  restingStoryIds, dropRepeatedOpening, decideFactsOnly, openingOf, polishFactsOnly, stripFiller, type WriterItem,
 } from '../factsOnly'
 
 let n = 0
@@ -96,6 +96,25 @@ describe('Fix 2: a product\'s facts and stories stay with that product', () => {
   })
 })
 
+describe('compare-1: no confident script for a creator with no stories', () => {
+  const noStory = [fact('Harbor Fog Scarf, 85 dollars', 'product_fact', 'scarf', 'price'), fact('About 180 cm long and 30 cm wide', 'product_fact', 'scarf', 'size')]
+  it('asks for one real story instead of writing', () => {
+    const d = decideFactsOnly({ note: 'how a Harbor Fog Scarf gets made', product: { id: 'scarf', name: 'Harbor Fog Scarf' } }, noStory)
+    expect(d.action).toBe('ask')
+    expect(d.questions).toHaveLength(1)
+    expect(d.questions[0]!.kind).toBe('story')
+  })
+  it('stops when that question is closed', () => {
+    const req = { note: 'how a Harbor Fog Scarf gets made', product: { id: 'scarf', name: 'Harbor Fog Scarf' } }
+    const q = decideFactsOnly(req, noStory).questions[0]!
+    expect(decideFactsOnly(req, noStory, { closedKeys: [q.key] }).action).toBe('stop')
+  })
+  it('an answered story counts: then the normal rules apply', () => {
+    const items = [...noStory, { ref: 'F9', id: 'answer:mn:fo:story:x', origin: 'her_answer', text: 'I wove the first one in a cold January, thread by thread.', layer: 'fact' as const }]
+    expect(decideFactsOnly({ note: 'how a Harbor Fog Scarf gets made', product: { id: 'scarf', name: 'Harbor Fog Scarf' } }, items).questions.every((x) => x.kind !== 'story' || !/what is one real thing/.test(x.question))).toBe(true)
+  })
+})
+
 describe('Fix 4: hooks trace like script lines', () => {
   it('invented hooks are cut', () => {
     const r = traceHooks([
@@ -131,6 +150,16 @@ describe('Fix 1: a thin script stops and asks one question', () => {
     const next = thinQuestion(req, { closedKeys: [q.key] })
     expect(next && next.key).not.toBe(q.key)
   })
+  it('compare-1: a link line or a CTA is not content (Quiet Loom n31 shape is thin)', () => {
+    const n31 = [
+      { section: 'Hook', line: 'Slow craft starts with undyed wool. Thread by thread. I weave slow scarves.' },
+      { section: 'Body', line: 'Harbor Fog Scarf. Hand-woven wool. Soft grey.' },
+      { section: 'Body', line: 'Woven on a floor loom. Washed and pressed. 180 centimeters long.' },
+      { section: 'CTA', line: 'Harbor Fog Scarf at https://example.com/quiet-loom' },
+    ]
+    expect(scriptThin(n31).thin).toBe(true)
+    expect(scriptThin([{ line: 'Tell me in the comments what you think about this.' }]).words).toBe(0)
+  })
   it('null when everything worth asking is closed', () => {
     const req = { note: 'weaving' }
     let q = thinQuestion(req)
@@ -145,6 +174,11 @@ describe('Fix 3: story rotation and distinct openings', () => {
     const rows = [{ id: 's1', kind: 'experience' }, { id: 's2', kind: 'experience' }, { id: 'f1', kind: 'claim' }]
     const recent = new Map([['s1', 2], ['s2', 1], ['f1', 4]])
     expect([...restingStoryIds(rows, recent, new Set(['experience', 'story']), 2)]).toEqual(['s1'])
+  })
+  it('compare-1: the story the request names never rests', () => {
+    const rows = [{ id: 's1', kind: 'experience' }, { id: 's2', kind: 'experience' }]
+    const recent = new Map([['s1', 3], ['s2', 2]])
+    expect([...restingStoryIds(rows, recent, new Set(['experience']), 2, new Set(['s1']))]).toEqual(['s2'])
   })
   it('two scripts for one creator never open with the same line', () => {
     const prior = ['My first kiln load welded every mug to the shelf.']
@@ -161,11 +195,11 @@ describe('Fix 3: story rotation and distinct openings', () => {
 describe('Fix 4: quality cleanup', () => {
   it('no "second/third step" without the earlier steps', () => {
     const r = polishFactsOnly([{ line: 'The second check is the label.' }, { line: 'The third check is the list.' }])
-    expect(r.beats.map((b) => b.line)).toEqual(['Another check is the label.', 'Another check is the list.'])
+    expect(r.beats.map((b) => b.line)).toEqual(['The first check is the label.', 'The second check is the list.'])
     const ok = polishFactsOnly([{ line: 'The first step is wax. The second step is the sponge.' }])
     expect(ok.beats[0]!.line).toBe('The first step is wax. The second step is the sponge.')
     const gap = polishFactsOnly([{ line: 'My first mistake was glaze. My third mistake was rushing.' }])
-    expect(gap.beats[0]!.line).toBe('My first mistake was glaze. Another mistake was rushing.')
+    expect(gap.beats[0]!.line).toBe('My first mistake was glaze. My second mistake was rushing.')
   })
   it('strips copied spoken filler', () => {
     expect(stripFiller('Um, the clay decides, like, every time.')).toBe('the clay decides, every time.')
