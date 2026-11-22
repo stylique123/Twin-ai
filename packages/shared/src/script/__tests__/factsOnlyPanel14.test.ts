@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   traceAndCut, traceHooks, productScope, otherProductWords, belongsElsewhere, scriptThin, thinQuestion,
-  restingStoryIds, dropRepeatedOpening, decideFactsOnly, openingOf, polishFactsOnly, stripFiller, type WriterItem,
+  restingStoryIds, dropRepeatedOpening, decideFactsOnly, writerItems, openingOf, polishFactsOnly, stripFiller, type WriterItem,
 } from '../factsOnly'
 
 let n = 0
@@ -216,5 +216,54 @@ describe('Fix 4: quality cleanup', () => {
     const r = polishFactsOnly([{ line: 'Get it at glowlab.shop/calm. Or visit https://example.com/fictional/mug!' }])
     expect(r.beats[0]!.line).toBe('Get it at glowlab.shop/calm Or visit https://example.com/fictional/mug')
     expect(polishFactsOnly([{ line: 'It holds 12 oz. Link in bio.' }]).beats[0]!.line).toBe('It holds 12 oz. Link in bio.')
+  })
+})
+
+describe('compare-1 follow-up (owner, 22 Nov)', () => {
+  const ledgerItem = (id: string, origin: string, text: string, field: string | null = null) => ({ id, origin, text, field, product_id: null, numbers: [], first_party: true, live: false, source_label: '' }) as never
+  it('a saved profile or niche answer is a background note, never a script line', () => {
+    const items = writerItems([
+      ledgerItem('answer:audience', 'her_answer', 'I am a small skincare maker, and I speak to people whose skin is tired of stinging products.', 'audience'),
+      ledgerItem('s1', 'her_story', 'My first batch separated in the jar overnight, and I threw out forty jars before I got the emulsion right.'),
+    ])
+    expect(items.find((it) => it.id === 'answer:audience')).toMatchObject({ layer: 'background', profile: true })
+    const r = traceAndCut(beats('Here is my story.', 'I am a small skincare maker, and I speak to people whose skin is tired of stinging products.', 'My first batch separated in the jar overnight.', 'Follow for more.'), items)
+    expect(kept(r).join(' ')).not.toMatch(/small skincare maker/)
+    expect(r.record.cut.profile_line).toBe(1)
+  })
+  it('the same profile text under another key (a story answer) is still not spoken', () => {
+    const items = [fact('I am a small skincare maker, and I speak to people whose skin is tired of stinging products.', 'her_answer')]
+    const r = traceAndCut(beats('Hello there.', 'I am a small skincare maker, and I speak to people whose skin is tired of stinging products.', 'Follow for more.'), items, { profileTexts: ['I am a small skincare maker, and I speak to people whose skin is tired of stinging products.'] })
+    expect(r.record.cut.profile_line).toBe(1)
+  })
+  const opinion: WriterItem = { ref: 'B1', id: 'op', origin: 'her_fact', text: 'I think most small shops do not need a help desk, they need fewer repeat emails.', layer: 'background', opinion: true }
+  const tagline: WriterItem = { ref: 'F9', id: 'answer:product_slot', origin: 'her_answer', text: 'FlowDesk sorts your shop inbox. Replies drafted. You approve. Ship it.', layer: 'fact', field: 'product_slot' }
+  const note = (t: string): WriterItem => ({ ref: 'N', id: 'note', origin: 'her_answer', text: t, layer: 'fact' })
+  it('a stock opinion is used only when it fits the request', () => {
+    const off = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('our first paying customer found a bug')])
+    expect(off.record.cut.stock_line).toBe(1)
+    const on = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('why small shops should not buy a help desk yet')])
+    expect(on.record.cut.stock_line).toBe(0)
+  })
+  it('a stock line one of her last scripts said rests', () => {
+    const prior = ['I think most small shops do not need a help desk, they need fewer repeat emails.']
+    const r = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('why small shops should not buy a help desk yet')], { priorLines: prior })
+    expect(r.record.cut.stock_line).toBe(1)
+  })
+  it('a product tagline in a script about something else is cut; in a product script it stays (until rested)', () => {
+    const items = [tagline, note('our first paying customer found a bug')]
+    expect(traceAndCut(beats('Hello there.', 'FlowDesk sorts your shop inbox.', 'Follow for more.'), items).record.cut.stock_line).toBe(1)
+    const prod = traceAndCut(beats('Hello there.', 'FlowDesk sorts your shop inbox.', 'Follow for more.'), [tagline, note('FlowDesk trial')], { targetProductId: 'fd', products: [{ id: 'fd', name: 'FlowDesk' }] })
+    expect(prod.record.cut.stock_line).toBe(0)
+  })
+  it('a feeling or outcome is not moved from one story onto another', () => {
+    const items = [
+      fact('Our first paying customer found a bug in the first forty minutes, and it was terrifying.'),
+      fact('I built the first version over one winter, mostly at night.'),
+    ]
+    const r = traceAndCut(beats('Hello there.', 'I built the first version over one winter, and it was terrifying.', 'Our first paying customer found a bug in the first forty minutes, and it was terrifying.', 'Follow for more.'), items)
+    expect(kept(r).join(' ')).not.toMatch(/winter, and it was terrifying/)
+    expect(kept(r).join(' ')).toMatch(/forty minutes, and it was terrifying/)
+    expect(r.record.cut.moved_feeling).toBe(1)
   })
 })

@@ -152,7 +152,43 @@ export function supportScore(line, items) {
  * Pure (panel 13c trace): rows + blueprints by generation id + stored counts by
  * owner → one record per row. `owners` maps generation id → owner id.
  */
-export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixture = {}) {
+const SKIP_ANSWER = /^nothing specific/i
+/**
+ * compare-2 (owner, 22 Nov): for every answer a request gave (readiness and
+ * facts-only), whether the final script used it: the share of the answer's
+ * content words (4+ letters) found in the shipped lines. used = share ≥ 0.3.
+ */
+export function answersUsed(body, lines) {
+  const script = new Set(String((lines ?? []).join(' ')).toLowerCase().match(/[a-z0-9']{4,}/g) ?? [])
+  const all = { ...(body?.readiness_answers ?? {}), ...(body?.mn_answers ?? {}) }
+  return Object.entries(all).filter(([k, v]) => typeof v === 'string' && v.trim() && k !== 'selected_product').map(([key, v]) => {
+    const words = [...new Set(String(v).toLowerCase().match(/[a-z0-9']{4,}/g) ?? [])]
+    const skipped = SKIP_ANSWER.test(String(v).trim())
+    const share = words.length ? Math.round((words.filter((w) => script.has(w)).length / words.length) * 100) / 100 : 0
+    return { key, skipped, share, used: !skipped && share >= 0.3 }
+  })
+}
+/** compare-2: the craft score by dimension (hook, flow, voice, ending), from the craft judge's criteria. */
+export function craftDimensions(score) {
+  const c = score?.criteria
+  if (!c) return null
+  const r = (x) => (typeof x === 'number' ? Math.round(x * 100) / 100 : null)
+  return { craft: score.craft ?? null, hook: r(c.hook), flow: r(typeof c.length_flow === 'number' && typeof c.middle === 'number' ? (c.length_flow + c.middle) / 2 : c.length_flow), voice: r(c.voice), ending: r(c.cta) }
+}
+/** compare-2: totals over a trace — mean craft by dimension, and answers given vs used. */
+export function traceSummary(trace) {
+  const dims = ['craft', 'hook', 'flow', 'voice', 'ending']
+  const scored = trace.filter((t) => t.craft)
+  const mean = (k) => { const xs = scored.map((t) => t.craft[k]).filter((x) => typeof x === 'number'); return xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null }
+  const answers = trace.flatMap((t) => t.answers_used ?? [])
+  return {
+    craft_scored: scored.length,
+    craft_mean: Object.fromEntries(dims.map((k) => [k, mean(k)])),
+    requests_that_asked: trace.filter((t) => t.answers_used).length,
+    answers: { given: answers.filter((a) => !a.skipped).length, used: answers.filter((a) => a.used).length, skipped: answers.filter((a) => a.skipped).length },
+  }
+}
+export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixture = {}, craftOf = () => null) {
   return rows.filter((r) => r.scenario?.group === 'panel').map((r) => {
     const bp = blueprints[r.generation_id] ?? {}
     const draft = Array.isArray(bp.writer_raw?.lines) ? bp.writer_raw.lines.map((l) => String(l?.line ?? '')).filter(Boolean) : null
@@ -168,6 +204,9 @@ export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixt
       thin: shipped.filter((l) => l.trim().split(/\s+/).length >= 3).length < 3 && r.status === 200,
       spoken_lines: shipped.filter((l) => l.trim().split(/\s+/).length >= 3).length,
       questions: (Array.isArray(r.scenario?.asked_questions) ? r.scenario.asked_questions : []).map((q) => ({ text: q, source: questionSource(q) })),
+      // compare-2: did the final script use each answer; the craft score by dimension.
+      answers_used: Array.isArray(r.scenario?.asked_questions) && r.scenario.asked_questions.length ? answersUsed(body, shipped) : null,
+      craft: r.status === 200 && shipped.length ? craftDimensions(craftOf(shipped)) : null,
       first_draft_recorded: !!draft,
       first_draft_lines: draft ? draft.length : null,
       beat_trace: Array.isArray(bp.beat_trace) ? bp.beat_trace : null,
@@ -175,7 +214,7 @@ export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixt
       stored: stored[owners[r.generation_id]] ?? null,
       // FACTS_ONLY_WRITER: per layer, what the writer received next to what the account stores.
       layers: { handed: bp.facts_only?.layers_handed ?? { fact: (ws.knowledge_ids ?? []).length + (ws.product_fact_ids ?? []).length + (ws.answer_keys ?? []).length, style: null, background: null }, stored: stored[owners[r.generation_id]]?.layers ?? null },
-      facts_only: bp.facts_only ? { cut: bp.facts_only.cut ?? null, tags: bp.facts_only.tags ?? null, beats_dropped: bp.facts_only.beats_dropped ?? null } : null,
+      facts_only: bp.facts_only ? { cut: bp.facts_only.cut ?? null, tags: bp.facts_only.tags ?? null, beats_dropped: bp.facts_only.beats_dropped ?? null, polish: bp.facts_only.polish ?? null, worker_cut: bp.facts_only.worker?.cut ?? null, thin_after_worker: bp.facts_only.worker?.thin_after_worker ?? null } : null,
       word_budget: bp.word_budget ?? null,
       floor_refill: bp.floor_refill ?? null,
       panel_final_pass: bp.panel_final_pass ?? null,
@@ -273,8 +312,9 @@ async function main() {
     // The fictional fixture (in the repo) for the line-level support score.
     const fx = JSON.parse(readFileSync(join(REPO, 'scripts/ops/fixtures/fictional-panel.json'), 'utf8'))
     const fixture = Object.fromEntries((fx.creators ?? []).map((c) => [c.key, c]))
-    const trace = buildTrace(data ?? [], blueprints, owners, stored, fixture)
+    const trace = buildTrace(data ?? [], blueprints, owners, stored, fixture, (lines) => { try { return scoreCraft(lines) } catch { return null } })
     writeFileSync(join(out, 'trace.json'), JSON.stringify(trace, null, 1))
+    writeFileSync(join(out, 'report.json'), JSON.stringify({ ...pack.report, trace_summary: traceSummary(trace) }, null, 1))
     // Also one line per script in the job log (fictional panel only; counts and line text, no keys).
     for (const t of trace) console.log(`TRACE ${JSON.stringify(t)}`)
   }

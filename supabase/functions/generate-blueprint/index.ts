@@ -18327,7 +18327,17 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         // Panel 14 fixes 2 and 4: another product's facts and words stay out; the hook traces like any line.
         const foProducts = ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id)
         const foTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
-        const foTraceOpts = { style: foStyle, background: foBackground, names: foNames, hasProduct: !!ownedEntity, targetProductId: foTarget, products: foProducts }
+        // compare-1 follow-up: her last scripts (stock lines rest, openings differ)
+        // and her saved profile notes (never spoken).
+        let priorScripts: Array<Array<{ line?: unknown }>> = []
+        try {
+          const { data: priorGens } = await admin.from('generations').select('script:blueprint->script').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20)
+          priorScripts = ((priorGens ?? []) as Array<{ script?: unknown }>).map((g) => (Array.isArray(g.script) ? g.script as Array<{ line?: unknown }> : [])).filter((x) => x.length)
+        } catch { /* a failed read rests nothing */ }
+        const foPriorLines = priorScripts.slice(0, 3).flatMap((sc) => sc.map((b) => (typeof b?.line === 'string' ? b.line : '')).filter(Boolean))
+        const vpf = (vp ?? {}) as { niche?: unknown; sub_niche?: unknown; audience?: unknown; summary?: unknown }
+        const foProfileTexts = [vpf.niche, vpf.sub_niche, vpf.audience, vpf.summary, (brief as Record<string, unknown>).audience].filter((t): t is string => typeof t === 'string' && !!t.trim())
+        const foTraceOpts = { style: foStyle, background: foBackground, names: foNames, hasProduct: !!ownedEntity, targetProductId: foTarget, products: foProducts, profileTexts: foProfileTexts, priorLines: foPriorLines }
         const r = traceAndCut(bpo.script as Array<Record<string, unknown>>, foItems, { ...foTraceOpts, strictHook: true })
         const pol = polishFactsOnly(r.beats as Array<Record<string, unknown> & { line?: unknown }>)
         bpo.script = pol.beats
@@ -18338,8 +18348,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         }
         // Fix 3: no two of her scripts open with the same line.
         try {
-          const { data: priorGens } = await admin.from('generations').select('script:blueprint->script').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20)
-          const prior = ((priorGens ?? []) as Array<{ script?: unknown }>).map((g) => (Array.isArray(g.script) ? openingOf(g.script as Array<{ line?: unknown }>) : '')).filter(Boolean)
+          const prior = priorScripts.map((sc) => openingOf(sc)).filter(Boolean)
           const ro = dropRepeatedOpening(bpo.script as Array<Record<string, unknown>>, prior)
           if (ro.cut) { bpo.script = ro.beats; console.log(JSON.stringify({ event: 'facts_only_repeated_opening_cut', cut: ro.cut })) }
         } catch { /* a failed read cuts nothing */ }
