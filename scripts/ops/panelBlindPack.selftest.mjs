@@ -1,6 +1,6 @@
 // Self-test for the single-arm panel blind pack. No network, no database.
 import assert from 'node:assert/strict'
-import { questionSource, questionCounts, buildBlindPack, buildMixedPack, batchesOf, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems, storedLayers } from './panelBlindPack.mjs'
+import { questionSource, questionCounts, buildBlindPack, buildMixedPack, batchesOf, answersUsed, craftDimensions, traceSummary, outcomeOf, buildTrace, lineOrigin, supportScore, fixtureItems, storedLayers } from './panelBlindPack.mjs'
 
 let seed = 7
 const rand = (n) => { const b = Buffer.alloc(n); for (let i = 0; i < n; i++) b[i] = (seed = (seed * 1103515245 + 12345) & 0xff); return b }
@@ -82,4 +82,15 @@ assert.ok(!/\bnew\b|\bold\b/.test(mix.blind), 'the blind pack never names the ba
 assert.equal(mix.report.new.scripts, 2)
 assert.equal(mix.report.old.scripts, 1)
 assert.equal(mix.report.old.asked, 1)
+// compare-2: answers used by the final script, and craft by dimension.
+const au = answersUsed({ readiness_answers: { audience: 'Nothing specific, keep it general.' }, mn_answers: { 'mn:fo:story:x': 'The first scarf took a whole winter and I unpicked it twice.' } }, ['The first scarf took a whole winter.', 'I unpicked it twice.'])
+assert.deepEqual(au.map((a) => [a.key, a.skipped, a.used]), [['audience', true, false], ['mn:fo:story:x', false, true]])
+assert.equal(answersUsed({ mn_answers: { k: 'A customer emailed a photo of her empty jar.' } }, ['Patch test first.'])[0].used, false)
+assert.deepEqual(craftDimensions({ craft: 5, criteria: { hook: 0.8, length_flow: 0.6, middle: 0.4, voice: 0.7, cta: 1 } }), { craft: 5, hook: 0.8, flow: 0.5, voice: 0.7, ending: 1 })
+assert.equal(craftDimensions(null), null)
+const tc = buildTrace([row(1, { scenario: { ...row(1).scenario, asked_questions: ['For "a": what happened?'], body: { mn_answers: { k: 'Line one happened' } } } })], { g1: { script: [{ line: 'Line one happened' }] } }, {}, {}, {}, () => ({ craft: 4, criteria: { hook: 1, length_flow: 1, middle: 1, voice: 1, cta: 1 } }))
+assert.equal(tc[0].craft.hook, 1)
+assert.equal(tc[0].answers_used[0].used, true)
+assert.deepEqual(traceSummary(tc).answers, { given: 1, used: 1, skipped: 0 })
+assert.equal(traceSummary(tc).craft_mean.voice, 1)
 console.log('panelBlindPack selftest: ok')
