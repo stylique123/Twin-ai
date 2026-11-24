@@ -112,7 +112,7 @@ import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
 import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
-import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, decideFactsOnly, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, restingStoryIds, type WriterItem } from '../_shared/factsOnly.ts'
+import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, decideFactsOnly, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, thinNextSteps, thinStopBody, missingNeedKinds, restingStoryIds, type WriterItem } from '../_shared/factsOnly.ts'
 import { scriptCleanupV1, finalPassCuts } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
@@ -9440,7 +9440,11 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, error: 'A few questions first: what you have told Twin does not cover this yet.', questions: d.questions.map((q) => ({ field: q.key, kind: q.kind, question: q.question })) }, 409)
     }
     if (d.action === 'stop') {
-      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, error: 'Not enough of your own material for this request yet, so nothing was written.', questions: [] }, 409)
+      // Nothing left to ask: name what to add and where (owner, later list).
+      const foReq = { note: String(reference_note ?? ''), goal: body.goal ?? null, product: pid ? { id: pid, name: String((ownedEntity as { name?: unknown }).name ?? '') } : null }
+      const steps = thinNextSteps(foReq, missingNeedKinds(foReq, writerItems(gapLedger), { ledger: gapLedger }))
+      console.log(JSON.stringify({ event: 'facts_only_next_steps', where: 'gap', kinds: steps.map((x) => x.kind) }))
+      return json(thinStopBody(steps, false), 409)
     }
   }
   // The panel final pass's view of her material (panel 13b; read at the end).
@@ -18369,12 +18373,13 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // lines) is not written. One specific question instead; nothing charged.
       const thin = scriptThin(bpo.script as Array<{ line?: unknown }>)
       if (thin.thin && !isShadowRun) {
-        const q = thinQuestion({ note: String(reference_note ?? ''), goal: body.goal ?? null, product: foGapCtx?.product ?? null }, { closedKeys: foGapCtx?.closedKeys ?? [], savedAnswers: foGapCtx?.saved ?? [] })
+        const thinReq = { note: String(reference_note ?? ''), goal: body.goal ?? null, product: foGapCtx?.product ?? null }
+        const q = thinQuestion(thinReq, { closedKeys: foGapCtx?.closedKeys ?? [], savedAnswers: foGapCtx?.saved ?? [] })
         console.log(JSON.stringify({ event: 'facts_only_thin_stop', words: thin.words, lines: thin.lines, asked: !!q }))
         await refundOnce('facts_only_thin')
         return json(q
           ? { code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true, error: 'One question first: what you have told Twin is not enough for this script yet.', questions: [{ field: q.key, kind: q.kind, question: q.question }] }
-          : { code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true, error: 'Not enough of your own material for this request yet, so nothing was written.', questions: [] }, 409)
+          : thinStopBody(thinNextSteps(thinReq), true), 409)
       }
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
