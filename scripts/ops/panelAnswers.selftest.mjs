@@ -84,3 +84,22 @@ assert.equal(isFactsOnlyStop({ status: 409, json: { code: 'READINESS_INCOMPLETE'
 // The real fixture loads and every request has answers.
 assert.ok(Object.keys(panel14Answers([{ field: 'nope' }], {}, 'panel-01').readiness_answers).length === 1)
 console.log('panel14 answers selftest: ok')
+
+// compare-3: answers by kind from her fictional material; never profile or niche text.
+{
+  const { answerByKind, isProfileText, panel14Answers } = await import('./panelRun.mjs')
+  const glow = { answers: { story: 'A story answer.', profile: 'I am a small skincare maker, and I speak to people.', niche: 'Sensitive skin.', product_slot: 'Calm Cream is gentle.' },
+    stories: [{ kind: 'experience', text: 'My first batch separated in the jar overnight, and I threw out forty jars.' }, { kind: 'opinion', text: 'I think fragrance is for the shopper.' }, { kind: 'framework', text: 'When I read a label, I look for fragrance first.' }],
+    products: [{ key: 'calm-cream', facts: [{ value: '$28 for a 50 ml jar' }, { value: 'Fragrance-free' }] }] }
+  const req = { note: 'the batch I had to throw out' }
+  assert.match(answerByKind({ kind: 'story', question: 'What happened with "the batch I had to throw out"?' }, glow, req), /forty jars/)
+  assert.match(answerByKind({ kind: 'steps' }, glow, req), /label/)
+  assert.match(answerByKind({ kind: 'opinion' }, glow, req), /shopper/)
+  assert.match(answerByKind({ kind: 'product_fact' }, glow, { product: 'calm-cream' }), /\$28/)
+  assert.equal(isProfileText('I am a small skincare maker, and I speak to people.', glow), true)
+  // a fixture answer that is her profile text is replaced by a real answer of the right kind
+  const doc = { requests: { r1: { answers: { 'mn:fo:story:x': 'I am a small skincare maker, and I speak to people.' } } } }
+  const out = panel14Answers([{ field: 'mn:fo:story:x', kind: 'story' }], {}, 'r1', doc, glow, req)
+  assert.match(out.readiness_answers['mn:fo:story:x'], /forty jars/)
+  console.log('panelAnswers compare-3: ok')
+}

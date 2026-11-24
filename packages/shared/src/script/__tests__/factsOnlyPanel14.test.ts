@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   traceAndCut, traceHooks, productScope, otherProductWords, belongsElsewhere, scriptThin, thinQuestion,
-  restingStoryIds, dropRepeatedOpening, decideFactsOnly, writerItems, planFactsOnly, questionRulesOk, needsFor, QUESTION_BANNED, fittingStoryIds, openingOf, polishFactsOnly, stripFiller, type WriterItem,
+  restingStoryIds, dropRepeatedOpening, decideFactsOnly, writerItems, planAskFirst, pieceKey, knownPieces, pieceQuestion, STORY_PIECES, planFactsOnly, questionRulesOk, needsFor, QUESTION_BANNED, fittingStoryIds, openingOf, polishFactsOnly, stripFiller, type WriterItem,
 } from '../factsOnly'
 
 let n = 0
@@ -158,7 +158,6 @@ describe('Fix 1: a thin script stops and asks one question', () => {
       { section: 'CTA', line: 'Harbor Fog Scarf at https://example.com/quiet-loom' },
     ]
     expect(scriptThin(n31).thin).toBe(true)
-    expect(scriptThin([{ line: 'Tell me in the comments what you think about this.' }]).words).toBe(0)
   })
   it('null when everything worth asking is closed', () => {
     const req = { note: 'weaving' }
@@ -281,26 +280,35 @@ describe('compare-3 (owner, 24 Nov): write first, at most one optional question'
   })
   it('stops only when almost nothing real fits (no relevant item, no story, no product fact)', () => {
     expect(planFactsOnly({ note: 'how to choose yarn for a first winter scarf' }, []).action).toBe('stop')
-    expect(planFactsOnly({ note: 'how to choose yarn' }, [fact('I wove my first scarf over one winter.')]).action).toBe('write')
+    expect(planFactsOnly({ note: 'my first winter scarf' }, [fact('I wove my first scarf over one winter.')]).action).toBe('write')
+    // some material but a lot of gaps: stop and ask up to 3 specific questions
+    const gaps = planFactsOnly({ note: 'how to choose yarn' }, [fact('I wove my first scarf over one winter.')])
+    expect(gaps.action).toBe('ask')
+    expect(gaps.questions.length).toBeGreaterThan(0)
+    expect(gaps.questions.length).toBeLessThanOrEqual(3)
   })
   it('the optional question names the specific thing and never uses the generic wording', () => {
     for (const req of [{ note: 'the day my first batch burned' }, { note: 'Calm Cream launch', product: { id: 'calm-cream', name: 'Calm Cream' } }, { note: 'clay' }]) {
-      const p = planFactsOnly(req, [])
-      if (!p.question) continue
-      expect(questionRulesOk(p.question, req)).toBe(true)
-      expect(p.question.question).not.toMatch(/one real thing that happened|to you or a customer/i)
-      expect(p.question.question.includes(req.product?.name ?? req.note)).toBe(true)
+      const p = planFactsOnly(req, [fact('An unrelated note about tea.')])
+      for (const q of p.questions) {
+        expect(questionRulesOk(q, req)).toBe(true)
+        expect(q.question).not.toMatch(/one real thing that happened|to you or a customer/i)
+        expect(q.question.includes(req.product?.name ?? req.note)).toBe(true)
+      }
     }
     for (const q of needsFor({ note: 'clay' })) expect(q.question).not.toMatch(QUESTION_BANNED)
     expect(thinQuestion({ note: 'clay' })!.question).not.toMatch(QUESTION_BANNED)
   })
   it('never repeated for the creator, never already answered', () => {
     const req = { note: 'the day my first batch burned' }
-    const q = planFactsOnly(req, []).question!
-    expect(planFactsOnly(req, [], { askedKeys: [q.key] }).question?.key).not.toBe(q.key)
-    expect(planFactsOnly(req, [], { askedTexts: [q.question] }).question?.question).not.toBe(q.question)
-    expect(planFactsOnly(req, [], { closedKeys: [q.key] }).question?.key).not.toBe(q.key)
-    expect(planFactsOnly(req, [], { savedAnswers: [q.question] }).question?.question).not.toBe(q.question)
+    const base = [fact('An unrelated note about tea.')]
+    const q = planFactsOnly(req, base).questions[0]!
+    const keysOf = (o: object) => planFactsOnly(req, base, o).questions.map((x) => x.key)
+    expect(keysOf({ askedKeys: [q.key] })).not.toContain(q.key)
+    expect(keysOf({ closedKeys: [q.key] })).not.toContain(q.key)
+    // the same question under a different key is caught by its meaning
+    expect(planFactsOnly(req, base, { askedTexts: [q.question] }).questions.map((x) => x.question)).not.toContain(q.question)
+    expect(planFactsOnly(req, base, { savedAnswers: [q.question] }).questions.map((x) => x.question)).not.toContain(q.question)
   })
   it('never about profile, niche or audience', () => {
     for (const text of ['Who is this video for?', 'What is your niche?', 'Describe your audience for "clay".', 'What is one real thing that happened to you or a customer for "clay"?'])
@@ -353,5 +361,80 @@ describe('compare-3: story rotation never removes the story the request fits', (
   it('if resting would leave no story at all, none rests', () => {
     const rows = [{ id: 's1', kind: 'experience', text: 'A' }, { id: 's2', kind: 'experience', text: 'B' }]
     expect([...restingStoryIds(rows, new Map([['s1', 3], ['s2', 3]]), new Set(['experience']), 2)]).toEqual([])
+  })
+})
+
+describe('compare-3 cleanup and counts', () => {
+  it('a list never opens on "Another X"; a second "another" stays', () => {
+    const r = polishFactsOnly([{ line: 'Another reason is the label.' }, { line: 'Another reason is the list.' }])
+    expect(r.beats.map((b) => b.line)).toEqual(['One reason is the label.', 'Another reason is the list.'])
+  })
+  it('a promised count matches the items given, else "a few"', () => {
+    const short = polishFactsOnly([{ line: 'Three things I check on every label.' }, { line: 'Fragrance first.' }, { line: 'Then the list length.' }])
+    expect(short.beats[0]!.line).toBe('a few things I check on every label.')
+    const full = polishFactsOnly([{ line: 'Three things I check.' }, { line: 'Fragrance.' }, { line: 'Length of the list.' }, { line: 'Patch test result.' }])
+    expect(full.beats[0]!.line).toBe('Three things I check.')
+  })
+  it('an aside like "mind you" is said once per script', () => {
+    const r = polishFactsOnly([{ line: 'The clay decides, mind you, every time.' }, { line: 'I waxed the foot, mind you, after that.' }])
+    expect(r.beats.map((b) => b.line)).toEqual(['The clay decides, mind you, every time.', 'I waxed the foot after that.'])
+  })
+  it('the thin check counts every spoken line, the call to action included (S-2F02FB: 38 words is thin)', () => {
+    const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(' ')
+    expect(scriptThin([{ line: words(13) }, { line: words(13) }, { section: 'CTA', line: words(12) }]).thin).toBe(true)
+    expect(scriptThin([{ line: words(14) }, { line: words(14) }, { section: 'CTA', line: words(14) }])).toEqual({ words: 42, lines: 3, thin: false })
+  })
+  it('a stored self-introduction is a profile note, never a fact', () => {
+    const items = writerItems([{ id: 'k9', origin: 'her_story', product_id: null, field: 'experience', text: 'I am a small skincare maker, and I speak to people whose skin is tired of stinging products.', numbers: [], first_party: true, live: false, source_label: '' }] as never)
+    expect(items[0]).toMatchObject({ layer: 'background', profile: true })
+  })
+})
+
+describe('compare-3 item 1/1b: ask first, then write; the knowledge base grows', () => {
+  const jars = fact('My first batch separated in the jar overnight, and I threw out forty jars before I got the emulsion right.')
+  const note = { ref: 'N', id: 'note', origin: 'her_answer', text: 'the batch I had to throw out', layer: 'fact' as const }
+  const req = { note: 'the batch I had to throw out' }
+  it('a fitting story asks ONE question that deepens that story (Glow Lab forty jars)', () => {
+    const d = planAskFirst(req, [jars, note])
+    expect(d.action).toBe('ask')
+    if (d.action !== 'ask') return
+    expect(d.tier).toBe('deepen')
+    expect(d.questions).toHaveLength(1)
+    expect(d.questions[0]!.question).toMatch(/My first batch separated in the jar/)
+    expect(d.questions[0]!.key).toBe(pieceKey(jars.id, 'feeling'))
+  })
+  it('never asks a piece already known: the number (forty) is in the story', () => {
+    expect([...knownPieces(jars.text)]).toContain('number')
+    const d = planAskFirst(req, [jars, note], { closedKeys: [pieceKey(jars.id, 'feeling')] })
+    expect(d.action === 'ask' && d.questions[0]!.key).toBe(pieceKey(jars.id, 'when'))
+  })
+  it('second request: a different, deeper question; a saved answer makes its piece known (any key)', () => {
+    const first = planAskFirst(req, [jars, note])
+    const q1 = first.action === 'ask' ? first.questions[0]! : null
+    const second = planAskFirst(req, [jars, note], { askedKeys: [q1!.key], savedByStory: new Map([[jars.id, ['Honestly I felt sick about it.']]]) })
+    expect(second.action === 'ask' && second.questions[0]!.key).not.toBe(q1!.key)
+    expect(second.action === 'ask' && second.questions[0]!.key).not.toBe(pieceKey(jars.id, 'feeling'))
+  })
+  it('skip ("Skip and write now") or answers given in this request: write', () => {
+    expect(planAskFirst(req, [jars, note], { skip: true }).action).toBe('write')
+    expect(planAskFirst(req, [jars, note], { answeredHere: true }).action).toBe('write')
+  })
+  it('little material: up to 3 specific questions; almost nothing: stop', () => {
+    const little = planAskFirst({ note: 'how to choose yarn' }, [fact('An unrelated note about tea.')])
+    expect(little.action).toBe('ask')
+    if (little.action === 'ask') { expect(little.tier).toBe('gaps'); expect(little.questions.length).toBeLessThanOrEqual(3); for (const q of little.questions) expect(q.question).toMatch(/how to choose yarn/) }
+    expect(planAskFirst({ note: 'how to choose yarn' }, []).action).toBe('stop')
+  })
+  it('every piece question names the story and is never generic or about profile', () => {
+    for (const p of STORY_PIECES) {
+      const q = pieceQuestion(jars, { closedKeys: STORY_PIECES.filter((x) => x !== p).map((x) => pieceKey(jars.id, x)) })
+      if (!q) continue
+      expect(q.question).toMatch(/My first batch/)
+      expect(q.question).not.toMatch(QUESTION_BANNED)
+    }
+  })
+  it('a story with every piece known asks nothing more about it', () => {
+    const full = fact('In my first winter, my sister and I threw out forty jars; I felt sick, learned to test slowly, and ever since I chart every batch.')
+    expect(pieceQuestion(full)).toBeNull()
   })
 })

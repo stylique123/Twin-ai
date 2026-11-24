@@ -112,7 +112,7 @@ import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
 import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
-import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, planFactsOnly, questionRulesOk, fittingStoryIds, STOP_MIN_WORDS, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, restingStoryIds, type WriterItem, type FoQuestion } from '../_shared/factsOnly.ts'
+import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, planFactsOnly, planAskFirst, finalCheck, questionRulesOk, fittingStoryIds, STOP_MIN_WORDS, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, restingStoryIds, thinNextSteps, thinStopBody, missingNeedKinds, type WriterItem, type FoQuestion } from '../_shared/factsOnly.ts'
 import { scriptCleanupV1, finalPassCuts } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
@@ -9438,11 +9438,34 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // Stop with no script only when almost nothing real fits.
     const foReq = { note: String(reference_note ?? ''), goal: body.goal ?? null, product: pid ? { id: pid, name: String((ownedEntity as { name?: unknown }).name ?? '') } : null }
     const storiesOnFile = (knowledgeRows as Array<{ kind?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))).length
-    const d = planFactsOnly(foReq, writerItems(gapLedger), { ledger: gapLedger, closedKeys, savedAnswers: savedRows.map((r) => String(r.text ?? '')), askedKeys, askedTexts, storiesOnFile })
-    foGapCtx = { closedKeys, saved: savedRows.map((r) => String(r.text ?? '')), product: foReq.product, askedKeys, askedTexts, optional: d.question }
-    console.log(JSON.stringify({ event: 'facts_only_gap', action: d.action, relevant: d.relevant.length, questions: d.question ? 1 : 0 }))
+    // compare-3 (owner, 24 Nov): ASK FIRST, THEN WRITE. Every request has a
+    // question step with "Skip and write now" (body.skip_questions). A fitting
+    // story gets one question deepening a piece of it not yet known; little
+    // material gets up to 3; almost nothing stops with a next step.
+    const foItemsGap = writerItems(gapLedger)
+    const storyRowsGap = (knowledgeRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? '')))
+    const namedGap = askedStory(storyRowsGap, String(reference_note ?? ''))
+    const restingGap = restingStoryIds(storyRowsGap, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, new Set(namedGap?.id ? [String(namedGap.id)] : []))
+    const savedByStory = new Map<string, string[]>()
+    for (const r of savedRows) {
+      const m = /^asked:mn:fo:piece:([^:]+):/.exec(String(r.source_ref ?? ''))
+      if (m) savedByStory.set(m[1]!, [...(savedByStory.get(m[1]!) ?? []), String(r.text ?? '')])
+    }
+    const answeredHere = Object.keys((body.readiness_answers ?? {}) as Record<string, unknown>).some((k) => /^mn:fo:/.test(k))
+    const skip = (body as { skip_questions?: unknown }).skip_questions === true
+    const d = planAskFirst(foReq, foItemsGap, { ledger: gapLedger, closedKeys, savedAnswers: savedRows.map((r) => String(r.text ?? '')), askedKeys, askedTexts, storiesOnFile, skip, answeredHere, namedStoryId: namedGap?.id ? String(namedGap.id) : null, restingIds: restingGap, savedByStory })
+    foGapCtx = { closedKeys, saved: savedRows.map((r) => String(r.text ?? '')), product: foReq.product, askedKeys, askedTexts, optional: null }
+    console.log(JSON.stringify({ event: 'facts_only_gap', action: d.action, tier: d.action === 'ask' ? d.tier : null, questions: d.action === 'ask' ? d.questions.length : 0, skip, answered_here: answeredHere }))
     if (d.action === 'stop') {
-      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, error: 'Not enough of your own material for this request yet, so nothing was written.', questions: d.question ? [{ field: d.question.key, kind: d.question.kind, question: d.question.question }] : [] }, 409)
+      // Almost nothing real fits. Stop with a clear next step (#1374).
+      const steps = thinNextSteps(foReq, missingNeedKinds(foReq, foItemsGap, { ledger: gapLedger }))
+      console.log(JSON.stringify({ event: 'facts_only_next_steps', where: 'gap', kinds: steps.map((x) => x.kind) }))
+      return json(thinStopBody(steps, false), 409)
+    }
+    if (d.action === 'ask') {
+      // Shown once: recorded so none of them is ever asked again.
+      await admin.from('question_asks').insert(d.questions.map((q) => ({ owner_id: user.id, entity_key: foReq.product ? `product:${foReq.product.id}` : 'none', option_id: 'fo', slot_id: q.key, angle: 'facts_only', wording: q.question, outcome: 'shown' }))).then(() => {}, () => {})
+      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, ask_first: true, tier: d.tier, can_skip: true, skip_label: 'Skip and write now', error: d.tier === 'deepen' ? 'One question to make this script yours. You can skip it and write now.' : 'A few specific questions first. You can skip them and write now.', questions: d.questions.map((q) => ({ field: q.key, kind: q.kind, question: q.question })) }, 409)
     }
   }
   // The panel final pass's view of her material (panel 13b; read at the end).
@@ -10819,9 +10842,17 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const foNamed = factsOnlyNow() && !chosenRows
       ? askedStory((kRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))), String(reference_note ?? ''))
       : null
-    // compare-3: a story that fits the request (shares meaning with it) never rests either.
-    const foKeep = new Set([...(foNamed?.id ? [String(foNamed.id)] : []), ...(factsOnlyNow() ? fittingStoryIds((kRows as Array<{ id?: unknown; kind?: unknown; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))), String(reference_note ?? '')) : [])])
-    const foResting = factsOnlyNow() && !chosenRows ? restingStoryIds(kRows as Array<{ id?: unknown; kind?: unknown }>, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, foKeep) : new Set<string>()
+    // compare-3: the named story always wins. Other fitting stories rotate (no
+    // one centerpiece in every script), but rotation never leaves the request
+    // with no fitting story: the least-told fitting one stays.
+    const foKeep = new Set(foNamed?.id ? [String(foNamed.id)] : [])
+    const foRestingAll = factsOnlyNow() && !chosenRows ? restingStoryIds(kRows as Array<{ id?: unknown; kind?: unknown }>, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, foKeep) : new Set<string>()
+    const foFitting = factsOnlyNow() ? [...fittingStoryIds((kRows as Array<{ id?: unknown; kind?: unknown; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))), String(reference_note ?? ''))] : []
+    if (foFitting.length && foFitting.every((id) => foRestingAll.has(id))) {
+      const leastTold = [...foFitting].sort((a, b) => (recentStorySupply.get(a) ?? 0) - (recentStorySupply.get(b) ?? 0))[0]!
+      foRestingAll.delete(leastTold)
+    }
+    const foResting = foRestingAll
     if (foResting.size) console.log(JSON.stringify({ event: 'facts_only_stories_resting', resting: foResting.size }))
     const factsOnlyAll = factsOnlyNow() && !chosenRows
       ? kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered' && !foResting.has(String((k as { id?: unknown }).id ?? '')) && factsOnlyKeepsRow(k as never, new Set(uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids))))
@@ -18347,6 +18378,14 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         if (Array.isArray(bpo.hook_options)) {
           const th = traceHooks((bpo.hook_options as unknown[]).filter((h): h is string => typeof h === 'string'), foItems, foTraceOpts)
           bpo.hook_options = th.hooks.map((h) => polishFactsOnly([{ line: h }]).beats[0]?.line).filter((h): h is string => typeof h === 'string' && !!h.trim())
+          // compare-3: at least 2 hook options. Top up from the traced script's
+          // own opening sentences (never a profile line: the trace cut those).
+          const hooks = bpo.hook_options as string[]
+          for (const b of (bpo.script as Array<{ line?: unknown }>)) {
+            if (hooks.length >= 2) break
+            const first = typeof b?.line === 'string' ? b.line.split(/(?<=[.!?])\s+/)[0]?.trim() : ''
+            if (first && first.split(/\s+/).length >= 4 && !hooks.some((h) => h.toLowerCase() === first.toLowerCase())) hooks.push(first)
+          }
           if (th.dropped) console.log(JSON.stringify({ event: 'facts_only_hooks_dropped', dropped: th.dropped }))
         }
         // Fix 3: no two of her scripts open with the same line.
@@ -18368,24 +18407,45 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         bpo.facts_only = { error: true }
         console.warn(JSON.stringify({ event: 'facts_only_trace_failed', error: String((e as Error)?.name ?? 'error') }))
       }
-      // compare-3 (owner, 24 Nov): write first. A thin script ships with at most
-      // one optional question; only a script with almost nothing in it (under
-      // STOP_MIN_WORDS spoken words) stops, refunded.
-      const thin = scriptThin(bpo.script as Array<{ line?: unknown }>)
+      // compare-3 item 10: ONE FINAL CHECK on the finished script. Every line is
+      // traced to her material or cut; the table goes on the blueprint (trace).
+      let offRequest = false
+      try {
+        const foProductsF = ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id)
+        const vpf2 = (vp ?? {}) as { niche?: unknown; sub_niche?: unknown; audience?: unknown; summary?: unknown }
+        const fc = finalCheck(bpo.script as Array<Record<string, unknown>>, foItems, { note: String(reference_note ?? ''), targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null, products: foProductsF, profileTexts: [vpf2.niche, vpf2.sub_niche, vpf2.audience, vpf2.summary].filter((t): t is string => typeof t === 'string') })
+        bpo.script = fc.beats
+        if (Array.isArray(bpo.shot_list)) bpo.shot_list = syncShotListSpokenText(bpo.shot_list as Array<{ spoken_text?: unknown }>, bpo.script as Array<{ line?: unknown }>).shots
+        bpo.facts_only = { ...((bpo.facts_only ?? {}) as Record<string, unknown>), final_check: fc.record }
+        offRequest = fc.record.off_request
+        console.log(JSON.stringify({ event: 'facts_only_final_check', cut: fc.record.cut, moved: fc.record.moved, off_request: fc.record.off_request, words: fc.record.words }))
+      } catch (e) {
+        bpo.facts_only = { ...((bpo.facts_only ?? {}) as Record<string, unknown>), final_check: { error: true } }
+        console.warn(JSON.stringify({ event: 'facts_only_final_check_failed', error: String((e as Error)?.name ?? 'error') }))
+      }
+      const thin0 = scriptThin(bpo.script as Array<{ line?: unknown }>)
+      // A script that does not answer the request is not shipped (item 10b).
+      const thin = offRequest ? { ...thin0, thin: true } : thin0
       const foReqT = { note: String(reference_note ?? ''), goal: body.goal ?? null, product: foGapCtx?.product ?? null }
       const qctx = { closedKeys: foGapCtx?.closedKeys ?? [], savedAnswers: foGapCtx?.saved ?? [], askedKeys: foGapCtx?.askedKeys ?? [], askedTexts: foGapCtx?.askedTexts ?? [] }
       const thinQ = thin.thin ? thinQuestion(foReqT, qctx) : null
       const optional = foGapCtx?.optional ?? (thinQ && questionRulesOk(thinQ, foReqT, qctx) ? thinQ : null)
-      if (thin.words < STOP_MIN_WORDS && !isShadowRun) {
-        console.log(JSON.stringify({ event: 'facts_only_thin_stop', words: thin.words, lines: thin.lines, asked: !!optional }))
+      // A script under 40 spoken words or 3 lines is never shipped (S-2F02FB):
+      // a true stop, refunded, with one specific question or a clear next step.
+      if (thin.thin && !isShadowRun) {
+        const q = thinQ && questionRulesOk(thinQ, foReqT, qctx) ? thinQ : null
+        console.log(JSON.stringify({ event: 'facts_only_thin_stop', words: thin.words, lines: thin.lines, asked: !!q }))
         await refundOnce('facts_only_thin')
-        return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true, error: 'Not enough of your own material for this request yet, so nothing was written.', questions: optional ? [{ field: optional.key, kind: optional.kind, question: optional.question }] : [] }, 409)
+        if (q) await admin.from('question_asks').insert({ owner_id: user.id, entity_key: foReqT.product ? `product:${foReqT.product.id}` : 'none', option_id: 'fo', slot_id: q.key, angle: 'facts_only', wording: q.question, outcome: 'shown' }).then(() => {}, () => {})
+        return json(q
+          ? { code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true, error: 'One specific question first: what you have told Twin is not enough for this script yet.', questions: [{ field: q.key, kind: q.kind, question: q.question }] }
+          : thinStopBody(thinNextSteps(foReqT), true), 409)
       }
       if (optional) {
         bpo.facts_only_question = { field: optional.key, kind: optional.kind, question: optional.question, optional: true }
         // Shown once: recorded so it is never asked again.
         await admin.from('question_asks').insert({ owner_id: user.id, entity_key: foReqT.product ? `product:${foReqT.product.id}` : 'none', option_id: 'fo', slot_id: optional.key, angle: 'facts_only', wording: optional.question, outcome: 'shown' }).then(() => {}, () => {})
-        console.log(JSON.stringify({ event: 'facts_only_optional_question', kind: optional.kind, thin: thin.thin }))
+        console.log(JSON.stringify({ event: 'facts_only_optional_question', kind: optional.kind }))
       }
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)

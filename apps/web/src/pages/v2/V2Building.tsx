@@ -50,7 +50,7 @@ import { classifyReferenceRead, LOW_SPEECH_TEXT, REFERENCE_REASON_TEXT } from '.
 import { referenceLengthFit, tooLongMatters } from '@twinai/shared'
 import { waitForVisualProfile } from '../../lib/visualProfileLoad'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE, isReadCapacityExhausted } from '../../lib/api'
-import { READINESS_INCOMPLETE_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE, GENERATION_FAILED_CODE } from '../../lib/api'
+import { READINESS_INCOMPLETE_CODE, NEEDS_STORY_CODE, SELL_WITHOUT_TARGET_CODE, OUT_OF_REMIXES_CODE, GENERATION_FAILED_CODE } from '../../lib/api'
 import type { ReadinessQuestion } from '../../lib/api'
 import { isSupportedReference, platformFromUrl, platformIsUnreadable, isSingleVideoUrl } from '@twinai/shared'
 import { useAuth } from '../../context/AuthContext'
@@ -676,6 +676,8 @@ export default function V2Building() {
   rescuingRef.current = rescuing
   // The server's sentence when she has none left. Null while she has some.
   const [outOfRemixes, setOutOfRemixes] = useState<string | null>(null)
+  // Facts-only thin stop with nothing left to ask: what to add, and where.
+  const [thinStop, setThinStop] = useState<{ message: string; steps: Array<{ kind: string; suggestion: string; where: { path: string; label: string } }> } | null>(null)
   // True while the reference is being scraped/transcribed (step 0 is held the whole
   // time). Drives a slow crawl so the bar never freezes at 12% and reads as stuck.
   const [ingesting, setIngesting] = useState(false)
@@ -760,6 +762,9 @@ export default function V2Building() {
   const onMnAnswers = useCallback((a: Record<string, string>) => { mnAnswersRef.current = a }, [])
   // She said she has no concrete detail for the objective's question.
   const [noDetail, setNoDetail] = useState(false)
+  // compare-3: facts-only question step offers "Skip and write now".
+  const [canSkipAsk, setCanSkipAsk] = useState(false)
+  const skipQuestionsRef = useRef(false)
   const [askQuestions, setAskQuestions] = useState<AskItem[] | null>(
     () => recallAsk(buildKey(durableBuildState(loc.state))))
   // ⚖️ WHAT KIND OF VIDEO FIRST, THEN WHICH ONE. Reported 2026-09-22: one long
@@ -1853,6 +1858,7 @@ export default function V2Building() {
           // over the first becomes a lesson).
           ...((a) => (a ? { angle: { kind: a.kind, gist: a.gist, offered: ideaAngles.map((x) => x.kind) } } : {}))(ideaAngles.find((x) => x.kind === pickedAngle)),
           ...(Object.keys(readinessAnswers).length ? { readiness_answers: readinessAnswers } : {}),
+          ...(skipQuestionsRef.current ? { skip_questions: true } : {}),
           ...(Object.keys(mnAnswersRef.current).length ? { mn_answers: { ...mnAnswersRef.current } } : {}),
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
@@ -1974,6 +1980,22 @@ export default function V2Building() {
             : disclosureRefusalMessage(named))
           setActive(0)
           return
+        }
+        // Facts-only (test accounts): too little of her material and nothing
+        // left to ask. Not a failure, not a charge: show the next steps.
+        if ((e as { code?: string } | null)?.code === NEEDS_STORY_CODE) {
+          const steps = ((e as { nextSteps?: unknown }).nextSteps ?? []) as Array<{ kind: string; suggestion: string; where: { path: string; label: string } }>
+          const qs = (e as { questions?: ReadinessQuestion[] }).questions ?? []
+          // compare-3: the question step before the script (ask first, then write),
+          // with "Skip and write now".
+          if (qs.length && (e as { canSkip?: unknown }).canSkip === true) {
+            setCanSkipAsk(true); rememberAsk(key, qs); setAskQuestions(qs); setActive(0); return
+          }
+          if (!qs.length && steps.length) {
+            setThinStop({ message: e instanceof Error ? e.message : 'Not enough of your own material for this request yet.', steps: steps.filter((x) => typeof x?.where?.path === 'string' && x.where.path.startsWith('/')) })
+            setActive(0)
+            return
+          }
         }
         // Also not a failure and not a charge, and NOT answerable here.
         if ((e as { code?: string } | null)?.code === SELL_WITHOUT_TARGET_CODE) {
@@ -3252,7 +3274,37 @@ export default function V2Building() {
             {onAnswerStep && (
               <button type="button" onClick={() => setAskStep('choose')} className="btn-ghost mt-3 w-full">Back</button>
             )}
+            {canSkipAsk && (
+              <button type="button" data-testid="skip-and-write" onClick={() => {
+                skipQuestionsRef.current = true
+                rememberAsk(buildKey(state), null)
+                markPlanShown(buildKey(state))
+                setAskQuestions(null)
+                setCanSkipAsk(false)
+                started.current = false
+                setError(null)
+                setActive(0)
+                setPct(6)
+                setRetryNonce((n) => n + 1)
+              }} className="btn-ghost mt-3 w-full">Skip and write now</button>
+            )}
             <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
+          </div>
+        ) : thinStop ? (
+          <div className="glass gradient-border p-7 text-center" data-testid="thin-next-steps">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
+            <h2 className="mt-4 font-display text-2xl">One more thing from you</h2>
+            <p className="mt-2 text-sm leading-relaxed text-stone">{thinStop.message}</p>
+            <ul className="mt-4 space-y-2 text-left text-sm text-sand">
+              {thinStop.steps.map((x) => (
+                <li key={x.kind + x.suggestion}>
+                  · {x.suggestion}{' '}
+                  <button onClick={() => nav(x.where.path)} className="underline">Open {x.where.label}</button>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs leading-relaxed text-stone/80">No remix was used.</p>
+            <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-6 w-full">Start over</button>
           </div>
         ) : contradiction ? (
           // ⚠️ THE SELL/NO-OFFER CONTRADICTION, SHOWN AS WHAT IT IS. Before this
