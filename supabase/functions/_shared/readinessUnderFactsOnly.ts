@@ -16,7 +16,10 @@
 export type ReadinessAsk = { field: string; question: string }
 
 /** Readiness fields that stand down while the facts-only writer is on. */
-export const READINESS_OFF_UNDER_FACTS_ONLY: ReadonlySet<string> = new Set(['story', 'angle', 'goal'])
+// compare-2 (owner, 24 Nov): the screen question ("I couldn't find a screen or
+// page of X to show") and the product picker ("Which one is this video
+// about?") stand down too.
+export const READINESS_OFF_UNDER_FACTS_ONLY: ReadonlySet<string> = new Set(['story', 'angle', 'goal', 'screen', 'selected_product'])
 
 /** Which readiness question this is: its field, or `goal` for the goal-keyed claims question. */
 export function readinessKind(ask: ReadinessAsk, objectiveQuestions: readonly string[]): string {

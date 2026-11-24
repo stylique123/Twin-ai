@@ -164,7 +164,7 @@ export function needsFor(req: FoRequest): FoQuestion[] {
   if (p?.id) {
     out.push({ key: `mn:fo:product_fact:${p.id}`, kind: 'product_fact', question: `What is the one fact about ${p.name} this video should say: what it is, what it does, or what it costs?` })
   }
-  if (!out.length) out.push({ key: `mn:fo:story:${t}`, kind: 'story', question: `For ${topic}: what is one real thing that happened to you or a customer that shows this?` })
+  if (!out.length) out.push({ key: `mn:fo:story:${t}`, kind: 'story', question: `What is the moment behind ${topic}? Say when it happened${p?.name ? ` with ${p.name}` : ''} and what you did.` })
   return out
 }
 
@@ -223,7 +223,7 @@ export function decideFactsOnly(req: FoRequest, items: readonly WriterItem[], op
   if (!hasStory) {
     const closedNS = new Set(opts.closedKeys ?? [])
     const savedNS = opts.savedAnswers ?? []
-    const general: FoQuestion = { key: `mn:fo:story:first:${slug(String(req.note ?? '') || req.product?.name || 'general')}`, kind: 'story', question: `For ${quote(String(req.note ?? '').trim() || req.product?.name || 'this video')}: what is one real thing that happened to you or a customer that shows this? A sentence or two is enough.` }
+    const general: FoQuestion = { key: `mn:fo:story:first:${slug(String(req.note ?? '') || req.product?.name || 'general')}`, kind: 'story', question: `What is the moment behind ${quote(String(req.note ?? '').trim() || req.product?.name || 'this video')}? Say when it happened${req.product?.name ? ` with ${req.product.name}` : ''} and what you did.` }
     const storyNeeds = needsFor(req).filter((n) => n.kind === 'story')
     const q = (storyNeeds.length ? storyNeeds : [general]).find((n) => !closedNS.has(n.key) && !savedNS.some((a) => overlap(a, n.question) >= 0.6))
     return q ? { action: 'ask', relevant, questions: [q], reason: 'too_little_material' } : { action: 'stop', relevant, questions: [], reason: 'too_little_material_all_asked' }
@@ -311,7 +311,7 @@ export function bestItem(sentence: string, pool: readonly WriterItem[], ignore: 
   return best
 }
 
-export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'first_person_no_source' | 'product_pronoun' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored' | 'other_product' | 'hook_untraced' | 'profile_line' | 'stock_line' | 'moved_feeling'
+export type FoCutReason = 'no_source' | 'general_over_cap' | 'names_product' | 'first_person_no_source' | 'product_pronoun' | 'added_number' | 'added_detail' | 'unearned_first_person' | 'borrowed_layer' | 'background_as_experience' | 'link_not_stored' | 'other_product' | 'hook_untraced' | 'profile_line' | 'stock_line' | 'moved_feeling' | 'invented_cta' | 'orphan'
 export interface FoTraceRecord {
   sentences: number; sourced: number; connecting: number; hook_cta_free: number; general_kept: number; viewer_questions: number; viewer_asks: number
   tags: Record<LineTag | 'untagged', number>
@@ -348,6 +348,11 @@ export function nameTokens(names: readonly string[]): string[] {
  */
 export const VIEWER_ASK = /\b(?:tell me|let me know|send me|dm me|message me|drop (?:me|a comment|it)|comment(?:s)?(?: below| down below)?|in the comments|follow(?: me| along| for)?|link in (?:my |the )?bio|subscribe|save this|share (?:this|your|it)|hit (?:follow|subscribe|the link)|tap the link)\b/i
 export const isViewerAsk = (s: string): boolean => VIEWER_ASK.test(s)
+/** compare-2 constants. */
+export const SELF_INTRO = /^\s*(?:i am|i'm|we are|we're)\s+(?:a|an|the|just a)\b/i
+export const DM_ASK = /\b(?:dm me|message me|send me a (?:message|dm)|slide into)\b/i
+export const ORPHAN_OPENER = /^\s*(?:it|this|that|these|those|and|so|but|then|because|which)\b/i
+const CLOSE_WORDS = /\b(?:link in (?:my |the )?bio|in (?:the|my) shop|shop now|follow|save this|comment|subscribe|order (?:yours|now|one)|buy|grab|get yours|available (?:now|today)|drops?|try it|sign up|book)\b/i
 
 /** The three settings tuned from the owner's fixed grid. */
 export interface TraceTuning { addedMinWords: number; addedMinShare: number; generalMax: number }
@@ -443,7 +448,7 @@ const tagOf = (v: unknown): LineTag | null => ((LINE_TAGS as readonly string[]).
  * sentence is dropped. Each kept beat carries `source_ids` (facts layer).
  */
 export function traceAndCut<B extends { section?: unknown; line?: unknown; source_ids?: unknown; layer_tag?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { style?: readonly WriterItem[]; background?: readonly WriterItem[]; names?: readonly string[]; maxExamples?: number; hasProduct?: boolean; tuning?: Partial<TraceTuning>; targetProductId?: string | null; products?: ReadonlyArray<{ id: string; name: string }>; strictHook?: boolean; profileTexts?: readonly string[]; priorLines?: readonly string[] } = {}): { beats: Array<B & { source_ids: string[] }>; record: FoTraceRecord } {
-  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, viewer_asks: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, first_person_no_source: 0, product_pronoun: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0, other_product: 0, hook_untraced: 0, profile_line: 0, stock_line: 0, moved_feeling: 0 }, beats_dropped: 0, examples: [] }
+  const rec: FoTraceRecord = { sentences: 0, sourced: 0, connecting: 0, hook_cta_free: 0, general_kept: 0, viewer_questions: 0, viewer_asks: 0, tags: { fact: 0, style: 0, opinion: 0, link: 0, untagged: 0 }, cut: { no_source: 0, general_over_cap: 0, names_product: 0, first_person_no_source: 0, product_pronoun: 0, added_number: 0, added_detail: 0, unearned_first_person: 0, borrowed_layer: 0, background_as_experience: 0, link_not_stored: 0, other_product: 0, hook_untraced: 0, profile_line: 0, stock_line: 0, moved_feeling: 0, invented_cta: 0, orphan: 0 }, beats_dropped: 0, examples: [] }
   // Fix 2: with a target product, another product's items are never a source.
   const scope = productScope(extra.targetProductId, extra.products ?? [], items)
   const elsewhere = items.filter((it) => belongsElsewhere(it, scope))
@@ -511,11 +516,15 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
       // Fix 2: a sentence using another product's words is cut.
       if (otherProductWords(sentence, scope).length) { cutOne(i, 'other_product', sentence); continue }
       // A saved profile or niche answer is never spoken.
-      if (profileTexts.some((t) => overlap(sentence, t) >= 0.5)) { cutOne(i, 'profile_line', sentence); continue }
+      // compare-2 (S-85B1C6, S-C955A7): a paraphrased self-introduction is the same note.
+      if (profileTexts.some((t) => overlap(sentence, t) >= 0.5 || (SELF_INTRO.test(sentence) && overlap(sentence, t) >= 0.2))) { cutOne(i, 'profile_line', sentence); continue }
+      // compare-2 (S-0AA5A8): a "DM me / message me" ask she never offers is invented.
+      if (DM_ASK.test(sentence) && !allTexts.some((t) => DM_ASK.test(t) || /\b(?:dm|direct message|message me)\b/i.test(t))) { cutOne(i, 'invented_cta', sentence); continue }
       // A stock opinion or product line: only when it fits this request, and
       // rested when one of her last few scripts already said it.
       const stockHit = stock.find((it) => overlap(sentence, it.text) >= 0.5)
-      if (stockHit && (!stockFits(stockHit) || recentlyUsed(stockHit.text))) { cutOne(i, 'stock_line', sentence); continue }
+      // compare-2 check: a stock line the request is plainly about is never rested.
+      if (stockHit && (!stockFits(stockHit) || (recentlyUsed(stockHit.text) && overlap(stockHit.text, note) < STORY_PARAPHRASE_MEANING))) { cutOne(i, 'stock_line', sentence); continue }
       const traced = traceLines([{ line: sentence }], factInputs)[0]?.from.map((h) => h.id).filter((x): x is string => !!x) ?? []
       // A cited item counts when the tracer agrees, or the sentence shares meaning with it.
       const confirmed = cited.filter((id) => traced.includes(id) || overlap(sentence, byId.get(id)?.text ?? '') >= 0.5)
@@ -547,6 +556,12 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
         // product in the request) an It/This/That/These/They opening.
         const blocked = freePassBlocked(sentence)
         if (blocked) { cutOne(i, blocked, sentence); continue }
+        // compare-2 (S-5C7731): a no-source line that leans on what came before
+        // ("It was just unclear copy.", "And this is what changes…") is an orphan.
+        if (ORPHAN_OPENER.test(sentence)) { cutOne(i, 'orphan', sentence); continue }
+        // compare-2 (S-4126D9): in the closing beat a no-source line is a call to
+        // action or nothing (no invented sample reply, no new content).
+        if (free && i !== first && !CLOSE_WORDS.test(sentence)) { cutOne(i, 'no_source', sentence); continue }
         // A plain connecting line: states nothing, adds at most 2 new words.
         if (addedBeyond(sentence, allTexts, styleWords).words.length <= CONNECT_MAX_NEW) { rec.connecting++; kept.push(sentence); continue }
         // Fix 4: a hook with no source is a question to the viewer or nothing.
@@ -555,7 +570,9 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
           cutOne(i, 'hook_untraced', sentence); continue
         }
         // Rule 5: the hook and the CTA are exempt only when they state no fact.
-        if (free) { rec.hook_cta_free++; kept.push(sentence); continue }
+        // compare-2 (S-4126D9): in the closing beat the pass covers a call to
+        // action only, never new content such as an invented sample reply.
+        if (free && (i === first || CLOSE_WORDS.test(sentence))) { rec.hook_cta_free++; kept.push(sentence); continue }
         // Questions to the viewer are not counted toward the cap.
         if (/\?\s*$/.test(sentence)) { rec.viewer_questions++; kept.push(sentence); continue }
         if (generalKept < tune.generalMax) { generalKept++; rec.general_kept++; kept.push(sentence); continue }
@@ -574,6 +591,9 @@ export function traceAndCut<B extends { section?: unknown; line?: unknown; sourc
       const srcFeel = new Set(closest ? feelingsOf(closest.text) : [])
       if (feelingsOf(sentence).some((f) => !srcFeel.has(f))) { cutOne(i, 'moved_feeling', sentence); continue }
       if (add.words.length >= tune.addedMinWords && add.share >= tune.addedMinShare && !free) { cutOne(i, 'added_detail', sentence); continue }
+      // compare-2 (S-339D5F, S-20D4B5): a first-person line that adds actions to
+      // her source ("I pull the weft through") is an invented process.
+      if (FIRST_PERSON_PRONOUN.test(sentence) && add.words.length >= 2 && add.share >= 0.34 && !isViewerAsk(sentence)) { cutOne(i, 'added_detail', sentence); continue }
       rec.sourced++
       for (const it of src) ids.add(it.id)
       kept.push(sentence)
@@ -627,7 +647,7 @@ export function thinQuestion(req: FoRequest, opts: { closedKeys?: readonly strin
   const closed = new Set(opts.closedKeys ?? [])
   const saved = opts.savedAnswers ?? []
   const needs = needsFor(req)
-  const general: FoQuestion = { key: `mn:fo:story:thin:${slug(String(req.note ?? '') || req.product?.name || 'general')}`, kind: 'story', question: `For ${quote(String(req.note ?? '').trim() || req.product?.name || 'this video')}: what is one real thing that happened to you or a customer that shows this? A sentence or two is enough.` }
+  const general: FoQuestion = { key: `mn:fo:story:thin:${slug(String(req.note ?? '') || req.product?.name || 'general')}`, kind: 'story', question: `What is the moment behind ${quote(String(req.note ?? '').trim() || req.product?.name || 'this video')}? Say when it happened${req.product?.name ? ` with ${req.product.name}` : ''} and what you did.` }
   const pool = [...needs.filter((n) => n.kind === 'story'), ...needs.filter((n) => n.kind !== 'story'), general]
   return pool.find((n) => !closed.has(n.key) && !saved.some((a) => overlap(a, n.question) >= 0.6)) ?? null
 }
@@ -640,7 +660,15 @@ export function restingStoryIds(rows: ReadonlyArray<{ id?: unknown; kind?: unkno
     // compare-1 (advisor): the story the request names never rests.
     if (id && !keep.has(id) && storyKinds.has(String(r?.kind ?? '')) && (recent.get(id) ?? 0) >= restAfter) out.add(id)
   }
+  // compare-3: rotation never leaves her with no story at all.
+  const stories = rows.filter((r) => storyKinds.has(String(r?.kind ?? '')) && String(r?.id ?? ''))
+  if (stories.length && stories.every((r) => out.has(String(r.id)))) return new Set()
   return out
+}
+
+/** compare-3 (owner): stories on file that fit the request (share meaning with it) never rest. */
+export function fittingStoryIds(rows: ReadonlyArray<{ id?: unknown; kind?: unknown; text?: unknown }>, note: string): Set<string> {
+  return new Set(rows.filter((r) => String(r?.id ?? '') && overlap(String(r?.text ?? ''), note) > 0).map((r) => String(r.id)))
 }
 
 const normLine = (t: string) => String(t ?? '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
@@ -729,3 +757,46 @@ export function polishFactsOnly<B extends { line?: unknown }>(beats: readonly B[
   }
   return { beats: out, record: rec }
 }
+
+// ── compare-3 (owner, 24 Nov): WRITE FIRST, AT MOST ONE OPTIONAL QUESTION ──
+// The script is written from what she has; at most one optional question is
+// attached for the thing that would make it better. A request stops with no
+// script only when there is almost nothing real to use. Hard rules for that
+// question (tests): never repeated for the creator, never already answered,
+// always names the specific thing, never about profile, niche or audience,
+// never the generic "one real thing that happened" wording.
+export const QUESTION_BANNED = /\bone real thing that happened\b|\bto you or a customer\b|\b(?:audience|niche|profile|who (?:is|are) (?:this|your) (?:video )?for|who do you (?:speak|talk) to)\b/i
+/** The hard rules for one question, against this request and everything already asked or answered for this creator. */
+export function questionRulesOk(q: FoQuestion, req: FoRequest, ctx: { askedKeys?: readonly string[]; askedTexts?: readonly string[]; closedKeys?: readonly string[]; savedAnswers?: readonly string[] } = {}): boolean {
+  if (!q?.question || QUESTION_BANNED.test(q.question)) return false
+  const named = (req.product?.name && q.question.includes(req.product.name)) || (String(req.note ?? '').trim() && q.question.includes(String(req.note).trim().slice(0, 80)))
+  if (!named) return false
+  if ((ctx.closedKeys ?? []).includes(q.key) || (ctx.askedKeys ?? []).includes(q.key)) return false
+  if ((ctx.askedTexts ?? []).some((t) => overlap(t, q.question) >= 0.6)) return false
+  if ((ctx.savedAnswers ?? []).some((a) => overlap(a, q.question) >= 0.6)) return false
+  return true
+}
+export type FoPlan = { action: 'write'; relevant: string[]; question: FoQuestion | null } | { action: 'stop'; relevant: string[]; question: FoQuestion | null }
+/**
+ * Write or (rarely) stop. Stop only when almost nothing real fits: no item of
+ * hers relates to the request, she has no story on file, and the request's
+ * product has no facts. Otherwise write, with at most one optional question
+ * for the first open need that passes the rules.
+ */
+export function planFactsOnly(req: FoRequest, items: readonly WriterItem[], opts: { ledger?: readonly LedgerItem[]; closedKeys?: readonly string[]; savedAnswers?: readonly string[]; askedKeys?: readonly string[]; askedTexts?: readonly string[]; storiesOnFile?: number } = {}): FoPlan {
+  const rel = relevantItems(req, items, opts.ledger ?? [])
+  const relevant = rel.map((r) => r.id)
+  const ask = `${req.note ?? ''} ${req.product?.name ?? ''}`
+  const opinions = items.filter((it) => it.opinion && overlap(it.text, ask) > 0)
+  const needs = needsFor(req)
+  const missing = needs.filter((n) => !covered(n, rel, items, opinions))
+  const ctx = { closedKeys: opts.closedKeys, savedAnswers: opts.savedAnswers, askedKeys: opts.askedKeys, askedTexts: opts.askedTexts }
+  const order: NeedKind[] = ['product_fact', 'story', 'proof', 'number', 'steps', 'opinion']
+  const question = [...missing].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind)).find((n) => questionRulesOk(n, req, ctx)) ?? null
+  const stories = opts.storiesOnFile ?? items.filter((it) => it.layer === 'fact' && it.id !== 'note' && STORY_ORIGINS.has(it.origin)).length
+  const productFacts = req.product?.id ? items.filter((it) => it.productId === req.product!.id && it.origin === 'product_fact').length : 0
+  const almostNothing = rel.length === 0 && stories === 0 && productFacts === 0
+  return { action: almostNothing ? 'stop' : 'write', relevant, question }
+}
+/** "Almost nothing real": a written script under this many spoken words is not shipped. */
+export const STOP_MIN_WORDS = 15

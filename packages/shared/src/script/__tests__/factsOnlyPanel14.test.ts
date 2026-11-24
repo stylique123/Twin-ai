@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   traceAndCut, traceHooks, productScope, otherProductWords, belongsElsewhere, scriptThin, thinQuestion,
-  restingStoryIds, dropRepeatedOpening, decideFactsOnly, writerItems, openingOf, polishFactsOnly, stripFiller, type WriterItem,
+  restingStoryIds, dropRepeatedOpening, decideFactsOnly, writerItems, planFactsOnly, questionRulesOk, needsFor, QUESTION_BANNED, fittingStoryIds, openingOf, polishFactsOnly, stripFiller, type WriterItem,
 } from '../factsOnly'
 
 let n = 0
@@ -247,8 +247,12 @@ describe('compare-1 follow-up (owner, 22 Nov)', () => {
   })
   it('a stock line one of her last scripts said rests', () => {
     const prior = ['I think most small shops do not need a help desk, they need fewer repeat emails.']
-    const r = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('why small shops should not buy a help desk yet')], { priorLines: prior })
+    const r = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('the inbox before and after saved replies')].map((x) => x.id === 'note' ? x : x), { priorLines: prior })
+    // (the request is not about help desks: the stock opinion only fits weakly)
     expect(r.record.cut.stock_line).toBe(1)
+    // compare-2 check: a stock line the request is plainly about is not rested.
+    const plain = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('why most small shops do not need a help desk')], { priorLines: prior })
+    expect(plain.record.cut.stock_line).toBe(0)
   })
   it('a product tagline in a script about something else is cut; in a product script it stays (until rested)', () => {
     const items = [tagline, note('our first paying customer found a bug')]
@@ -265,5 +269,89 @@ describe('compare-1 follow-up (owner, 22 Nov)', () => {
     expect(kept(r).join(' ')).not.toMatch(/winter, and it was terrifying/)
     expect(kept(r).join(' ')).toMatch(/forty minutes, and it was terrifying/)
     expect(r.record.cut.moved_feeling).toBe(1)
+  })
+})
+
+describe('compare-3 (owner, 24 Nov): write first, at most one optional question', () => {
+  const glowNote = { ref: 'N', id: 'note', origin: 'her_answer', text: 'the batch I had to throw out', layer: 'fact' as const }
+  it('a story on file that fits is used: write, no stop (Glow Lab "the batch I had to throw out")', () => {
+    const p = planFactsOnly({ note: 'the batch I had to throw out' }, [...glow, glowNote])
+    expect(p.action).toBe('write')
+    expect(p.relevant.length).toBeGreaterThan(0)
+  })
+  it('stops only when almost nothing real fits (no relevant item, no story, no product fact)', () => {
+    expect(planFactsOnly({ note: 'how to choose yarn for a first winter scarf' }, []).action).toBe('stop')
+    expect(planFactsOnly({ note: 'how to choose yarn' }, [fact('I wove my first scarf over one winter.')]).action).toBe('write')
+  })
+  it('the optional question names the specific thing and never uses the generic wording', () => {
+    for (const req of [{ note: 'the day my first batch burned' }, { note: 'Calm Cream launch', product: { id: 'calm-cream', name: 'Calm Cream' } }, { note: 'clay' }]) {
+      const p = planFactsOnly(req, [])
+      if (!p.question) continue
+      expect(questionRulesOk(p.question, req)).toBe(true)
+      expect(p.question.question).not.toMatch(/one real thing that happened|to you or a customer/i)
+      expect(p.question.question.includes(req.product?.name ?? req.note)).toBe(true)
+    }
+    for (const q of needsFor({ note: 'clay' })) expect(q.question).not.toMatch(QUESTION_BANNED)
+    expect(thinQuestion({ note: 'clay' })!.question).not.toMatch(QUESTION_BANNED)
+  })
+  it('never repeated for the creator, never already answered', () => {
+    const req = { note: 'the day my first batch burned' }
+    const q = planFactsOnly(req, []).question!
+    expect(planFactsOnly(req, [], { askedKeys: [q.key] }).question?.key).not.toBe(q.key)
+    expect(planFactsOnly(req, [], { askedTexts: [q.question] }).question?.question).not.toBe(q.question)
+    expect(planFactsOnly(req, [], { closedKeys: [q.key] }).question?.key).not.toBe(q.key)
+    expect(planFactsOnly(req, [], { savedAnswers: [q.question] }).question?.question).not.toBe(q.question)
+  })
+  it('never about profile, niche or audience', () => {
+    for (const text of ['Who is this video for?', 'What is your niche?', 'Describe your audience for "clay".', 'What is one real thing that happened to you or a customer for "clay"?'])
+      expect(questionRulesOk({ key: 'k', kind: 'story', question: text }, { note: 'clay' })).toBe(false)
+    expect(questionRulesOk({ key: 'k', kind: 'story', question: 'What is the moment behind "clay"?' }, { note: 'clay' })).toBe(true)
+    expect(questionRulesOk({ key: 'k', kind: 'story', question: 'What happened?' }, { note: 'clay' })).toBe(false)
+  })
+})
+
+describe('compare-2 shipped defects', () => {
+  const fd = [
+    fact('We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.'),
+    fact('I once lost a whole Saturday to a support ticket that was really a typo in our help page.'),
+    { ref: 'B1', id: 'answer:profile', origin: 'her_answer', text: 'I am a small skincare maker, and I speak to people whose skin is tired of stinging products.', layer: 'background' as const, profile: true },
+  ]
+  it('S-85B1C6 / S-C955A7: a paraphrased self-introduction is a profile line', () => {
+    const r = traceAndCut(beats('Hello there.', 'I am a small skincare maker, and my skin dislikes stinging products.', 'Follow for more.'), fd)
+    expect(r.record.cut.profile_line).toBe(1)
+  })
+  it('S-4126D9: an invented sample reply in the closing beat is cut; a call to action stays', () => {
+    const r = traceAndCut(beats('Here is the rewrite.', 'We counted. Forty percent of our own support email was the same five questions.', 'Thanks for checking in. Your order is on the way, and your tracking link is right here. Grab the template, link in bio.'), fd)
+    const close = kept(r)[kept(r).length - 1]
+    expect(close).not.toMatch(/Thanks for checking in|order is on the way/)
+    expect(close).toMatch(/link in bio/)
+  })
+  it('S-0AA5A8: an invented "DM me" is cut; kept when her material offers DMs', () => {
+    expect(traceAndCut(beats('Hello there.', 'We counted. Forty percent of our own support email was the same five questions.', 'DM me and we will talk it through.'), fd).record.cut.invented_cta).toBe(1)
+    const withDm = [...fd, fact('DM me the word INBOX and I send the template.', 'offer')]
+    expect(traceAndCut(beats('Hello there.', 'We counted.', 'DM me and we will talk it through.'), withDm).record.cut.invented_cta).toBe(0)
+  })
+  it('S-5C7731: an orphan fragment with no source is cut', () => {
+    const r = traceAndCut(beats('Hello there.', 'It was just unclear copy. And this is what changes the entire problem.', 'Follow for more.'), fd)
+    expect(r.record.cut.orphan).toBe(2)
+  })
+  it('S-339D5F / S-20D4B5: a first-person line adding actions to its source is cut', () => {
+    const loom = [fact('Woven by hand on a floor loom, then washed and pressed.', 'product_fact', 'scarf')]
+    const r = traceAndCut(beats('Hello there.', 'I pull the weft through and check the tension on the floor loom.', 'Follow for more.'), loom)
+    expect(kept(r).join(' ')).not.toMatch(/weft/)
+  })
+})
+
+describe('compare-3: story rotation never removes the story the request fits', () => {
+  it('a fitting story is kept from resting', () => {
+    const rows = [{ id: 's1', kind: 'experience', text: 'My first batch separated in the jar overnight, and I threw out forty jars.' }, { id: 's2', kind: 'experience', text: 'A customer emailed me a photo of her empty jar.' }]
+    const recent = new Map([['s1', 2], ['s2', 2]])
+    const keep = fittingStoryIds(rows, 'the batch I had to throw out')
+    expect([...keep]).toContain('s1')
+    expect([...restingStoryIds(rows, recent, new Set(['experience']), 2, keep)]).toEqual(['s2'])
+  })
+  it('if resting would leave no story at all, none rests', () => {
+    const rows = [{ id: 's1', kind: 'experience', text: 'A' }, { id: 's2', kind: 'experience', text: 'B' }]
+    expect([...restingStoryIds(rows, new Map([['s1', 3], ['s2', 3]]), new Set(['experience']), 2)]).toEqual([])
   })
 })
