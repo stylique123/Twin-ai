@@ -112,7 +112,7 @@ import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
 import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
-import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, planFactsOnly, planAskFirst, finalCheck, questionRulesOk, fittingStoryIds, STOP_MIN_WORDS, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, restingStoryIds, thinNextSteps, thinStopBody, missingNeedKinds, type WriterItem, type FoQuestion } from '../_shared/factsOnly.ts'
+import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, chooseStory, eventFit, pieceQuestion, scriptShipThin, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, planFactsOnly, planAskFirst, finalCheck, questionRulesOk, fittingStoryIds, STOP_MIN_WORDS, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, restingStoryIds, thinNextSteps, thinStopBody, missingNeedKinds, type WriterItem, type FoQuestion } from '../_shared/factsOnly.ts'
 import { scriptCleanupV1, finalPassCuts } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
@@ -7211,6 +7211,10 @@ async function handle(req: Request): Promise<Response> {
   const factsOnlyNow = (): boolean => factsOnlyWriterOn(Deno.env.get('FACTS_ONLY_WRITER'), trialOn)
   // The layers the writer was handed (set at the brief; read by the final pass and the trace).
   let foItems: WriterItem[] = []
+  // compare-3 proof fixes: the story this request is built on, which story each saved answer belongs to, and the answers given in this request.
+  let foChosenStoryId: string | null = null
+  const foStoryOf = new Map<string, string>()
+  const foAnswerIdsOf = (ra: unknown): string[] => Object.keys((ra ?? {}) as Record<string, unknown>).filter((k) => /^mn:fo:(?:piece|story):/.test(k)).map((k) => `answer:${k}`)
   let foStyle: WriterItem[] = []
   let foBackground: WriterItem[] = []
   const isHeartbeat = (heartbeatUserId !== '' && user.id === heartbeatUserId) || isPanel
@@ -7283,7 +7287,7 @@ async function handle(req: Request): Promise<Response> {
   // FACTS_ONLY_WRITER (spread after panel7GateExtras): no word budget for the
   // worker's refill, and the worker re-runs the trace pass after polish/QC/gate.
   const factsOnlyGateExtras = (): Record<string, unknown> => (factsOnlyNow()
-    ? { word_budget: undefined, facts_only: true, facts_only_layers: { style: foStyle.map((x) => x.text), background: foBackground.map((x) => x.text), names: [...((libraryRows ?? []) as Array<{ name?: unknown }>).map((r) => String(r.name ?? '')), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')].filter((n) => n.trim()) } }
+    ? { word_budget: undefined, facts_only: true, facts_only_centerpiece: foChosenStoryId, facts_only_answer_ids: foAnswerIdsOf(body.readiness_answers), facts_only_story_of: Object.fromEntries(foStoryOf), facts_only_layers: { style: foStyle.map((x) => x.text), background: foBackground.map((x) => x.text), names: [...((libraryRows ?? []) as Array<{ name?: unknown }>).map((r) => String(r.name ?? '')), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')].filter((n) => n.trim()) } }
     : {})
   const optionalPassTime = (step: string): boolean => {
     // FACTS_ONLY_WRITER: no lengthen passes (length follows her material) and no
@@ -9427,9 +9431,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     const [{ data: hist }, { data: saved }] = await Promise.all([
       // compare-3: every question ever shown to her (never repeated), with its outcome.
       admin.from('question_asks').select('slot_id, outcome, wording').eq('owner_id', user.id).limit(1000),
-      admin.from('creator_knowledge').select('text, source_ref').eq('owner_id', user.id).eq('source', 'asked').is('superseded_at', null).limit(400),
+      admin.from('creator_knowledge').select('id, text, source_ref').eq('owner_id', user.id).eq('source', 'asked').is('superseded_at', null).limit(400),
     ]).catch(() => [{ data: null }, { data: null }] as const)
-    const savedRows = (saved ?? []) as Array<{ text?: unknown; source_ref?: unknown }>
+    const savedRows = (saved ?? []) as Array<{ id?: unknown; text?: unknown; source_ref?: unknown }>
     const closedKeys = closedKeysFrom((hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown }>, savedRows)
     const histRows = (hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown; wording?: unknown }>
     const askedKeys = histRows.map((r) => String(r.slot_id ?? '')).filter(Boolean)
@@ -9444,12 +9448,14 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // material gets up to 3; almost nothing stops with a next step.
     const foItemsGap = writerItems(gapLedger)
     const storyRowsGap = (knowledgeRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? '')))
-    const namedGap = askedStory(storyRowsGap, String(reference_note ?? ''))
+    // proof fix 6: the story is chosen by its events and her recent scripts, not shared words.
+    const namedGap = chooseStory(storyRowsGap, String(reference_note ?? ''), recentStorySupply)
+    foChosenStoryId = namedGap?.id ?? null
     const restingGap = restingStoryIds(storyRowsGap, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, new Set(namedGap?.id ? [String(namedGap.id)] : []))
     const savedByStory = new Map<string, string[]>()
     for (const r of savedRows) {
       const m = /^asked:mn:fo:piece:([^:]+):/.exec(String(r.source_ref ?? ''))
-      if (m) savedByStory.set(m[1]!, [...(savedByStory.get(m[1]!) ?? []), String(r.text ?? '')])
+      if (m) { savedByStory.set(m[1]!, [...(savedByStory.get(m[1]!) ?? []), String(r.text ?? '')]); if (r.id) foStoryOf.set(String(r.id), m[1]!) }
     }
     const answeredHere = Object.keys((body.readiness_answers ?? {}) as Record<string, unknown>).some((k) => /^mn:fo:/.test(k))
     const skip = (body as { skip_questions?: unknown }).skip_questions === true
@@ -10840,8 +10846,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // facts-only script actually used; see below).
     // compare-1 (advisor): the story the request names is never rested.
     const foNamed = factsOnlyNow() && !chosenRows
-      ? askedStory((kRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))), String(reference_note ?? ''))
+      ? chooseStory((kRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))), String(reference_note ?? ''), recentStorySupply)
       : null
+    if (foNamed?.id) foChosenStoryId = foNamed.id
     // compare-3: the named story always wins. Other fitting stories rotate (no
     // one centerpiece in every script), but rotation never leaves the request
     // with no fitting story: the least-told fitting one stays.
@@ -10851,6 +10858,12 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     if (foFitting.length && foFitting.every((id) => foRestingAll.has(id))) {
       const leastTold = [...foFitting].sort((a, b) => (recentStorySupply.get(a) ?? 0) - (recentStorySupply.get(b) ?? 0))[0]!
       foRestingAll.delete(leastTold)
+    }
+    // proof fix 6: one story per script. The other stories that fit this
+    // request rest for it, so the writer is handed one centerpiece.
+    if (foNamed?.id) {
+      for (const id of foFitting) if (id !== foNamed.id) foRestingAll.add(id)
+      for (const k of kRows as Array<{ id?: unknown; kind?: unknown; text?: unknown }>) if (STORY_KINDS.has(String(k.kind ?? '')) && String(k.id ?? '') !== foNamed.id && eventFit(String(k.text ?? ''), String(reference_note ?? '')) > 0) foRestingAll.add(String(k.id))
     }
     const foResting = foRestingAll
     if (foResting.size) console.log(JSON.stringify({ event: 'facts_only_stories_resting', resting: foResting.size }))
@@ -13243,6 +13256,13 @@ This is the video's position. Every field below must serve it. If the reference'
           ...loopPainThemes.map((t) => `Her audience says (outside research, never her experience): ${t}`),
         ], foItems.filter((it) => it.layer === 'background').length + 1)
         factsOnlyBlock = renderFactsOnlyBlock(foItems, foStyle, foBackground)
+        {
+          // proof fixes 1 and 6: name the one story and her answers for it.
+          const cp = foItems.find((it) => it.id === foChosenStoryId)
+          const ans = foItems.filter((it) => foAnswerIdsOf(body.readiness_answers).includes(it.id) && it.layer === 'fact')
+          if (cp) factsOnlyBlock += `\n\nTHE STORY OF THIS SCRIPT: ${cp.ref}. Tell this one story. No line may come from any other story of hers.`
+          if (ans.length) factsOnlyBlock += `\nHER ANSWER${ans.length > 1 ? 'S' : ''} FOR IT: ${ans.map((a) => a.ref).join(', ')}. Use ${ans.length > 1 ? 'them' : 'it'} in the story, in her words, where it happened.`
+        }
         console.log(JSON.stringify({ event: 'facts_only_layers', ...layerCounts(foItems, foStyle, foBackground) }))
       } catch (e) { console.warn('facts_only_layers_failed', String((e as Error)?.message ?? e).slice(0, 120)) }
     }
@@ -18262,7 +18282,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // account only). The gate job is also where the polish runs, so with the
     // gate off there is no later stage: the QC runs here, last, on the edge.
     // Same pure function as the worker; on any error the script stands.
-    else if (qualityProfile() === 'full_stack' && qFlag('QUALITY_CONTROLLER') === 'on' && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+    else if (qualityProfile() === 'full_stack' && qFlag('QUALITY_CONTROLLER') === 'on' && !factsOnlyNow() && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       try {
         const bpq = blueprint as Record<string, unknown>
         const tgtQ = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
@@ -18410,10 +18430,12 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
       // compare-3 item 10: ONE FINAL CHECK on the finished script. Every line is
       // traced to her material or cut; the table goes on the blueprint (trace).
       let offRequest = false
+      let foCenter: string | null = null
       try {
         const foProductsF = ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id)
         const vpf2 = (vp ?? {}) as { niche?: unknown; sub_niche?: unknown; audience?: unknown; summary?: unknown }
-        const fc = finalCheck(bpo.script as Array<Record<string, unknown>>, foItems, { note: String(reference_note ?? ''), targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null, products: foProductsF, profileTexts: [vpf2.niche, vpf2.sub_niche, vpf2.audience, vpf2.summary].filter((t): t is string => typeof t === 'string') })
+        const fc = finalCheck(bpo.script as Array<Record<string, unknown>>, foItems, { note: String(reference_note ?? ''), targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null, products: foProductsF, profileTexts: [vpf2.niche, vpf2.sub_niche, vpf2.audience, vpf2.summary].filter((t): t is string => typeof t === 'string'), centerpieceId: foChosenStoryId, storyOf: foStoryOf, answerIds: foAnswerIdsOf(body.readiness_answers) })
+        foCenter = fc.record.centerpiece
         bpo.script = fc.beats
         if (Array.isArray(bpo.shot_list)) bpo.shot_list = syncShotListSpokenText(bpo.shot_list as Array<{ spoken_text?: unknown }>, bpo.script as Array<{ line?: unknown }>).shots
         bpo.facts_only = { ...((bpo.facts_only ?? {}) as Record<string, unknown>), final_check: fc.record }
@@ -18423,12 +18445,16 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         bpo.facts_only = { ...((bpo.facts_only ?? {}) as Record<string, unknown>), final_check: { error: true } }
         console.warn(JSON.stringify({ event: 'facts_only_final_check_failed', error: String((e as Error)?.name ?? 'error') }))
       }
-      const thin0 = scriptThin(bpo.script as Array<{ line?: unknown }>)
+      const thin0 = scriptShipThin(bpo.script as Array<{ line?: unknown }>)
       // A script that does not answer the request is not shipped (item 10b).
       const thin = offRequest ? { ...thin0, thin: true } : thin0
       const foReqT = { note: String(reference_note ?? ''), goal: body.goal ?? null, product: foGapCtx?.product ?? null }
       const qctx = { closedKeys: foGapCtx?.closedKeys ?? [], savedAnswers: foGapCtx?.saved ?? [], askedKeys: foGapCtx?.askedKeys ?? [], askedTexts: foGapCtx?.askedTexts ?? [] }
-      const thinQ = thin.thin ? thinQuestion(foReqT, qctx) : null
+      // proof fix 5: the one question that would fix a thin script: the next
+      // missing piece of the story it tells, else the request's open need.
+      const cpItem = foItems.find((it) => it.id === (foCenter ?? foChosenStoryId))
+      const pieceQ = thin.thin && cpItem ? pieceQuestion(cpItem, { ...qctx, savedForStory: [...foStoryOf.entries()].filter(([, sid]) => sid === cpItem.id).map(([kid]) => foItems.find((x) => x.id === kid)?.text ?? '').filter(Boolean) }) : null
+      const thinQ = thin.thin ? (pieceQ && questionRulesOk(pieceQ, foReqT, qctx) ? pieceQ : thinQuestion(foReqT, qctx)) : null
       const optional = foGapCtx?.optional ?? (thinQ && questionRulesOk(thinQ, foReqT, qctx) ? thinQ : null)
       // A script under 40 spoken words or 3 lines is never shipped (S-2F02FB):
       // a true stop, refunded, with one specific question or a clear next step.

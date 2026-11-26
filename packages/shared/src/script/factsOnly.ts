@@ -648,6 +648,17 @@ export function scriptThin(beats: ReadonlyArray<{ line?: unknown; section?: unkn
   return { words, lines, thin: words < THIN_MIN_WORDS || lines < THIN_MIN_LINES }
 }
 
+/**
+ * compare-3 proof fix 5 (owner, 26 Nov): the bar a facts-only script must
+ * clear to ship. Under 55 spoken words (or the hard 40-word / 3-line floor)
+ * after the cuts, one question that would fix it is asked instead.
+ */
+export const SHIP_MIN_WORDS = 55
+export function scriptShipThin(beats: ReadonlyArray<{ line?: unknown; section?: unknown }>): { words: number; lines: number; thin: boolean } {
+  const t = scriptThin(beats)
+  return { ...t, thin: t.thin || t.words < SHIP_MIN_WORDS }
+}
+
 /** Fix 1: the one question to ask instead of writing a thin script: the first open need for this request, a story first. Null when every key is closed. */
 export function thinQuestion(req: FoRequest, opts: { closedKeys?: readonly string[]; savedAnswers?: readonly string[] } = {}): FoQuestion | null {
   const closed = new Set(opts.closedKeys ?? [])
@@ -857,7 +868,7 @@ export const QUESTION_BANNED = /\bone real thing that happened\b|\bto you or a c
 /** The hard rules for one question, against this request and everything already asked or answered for this creator. */
 export function questionRulesOk(q: FoQuestion, req: FoRequest, ctx: { askedKeys?: readonly string[]; askedTexts?: readonly string[]; closedKeys?: readonly string[]; savedAnswers?: readonly string[] } = {}): boolean {
   if (!q?.question || QUESTION_BANNED.test(q.question)) return false
-  const named = (req.product?.name && q.question.includes(req.product.name)) || (String(req.note ?? '').trim() && q.question.includes(String(req.note).trim().slice(0, 80)))
+  const named = (req.product?.name && q.question.includes(req.product.name)) || (String(req.note ?? '').trim() && q.question.includes(String(req.note).trim().slice(0, 80))) || /^In your story "[^"]{8,}"/.test(q.question)
   if (!named) return false
   if ((ctx.closedKeys ?? []).includes(q.key) || (ctx.askedKeys ?? []).includes(q.key)) return false
   if ((ctx.askedTexts ?? []).some((t) => overlap(t, q.question) >= 0.6)) return false
@@ -924,7 +935,7 @@ export function keepListPromise<B extends { line?: unknown }>(beats: B[], rec?: 
 // (a story, a product fact, an answer she gave, an opinion she stated), or a
 // call to action that uses only what she has on file, or a question to the
 // viewer. Everything else is cut, and every line is logged with its source.
-export type FinalWhy = 'sourced' | 'cta_on_file' | 'viewer_question' | 'no_source' | 'profile' | 'cta_not_on_file' | 'joined_stories' | 'added_number' | 'dangling_reference' | 'moved_up'
+export type FinalWhy = 'sourced' | 'cta_on_file' | 'viewer_question' | 'no_source' | 'profile' | 'cta_not_on_file' | 'joined_stories' | 'added_number' | 'dangling_reference' | 'moved_up' | 'other_story' | 'answer_added'
 export interface FinalLine { beat: number; line: string; source: string | null; origin: string | null; kept: boolean; why: FinalWhy }
 export interface FinalCheck { lines: FinalLine[]; cut: number; moved: number; off_request: boolean; centerpiece: string | null; words: number; spoken_lines: number }
 const JOIN_RE = /\b(?:because|which is why|that(?:'s| is) why|so that|and so|so)\b/i
@@ -933,7 +944,71 @@ const SAVE_THING_RE = /\bsave (?:this|my) (\w+)/i
 const BACKREF_RE = /\b(?:that (?:whole |same |first |very )?(?:evening|day|night|morning|week|batch|load|time|moment|winter|fair|buyer|customer)|after that|since then|from then on)\b/i
 const contentOf = (t: string) => new Set(String(t ?? '').toLowerCase().match(/[a-z]{4,}/g)?.filter((w) => !STOP.has(w)) ?? [])
 
-export function finalCheck<B extends { section?: unknown; line?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { note?: string; profileTexts?: readonly string[]; targetProductId?: string | null; products?: ReadonlyArray<{ id: string; name: string }> } = {}): { beats: B[]; record: FinalCheck } {
+/**
+ * compare-3 proof fix 2: the story an item belongs to. Her story is its own;
+ * an answer to a piece question (`mn:fo:piece:<story>:<piece>`) belongs to
+ * that story; a story answer (`mn:fo:story:`) is a story of its own; a saved
+ * answer maps through `storyOf` (knowledge id → story id). Anything else
+ * (a product fact, an offer, a general fact) belongs to no story.
+ */
+export function storyIdOfItem(id: string | null, items: readonly WriterItem[], storyOf?: ReadonlyMap<string, string>): string | null {
+  if (!id) return null
+  const mapped = storyOf?.get(id)
+  if (mapped) return mapped
+  const piece = /(?:^|:)mn:fo:piece:([^:]+):/.exec(id)
+  if (piece) return piece[1]!
+  const it = items.find((x) => x.id === id)
+  if (!it || it.profile || it.id === 'note') return null
+  if (it.origin === 'her_story') return it.id
+  if (it.origin === 'her_answer') return /mn:fo:story:|(?:^|:)story(?:$|:)/i.test(it.id) ? it.id : null
+  return null
+}
+
+// ── STORY CHOICE BY EVENTS (owner, 26 Nov, proof fix 6) ────────────────────
+// A request can fit more than one of her stories. Prefer the story whose
+// EVENTS fit the request (what happened, not shared words like "batch"), and
+// among stories that fit about as well, one she has not used in her last few
+// scripts. Event words are folded (threw/thrown → throw; discarded/binned →
+// throw) so "the batch I had to throw out" fits "I discarded forty jars".
+const EVENT_FOLD: Array<[RegExp, string]> = [
+  [/^(?:throw|threw|thrown|throwing|discard\w*|bin|binned|toss\w*|scrap\w*|dump\w*|waste\w*|ruin\w*)$/, 'discard'],
+  [/^(?:start\w*|began|begin\w*|first|beginner\w*)$/, 'start'],
+  [/^(?:fail\w*|mistake\w*|wrong|disaster\w*|separat\w*|crack\w*|glued|weld\w*|broke\w*|broken)$/, 'fail'],
+  [/^(?:learn\w*|taught|lesson\w*|realis\w*|realiz\w*)$/, 'learn'],
+  [/^(?:sell\w*|sold|launch\w*|drop|order\w*|buy\w*|bought)$/, 'sell'],
+  [/^(?:make|made|making|weav\w*|wove|woven|glaz\w*|fir\w*|formulat\w*|mix\w*)$/, 'make'],
+]
+const eventTerms = (t: string): Set<string> => {
+  const out = new Set<string>()
+  for (const w of String(t ?? '').toLowerCase().match(/[a-z]+/g) ?? []) {
+    if (w.length < 3 || STOP.has(w)) continue
+    const f = EVENT_FOLD.find(([re]) => re.test(w))
+    out.add(f ? f[1] : w.length > 4 && w.endsWith('s') ? w.slice(0, -1) : w)
+  }
+  return out
+}
+/** How well a story's events fit the request: folded event words shared with the note (0 = does not fit). */
+export function eventFit(storyText: string, note: string): number {
+  const a = eventTerms(storyText), b = eventTerms(note)
+  let n = 0
+  for (const w of b) if (a.has(w)) n += EVENT_FOLD.some(([, k]) => k === w) ? 2 : 1
+  return n
+}
+/**
+ * The one story a request is built on: best event fit; among stories within
+ * one point of the best, one not used in her recent scripts first. Null when
+ * no story fits. Deterministic, so the question step and the writer agree.
+ */
+export function chooseStory(rows: ReadonlyArray<{ id?: unknown; text?: unknown; kind?: unknown }>, note: string, recent: ReadonlyMap<string, number> = new Map()): { id: string; fit: number } | null {
+  const scored = rows.map((r) => ({ id: String(r?.id ?? ''), fit: eventFit(String(r?.text ?? ''), note) })).filter((x) => x.id && x.fit > 0)
+  if (!scored.length) return null
+  const best = Math.max(...scored.map((x) => x.fit))
+  const near = scored.filter((x) => x.fit >= best - 1)
+  near.sort((a, b) => ((recent.get(a.id) ?? 0) > 0 ? 1 : 0) - ((recent.get(b.id) ?? 0) > 0 ? 1 : 0) || b.fit - a.fit || (recent.get(a.id) ?? 0) - (recent.get(b.id) ?? 0) || a.id.localeCompare(b.id))
+  return near[0]!
+}
+
+export function finalCheck<B extends { section?: unknown; line?: unknown }>(beats: readonly B[], items: readonly WriterItem[], extra: { note?: string; profileTexts?: readonly string[]; targetProductId?: string | null; products?: ReadonlyArray<{ id: string; name: string }>; centerpieceId?: string | null; storyOf?: ReadonlyMap<string, string>; answerIds?: readonly string[] } = {}): { beats: B[]; record: FinalCheck } {
   const scope = productScope(extra.targetProductId, extra.products ?? [], items)
   const profileTexts = [...items.filter((it) => it.profile).map((it) => it.text), ...(extra.profileTexts ?? [])].filter((t) => t.trim().split(/\s+/).length >= 3)
   const pool = items.filter((it) => (it.layer === 'fact' || it.opinion) && !it.profile && it.id !== 'note' && !belongsElsewhere(it, scope))
@@ -952,11 +1027,14 @@ export function finalCheck<B extends { section?: unknown; line?: unknown }>(beat
     return best
   }
   let out: Array<B & { _src?: string[] }> = []
+  const staged: Array<{ b: B; i: number; kept: string[]; srcIds: string[]; keptSrc: Array<string | null>; keptLog: number[] }> = []
   beats.forEach((b, i) => {
     const raw = typeof b?.line === 'string' ? b.line.trim() : ''
     if (!raw) { out.push({ ...b }); return }
     const kept: string[] = []
     const srcIds: string[] = []
+    const keptSrc: Array<string | null> = []
+    const keptLog: number[] = []
     for (const sentence of raw.split(SENTENCES).map((x) => x.trim()).filter(Boolean)) {
       const log = (kept_: boolean, why: FinalWhy, src: WriterItem | null = null) => lines.push({ beat: i, line: sentence, source: src ? src.id : null, origin: src ? src.origin : null, kept: kept_, why })
       if (profileTexts.some((t) => overlap(sentence, t) >= 0.5 || (SELF_INTRO.test(sentence) && overlap(sentence, t) >= 0.2)) || SELF_INTRO.test(sentence)) { log(false, 'profile'); continue }
@@ -968,9 +1046,9 @@ export function finalCheck<B extends { section?: unknown; line?: unknown }>(beat
         const saveOff = !!save && !new RegExp(`\\b${save[1]}`, 'i').test(allText) && !/^(?:video|post|reel|one|this)$/i.test(save[1]!)
         const num = numbersOf(sentence).some((n) => !numbersOf(allText).includes(n))
         if (dm || restock || saveOff || num) { log(false, 'cta_not_on_file'); continue }
-        kept.push(sentence); log(true, 'cta_on_file'); continue
+        kept.push(sentence); keptSrc.push(null); keptLog.push(lines.length); log(true, 'cta_on_file'); continue
       }
-      if (/\?\s*$/.test(sentence) && !numbersOf(sentence).length && !FIRST_PERSON_HISTORY.test(sentence)) { kept.push(sentence); log(true, 'viewer_question'); continue }
+      if (/\?\s*$/.test(sentence) && !numbersOf(sentence).length && !FIRST_PERSON_HISTORY.test(sentence)) { kept.push(sentence); keptSrc.push(null); keptLog.push(lines.length); log(true, 'viewer_question'); continue }
       // Connecting words cannot join two of her stories she never joined.
       const join = JOIN_RE.exec(sentence)
       if (join && join.index > 0) {
@@ -990,10 +1068,45 @@ export function finalCheck<B extends { section?: unknown; line?: unknown }>(beat
       const contained = norm(src.item.text).includes(norm(sentence)) && norm(sentence).split(' ').length >= 2
       const supported = contained || (src.meaning >= 0.34 && src.added.words.length <= 3 && src.added.share < 0.5)
       if (!supported) { log(false, 'no_source'); continue }
-      kept.push(sentence); srcIds.push(src.item.id); log(true, 'sourced', src.item)
+      kept.push(sentence); srcIds.push(src.item.id); keptSrc.push(src.item.id); keptLog.push(lines.length); log(true, 'sourced', src.item)
     }
-    if (kept.length) out.push({ ...b, line: kept.join(' '), _src: srcIds })
+    if (kept.length) staged.push({ b, i, kept, srcIds, keptSrc, keptLog })
   })
+  // compare-3 proof fix 2 (owner, 26 Nov): ONE story per script. Her answers
+  // belong to the story they were asked about. The centerpiece is the story
+  // chosen for the request (else the one with the most kept lines); a line
+  // whose source is another story, or another story's answer, is cut.
+  const storyIdOf = (id: string | null): string | null => storyIdOfItem(id, items, extra.storyOf)
+  const tally0 = new Map<string, number>()
+  for (const st of staged) for (const id of st.keptSrc) { const sid = storyIdOf(id); if (sid) tally0.set(sid, (tally0.get(sid) ?? 0) + 1) }
+  const chosen = extra.centerpieceId && (tally0.has(extra.centerpieceId) || (extra.answerIds ?? []).some((a) => storyIdOf(a) === extra.centerpieceId)) ? extra.centerpieceId : null
+  const center = chosen ?? [...tally0.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+  for (const st of staged) {
+    const keep: number[] = []
+    st.keptSrc.forEach((id, k) => {
+      const sid = storyIdOf(id)
+      if (center && sid && sid !== center) { const l = lines[st.keptLog[k]!]!; l.kept = false; l.why = 'other_story' } else keep.push(k)
+    })
+    if (keep.length) out.push({ ...st.b, line: keep.map((k) => st.kept[k]).join(' '), _src: keep.map((k) => st.keptSrc[k]).filter((x): x is string => !!x) })
+  }
+  // compare-3 proof fix 1: her answer given for this request is in the script,
+  // with its story. If no kept line uses it, her own words go in right after
+  // the last line of that story (after the opening line when none is left).
+  for (const aid of extra.answerIds ?? []) {
+    const it = items.find((x) => x.id === aid)
+    if (!it || it.layer !== 'fact' || it.profile) continue
+    const sid = storyIdOf(aid)
+    if (center && sid && sid !== center) continue
+    if (out.some((b) => (b._src ?? []).includes(aid))) continue
+    const text = it.text.replace(/\s+/g, ' ').trim().replace(/([^.!?])$/, '$1.')
+    if (!text || out.some((b) => overlap(String(b.line ?? ''), text) >= 0.6)) continue
+    let at = -1
+    out.forEach((b, k) => { if ((b._src ?? []).some((x) => storyIdOf(x) === (sid ?? center))) at = k })
+    if (at < 0) at = out.findIndex((b) => typeof b.line === 'string' && b.line.trim())
+    const nb = { section: 'Story', line: text, source_ids: [aid], _src: [aid] } as unknown as B & { _src?: string[] }
+    out.splice(at + 1, 0, nb)
+    lines.push({ beat: at + 1, line: text, source: aid, origin: it.origin, kept: true, why: 'answer_added' })
+  }
   // e) Order: a line that points back ("that whole evening") comes after the
   // line that tells what it points to; moved up when that line comes later.
   let moved = 0
@@ -1011,10 +1124,8 @@ export function finalCheck<B extends { section?: unknown; line?: unknown }>(beat
   const keptIds = new Set(lines.filter((x) => x.kept && x.source).map((x) => x.source!))
   const fitting = new Set(pool.filter((it) => overlap(it.text, note) > 0).map((it) => it.id))
   const off = !!note.trim() && ![...keptIds].some((id) => fitting.has(id)) && !out.some((b) => overlap(String(b.line ?? ''), note) >= 0.34)
-  // f) The centerpiece: the story with the most kept lines.
-  const tally = new Map<string, number>()
-  for (const x of lines) if (x.kept && x.source && stories.some((s) => s.id === x.source)) tally.set(x.source, (tally.get(x.source) ?? 0) + 1)
-  const centerpiece = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+  // f) The centerpiece: the story the script tells (one story per script).
+  const centerpiece = center
   const clean = out.map(({ _src: _s, ...b }) => b as unknown as B)
   const thin = scriptThin(clean as Array<{ line?: unknown }>)
   return { beats: clean, record: { lines, cut: lines.filter((x) => !x.kept).length, moved, off_request: off, centerpiece, words: thin.words, spoken_lines: thin.lines } }
@@ -1081,12 +1192,25 @@ export type FoAskFirst =
  */
 export function planAskFirst(req: FoRequest, items: readonly WriterItem[], opts: { ledger?: readonly LedgerItem[]; closedKeys?: readonly string[]; savedAnswers?: readonly string[]; askedKeys?: readonly string[]; askedTexts?: readonly string[]; storiesOnFile?: number; skip?: boolean; answeredHere?: boolean; namedStoryId?: string | null; restingIds?: ReadonlySet<string>; savedByStory?: ReadonlyMap<string, string[]> } = {}): FoAskFirst {
   const base = planFactsOnly(req, items, opts)
-  if (base.action === 'stop') return { action: 'stop' }
+  const ctx0 = { closedKeys: opts.closedKeys, askedKeys: opts.askedKeys, askedTexts: opts.askedTexts, savedAnswers: opts.savedAnswers }
+  if (base.action === 'stop') {
+    // compare-3 proof fix 3: a creator with no usable story first gets ONE
+    // specific story question about this request; the next steps come only
+    // once that question has been asked (or she skipped).
+    if (opts.skip) return { action: 'stop' }
+    const asked = new Set([...(opts.closedKeys ?? []), ...(opts.askedKeys ?? [])])
+    const storyKeys = [...needsFor(req).filter((x) => x.kind === 'story').map((x) => x.key), thinQuestion(req, {})?.key].filter((k): k is string => !!k)
+    if (storyKeys.some((k) => asked.has(k))) return { action: 'stop' }
+    const q = thinQuestion(req, { closedKeys: [...asked], savedAnswers: opts.savedAnswers })
+    return q && q.kind === 'story' && questionRulesOk(q, req, ctx0) ? { action: 'ask', tier: 'gaps', story: null, questions: [q] } : { action: 'stop' }
+  }
   const rel = relevantItems(req, items, opts.ledger ?? [])
   const fitStories = rel.filter((it) => STORY_ORIGINS.has(it.origin) && it.id !== 'note' && !it.id.startsWith('answer:') && !it.profile)
   const resting = opts.restingIds ?? new Set<string>()
   const ordered = [...fitStories].sort((a, b) => overlap(b.text, req.note) - overlap(a.text, req.note))
-  const story = fitStories.find((s) => s.id === opts.namedStoryId) ?? ordered.find((s) => !resting.has(s.id)) ?? ordered[0] ?? null
+  // proof fix 6: the story chosen by events and recent use (chooseStory) wins.
+  const chosen = opts.namedStoryId ? items.find((s) => s.id === opts.namedStoryId && s.layer === 'fact' && !s.profile) ?? null : null
+  const story = chosen ?? ordered.find((s) => !resting.has(s.id)) ?? ordered[0] ?? null
   if (opts.skip || opts.answeredHere) return { action: 'write', story: story?.id ?? null }
   const ctx = { closedKeys: opts.closedKeys, askedKeys: opts.askedKeys, askedTexts: opts.askedTexts, savedAnswers: opts.savedAnswers }
   if (story || rel.filter((it) => it.id !== 'note').length >= 3) {

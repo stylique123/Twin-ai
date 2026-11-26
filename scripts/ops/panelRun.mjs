@@ -79,6 +79,12 @@ export function panelFilterFromEnv(env = process.env, group = '') {
   const rangeTok = tokens.find((x) => x.startsWith('panel-range:'))?.slice('panel-range:'.length) ?? ''
   const out = { modes: [...new Set([...fromEnv, ...fromGroup])], range: String(env.PANEL_RANGE ?? '').trim() || rangeTok.trim() }
   if (tokens.includes('panel-viewer-arms')) out.viewerArms = true
+  // compare-3 proofs: `panel-repeat:7+29` runs those requests (1-based, like the
+  // range) a second time at the end, for the same creator, so the second
+  // question can be checked against the first.
+  const repTok = tokens.find((x) => x.startsWith('panel-repeat:'))?.slice('panel-repeat:'.length) ?? ''
+  const repeat = repTok.split(/[+;]/).map((x) => Number(x.trim())).filter((x) => Number.isInteger(x) && x >= 1)
+  if (repeat.length) out.repeat = repeat
   return out
 }
 
@@ -107,6 +113,16 @@ export function panelScenarios(fixture, accountsDoc, limit = Infinity, filter = 
       ...(r.angle ? { angle: { kind: r.angle, gist: r.note } } : {}) }
     return { n, group: 'panel', mode, label: `${r.creator} ${r.kind}`, id: r.id ?? null, template: r.template ?? null, profile: r.profile ?? null, lacks: r.lacks ?? [], creator: r.creator, kind: r.kind, product: r.product ?? null, owner_id: acct.owner_id, email: acct.email, reference: mode === 'reference' ? r.reference : null, body }
   })
+}
+
+/** Repeat scenarios: request k (1-based) again, last, as n = REPEAT_BASE + fixture index (request_n keeps the index). */
+export const REPEAT_BASE = 1000
+export function withRepeats(list, fixture, accountsDoc, repeat = []) {
+  const extra = repeat.map((k) => {
+    const base = panelScenarios(fixture, accountsDoc, Infinity, { range: String(k) })[0]
+    return base ? { ...base, n: REPEAT_BASE + base.n, request_n: base.n, repeat_of: base.n } : null
+  }).filter(Boolean)
+  return [...list, ...extra]
 }
 
 /** The `transcripts` row a fictional reference is stored as: the creator's own row (the edge reads
@@ -442,7 +458,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'))
   const budget = Number(process.env.PANEL_BUDGET_USD || 2.5)
   const qArms = qualityArms(accounts)
-  const list = expandQualityArms(panelScenarios(fixture, accounts, limit, filter), qArms)
+  const list = withRepeats(expandQualityArms(panelScenarios(fixture, accounts, limit, filter), qArms), fixture, accounts, filter.repeat ?? [])
   if (qArms.length) console.log(`panel ${batch}: quality arms ${qArms.join(' | ')}${qArms.length > 1 ? ` on the SAME ${list.length / qArms.length} requests (arm k stored at n + ${QUALITY_ARM_STRIDE}k)` : ''}`)
   if (qArms.length && refillArm(accounts)) console.log(`::warning title=panel-arms::refill_arm is also set; an explicit refill_arm wins over the profile's refill on the edge`)
   if (filter.modes.length || filter.range) console.log(`panel ${batch}: subset modes=${filter.modes.join(',') || 'all'} range=${filter.range || 'all'} -> ${list.length} requests, est $${panelEstimate(list.length).toFixed(2)} at $${PANEL_EST_USD_PER_REQUEST}/request`)

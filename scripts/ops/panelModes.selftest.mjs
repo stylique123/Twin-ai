@@ -127,3 +127,7 @@ const src = readFileSync(new URL('./panelRun.mjs', import.meta.url), 'utf8')
 assert.ok(!/fetch\([^)]*reference/.test(src), 'no fetch of a reference url')
 
 console.log('panel modes selftest: ok')
+// compare-3 proofs: a second request for the same creator.
+assert.deepEqual(panelFilterFromEnv({}, 'panel,panel-range:7,panel-repeat:7+29').repeat, [7, 29])
+assert.equal(panelFilterFromEnv({}, 'panel').repeat, undefined)
+console.log('panel modes selftest (repeat): ok')

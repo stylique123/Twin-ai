@@ -123,7 +123,8 @@ export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string
     // compare-3 item 10: the final check runs last here too (the worker's
     // passes can add lines after the edge's check). Cuts only; logged per line.
     const note = items.find((it) => it.id === 'note')?.text ?? ''
-    const fc = finalCheck(bp.script as Array<Record<string, unknown>>, items, { note, targetProductId: target, products })
+    const storyOf = new Map(Object.entries(rec(extra.facts_only_story_of)).map(([k, v]) => [k, String(v)]))
+    const fc = finalCheck(bp.script as Array<Record<string, unknown>>, items, { note, targetProductId: target, products, centerpieceId: typeof extra.facts_only_centerpiece === 'string' ? extra.facts_only_centerpiece : null, storyOf, answerIds: Array.isArray(extra.facts_only_answer_ids) ? extra.facts_only_answer_ids.map(String) : [] })
     bp.script = fc.beats
     resyncShotListToScript(bp)
     const thinF = scriptThin(bp.script as Array<{ line?: unknown; section?: unknown }>)
@@ -143,6 +144,10 @@ export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string
 export function applyQualityController(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: Parameters<typeof runQualityController>[0]['ledger'], products: Array<{ id: string; name: string }>, target: string | null, generationId: string): void {
   const q = extra.quality_controller
   if (!q || typeof q !== 'object' || !Array.isArray(bp.script)) return
+  // compare-3 proof fix 4 (owner, 26 Nov): no product-fact top-up on the
+  // facts-only path. A thin script asks the one question that would fix it;
+  // facts are never tacked on as a list after the final check.
+  if (extra.facts_only === true) { bp.qc_report = { version: 'qc-v1', skipped: 'facts_only' }; return }
   const o = q as Record<string, unknown>
   try {
     const profile: QcProfile = o.profile === 'sprint' || o.profile === 'deep' ? o.profile : 'standard'
