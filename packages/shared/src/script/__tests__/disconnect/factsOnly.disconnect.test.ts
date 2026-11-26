@@ -63,7 +63,7 @@ describe('FACTS_ONLY_WRITER wiring', () => {
     const block = EDGE.slice(EDGE.indexOf("if (factsOnlyNow() && blueprint && typeof blueprint === 'object'"), EDGE.indexOf("traceBeats('shipped',"))
     expect(block).toContain('dropRepeatedOpening(')
     expect(block).toContain('suppliedKnowledgeIds = suppliedKnowledgeIds.filter((id) => usedIds.has(id))')
-    expect(block).toContain("const thin0 = scriptThin(bpo.script as Array<{ line?: unknown }>)")
+    expect(block).toContain("const thin0 = scriptShipThin(bpo.script as Array<{ line?: unknown }>)")
     expect(block).toContain("const fc = finalCheck(")
     expect(block).toContain("await refundOnce('facts_only_thin')")
     expect(block).toMatch(/code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true/)
@@ -71,7 +71,7 @@ describe('FACTS_ONLY_WRITER wiring', () => {
     expect(EDGE).toContain("!foResting.has(String((k as { id?: unknown }).id ?? ''))")
     // compare-1: the named story is kept out of the resting set.
     expect(EDGE).toContain('restingStoryIds(kRows as Array<{ id?: unknown; kind?: unknown }>, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, foKeep)')
-    expect(EDGE).toMatch(/const foNamed = factsOnlyNow\(\) && !chosenRows\n\s*\? askedStory\(/)
+    expect(EDGE).toMatch(/const foNamed = factsOnlyNow\(\) && !chosenRows\n\s*\? chooseStory\(/)
     expect(WORKER).toContain('thin_after_worker')
     // compare-1 follow-up: profile notes and her last 3 scripts reach the edge trace.
     expect(EDGE).toContain('const foPriorLines = priorScripts.slice(0, 3)')
