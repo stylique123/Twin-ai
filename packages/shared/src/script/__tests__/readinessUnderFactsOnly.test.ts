@@ -27,8 +27,13 @@ describe('readiness questions while FACTS_ONLY_WRITER is on', () => {
     expect(readinessAsksUnderFactsOnly([generic], true, OBJECTIVE)).toEqual([generic])
   })
   it('other readiness fields are untouched under the flag', () => {
-    const rest = [ask('relationship'), ask('origin'), ask('selected_product'), ask('screen')]
+    const rest = [ask('relationship'), ask('origin')]
     expect(readinessAsksUnderFactsOnly(rest, true, OBJECTIVE)).toEqual(rest)
+  })
+  it('compare-2: the screen question and the product picker stand down under the flag, not without it', () => {
+    const qs = [ask('selected_product', 'Which one is this video about?'), ask('screen', "I couldn't find a screen or page of FlowDesk to show.")]
+    expect(readinessAsksUnderFactsOnly(qs, true, OBJECTIVE)).toEqual([])
+    expect(readinessAsksUnderFactsOnly(qs, false, OBJECTIVE)).toEqual(qs)
   })
   it('only the stood-down fields go; nothing asked when all three were the only questions', () => {
     expect(readinessAsksUnderFactsOnly(ALL.slice(0, 3), true, OBJECTIVE)).toEqual([])

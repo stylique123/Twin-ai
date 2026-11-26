@@ -26,7 +26,7 @@ describe('FACTS_ONLY_WRITER wiring', () => {
   it('her gap answers are saved first, before the gap check reads what is closed', () => {
     const save = EDGE.indexOf("const r = await storeAngleAnswer(admin, user, { key, piece: kind === 'story' ? 'story' : kind, answer: v }, pidQ, { topicKey: key })")
     const check = EDGE.indexOf('const closedKeys = closedKeysFrom(')
-    const decide = EDGE.indexOf('const d = decideFactsOnly(')
+    const decide = EDGE.indexOf('const d = planAskFirst(')
     expect(save).toBeGreaterThan(0)
     expect(save).toBeLessThan(check)
     expect(check).toBeLessThan(decide)
@@ -63,10 +63,11 @@ describe('FACTS_ONLY_WRITER wiring', () => {
     const block = EDGE.slice(EDGE.indexOf("if (factsOnlyNow() && blueprint && typeof blueprint === 'object'"), EDGE.indexOf("traceBeats('shipped',"))
     expect(block).toContain('dropRepeatedOpening(')
     expect(block).toContain('suppliedKnowledgeIds = suppliedKnowledgeIds.filter((id) => usedIds.has(id))')
-    expect(block).toContain("const thin = scriptThin(bpo.script as Array<{ line?: unknown }>)")
+    expect(block).toContain("const thin0 = scriptThin(bpo.script as Array<{ line?: unknown }>)")
+    expect(block).toContain("const fc = finalCheck(")
     expect(block).toContain("await refundOnce('facts_only_thin')")
     expect(block).toMatch(/code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true/)
-    expect(EDGE).toContain('const foResting = factsOnlyNow() && !chosenRows ? restingStoryIds(')
+    expect(EDGE).toContain('const foRestingAll = factsOnlyNow() && !chosenRows ? restingStoryIds(')
     expect(EDGE).toContain("!foResting.has(String((k as { id?: unknown }).id ?? ''))")
     // compare-1: the named story is kept out of the resting set.
     expect(EDGE).toContain('restingStoryIds(kRows as Array<{ id?: unknown; kind?: unknown }>, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, foKeep)')

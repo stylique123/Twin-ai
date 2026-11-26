@@ -282,6 +282,8 @@ export interface GenerateInput {
    *  them retries the same build; the creator-stable ones are persisted so the
    *  question is never asked twice, while goal/angle/cta stay per-video. */
   readiness_answers?: Record<string, string>
+  /** Facts-only (test accounts): "Skip and write now" on the question step before the script. */
+  skip_questions?: boolean
   /**
    * Which product THIS video is about, when the creator owns more than one.
    *
@@ -490,6 +492,8 @@ export const READINESS_INCOMPLETE_CODE = 'READINESS_INCOMPLETE'
  *  not a missing input — the goal and the library CONTRADICT each other, and the
  *  creator has to change one of them. So it carries remedies rather than
  *  questions: things to go and do, not boxes to fill in here. */
+/** Facts-only stop: not enough of her material (with `next_steps` when nothing is left to ask). */
+export const NEEDS_STORY_CODE = 'NEEDS_STORY'
 export const SELL_WITHOUT_TARGET_CODE = 'SELL_WITHOUT_COMMERCIAL_TARGET'
 /**
  * ⚠⚠ NOTHING WAS CHARGED, AND NO ANSWER UNBLOCKS IT EITHER — SHE IS SIMPLY OUT.
@@ -552,6 +556,8 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
     let code: string | undefined
     let questions: ReadinessQuestion[] | undefined
     let remedies: string[] | undefined
+    let nextSteps: Array<{ kind: string; suggestion: string; where: { path: string; label: string } }> | undefined
+    let canSkip = false
     const ctx = (error as { context?: Response }).context
     if (ctx && typeof ctx.json === 'function') {
       try {
@@ -574,6 +580,9 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
         // creator could do is worth nothing if the client shows only the
         // sentence — the remedies ARE the way out.
         if (Array.isArray(body?.remedies)) remedies = body.remedies.map(String)
+        // Facts-only thin stop: what to add and where (a path in this app).
+        if (Array.isArray(body?.next_steps)) nextSteps = body.next_steps
+        if (body?.can_skip === true) canSkip = true
       } catch {
         /* fall back to msg */
       }
@@ -586,11 +595,13 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
       code = OUT_OF_REMIXES_CODE
     }
     const err = new Error(msg) as Error & {
-      code?: string; questions?: ReadinessQuestion[]; remedies?: string[]
+      code?: string; questions?: ReadinessQuestion[]; remedies?: string[]; nextSteps?: typeof nextSteps; canSkip?: boolean
     }
     if (code) err.code = code
     if (questions) err.questions = questions
     if (remedies) err.remedies = remedies
+    if (nextSteps) err.nextSteps = nextSteps
+    if (canSkip) err.canSkip = true
     throw err
   }
   return data as Generation

@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   traceAndCut, traceHooks, productScope, otherProductWords, belongsElsewhere, scriptThin, thinQuestion,
-  restingStoryIds, dropRepeatedOpening, decideFactsOnly, writerItems, openingOf, polishFactsOnly, stripFiller, type WriterItem,
+  restingStoryIds, dropRepeatedOpening, decideFactsOnly, writerItems, planAskFirst, pieceKey, knownPieces, pieceQuestion, STORY_PIECES, planFactsOnly, questionRulesOk, needsFor, QUESTION_BANNED, fittingStoryIds, openingOf, polishFactsOnly, stripFiller, type WriterItem,
 } from '../factsOnly'
 
 let n = 0
@@ -158,7 +158,6 @@ describe('Fix 1: a thin script stops and asks one question', () => {
       { section: 'CTA', line: 'Harbor Fog Scarf at https://example.com/quiet-loom' },
     ]
     expect(scriptThin(n31).thin).toBe(true)
-    expect(scriptThin([{ line: 'Tell me in the comments what you think about this.' }]).words).toBe(0)
   })
   it('null when everything worth asking is closed', () => {
     const req = { note: 'weaving' }
@@ -247,8 +246,12 @@ describe('compare-1 follow-up (owner, 22 Nov)', () => {
   })
   it('a stock line one of her last scripts said rests', () => {
     const prior = ['I think most small shops do not need a help desk, they need fewer repeat emails.']
-    const r = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('why small shops should not buy a help desk yet')], { priorLines: prior })
+    const r = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('the inbox before and after saved replies')].map((x) => x.id === 'note' ? x : x), { priorLines: prior })
+    // (the request is not about help desks: the stock opinion only fits weakly)
     expect(r.record.cut.stock_line).toBe(1)
+    // compare-2 check: a stock line the request is plainly about is not rested.
+    const plain = traceAndCut(beats('Hello there.', 'I think most small shops do not need a help desk, they need fewer repeat emails.', 'Follow for more.'), [opinion, note('why most small shops do not need a help desk')], { priorLines: prior })
+    expect(plain.record.cut.stock_line).toBe(0)
   })
   it('a product tagline in a script about something else is cut; in a product script it stays (until rested)', () => {
     const items = [tagline, note('our first paying customer found a bug')]
@@ -265,5 +268,173 @@ describe('compare-1 follow-up (owner, 22 Nov)', () => {
     expect(kept(r).join(' ')).not.toMatch(/winter, and it was terrifying/)
     expect(kept(r).join(' ')).toMatch(/forty minutes, and it was terrifying/)
     expect(r.record.cut.moved_feeling).toBe(1)
+  })
+})
+
+describe('compare-3 (owner, 24 Nov): write first, at most one optional question', () => {
+  const glowNote = { ref: 'N', id: 'note', origin: 'her_answer', text: 'the batch I had to throw out', layer: 'fact' as const }
+  it('a story on file that fits is used: write, no stop (Glow Lab "the batch I had to throw out")', () => {
+    const p = planFactsOnly({ note: 'the batch I had to throw out' }, [...glow, glowNote])
+    expect(p.action).toBe('write')
+    expect(p.relevant.length).toBeGreaterThan(0)
+  })
+  it('stops only when almost nothing real fits (no relevant item, no story, no product fact)', () => {
+    expect(planFactsOnly({ note: 'how to choose yarn for a first winter scarf' }, []).action).toBe('stop')
+    expect(planFactsOnly({ note: 'my first winter scarf' }, [fact('I wove my first scarf over one winter.')]).action).toBe('write')
+    // some material but a lot of gaps: stop and ask up to 3 specific questions
+    const gaps = planFactsOnly({ note: 'how to choose yarn' }, [fact('I wove my first scarf over one winter.')])
+    expect(gaps.action).toBe('ask')
+    expect(gaps.questions.length).toBeGreaterThan(0)
+    expect(gaps.questions.length).toBeLessThanOrEqual(3)
+  })
+  it('the optional question names the specific thing and never uses the generic wording', () => {
+    for (const req of [{ note: 'the day my first batch burned' }, { note: 'Calm Cream launch', product: { id: 'calm-cream', name: 'Calm Cream' } }, { note: 'clay' }]) {
+      const p = planFactsOnly(req, [fact('An unrelated note about tea.')])
+      for (const q of p.questions) {
+        expect(questionRulesOk(q, req)).toBe(true)
+        expect(q.question).not.toMatch(/one real thing that happened|to you or a customer/i)
+        expect(q.question.includes(req.product?.name ?? req.note)).toBe(true)
+      }
+    }
+    for (const q of needsFor({ note: 'clay' })) expect(q.question).not.toMatch(QUESTION_BANNED)
+    expect(thinQuestion({ note: 'clay' })!.question).not.toMatch(QUESTION_BANNED)
+  })
+  it('never repeated for the creator, never already answered', () => {
+    const req = { note: 'the day my first batch burned' }
+    const base = [fact('An unrelated note about tea.')]
+    const q = planFactsOnly(req, base).questions[0]!
+    const keysOf = (o: object) => planFactsOnly(req, base, o).questions.map((x) => x.key)
+    expect(keysOf({ askedKeys: [q.key] })).not.toContain(q.key)
+    expect(keysOf({ closedKeys: [q.key] })).not.toContain(q.key)
+    // the same question under a different key is caught by its meaning
+    expect(planFactsOnly(req, base, { askedTexts: [q.question] }).questions.map((x) => x.question)).not.toContain(q.question)
+    expect(planFactsOnly(req, base, { savedAnswers: [q.question] }).questions.map((x) => x.question)).not.toContain(q.question)
+  })
+  it('never about profile, niche or audience', () => {
+    for (const text of ['Who is this video for?', 'What is your niche?', 'Describe your audience for "clay".', 'What is one real thing that happened to you or a customer for "clay"?'])
+      expect(questionRulesOk({ key: 'k', kind: 'story', question: text }, { note: 'clay' })).toBe(false)
+    expect(questionRulesOk({ key: 'k', kind: 'story', question: 'What is the moment behind "clay"?' }, { note: 'clay' })).toBe(true)
+    expect(questionRulesOk({ key: 'k', kind: 'story', question: 'What happened?' }, { note: 'clay' })).toBe(false)
+  })
+})
+
+describe('compare-2 shipped defects', () => {
+  const fd = [
+    fact('We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.'),
+    fact('I once lost a whole Saturday to a support ticket that was really a typo in our help page.'),
+    { ref: 'B1', id: 'answer:profile', origin: 'her_answer', text: 'I am a small skincare maker, and I speak to people whose skin is tired of stinging products.', layer: 'background' as const, profile: true },
+  ]
+  it('S-85B1C6 / S-C955A7: a paraphrased self-introduction is a profile line', () => {
+    const r = traceAndCut(beats('Hello there.', 'I am a small skincare maker, and my skin dislikes stinging products.', 'Follow for more.'), fd)
+    expect(r.record.cut.profile_line).toBe(1)
+  })
+  it('S-4126D9: an invented sample reply in the closing beat is cut; a call to action stays', () => {
+    const r = traceAndCut(beats('Here is the rewrite.', 'We counted. Forty percent of our own support email was the same five questions.', 'Thanks for checking in. Your order is on the way, and your tracking link is right here. Grab the template, link in bio.'), fd)
+    const close = kept(r)[kept(r).length - 1]
+    expect(close).not.toMatch(/Thanks for checking in|order is on the way/)
+    expect(close).toMatch(/link in bio/)
+  })
+  it('S-0AA5A8: an invented "DM me" is cut; kept when her material offers DMs', () => {
+    expect(traceAndCut(beats('Hello there.', 'We counted. Forty percent of our own support email was the same five questions.', 'DM me and we will talk it through.'), fd).record.cut.invented_cta).toBe(1)
+    const withDm = [...fd, fact('DM me the word INBOX and I send the template.', 'offer')]
+    expect(traceAndCut(beats('Hello there.', 'We counted.', 'DM me and we will talk it through.'), withDm).record.cut.invented_cta).toBe(0)
+  })
+  it('S-5C7731: an orphan fragment with no source is cut', () => {
+    const r = traceAndCut(beats('Hello there.', 'It was just unclear copy. And this is what changes the entire problem.', 'Follow for more.'), fd)
+    expect(r.record.cut.orphan).toBe(2)
+  })
+  it('S-339D5F / S-20D4B5: a first-person line adding actions to its source is cut', () => {
+    const loom = [fact('Woven by hand on a floor loom, then washed and pressed.', 'product_fact', 'scarf')]
+    const r = traceAndCut(beats('Hello there.', 'I pull the weft through and check the tension on the floor loom.', 'Follow for more.'), loom)
+    expect(kept(r).join(' ')).not.toMatch(/weft/)
+  })
+})
+
+describe('compare-3: story rotation never removes the story the request fits', () => {
+  it('a fitting story is kept from resting', () => {
+    const rows = [{ id: 's1', kind: 'experience', text: 'My first batch separated in the jar overnight, and I threw out forty jars.' }, { id: 's2', kind: 'experience', text: 'A customer emailed me a photo of her empty jar.' }]
+    const recent = new Map([['s1', 2], ['s2', 2]])
+    const keep = fittingStoryIds(rows, 'the batch I had to throw out')
+    expect([...keep]).toContain('s1')
+    expect([...restingStoryIds(rows, recent, new Set(['experience']), 2, keep)]).toEqual(['s2'])
+  })
+  it('if resting would leave no story at all, none rests', () => {
+    const rows = [{ id: 's1', kind: 'experience', text: 'A' }, { id: 's2', kind: 'experience', text: 'B' }]
+    expect([...restingStoryIds(rows, new Map([['s1', 3], ['s2', 3]]), new Set(['experience']), 2)]).toEqual([])
+  })
+})
+
+describe('compare-3 cleanup and counts', () => {
+  it('a list never opens on "Another X"; a second "another" stays', () => {
+    const r = polishFactsOnly([{ line: 'Another reason is the label.' }, { line: 'Another reason is the list.' }])
+    expect(r.beats.map((b) => b.line)).toEqual(['One reason is the label.', 'Another reason is the list.'])
+  })
+  it('a promised count matches the items given, else "a few"', () => {
+    const short = polishFactsOnly([{ line: 'Three things I check on every label.' }, { line: 'Fragrance first.' }, { line: 'Then the list length.' }])
+    expect(short.beats[0]!.line).toBe('a few things I check on every label.')
+    const full = polishFactsOnly([{ line: 'Three things I check.' }, { line: 'Fragrance.' }, { line: 'Length of the list.' }, { line: 'Patch test result.' }])
+    expect(full.beats[0]!.line).toBe('Three things I check.')
+  })
+  it('an aside like "mind you" is said once per script', () => {
+    const r = polishFactsOnly([{ line: 'The clay decides, mind you, every time.' }, { line: 'I waxed the foot, mind you, after that.' }])
+    expect(r.beats.map((b) => b.line)).toEqual(['The clay decides, mind you, every time.', 'I waxed the foot after that.'])
+  })
+  it('the thin check counts every spoken line, the call to action included (S-2F02FB: 38 words is thin)', () => {
+    const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(' ')
+    expect(scriptThin([{ line: words(13) }, { line: words(13) }, { section: 'CTA', line: words(12) }]).thin).toBe(true)
+    expect(scriptThin([{ line: words(14) }, { line: words(14) }, { section: 'CTA', line: words(14) }])).toEqual({ words: 42, lines: 3, thin: false })
+  })
+  it('a stored self-introduction is a profile note, never a fact', () => {
+    const items = writerItems([{ id: 'k9', origin: 'her_story', product_id: null, field: 'experience', text: 'I am a small skincare maker, and I speak to people whose skin is tired of stinging products.', numbers: [], first_party: true, live: false, source_label: '' }] as never)
+    expect(items[0]).toMatchObject({ layer: 'background', profile: true })
+  })
+})
+
+describe('compare-3 item 1/1b: ask first, then write; the knowledge base grows', () => {
+  const jars = fact('My first batch separated in the jar overnight, and I threw out forty jars before I got the emulsion right.')
+  const note = { ref: 'N', id: 'note', origin: 'her_answer', text: 'the batch I had to throw out', layer: 'fact' as const }
+  const req = { note: 'the batch I had to throw out' }
+  it('a fitting story asks ONE question that deepens that story (Glow Lab forty jars)', () => {
+    const d = planAskFirst(req, [jars, note])
+    expect(d.action).toBe('ask')
+    if (d.action !== 'ask') return
+    expect(d.tier).toBe('deepen')
+    expect(d.questions).toHaveLength(1)
+    expect(d.questions[0]!.question).toMatch(/My first batch separated in the jar/)
+    expect(d.questions[0]!.key).toBe(pieceKey(jars.id, 'feeling'))
+  })
+  it('never asks a piece already known: the number (forty) is in the story', () => {
+    expect([...knownPieces(jars.text)]).toContain('number')
+    const d = planAskFirst(req, [jars, note], { closedKeys: [pieceKey(jars.id, 'feeling')] })
+    expect(d.action === 'ask' && d.questions[0]!.key).toBe(pieceKey(jars.id, 'when'))
+  })
+  it('second request: a different, deeper question; a saved answer makes its piece known (any key)', () => {
+    const first = planAskFirst(req, [jars, note])
+    const q1 = first.action === 'ask' ? first.questions[0]! : null
+    const second = planAskFirst(req, [jars, note], { askedKeys: [q1!.key], savedByStory: new Map([[jars.id, ['Honestly I felt sick about it.']]]) })
+    expect(second.action === 'ask' && second.questions[0]!.key).not.toBe(q1!.key)
+    expect(second.action === 'ask' && second.questions[0]!.key).not.toBe(pieceKey(jars.id, 'feeling'))
+  })
+  it('skip ("Skip and write now") or answers given in this request: write', () => {
+    expect(planAskFirst(req, [jars, note], { skip: true }).action).toBe('write')
+    expect(planAskFirst(req, [jars, note], { answeredHere: true }).action).toBe('write')
+  })
+  it('little material: up to 3 specific questions; almost nothing: stop', () => {
+    const little = planAskFirst({ note: 'how to choose yarn' }, [fact('An unrelated note about tea.')])
+    expect(little.action).toBe('ask')
+    if (little.action === 'ask') { expect(little.tier).toBe('gaps'); expect(little.questions.length).toBeLessThanOrEqual(3); for (const q of little.questions) expect(q.question).toMatch(/how to choose yarn/) }
+    expect(planAskFirst({ note: 'how to choose yarn' }, []).action).toBe('stop')
+  })
+  it('every piece question names the story and is never generic or about profile', () => {
+    for (const p of STORY_PIECES) {
+      const q = pieceQuestion(jars, { closedKeys: STORY_PIECES.filter((x) => x !== p).map((x) => pieceKey(jars.id, x)) })
+      if (!q) continue
+      expect(q.question).toMatch(/My first batch/)
+      expect(q.question).not.toMatch(QUESTION_BANNED)
+    }
+  })
+  it('a story with every piece known asks nothing more about it', () => {
+    const full = fact('In my first winter, my sister and I threw out forty jars; I felt sick, learned to test slowly, and ever since I chart every batch.')
+    expect(pieceQuestion(full)).toBeNull()
   })
 })

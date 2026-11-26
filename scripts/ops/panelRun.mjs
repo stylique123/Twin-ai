@@ -342,16 +342,67 @@ let panel14Doc = null
  * for this request; a fixture "skip", or a key the fixture does not hold, is
  * sent as the skip text, which the edge stores as skipped and closes.
  */
-export function panel14Answers(questions, body, requestId, doc = null) {
+export function panel14Answers(questions, body, requestId, doc = null, creator = null, request = null) {
   const d = doc ?? (panel14Doc ??= JSON.parse(readFileSync(PANEL14_ANSWERS, 'utf8')))
   const fixture = d?.requests?.[requestId]?.answers ?? {}
   const out = { ...(body.readiness_answers ?? {}) }
   for (const q of questions ?? []) {
     if (!q?.field) continue
     const v = fixture[q.field]
-    out[q.field] = typeof v === 'string' && v.trim() && v !== 'skip' ? v : PANEL_SKIP_ANSWER
+    // compare-3 (owner): the exact fixture answer when it is real material;
+    // otherwise answered BY KIND from her fictional material, so a stopped
+    // request can continue. Never her profile or niche text.
+    const exact = typeof v === 'string' && v.trim() && v !== 'skip' && !isProfileText(v, creator) ? v : null
+    out[q.field] = exact ?? answerByKind(q, creator, request) ?? PANEL_SKIP_ANSWER
   }
   return { readiness_answers: out }
+}
+
+const words = (t) => new Set(String(t ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? [])
+const shared = (a, b) => { const wb = words(b); let n = 0; for (const w of words(a)) if (wb.has(w)) n++; return n }
+/** compare-3: the fictional creator's answers to the story-piece questions (test accounts only). */
+export const PIECE_ANSWERS = {
+  feeling: 'Honestly, my stomach dropped. I was cross with myself, then relieved when it finally came right.',
+  number: 'It took about two weeks of evenings before it worked.',
+  when: 'It was a cold January, in my first year doing this.',
+  who: 'Just me at first. My sister came round the next day and helped me look at it.',
+  result: 'Since then I check that step every single time before anything goes out.',
+  lesson: 'I learned to slow down and change one thing at a time.',
+}
+/** A creator's profile or niche text (never an answer to a material question). */
+export function isProfileText(text, creator) {
+  const t = String(text ?? '').trim().toLowerCase()
+  if (!t) return false
+  if (/^(?:i am|i'm|we are|we're)\s+(?:a|an|the|just a)\b/.test(t)) return true
+  return ['profile', 'niche'].some((k) => String(creator?.answers?.[k] ?? '').trim().toLowerCase() === t)
+}
+/**
+ * compare-3: answer a facts-only question by its kind (story, proof, steps,
+ * opinion, number, product fact) from the creator's fictional material: the
+ * item that best fits the request. Null when nothing of that kind exists.
+ */
+export function answerByKind(q, creator, request) {
+  if (!creator) return null
+  const parts = String(q?.field ?? '').split(':')
+  // compare-3: a question deepening one piece of a story (mn:fo:piece:<story>:<piece>).
+  if (parts[2] === 'piece') return PIECE_ANSWERS[parts[4]] ?? null
+  const kind = String(q?.kind ?? parts[2] ?? 'story')
+  const note = `${request?.note ?? ''} ${q?.question ?? ''}`
+  const stories = (creator.stories ?? []).filter((s) => s?.text && !isProfileText(s.text, creator))
+  const best = (xs) => [...xs].sort((a, b) => shared(b.text, note) - shared(a.text, note))[0]?.text ?? null
+  const product = (creator.products ?? []).find((p) => p.key === request?.product) ?? null
+  const facts = (product?.facts ?? []).map((f) => String(f?.value ?? '')).filter(Boolean)
+  switch (kind) {
+    case 'product_fact': return facts.length ? facts.slice(0, 2).join('. ') : (creator.answers?.product_slot ?? null)
+    case 'steps': return best(stories.filter((s) => s.kind === 'framework')) ?? best(stories.filter((s) => s.kind === 'experience'))
+    case 'opinion': return best(stories.filter((s) => s.kind === 'opinion' || s.kind === 'belief')) ?? best(stories)
+    case 'number': return best(stories.filter((s) => /\d|forty|twenty|hundred|thousand|percent/i.test(s.text))) ?? (facts.find((f) => /\d/.test(f)) ?? null)
+    default: {
+      const story = best(stories.filter((s) => s.kind === 'experience' || s.kind === 'story'))
+      const ans = creator.answers?.story && !isProfileText(creator.answers.story, creator) ? creator.answers.story : null
+      return story ?? ans
+    }
+  }
 }
 export const isFactsOnlyStop = (r) => r?.status === 409 && r?.json?.code === 'NEEDS_STORY' && r?.json?.facts_only === true && Array.isArray(r?.json?.questions)
 
@@ -432,7 +483,9 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     // Reference mode: the made-up reference is stored as this creator's transcripts row
     // (subject 'reference'); the edge reads it by transcript_id and never fetches the url.
     const refBody = sc.reference ? { transcript_id: await storeFictionalReference(admin, sc.owner_id, sc.reference) } : {}
-    let body = { ...sc.body, ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.request_n ?? sc.n), ...realisticBody(real, sc), ...(sc.quality_profile ? { quality_profile: sc.quality_profile } : {}), idempotency_key: `${batch}-${sc.n}` }
+    // compare-3: the skip path ("Skip and write now") on every 5th request.
+    const skipPath = (sc.request_n ?? sc.n) % 5 === 4
+    let body = { ...sc.body, ...(skipPath ? { skip_questions: true } : {}), ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.request_n ?? sc.n), ...realisticBody(real, sc), ...(sc.quality_profile ? { quality_profile: sc.quality_profile } : {}), idempotency_key: `${batch}-${sc.n}` }
     const post = async () => {
       const t0 = Date.now()
       const res = await fetch(`${url}/functions/v1/generate-blueprint`, {
@@ -486,7 +539,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
       asked.push(...r.json.questions.map((q) => q.question))
       fields.push(...r.json.questions.map((q) => q?.field).filter((f) => f && f !== 'selected_product'))
       if (factsOnly && mode !== 'fixture') break
-      body = { ...body, ...(factsOnly ? panel14Answers(r.json.questions, body, fixture.requests[sc.request_n ?? sc.n]?.id)
+      body = { ...body, ...(factsOnly ? panel14Answers(r.json.questions, body, fixture.requests[sc.request_n ?? sc.n]?.id, null, fixture.creators.find((c) => c.key === sc.creator) ?? null, fixture.requests[sc.request_n ?? sc.n] ?? null)
         : mode === 'fixture' ? fixtureAnswers(r.json.questions, body, answersBy.get(sc.creator)) : skipAnswers(r.json.questions, body)) }
       await new Promise((res) => setTimeout(res, 6000))
       try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
@@ -520,7 +573,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (r.json?.id && !viewerArms) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     const row = (arm, armBp, armLines, extra = {}) => ({
       batch, n: sc.n,
-      scenario: { group: 'panel', ...(arm ? { viewer_arm: arm, ...extra } : {}), mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, ...(asked.length ? { asked_questions: asked.slice(0, 9) } : {}), template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
+      scenario: { group: 'panel', ...(arm ? { viewer_arm: arm, ...extra } : {}), mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, ...(asked.length ? { asked_questions: asked.slice(0, 9) } : {}), template: templateOf(bp), ...(body.skip_questions ? { skipped_questions: true } : {}), ...(bp?.facts_only_question ? { optional_question: String(bp.facts_only_question.question ?? '') } : {}), ...(r.json?.next_steps ? { next_steps: r.json.next_steps.length } : {}), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [
