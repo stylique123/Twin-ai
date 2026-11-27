@@ -48,7 +48,7 @@ describe('FACTS_ONLY_WRITER wiring', () => {
   })
   it('the worker runs the trace pass last, only when the job says facts_only', () => {
     expect(WORKER).toContain("if (extra.facts_only !== true || !Array.isArray(bp.script)) return")
-    expect(WORKER.match(/applyScriptCleanupV1\(bp, extra, ledger, products, generationId\)\n\s*applyFactsOnly\(bp, extra, ledger, generationId, products, target\)/g)).toHaveLength(2)
+    expect(WORKER.match(/applyScriptCleanupV1\(bp, extra, ledger, products, generationId\)\n\s*applyFactsOnly\(bp, extra, ledger, generationId, products, target, approved\)/g)).toHaveLength(2)
   })
   it('Panel 14 fixes: target product, strict hook, hooks traced and the cleanup run on the edge and in the worker', () => {
     for (const src of [EDGE, WORKER]) {

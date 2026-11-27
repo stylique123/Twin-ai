@@ -98,7 +98,7 @@ export function applyScriptCleanupV1(bp: Record<string, unknown>, extra: Record<
  *  add a line after the edge's pass, so every sentence is traced to the facts
  *  layer again (the gate's ledger, same ids). Cuts only; never fails the job,
  *  and a failure is recorded on the blueprint, never silent. Counts in logs. */
-export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: Parameters<typeof writerItems>[0], generationId: string, products: Array<{ id: string; name: string }> = [], target: string | null = null): void {
+export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string, unknown>, ledger: Parameters<typeof writerItems>[0], generationId: string, products: Array<{ id: string; name: string }> = [], target: string | null = null, approved: { script: unknown[]; shot_list: unknown } | null = null): void {
   if (extra.facts_only !== true || !Array.isArray(bp.script)) return
   try {
     const layers = rec(extra.facts_only_layers)
@@ -128,7 +128,16 @@ export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string
     bp.script = fc.beats
     resyncShotListToScript(bp)
     const thinF = scriptThin(bp.script as Array<{ line?: unknown; section?: unknown }>)
-    bp.facts_only = { ...rec(bp.facts_only), worker: { ...r.record, polish: pol.record, final_check: fc.record, ...(thinF.thin ? { thin_after_worker: { words: thinF.words, lines: thinF.lines } } : {}) } }
+    // compare-3 proof fix 4 (owner, 27 Nov): the worker never ships fewer
+    // spoken lines than the server approved, and never a thin script. When its
+    // cuts would, the server-approved script is restored (its cuts recorded).
+    const approvedLines = approved ? scriptThin(approved.script as Array<{ line?: unknown }>) : null
+    const restore = !!approved && !!approvedLines && (thinF.thin || thinF.lines < approvedLines.lines)
+    if (restore) {
+      bp.script = JSON.parse(JSON.stringify(approved!.script))
+      if (approved!.shot_list != null) bp.shot_list = JSON.parse(JSON.stringify(approved!.shot_list))
+    }
+    bp.facts_only = { ...rec(bp.facts_only), worker: { ...r.record, polish: pol.record, final_check: fc.record, ...(thinF.thin ? { thin_after_worker: { words: thinF.words, lines: thinF.lines } } : {}), ...(restore ? { restored_server_script: { worker_words: thinF.words, worker_lines: thinF.lines, server_lines: approvedLines!.lines } } : {}) } }
     const { examples: _ex, ...counts } = r.record
     console.log(JSON.stringify({ event: 'facts_only_trace', where: 'worker', generation_id: generationId, ...counts }))
   } catch (e) {
@@ -345,6 +354,9 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
   const gen = await deps.loadGeneration(generationId)
   if (!gen || !gen.blueprint) throw new PermanentJobError('invention_recheck: generation not found', 'generation_missing')
   const bp = { ...gen.blueprint }
+  // compare-3 proof fixes (owner, 27 Nov): the script the server approved. The
+  // worker never ships fewer lines than this (see applyFactsOnly).
+  const approved = Array.isArray((gen.blueprint as Record<string, unknown> | null)?.script) ? { script: JSON.parse(JSON.stringify((gen.blueprint as Record<string, unknown>).script)) as unknown[], shot_list: JSON.parse(JSON.stringify((gen.blueprint as Record<string, unknown>).shot_list ?? null)) as unknown } : null
   // Already checked (a retry after a successful write, or a second enqueue): nothing to do.
   if (bp.check_status && bp.check_status !== 'unchecked') {
     return { generation_id: generationId, skipped: 'already_checked', check_status: bp.check_status }
@@ -499,7 +511,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
     applyQualityController(bp, extra, ledger, products, target, generationId)
     applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
     applyScriptCleanupV1(bp, extra, ledger, products, generationId)
-    applyFactsOnly(bp, extra, ledger, generationId, products, target)
+    applyFactsOnly(bp, extra, ledger, generationId, products, target, approved)
     bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
     await chain
     await deps.saveBlueprint(generationId, bp)
@@ -573,7 +585,7 @@ async function runInventionRecheckOnce(job: Job, deps: RecheckDeps): Promise<Rec
   applyQualityController(bp, extra, ledger, products, target, generationId)
   applyPanelFinalPass(bp, extra, ledger, products, target, generationId)
   applyScriptCleanupV1(bp, extra, ledger, products, generationId)
-  applyFactsOnly(bp, extra, ledger, generationId, products, target)
+  applyFactsOnly(bp, extra, ledger, generationId, products, target, approved)
   bp.gate_progress = gateProgress('done', perf?.judge_calls ?? 0, perf?.judge_calls ?? 0, clock())
   // No progress write may land after (and clobber) the result.
   await chain

@@ -1,9 +1,17 @@
 {
   "_note": "FICTIONAL CREATOR PANEL (owner, 13 Oct). Every creator, brand, product, number, story and testimonial here is MADE UP for testing. No real person or business. Seeded by scripts/ops/seedFictionalPanel.mjs; run by scriptBatch.mjs --group=panel. Version 2: forty requests; each names the template (T1-T13) and duration profile it is meant to exercise, and `lacks` lists material deliberately missing so the writer must ask, not invent.",
   "version": 2,
+  "_piece_answers_note": "piece_answers: FICTIONAL answers to the story-piece questions (mn:fo:piece:<story>:<piece>), one set per story on file, written for the test panel only. The runner matches a question to its story by the story text quoted in the question.",
   "creators": [
     {
       "key": "mayas-coffee",
+      "piece_answers": [
+        {"story": "I started roasting in my garage with a secondhand popcorn popper, and the first batch set off the smoke alarm twice.", "fictional": true, "feeling": "Honestly, I was mortified, and a bit thrilled it worked at all.", "number": "Twelve minutes for the first batch, and the alarm went off twice.", "when": "A Sunday morning in March, my first spring roasting.", "who": "Just me, and my neighbour knocking to ask if everything was fine.", "result": "I bought a window fan the next day and roast with the garage door open now.", "lesson": "Small batches first, and never walk away from the popper."},
+        {"story": "At my first market stall I sold out of Harbor Blend by ten in the morning and spent the rest of the day handing out samples from an empty table.", "fictional": true, "feeling": "Here's the thing, I was proud and a bit panicked at the same time.", "number": "Forty bags, gone by ten.", "when": "My first Saturday market, last October.", "who": "My dad came to help carry the table and ended up handing out samples with me.", "result": "I bring twice as much Harbor Blend to every market now.", "lesson": "People will tell you what they want if you just watch what runs out."},
+        {"story": "A regular told me her beans tasted flat after a week, and when I asked, she was keeping them in the fridge next to the onions.", "fictional": true, "feeling": "Honestly, I laughed, then felt bad that nobody had told her.", "number": "Seven days in the fridge.", "when": "Last winter, at the stall.", "who": "A regular who buys a bag every two weeks.", "result": "I put a little storage card in every bag now.", "lesson": "Most stale coffee is a storage problem, not a roast problem."},
+        {"story": "Here's the thing, I once left a bag of Harbor Blend on my own counter for five weeks, and when I brewed it the smell had gone from chocolate to cardboard.", "fictional": true, "feeling": "Here's the thing, I was embarrassed, it was my own counter.", "number": "Five weeks.", "when": "This summer, after a busy month of markets.", "who": "Just me, at my kitchen counter.", "result": "I write the roast date on every bag in big numbers now.", "lesson": "Even I forget, so the bag has to remind people."},
+        {"story": "The week I bought a proper drum roaster, I roasted my old garage favourite again and honestly could not get it to taste the same for a month.", "fictional": true, "feeling": "Honestly, I was frustrated for weeks.", "number": "A month of roasts before it tasted right.", "when": "The spring I moved out of the garage.", "who": "My partner tasted every test batch with me.", "result": "I keep a log of time and temperature for every roast now.", "lesson": "A new machine means learning the coffee again."}
+      ],
       "display_name": "Maya (fictional)",
       "handle": "mayas_coffee_fictional",
       "brand": { "name": "Maya's Coffee", "description": "A one-person small-batch coffee roaster selling beans online and at a weekend market (fictional)." },
@@ -47,6 +55,13 @@
     },
     {
       "key": "glow-lab",
+      "piece_answers": [
+        {"story": "I made the first jar of the moisturizer in my kitchen because every store cream I tried left my cheeks red by lunchtime.", "fictional": true, "feeling": "In my experience, I felt hopeful and a little silly stirring cream in a saucepan.", "number": "One small jar, about 50 ml.", "when": "A rainy Sunday two winters ago.", "who": "Just me, and my sister trying it on her hands.", "result": "I still make every first batch in my kitchen.", "lesson": "Start with what your own skin hates."},
+        {"story": "My first batch separated in the jar overnight, and I threw out forty jars before I got the emulsion right.", "fictional": true, "feeling": "Honestly, I was crushed every time a jar split.", "number": "Forty jars, over about three weeks.", "when": "The first winter I started making it.", "who": "Just me at the stove, and a lot of washing up.", "result": "I now cool every batch slowly and check it the next morning.", "lesson": "An emulsion needs patience, not more ingredients."},
+        {"story": "A customer emailed me a photo of her empty jar with a note that said she finally found one that does not sting.", "fictional": true, "feeling": "I cried a little, in a good way.", "number": "One photo, one empty jar.", "when": "Last spring, a few months after launch.", "who": "A customer in Leeds I had never met.", "result": "I keep that email pinned above my desk.", "lesson": "One honest note is worth more than any ad."},
+        {"story": "In my experience, the batch I threw out taught me more than any good one; I now write the temperature of every step in a notebook beside the stove.", "fictional": true, "feeling": "In my experience, I was cross with myself for rushing it.", "number": "One batch of twelve jars.", "when": "An evening last autumn.", "who": "Just me, with the notebook I started that night.", "result": "Every step gets a temperature written down now.", "lesson": "Rushing costs more than waiting."},
+        {"story": "Before Calm Cream, I patch-tested each new version on my inner arm for three days and kept a simple chart of any redness.", "fictional": true, "feeling": "I felt calm doing it, it made me trust the cream.", "number": "Three days per version, on my inner arm.", "when": "Every new version, for the whole first year.", "who": "Just me, and a simple paper chart.", "result": "I still patch-test every new batch.", "lesson": "My skin tells me the truth if I give it time."}
+      ],
       "display_name": "Glow Lab (fictional)",
       "handle": "glowlab_fictional",
       "brand": { "name": "Glow Lab", "description": "A small skincare seller making a fragrance-free moisturizer and a cleansing balm (fictional).", "forbidden_claims": ["cures acne", "clinically proven", "anti-aging results guaranteed", "treats eczema"] },
@@ -92,6 +107,16 @@
     },
     {
       "key": "flowdesk",
+      "piece_answers": [
+        {"story": "I built the first version of FlowDesk over a winter because my partner and I kept answering the same customer email twice.", "fictional": true, "feeling": "Look. Annoyed. Then stubborn.", "number": "Same email, answered twice, eleven times in one month.", "when": "One winter, three years ago.", "who": "My partner and me, two laptops, one inbox.", "result": "FlowDesk shows who is replying now. No doubles.", "lesson": "Fix the thing that annoys you twice."},
+        {"story": "Our first paying customer found a bug in the first hour, and I fixed it on a call with her while she watched.", "fictional": true, "feeling": "Terrifying. Then relieved.", "number": "One bug. First hour. Fixed in twenty minutes.", "when": "Week one after launch.", "who": "Our first paying customer, a candle shop owner.", "result": "Every new customer gets a live onboarding call now.", "lesson": "Fix it in front of them. It builds trust."},
+        {"story": "I once lost a whole Saturday to a support ticket that was really a typo in our help page.", "fictional": true, "feeling": "Frustrated. With myself.", "number": "One typo. A whole Saturday.", "when": "A Saturday in our first spring.", "who": "Just me, and a very patient customer.", "result": "Help page first, before anything else.", "lesson": "Check the obvious thing first."},
+        {"story": "Look. Week one, our first customer's bug was a duplicate email. Same message, two cards. Fixed it live. She signed up for a year that afternoon.", "fictional": true, "feeling": "Look. Nervous. Then very happy.", "number": "One duplicate email. One year signed.", "when": "Week one.", "who": "Our first customer, the candle shop owner.", "result": "We test duplicate emails on every release.", "lesson": "A fast fix sells better than a demo."},
+        {"story": "We counted. Forty percent of our own support email was the same five questions. So we wrote five saved replies. Inbox halved.", "fictional": true, "feeling": "Relieved. It was simpler than we thought.", "number": "Forty percent. Five questions. Five replies.", "when": "Last spring, over two weeks.", "who": "My partner counted. I wrote the replies.", "result": "Inbox halved. We still use the same five.", "lesson": "Count before you build."},
+        {"story": "So yeah, um, FlowDesk started because me and my partner kept, like, answering the same customer email twice, and it was one winter, well, most of a winter, and I just built the thing.", "fictional": true, "feeling": "Um, honestly, kind of fed up, like, really fed up.", "number": "Eleven double replies in one month.", "when": "That winter, three years ago.", "who": "Me and my partner, two laptops.", "result": "Now FlowDesk shows who is answering, so no doubles.", "lesson": "Build the thing that annoys you."},
+        {"story": "Our first paying customer, um, she found a bug in like the first hour, no wait, first forty minutes, and I fixed it on a call with her just, like, watching me type, which was terrifying.", "fictional": true, "feeling": "Um, terrifying, like, my hands were shaking.", "number": "Forty minutes in, one bug.", "when": "First week after launch.", "who": "Her, the candle shop owner, and me.", "result": "Every new customer gets a call now.", "lesson": "Fixing it live builds trust."},
+        {"story": "I lost a whole Saturday to this ticket, um, and it turned out it was like a typo, in our own help page, our own, so yeah, I fix the help page first now before anything else.", "fictional": true, "feeling": "Um, embarrassed, honestly, it was our own page.", "number": "One typo, a whole Saturday.", "when": "A Saturday our first spring.", "who": "Just me, and one patient customer.", "result": "Help page first now, always.", "lesson": "Check your own docs first."}
+      ],
       "display_name": "FlowDesk founder (fictional)",
       "handle": "flowdesk_fictional",
       "brand": { "name": "FlowDesk", "description": "A small SaaS tool that turns a shared inbox into a simple task board for tiny support teams (fictional)." },
@@ -131,6 +156,15 @@
     },
     {
       "key": "coach-ana",
+      "piece_answers": [
+        {"story": "The first time I tried a deadlift I copied a video and my lower back felt it for a week, which is why I teach the hip hinge with a broomstick first.", "fictional": true, "feeling": "Legit, I was scared I'd broken something!", "number": "One week of a sore lower back.", "when": "My first month training at home.", "who": "Just me and a video, no coach!", "result": "Broomstick hinge first, for every client!", "lesson": "Learn the movement before the weight!"},
+        {"story": "One of my first clients trained in a hallway with one pair of dumbbells, and we built her whole plan around that hallway.", "fictional": true, "feeling": "I was so impressed with her, honestly!", "number": "One pair of dumbbells, one hallway.", "when": "My first year coaching.", "who": "A client who lived in a tiny flat.", "result": "I ask every client to show me their space first!", "lesson": "The plan fits the room, not the other way round!"},
+        {"story": "I skipped warm-ups for a year and pulled a hamstring sprinting for a bus.", "fictional": true, "feeling": "Embarrassed, and in a lot of pain!", "number": "One pulled hamstring, six weeks off.", "when": "A cold morning running for the number 12 bus.", "who": "Just me, and a very confused bus driver!", "result": "I never skip the five-minute warm-up now!", "lesson": "Five minutes saves six weeks!"},
+        {"story": "After my deadlift went wrong I spent a whole month with just a broomstick and a mirror, and legit, my form has never been better!", "fictional": true, "feeling": "Humbled, legit humbled!", "number": "One whole month with a broomstick.", "when": "Right after my deadlift went wrong.", "who": "Just me and the hallway mirror!", "result": "My form has never been better!", "lesson": "Go back to basics, it works!"},
+        {"story": "A client learned the hip hinge touching her hips to a wall every morning while the kettle boiled, and three weeks later she deadlifted her first kettlebell!", "fictional": true, "feeling": "So proud of her I nearly cried!", "number": "Three weeks, every morning.", "when": "Last winter.", "who": "A client who trained while the kettle boiled!", "result": "She deadlifts every week now!", "lesson": "Tiny daily practice beats big sessions!"},
+        {"story": "So yeah, um, the deadlift thing, I basically just copied some video and like, my lower back was done for a week, no wait, more like ten days, and that's honestly why the broomstick comes out first now.", "fictional": true, "feeling": "Um, scared, like, really scared I'd hurt it for good.", "number": "Ten days of a sore back.", "when": "My first month at home.", "who": "Just me and a video.", "result": "Broomstick first now, always.", "lesson": "Learn it before you load it."},
+        {"story": "Okay so this client, she had, um, a hallway, like literally just a hallway and two dumbbells, and we, I mean she did all the work, but we built the whole plan around that hallway and it worked.", "fictional": true, "feeling": "Um, honestly, impressed, she just did it.", "number": "Two dumbbells, one hallway.", "when": "My first year coaching.", "who": "A client in a tiny flat.", "result": "I ask to see the space first now.", "lesson": "Fit the plan to the room."}
+      ],
       "display_name": "Coach Ana (fictional)",
       "handle": "coach_ana_fictional",
       "brand": { "name": "Coach Ana", "description": "An online strength coach for beginners who train at home (fictional).", "forbidden_claims": ["lose 10 pounds", "guaranteed weight loss", "cures back pain"] },
@@ -171,6 +205,13 @@
     },
     {
       "key": "clay-kiln",
+      "piece_answers": [
+        {"story": "My first kiln load came out with every mug glued to the shelf because I glazed the bottoms.", "fictional": true, "feeling": "Mind you, I felt sick opening that kiln.", "number": "Twelve mugs, every one stuck.", "when": "My first winter at the wheel.", "who": "Just me, and the kiln.", "result": "I wax every foot before glazing now.", "lesson": "Glaze runs, so leave the foot bare."},
+        {"story": "I threw the same mug shape about two hundred times before the handles stopped cracking in the kiln.", "fictional": true, "feeling": "Stubborn, and quietly pleased when it finally held.", "number": "About two hundred mugs.", "when": "Over my first two years.", "who": "Just me at the wheel.", "result": "Every handle gets pulled the same way now.", "lesson": "Repeat the shape until the clay agrees."},
+        {"story": "A buyer at a craft fair picked up a mug, turned it over, and asked why the bottom was not glazed, so now I explain it on every label.", "fictional": true, "feeling": "A bit flustered, then glad she asked.", "number": "One buyer, one question.", "when": "A Christmas craft fair, two years ago.", "who": "A buyer who turned every mug over.", "result": "Every label explains the bare foot now.", "lesson": "If one person asks, many are wondering."},
+        {"story": "After that first kiln load I spent a whole evening, mind you, grinding glaze off the shelves with a stone, which is how I learned to wax every foot before glazing.", "fictional": true, "feeling": "Tired, and cross with myself, mind you.", "number": "One whole evening, one stone.", "when": "The night after my first kiln load.", "who": "Just me, with a grinding stone.", "result": "Wax on every foot, every time.", "lesson": "An evening of grinding teaches you fast."},
+        {"story": "I once glazed a Tide Mug all the way down out of stubbornness, and the clay decided, as it does, to weld it to the shelf for good.", "fictional": true, "feeling": "Stubborn, then annoyed at myself.", "number": "One Tide Mug, welded for good.", "when": "Last spring.", "who": "Just me, and a very stuck shelf.", "result": "I leave a finger's width bare now.", "lesson": "The clay wins, as ever."}
+      ],
       "display_name": "Clay & Kiln maker (fictional)",
       "handle": "clay_and_kiln_fictional",
       "brand": { "name": "Clay & Kiln", "description": "A home studio making hand-thrown stoneware mugs and bowls (fictional)." },
@@ -213,6 +254,12 @@
     },
     {
       "key": "signal-daily",
+      "piece_answers": [
+        {"story": "I asked an AI tool to summarize my own newsletter and it confidently quoted a sentence I never wrote.", "fictional": true, "feeling": "Real talk, I was annoyed, it was my own words.", "number": "One sentence I never wrote.", "when": "A Tuesday last spring.", "who": "Just me and the tool.", "result": "I check every quote against the source now.", "lesson": "Never trust a quote you did not check."},
+        {"story": "I spent a week letting an AI assistant plan my calendar and it double-booked me on the one day I had a dentist appointment.", "fictional": true, "feeling": "Real talk, I was furious, then I laughed.", "number": "One week, one double booking.", "when": "Last autumn.", "who": "Just me, and my dentist's receptionist.", "result": "I approve every calendar change myself now.", "lesson": "Automation needs a checkpoint."},
+        {"story": "Real talk, after the misquote I asked the same tool to show sources, and it linked a paragraph that did not contain the quote at all. So what? I check the link every time now.", "fictional": true, "feeling": "Real talk, unsettled, it looked so sure.", "number": "One link, zero matching sentences.", "when": "The week after the misquote.", "who": "Just me.", "result": "I open the link every time now.", "lesson": "A source is only a source if it says it."},
+        {"story": "I tested three AI summarizers on the same issue of my newsletter, and the catch was only one kept the numbers right.", "fictional": true, "feeling": "Real talk, surprised only one got it right.", "number": "Three tools, one kept the numbers.", "when": "Issue 52 of the newsletter.", "who": "Just me, comparing side by side.", "result": "I test any summarizer on numbers first.", "lesson": "Numbers are where tools slip."}
+      ],
       "display_name": "Signal Daily (fictional)",
       "handle": "signal_daily_fictional",
       "brand": { "name": "Signal Daily", "description": "A short daily commentary channel on AI tools for working people (fictional)." },
@@ -247,6 +294,13 @@
     },
     {
       "key": "pip-sprocket",
+      "piece_answers": [
+        {"story": "The first time I performed Sprocket live, his arm fell off mid-joke and the crowd laughed harder at that than at anything I wrote.", "fictional": true, "feeling": "Oh no, mortified, then delighted!", "number": "One arm, mid-joke!", "when": "Our very first live show!", "who": "Me, Sprocket, and about forty people!", "result": "We keep a spare arm backstage now!", "lesson": "The mistake can be the best joke!"},
+        {"story": "I rewrote our opening sketch on the train because a stranger told me the ending made her sad.", "fictional": true, "feeling": "Nervous, then grateful!", "number": "One stranger, one new ending!", "when": "On the train to our second show!", "who": "A stranger with a very honest face!", "result": "We test endings on real people now!", "lesson": "Listen when strangers are honest!"},
+        {"story": "I once forgot the whole second act and Sprocket improvised a complaint about the lighting until I remembered it.", "fictional": true, "feeling": "Panicked, then very relieved!", "number": "One whole act, forgotten!", "when": "A Friday show last spring!", "who": "Me, Sprocket, and a patient crowd!", "result": "We keep a cue sheet taped to the wing now!", "lesson": "Sprocket can stall, so I can think!"},
+        {"story": "Oh no, at our first sing-along nobody sang, so Sprocket sang alone, very badly, and by the second chorus the whole room joined in to make him stop!", "fictional": true, "feeling": "Terrified, then thrilled!", "number": "Two choruses before anyone joined!", "when": "Our first sing-along night!", "who": "Sprocket, me, and a silent room!", "result": "Sprocket sings first at every show now!", "lesson": "Bad singing gets people singing!"},
+        {"story": "Backstage, Sprocket's spare arm lives in a sock drawer, and once I grabbed a sock instead, so he did a whole sketch with a sock arm. FLOP!", "fictional": true, "feeling": "Embarrassed, then giggling!", "number": "One sock, one whole sketch!", "when": "A Saturday matinee!", "who": "Me, Sprocket, and a sock drawer!", "result": "Spare arm lives in a labelled box now!", "lesson": "Label the box! FLOP!"}
+      ],
       "creator_type": "entertainer",
       "answers": { "story": "Oh no! Sprocket once tried to fold a fitted sheet on stage, CRUNCH, and we never found the corner again!", "product_slot": "Pip and Sprocket Live is our silly stage show, puppets, sound effects, and Sprocket says it is VERY serious!", "niche": "Gentle absurd comedy, sketches, puppets, a lot of BONK.", "profile": "We are a comedy duo, one human and one sprocket, for adults who like silly things!" },
       "display_name": "Pip and Sprocket (fictional)",
@@ -281,6 +335,9 @@
     },
     {
       "key": "quiet-loom",
+      "piece_answers": [
+        {"story": "The first scarf took a whole winter. I unpicked it twice. Slowly, it came right.", "fictional": true, "feeling": "Quiet. Patient. Some evenings, close to giving up.", "number": "One scarf. Two unpicks. One winter.", "when": "My first winter at the loom.", "who": "Just me. The loom was my grandmother's.", "result": "I weave one scarf at a time now.", "lesson": "Slow is the only way it comes right."}
+      ],
       "creator_type": "maker",
       "answers": { "story": "The first scarf took a whole winter. I unpicked it twice. Slowly, it came right.", "product_slot": "The Harbor Fog Scarf is hand-woven wool. Soft grey. Thread by thread.", "niche": "Handmade winter weaving. Scarves. Slow craft.", "profile": "I weave alone, slowly. For people who like handmade winter things." },
       "display_name": "Quiet Loom weaver (fictional)",

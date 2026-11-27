@@ -99,9 +99,12 @@ describe('fix 3: a creator with no usable story gets one specific story question
 })
 
 describe('fix 5: a thin script asks the one question that would fix it', () => {
-  it(`under ${SHIP_MIN_WORDS} spoken words does not ship (request 6 shipped at 45)`, () => {
-    const beats = [{ line: 'The batch I threw out taught me more than any good one.' }, { line: 'I now write the temperature of every step.' }, { line: 'In a notebook, beside the stove, every single time I make it.' }]
-    expect(scriptShipThin(beats).thin).toBe(true)
+  it(`the bar is ${SHIP_MIN_WORDS} spoken words and 3 lines, the same as the hard floor`, () => {
+    expect(SHIP_MIN_WORDS).toBe(40)
+    const short = [{ line: 'The batch I threw out taught me more than any good one.' }, { line: 'I now write the temperature of every step.' }]
+    expect(scriptShipThin(short).thin).toBe(true)
+    const ok = [{ line: 'The batch I threw out taught me more than any good one, and I still think about it.' }, { line: 'I now write the temperature of every step in a notebook beside the stove.' }, { line: 'Every single batch since then has its own page, with the time and the heat.' }]
+    expect(scriptShipThin(ok).thin).toBe(false)
   })
   it('the fixing question deepens the story and passes the question rules', () => {
     const q = pieceQuestion(BATCH)!
