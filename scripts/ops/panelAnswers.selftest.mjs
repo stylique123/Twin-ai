@@ -103,3 +103,18 @@ console.log('panel14 answers selftest: ok')
   assert.match(out.readiness_answers['mn:fo:story:x'], /forty jars/)
   console.log('panelAnswers compare-3: ok')
 }
+
+// compare-3 proof fixes: a piece question is answered from THIS creator's fixture, for the quoted story.
+{
+  const { pieceAnswer, answerByKind: abk } = await import('./panelRun.mjs')
+  const fx = JSON.parse((await import('node:fs')).readFileSync(new URL('./fixtures/fictional-panel.json', import.meta.url), 'utf8'))
+  const glow = fx.creators.find((c) => c.key === 'glow-lab')
+  const clay = fx.creators.find((c) => c.key === 'clay-kiln')
+  const qGlow = { field: 'mn:fo:piece:abc:feeling', kind: 'story', question: 'In your story "My first batch separated in the jar overnight, and…", how did you feel in that moment?' }
+  const qClay = { field: 'mn:fo:piece:def:feeling', kind: 'story', question: 'In your story "A buyer at a craft fair picked up a…", how did you feel in that moment?' }
+  const a1 = pieceAnswer(qGlow, glow), a2 = pieceAnswer(qClay, clay)
+  if (!a1 || !a2 || a1 === a2) throw new Error('piece answers must be per creator and per story')
+  if (pieceAnswer(qGlow, clay) !== null) throw new Error('a story of another creator has no answer')
+  if (abk(qClay, clay, null) !== a2) throw new Error('answerByKind routes piece questions to the fixture')
+  console.log('panel answers selftest (piece answers per creator): ok')
+}

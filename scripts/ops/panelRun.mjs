@@ -376,14 +376,20 @@ export function panel14Answers(questions, body, requestId, doc = null, creator =
 
 const words = (t) => new Set(String(t ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? [])
 const shared = (a, b) => { const wb = words(b); let n = 0; for (const w of words(a)) if (wb.has(w)) n++; return n }
-/** compare-3: the fictional creator's answers to the story-piece questions (test accounts only). */
-export const PIECE_ANSWERS = {
-  feeling: 'Honestly, my stomach dropped. I was cross with myself, then relieved when it finally came right.',
-  number: 'It took about two weeks of evenings before it worked.',
-  when: 'It was a cold January, in my first year doing this.',
-  who: 'Just me at first. My sister came round the next day and helped me look at it.',
-  result: 'Since then I check that step every single time before anything goes out.',
-  lesson: 'I learned to slow down and change one thing at a time.',
+const normT = (t) => String(t ?? '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+/**
+ * compare-3 proof fixes (owner, 27 Nov): a story-piece question is answered
+ * from THIS creator's fictional fixture (`piece_answers`), for the story the
+ * question quotes ("In your story \"<first words>…\"") and the piece it asks
+ * for. Never one shared text. Null when the fixture has no answer for it.
+ */
+export function pieceAnswer(q, creator) {
+  const piece = String(q?.field ?? '').split(':')[4] ?? ''
+  const quoted = /In your story "([^"…]+)/.exec(String(q?.question ?? ''))?.[1] ?? ''
+  if (!piece || !quoted.trim()) return null
+  const row = (creator?.piece_answers ?? []).find((r) => r?.fictional === true && normT(r.story).startsWith(normT(quoted)))
+  const v = row?.[piece]
+  return typeof v === 'string' && v.trim() ? v : null
 }
 /** A creator's profile or niche text (never an answer to a material question). */
 export function isProfileText(text, creator) {
@@ -401,7 +407,7 @@ export function answerByKind(q, creator, request) {
   if (!creator) return null
   const parts = String(q?.field ?? '').split(':')
   // compare-3: a question deepening one piece of a story (mn:fo:piece:<story>:<piece>).
-  if (parts[2] === 'piece') return PIECE_ANSWERS[parts[4]] ?? null
+  if (parts[2] === 'piece') return pieceAnswer(q, creator)
   const kind = String(q?.kind ?? parts[2] ?? 'story')
   const note = `${request?.note ?? ''} ${q?.question ?? ''}`
   const stories = (creator.stories ?? []).filter((s) => s?.text && !isProfileText(s.text, creator))

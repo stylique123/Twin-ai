@@ -13260,8 +13260,12 @@ This is the video's position. Every field below must serve it. If the reference'
           // proof fixes 1 and 6: name the one story and her answers for it.
           const cp = foItems.find((it) => it.id === foChosenStoryId)
           const ans = foItems.filter((it) => foAnswerIdsOf(body.readiness_answers).includes(it.id) && it.layer === 'fact')
-          if (cp) factsOnlyBlock += `\n\nTHE STORY OF THIS SCRIPT: ${cp.ref}. Tell this one story. No line may come from any other story of hers.`
-          if (ans.length) factsOnlyBlock += `\nHER ANSWER${ans.length > 1 ? 'S' : ''} FOR IT: ${ans.map((a) => a.ref).join(', ')}. Use ${ans.length > 1 ? 'them' : 'it'} in the story, in her words, where it happened.`
+          // compare-3 proof fixes (owner, 27 Nov): the chosen story in full,
+          // her answers for it, and a target length; her product and general
+          // facts stay as supporting lines; nothing beyond her material.
+          if (cp) factsOnlyBlock += `\n\nTHE STORY OF THIS SCRIPT (${cp.ref}), in full: "${cp.text}"\nTell this one story, all of it: what happened, in the order it happened. No line may come from any other story of hers.`
+          if (ans.length) factsOnlyBlock += `\nHER ANSWER${ans.length > 1 ? 'S' : ''} FOR THIS STORY: ${ans.map((a) => `${a.ref} "${a.text}"`).join('; ')}. Use ${ans.length > 1 ? 'them' : 'it'} in the story, in her words, at the moment ${ans.length > 1 ? 'they belong' : 'it belongs'}.`
+          if (cp || ans.length) factsOnlyBlock += `\nLENGTH: about 70 to 90 spoken words in total. Reach it with her story, her answers, and her product and general facts above as supporting lines (each with its source ref). Never add an event, number, feeling, result or claim that is not in her material; if her material runs out first, stop shorter.`
         }
         console.log(JSON.stringify({ event: 'facts_only_layers', ...layerCounts(foItems, foStyle, foBackground) }))
       } catch (e) { console.warn('facts_only_layers_failed', String((e as Error)?.message ?? e).slice(0, 120)) }

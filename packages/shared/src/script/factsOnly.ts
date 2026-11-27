@@ -649,14 +649,14 @@ export function scriptThin(beats: ReadonlyArray<{ line?: unknown; section?: unkn
 }
 
 /**
- * compare-3 proof fix 5 (owner, 26 Nov): the bar a facts-only script must
- * clear to ship. Under 55 spoken words (or the hard 40-word / 3-line floor)
- * after the cuts, one question that would fix it is asked instead.
+ * compare-3 proof fixes (owner, 27 Nov): the bar a facts-only script must
+ * clear to ship is the one set before the runs: 40 spoken words and 3 lines,
+ * the same on the server and the worker (55 was tried on 26 Nov and dropped).
+ * Under it, the one question that would fix it is asked instead.
  */
-export const SHIP_MIN_WORDS = 55
+export const SHIP_MIN_WORDS = THIN_MIN_WORDS
 export function scriptShipThin(beats: ReadonlyArray<{ line?: unknown; section?: unknown }>): { words: number; lines: number; thin: boolean } {
-  const t = scriptThin(beats)
-  return { ...t, thin: t.thin || t.words < SHIP_MIN_WORDS }
+  return scriptThin(beats)
 }
 
 /** Fix 1: the one question to ask instead of writing a thin script: the first open need for this request, a story first. Null when every key is closed. */
