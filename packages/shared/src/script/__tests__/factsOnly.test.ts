@@ -370,7 +370,7 @@ describe('the free pass is tighter', () => {
     for (const line of ['We just make noise together.', 'Grandma never trusted our toaster.', 'That one is mine, sorry.']) {
       const r = run(line)
       expect(r.beats.map((b) => b.line)).not.toContain(line)
-      expect(r.record.cut.first_person_no_source).toBe(1)
+      expect(r.record.cut.first_person_no_source + r.record.cut.orphan).toBe(1)
     }
   })
   it('2. any capitalised word of her product or brand name blocks the free pass', () => {
@@ -385,7 +385,8 @@ describe('the free pass is tighter', () => {
     }
   })
   it('viewer asks are never cut by the pronoun rule or by Rule C', () => {
-    for (const line of ['Tell me in the comments.', 'Send me a message for the dates.', 'Comment below.', 'Follow for more.', 'DM me.', 'Grab it, link in bio.']) {
+    // compare-2: "DM me / send me a message" only when her material offers it (S-0AA5A8).
+    for (const line of ['Tell me in the comments.', 'Comment below.', 'Follow for more.', 'Grab it, link in bio.']) {
       const r = run(line)
       expect(r.beats.map((b) => b.line)).toContain(line)
       expect(r.record.cut.first_person_no_source + r.record.cut.general_over_cap).toBe(0)

@@ -44,14 +44,36 @@ const round = (x) => Math.round(x * 100) / 100
  * Pure: rows (script_batch_results) + blueprints by generation id → { blind, key, report }.
  * `craft(lines)` returns the 1–7 pre-score or null; `rand(n)` returns n random bytes.
  */
+/**
+ * Panel 14: where a question came from. The facts-only gap check asks from a
+ * fixed set of templates (factsOnly.needsFor): `For "<request>": …` or `What is
+ * the one fact about <product> this video should say…`. Anything else came
+ * from the older readiness check (a known defect while FACTS_ONLY_WRITER is on).
+ */
+export function questionSource(text) {
+  const t = String(text ?? '').trim()
+  return /^For ".*?":/.test(t) || /^What is the one fact about .+ this video should say/.test(t) ? 'facts_only' : 'readiness'
+}
+export function questionCounts(rows) {
+  const out = { facts_only: 0, readiness: 0, requests_with_readiness: 0 }
+  for (const r of rows) {
+    const qs = Array.isArray(r?.scenario?.asked_questions) ? r.scenario.asked_questions : []
+    let readiness = 0
+    for (const q of qs) { const s = questionSource(q); out[s]++; if (s === 'readiness') readiness++ }
+    if (readiness) out.requests_with_readiness++
+  }
+  return out
+}
+
 export function buildBlindPack(rows, blueprints = {}, craft = () => null, rand = (n) => randomBytes(n)) {
   const panel = rows.filter((r) => r.scenario?.group === 'panel')
-  const report = { rows: panel.length, scripts: 0, asked: 0, failures: [], invented_lines: 0, scripts_with_invented: 0, invented_unknown: 0, craft_prescore_mean: null, craft_prescored: 0, check_status: {}, final_pass: {}, headline: null }
+  const report = { rows: panel.length, scripts: 0, asked: 0, true_stops: 0, optional_questions: panel.filter((r) => r.scenario?.optional_question).length, failures: [], invented_lines: 0, scripts_with_invented: 0, invented_unknown: 0, craft_prescore_mean: null, craft_prescored: 0, check_status: {}, final_pass: {}, headline: null }
   const scored = []
   const crafts = []
   for (const r of panel) {
     const why = outcomeOf(r)
-    if (why === 'asked') { report.asked++; continue }
+    // compare-3: "asked" is a true stop (no script); optional questions ride on scripts.
+    if (why === 'asked') { report.asked++; report.true_stops++; continue }
     if (why) { report.failures.push({ reason: why }); continue }
     report.scripts++
     const bp = blueprints[r.generation_id] ?? {}
@@ -66,6 +88,8 @@ export function buildBlindPack(rows, blueprints = {}, craft = () => null, rand =
     scored.push(r)
   }
   report.craft_prescored = crafts.length
+  // Panel 14: questions asked, by source (readiness = known defect, counted apart).
+  report.questions = questionCounts(panel)
   report.craft_prescore_mean = crafts.length ? round(crafts.reduce((a, b) => a + b, 0) / crafts.length) : null
   const requests = report.scripts + report.asked + report.failures.length
   report.headline = {
@@ -84,7 +108,7 @@ export function buildBlindPack(rows, blueprints = {}, craft = () => null, rand =
     return { id, sort: rand(4).readUInt32BE(0), r }
   }).sort((x, y) => x.sort - y.sort)
   const blind = withId.map(({ id, r }) => [`## ${id}`, `**Creator:** ${r.scenario?.creator ?? ''} · **Goal:** ${r.scenario?.body?.goal ?? ''} · **Request:** ${r.scenario?.body?.reference_note ?? r.scenario?.body?.note ?? ''}`, r.script_text, '', `Hooks: ${(r.hooks ?? []).join(' · ')}`, ''].join('\n')).join('\n')
-  const key = Object.fromEntries(withId.map(({ id, r }) => [id, { n: r.n, label: r.scenario?.label ?? null, creator: r.scenario?.creator ?? null, generation_id: r.generation_id ?? null }]))
+  const key = Object.fromEntries(withId.map(({ id, r }) => [id, { n: r.n, label: r.scenario?.label ?? null, creator: r.scenario?.creator ?? null, generation_id: r.generation_id ?? null, ...(r.batch ? { batch: r.batch } : {}) }]))
   return { blind: `# Panel — blind scripts (${withId.length})\n\n${blind}`, key, report }
 }
 
@@ -129,7 +153,74 @@ export function supportScore(line, items) {
  * Pure (panel 13c trace): rows + blueprints by generation id + stored counts by
  * owner → one record per row. `owners` maps generation id → owner id.
  */
-export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixture = {}) {
+const SKIP_ANSWER = /^nothing specific/i
+/**
+ * compare-2 (owner, 22 Nov): for every answer a request gave (readiness and
+ * facts-only), whether the final script used it: the share of the answer's
+ * content words (4+ letters) found in the shipped lines. used = share ≥ 0.3.
+ */
+export function answersUsed(body, lines) {
+  const script = new Set(String((lines ?? []).join(' ')).toLowerCase().match(/[a-z0-9']{4,}/g) ?? [])
+  const all = { ...(body?.readiness_answers ?? {}), ...(body?.mn_answers ?? {}) }
+  return Object.entries(all).filter(([k, v]) => typeof v === 'string' && v.trim() && k !== 'selected_product').map(([key, v]) => {
+    const words = [...new Set(String(v).toLowerCase().match(/[a-z0-9']{4,}/g) ?? [])]
+    const skipped = SKIP_ANSWER.test(String(v).trim())
+    const share = words.length ? Math.round((words.filter((w) => script.has(w)).length / words.length) * 100) / 100 : 0
+    return { key, skipped, share, used: !skipped && share >= 0.3 }
+  })
+}
+/** compare-2: the craft score by dimension (hook, flow, voice, ending), from the craft judge's criteria. */
+export function craftDimensions(score) {
+  const c = score?.criteria
+  if (!c) return null
+  const r = (x) => (typeof x === 'number' ? Math.round(x * 100) / 100 : null)
+  return { craft: score.craft ?? null, hook: r(c.hook), flow: r(typeof c.length_flow === 'number' && typeof c.middle === 'number' ? (c.length_flow + c.middle) / 2 : c.length_flow), voice: r(c.voice), ending: r(c.cta) }
+}
+/** compare-2: totals over a trace — mean craft by dimension, and answers given vs used. */
+export function traceSummary(trace, fixture = {}) {
+  const dims = ['craft', 'hook', 'flow', 'voice', 'ending']
+  const scored = trace.filter((t) => t.craft)
+  const mean = (k) => { const xs = scored.map((t) => t.craft[k]).filter((x) => typeof x === 'number'); return xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null }
+  const answers = trace.flatMap((t) => t.answers_used ?? [])
+  // compare-3 1b: questions shown / answered / skipped, repeats per creator,
+  // later scripts using an earlier saved answer, and knowledge-base growth.
+  const byCreator = new Map()
+  for (const t of trace) byCreator.set(t.creator, [...(byCreator.get(t.creator) ?? []), t])
+  let repeated = 0, laterUsing = 0, laterWith = 0
+  const kbGrowth = {}
+  for (const [creator, rows] of byCreator) {
+    const seen = new Set()
+    for (const t of rows) for (const q of t.questions ?? []) { const k = String(q.text ?? '').toLowerCase(); if (seen.has(k)) repeated++; seen.add(k) }
+    const earlier = []
+    for (const t of [...rows].sort((a, b) => a.n - b.n)) {
+      if (earlier.length && t.status === 200) {
+        laterWith++
+        const script = new Set((t.lines ?? []).map((l) => l.line).join(' ').toLowerCase().match(/[a-z0-9']{4,}/g) ?? [])
+        if (earlier.some((a) => { const w = [...new Set(a.toLowerCase().match(/[a-z0-9']{4,}/g) ?? [])]; return w.length && w.filter((x) => script.has(x)).length / w.length >= 0.3 })) laterUsing++
+      }
+      for (const a of t.answers_given ?? []) earlier.push(a)
+    }
+    const c = fixture[creator]
+    const stored = rows.find((t) => t.stored)?.stored
+    if (c && stored?.by_source) kbGrowth[creator] = (stored.by_source.asked ?? 0) - ((c.stories ?? []).length + Object.keys(c.answers ?? {}).length)
+  }
+  return {
+    questions: {
+      shown: trace.reduce((n, t) => n + (t.questions ?? []).length, 0),
+      answered: answers.filter((a) => !a.skipped).length,
+      skipped: answers.filter((a) => a.skipped).length + trace.filter((t) => t.skipped_questions).length,
+      repeated_for_creator: repeated,
+      true_stops: trace.filter((t) => t.status !== 200).length,
+    },
+    later_scripts_using_a_saved_answer: { used: laterUsing, of: laterWith },
+    kb_growth: kbGrowth,
+    craft_scored: scored.length,
+    craft_mean: Object.fromEntries(dims.map((k) => [k, mean(k)])),
+    requests_that_asked: trace.filter((t) => t.answers_used).length,
+    answers: { given: answers.filter((a) => !a.skipped).length, used: answers.filter((a) => a.used).length, skipped: answers.filter((a) => a.skipped).length },
+  }
+}
+export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixture = {}, craftOf = () => null) {
   return rows.filter((r) => r.scenario?.group === 'panel').map((r) => {
     const bp = blueprints[r.generation_id] ?? {}
     const draft = Array.isArray(bp.writer_raw?.lines) ? bp.writer_raw.lines.map((l) => String(l?.line ?? '')).filter(Boolean) : null
@@ -140,6 +231,18 @@ export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixt
       n: r.n, label: r.scenario?.label ?? null, creator: r.scenario?.creator ?? null, status: r.status, code: r.code ?? null,
       request: { note: body.reference_note ?? body.note ?? null, goal: body.goal ?? null, product: r.scenario?.product ?? null, angle: body.readiness_answers?.angle ?? null, answers: Object.keys(body.readiness_answers ?? {}), mn_answers: Object.keys(body.mn_answers ?? {}) },
       lines: shipped.map((line) => ({ line, origin: lineOrigin(line, draft), support: supportScore(line, fixtureItems(fixture[r.scenario?.creator])) })),
+      // Panel 14: a shipped script with fewer than 3 spoken lines (a line of 3+
+      // words, the edge's floor rule) is flagged thin, so it can be counted.
+      thin: shipped.filter((l) => l.trim().split(/\s+/).length >= 3).length < 3 && r.status === 200,
+      spoken_lines: shipped.filter((l) => l.trim().split(/\s+/).length >= 3).length,
+      questions: (Array.isArray(r.scenario?.asked_questions) ? r.scenario.asked_questions : []).map((q) => ({ text: q, source: questionSource(q) })),
+      optional_question: r.scenario?.optional_question ?? null,
+      skipped_questions: r.scenario?.skipped_questions === true,
+      answers_given: Object.values({ ...(body.readiness_answers ?? {}), ...(body.mn_answers ?? {}) }).map(String).filter((v) => v.trim() && !/^nothing specific/i.test(v)),
+      final_check: bp.facts_only?.final_check?.lines ? { cut: bp.facts_only.final_check.cut, moved: bp.facts_only.final_check.moved, off_request: bp.facts_only.final_check.off_request, centerpiece: bp.facts_only.final_check.centerpiece, lines: bp.facts_only.final_check.lines, worker: bp.facts_only?.worker?.final_check ? { cut: bp.facts_only.worker.final_check.cut, lines: bp.facts_only.worker.final_check.lines } : null } : null,
+      // compare-2: did the final script use each answer; the craft score by dimension.
+      answers_used: Array.isArray(r.scenario?.asked_questions) && r.scenario.asked_questions.length ? answersUsed(body, shipped) : null,
+      craft: r.status === 200 && shipped.length ? craftDimensions(craftOf(shipped)) : null,
       first_draft_recorded: !!draft,
       first_draft_lines: draft ? draft.length : null,
       beat_trace: Array.isArray(bp.beat_trace) ? bp.beat_trace : null,
@@ -147,7 +250,7 @@ export function buildTrace(rows, blueprints = {}, owners = {}, stored = {}, fixt
       stored: stored[owners[r.generation_id]] ?? null,
       // FACTS_ONLY_WRITER: per layer, what the writer received next to what the account stores.
       layers: { handed: bp.facts_only?.layers_handed ?? { fact: (ws.knowledge_ids ?? []).length + (ws.product_fact_ids ?? []).length + (ws.answer_keys ?? []).length, style: null, background: null }, stored: stored[owners[r.generation_id]]?.layers ?? null },
-      facts_only: bp.facts_only ? { cut: bp.facts_only.cut ?? null, tags: bp.facts_only.tags ?? null, beats_dropped: bp.facts_only.beats_dropped ?? null } : null,
+      facts_only: bp.facts_only ? { cut: bp.facts_only.cut ?? null, tags: bp.facts_only.tags ?? null, beats_dropped: bp.facts_only.beats_dropped ?? null, polish: bp.facts_only.polish ?? null, worker_cut: bp.facts_only.worker?.cut ?? null, thin_after_worker: bp.facts_only.worker?.thin_after_worker ?? null } : null,
       word_budget: bp.word_budget ?? null,
       floor_refill: bp.floor_refill ?? null,
       panel_final_pass: bp.panel_final_pass ?? null,
@@ -179,6 +282,21 @@ async function loadCraft() {
   return (await import(target)).scoreCraft
 }
 
+/**
+ * Mixed pack (owner, 18 Nov): `a+b` reads several batches (e.g. the new writer
+ * and the old writer on the same requests) into ONE blind pack. Ids are random
+ * and the order shuffled across all of them; only key.json says which batch
+ * each id came from. report.json is per batch.
+ */
+export const batchesOf = (arg) => String(arg ?? '').split('+').map((b) => b.trim()).filter(Boolean)
+export function buildMixedPack(rows, blueprints = {}, craft = () => null, rand = (n) => randomBytes(n)) {
+  const pack = buildBlindPack(rows, blueprints, craft, rand)
+  const batches = [...new Set(rows.map((r) => r.batch).filter(Boolean))]
+  if (batches.length < 2) return pack
+  const report = Object.fromEntries(batches.map((b) => [b, buildBlindPack(rows.filter((r) => r.batch === b), blueprints, craft, rand).report]))
+  return { ...pack, report }
+}
+
 async function main() {
   const batch = process.argv[2]
   const outArg = process.argv.find((a) => a.startsWith('--out='))?.slice(6)
@@ -187,7 +305,7 @@ async function main() {
   if ((existsSync(out) ? realpathSync(out) : out).startsWith(realpathSync(REPO))) throw new Error('refusing to write the answer key inside the repository')
   const { createClient } = await import('@supabase/supabase-js')
   const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
-  const { data, error } = await admin.from('script_batch_results').select('n, status, code, scenario, script_text, hooks, generation_id').eq('batch', batch)
+  const { data, error } = await admin.from('script_batch_results').select('batch, n, status, code, scenario, script_text, hooks, generation_id').in('batch', batchesOf(batch))
   if (error) throw new Error(error.message)
   const ids = [...new Set((data ?? []).map((r) => r.generation_id).filter(Boolean))]
   const blueprints = {}
@@ -197,7 +315,7 @@ async function main() {
     for (const g of gs ?? []) blueprints[g.id] = g.blueprint ?? {}
   }
   const scoreCraft = await loadCraft()
-  const pack = buildBlindPack(data ?? [], blueprints, (lines) => { try { return scoreCraft(lines).craft } catch { return null } })
+  const pack = buildMixedPack(data ?? [], blueprints, (lines) => { try { return scoreCraft(lines).craft } catch { return null } })
   mkdirSync(out, { recursive: true })
   writeFileSync(join(out, 'blind.md'), pack.blind)
   writeFileSync(join(out, 'report.json'), JSON.stringify(pack.report, null, 1))
@@ -230,8 +348,15 @@ async function main() {
     // The fictional fixture (in the repo) for the line-level support score.
     const fx = JSON.parse(readFileSync(join(REPO, 'scripts/ops/fixtures/fictional-panel.json'), 'utf8'))
     const fixture = Object.fromEntries((fx.creators ?? []).map((c) => [c.key, c]))
-    const trace = buildTrace(data ?? [], blueprints, owners, stored, fixture)
+    const trace = buildTrace(data ?? [], blueprints, owners, stored, fixture, (lines) => { try { return scoreCraft(lines) } catch { return null } })
     writeFileSync(join(out, 'trace.json'), JSON.stringify(trace, null, 1))
+    const summary = traceSummary(trace, fixture)
+    // compare-3 item 10h: totals of the final check, and centerpiece repeats per creator.
+    const fcRows = trace.filter((t) => t.final_check)
+    const centre = {}
+    for (const t of fcRows) if (t.final_check.centerpiece) { const k = `${t.creator}:${t.final_check.centerpiece}`; centre[k] = (centre[k] ?? 0) + 1 }
+    summary.final_check = { lines_cut: fcRows.reduce((n, t) => n + (t.final_check.cut ?? 0) + (t.final_check.worker?.cut ?? 0), 0), scripts_changed: fcRows.filter((t) => (t.final_check.cut ?? 0) + (t.final_check.moved ?? 0) + (t.final_check.worker?.cut ?? 0) > 0).length, off_request: fcRows.filter((t) => t.final_check.off_request).length, centerpiece_max_repeat: Math.max(0, ...Object.values(centre)) }
+    writeFileSync(join(out, 'report.json'), JSON.stringify({ ...pack.report, trace_summary: summary }, null, 1))
     // Also one line per script in the job log (fictional panel only; counts and line text, no keys).
     for (const t of trace) console.log(`TRACE ${JSON.stringify(t)}`)
   }

@@ -25,7 +25,7 @@ import { askForBeat, askIsUsable, scaffoldWithoutAnswer, boundAskBeats, productA
 import { splitEmphasis } from '../_shared/emphasis.ts'
 import { isBareOrdinal } from '../_shared/shotLabel.ts'
 import { validateScript, validateWhatWeCan, outcomeOf } from '../_shared/scriptValidator.ts'
-import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS, oneStory, storyTwins } from '../_shared/storyRotation.ts'
+import { gateStories, recentSupplyCounts, lastSupplied, STORY_KINDS, STORY_REST_AFTER, oneStory, storyTwins } from '../_shared/storyRotation.ts'
 import { scrubPrivate, scrubLike, isPrivate, isHardLimit, guardScript, statedQuantities, rewriteIsSafe, privateParts } from '../_shared/privacyGuard.ts'
 import { traceLines, isInventedMethod, type LineSourceInput } from '../_shared/lineSources.ts'
 import { unpickedNames, namedIn, enforceScriptRules, isFollowAsk } from '../_shared/scriptRules.ts'
@@ -53,6 +53,7 @@ import {
 } from '../_shared/knowledgeResolver.ts'
 import { inStage, currentStageUsage, stageOfCall, setLedgerContext, withScriptLedger } from '../_shared/aiUsage.ts'
 import { buildProvenance } from '../_shared/provenance.ts'
+import { readinessAsksUnderFactsOnly } from '../_shared/readinessUnderFactsOnly.ts'
 import { dropInventedCauses, isSubjectOnlyTopic, subjectsLine } from '../_shared/inventedCause.ts'
 import { checkSupport } from '../_shared/supportCheck.ts'
 import { claimStrength, type ClaimStrength } from '../_shared/claimStrength.ts'
@@ -111,7 +112,7 @@ import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
 import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
-import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, decideFactsOnly, traceAndCut, layerCounts, type WriterItem } from '../_shared/factsOnly.ts'
+import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, chooseStory, eventFit, pieceQuestion, scriptShipThin, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, planFactsOnly, planAskFirst, finalCheck, questionRulesOk, fittingStoryIds, STOP_MIN_WORDS, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, restingStoryIds, thinNextSteps, thinStopBody, missingNeedKinds, type WriterItem, type FoQuestion } from '../_shared/factsOnly.ts'
 import { scriptCleanupV1, finalPassCuts } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
@@ -7210,6 +7211,10 @@ async function handle(req: Request): Promise<Response> {
   const factsOnlyNow = (): boolean => factsOnlyWriterOn(Deno.env.get('FACTS_ONLY_WRITER'), trialOn)
   // The layers the writer was handed (set at the brief; read by the final pass and the trace).
   let foItems: WriterItem[] = []
+  // compare-3 proof fixes: the story this request is built on, which story each saved answer belongs to, and the answers given in this request.
+  let foChosenStoryId: string | null = null
+  const foStoryOf = new Map<string, string>()
+  const foAnswerIdsOf = (ra: unknown): string[] => Object.keys((ra ?? {}) as Record<string, unknown>).filter((k) => /^mn:fo:(?:piece|story):/.test(k)).map((k) => `answer:${k}`)
   let foStyle: WriterItem[] = []
   let foBackground: WriterItem[] = []
   const isHeartbeat = (heartbeatUserId !== '' && user.id === heartbeatUserId) || isPanel
@@ -7282,7 +7287,7 @@ async function handle(req: Request): Promise<Response> {
   // FACTS_ONLY_WRITER (spread after panel7GateExtras): no word budget for the
   // worker's refill, and the worker re-runs the trace pass after polish/QC/gate.
   const factsOnlyGateExtras = (): Record<string, unknown> => (factsOnlyNow()
-    ? { word_budget: undefined, facts_only: true, facts_only_layers: { style: foStyle.map((x) => x.text), background: foBackground.map((x) => x.text), names: [...((libraryRows ?? []) as Array<{ name?: unknown }>).map((r) => String(r.name ?? '')), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')].filter((n) => n.trim()) } }
+    ? { word_budget: undefined, facts_only: true, facts_only_centerpiece: foChosenStoryId, facts_only_answer_ids: foAnswerIdsOf(body.readiness_answers), facts_only_story_of: Object.fromEntries(foStoryOf), facts_only_layers: { style: foStyle.map((x) => x.text), background: foBackground.map((x) => x.text), names: [...((libraryRows ?? []) as Array<{ name?: unknown }>).map((r) => String(r.name ?? '')), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')].filter((n) => n.trim()) } }
     : {})
   const optionalPassTime = (step: string): boolean => {
     // FACTS_ONLY_WRITER: no lengthen passes (length follows her material) and no
@@ -9372,7 +9377,8 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
   // A request that asks WHY or for THE DAY I… needs her own truth. When none of
   // her stories or answers touches its topic, she is asked first and nothing
   // is written; the panel records the request as needs_answers.
-  if (isPanel) {
+  // FACTS_ONLY_WRITER: the gap layer below asks the specific questions; this older generic stop stands down.
+  if (isPanel && !factsOnlyNow()) {
     const askNote = String(reference_note ?? '')
     const storyAnswer = String((body.readiness_answers as Record<string, unknown> | undefined)?.story ?? '')
     const answerTexts = Object.values(((body as { mn_answers?: unknown }).mn_answers ?? {}) as Record<string, unknown>).map(String).concat(storyAnswer)
@@ -9390,6 +9396,7 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', error: 'One question first: nothing you have told Twin covers this yet.', questions: [{ field: 'story', question: storyQuestion(askNote) }] }, 409)
     }
   }
+  let foGapCtx: { closedKeys: string[]; saved: string[]; product: { id: string; name: string } | null; askedKeys: string[]; askedTexts: string[]; optional: FoQuestion | null } | null = null
   // ⚖️ FACTS_ONLY_WRITER — THE GAP LAYER (default off). What this request needs
   // (a story, a number, a proof, a product fact) is matched against the FACTS
   // layer only. An uncovered need stops the request before anything is
@@ -9422,20 +9429,49 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       targetProductId: pid, offer: typeof readyOffer === 'string' ? readyOffer : '', now: Date.now(),
     }))
     const [{ data: hist }, { data: saved }] = await Promise.all([
-      admin.from('question_asks').select('slot_id, outcome').eq('owner_id', user.id).in('outcome', ['answered', 'skipped', 'filler']).limit(500),
-      admin.from('creator_knowledge').select('text, source_ref').eq('owner_id', user.id).eq('source', 'asked').is('superseded_at', null).limit(400),
+      // compare-3: every question ever shown to her (never repeated), with its outcome.
+      admin.from('question_asks').select('slot_id, outcome, wording').eq('owner_id', user.id).limit(1000),
+      admin.from('creator_knowledge').select('id, text, source_ref').eq('owner_id', user.id).eq('source', 'asked').is('superseded_at', null).limit(400),
     ]).catch(() => [{ data: null }, { data: null }] as const)
-    const savedRows = (saved ?? []) as Array<{ text?: unknown; source_ref?: unknown }>
+    const savedRows = (saved ?? []) as Array<{ id?: unknown; text?: unknown; source_ref?: unknown }>
     const closedKeys = closedKeysFrom((hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown }>, savedRows)
-    const d = decideFactsOnly(
-      { note: String(reference_note ?? ''), goal: body.goal ?? null, product: pid ? { id: pid, name: String((ownedEntity as { name?: unknown }).name ?? '') } : null },
-      writerItems(gapLedger), { ledger: gapLedger, closedKeys, savedAnswers: savedRows.map((r) => String(r.text ?? '')) })
-    console.log(JSON.stringify({ event: 'facts_only_gap', action: d.action, relevant: d.relevant.length, questions: d.questions.length }))
-    if (d.action === 'ask') {
-      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, error: 'A few questions first: what you have told Twin does not cover this yet.', questions: d.questions.map((q) => ({ field: q.key, kind: q.kind, question: q.question })) }, 409)
+    const histRows = (hist ?? []) as Array<{ slot_id?: unknown; outcome?: unknown; wording?: unknown }>
+    const askedKeys = histRows.map((r) => String(r.slot_id ?? '')).filter(Boolean)
+    const askedTexts = histRows.map((r) => String(r.wording ?? '')).filter((t) => t.length > 3)
+    // compare-3 (owner, 24 Nov): write first; at most one optional question.
+    // Stop with no script only when almost nothing real fits.
+    const foReq = { note: String(reference_note ?? ''), goal: body.goal ?? null, product: pid ? { id: pid, name: String((ownedEntity as { name?: unknown }).name ?? '') } : null }
+    const storiesOnFile = (knowledgeRows as Array<{ kind?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))).length
+    // compare-3 (owner, 24 Nov): ASK FIRST, THEN WRITE. Every request has a
+    // question step with "Skip and write now" (body.skip_questions). A fitting
+    // story gets one question deepening a piece of it not yet known; little
+    // material gets up to 3; almost nothing stops with a next step.
+    const foItemsGap = writerItems(gapLedger)
+    const storyRowsGap = (knowledgeRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? '')))
+    // proof fix 6: the story is chosen by its events and her recent scripts, not shared words.
+    const namedGap = chooseStory(storyRowsGap, String(reference_note ?? ''), recentStorySupply)
+    foChosenStoryId = namedGap?.id ?? null
+    const restingGap = restingStoryIds(storyRowsGap, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, new Set(namedGap?.id ? [String(namedGap.id)] : []))
+    const savedByStory = new Map<string, string[]>()
+    for (const r of savedRows) {
+      const m = /^asked:mn:fo:piece:([^:]+):/.exec(String(r.source_ref ?? ''))
+      if (m) { savedByStory.set(m[1]!, [...(savedByStory.get(m[1]!) ?? []), String(r.text ?? '')]); if (r.id) foStoryOf.set(String(r.id), m[1]!) }
     }
+    const answeredHere = Object.keys((body.readiness_answers ?? {}) as Record<string, unknown>).some((k) => /^mn:fo:/.test(k))
+    const skip = (body as { skip_questions?: unknown }).skip_questions === true
+    const d = planAskFirst(foReq, foItemsGap, { ledger: gapLedger, closedKeys, savedAnswers: savedRows.map((r) => String(r.text ?? '')), askedKeys, askedTexts, storiesOnFile, skip, answeredHere, namedStoryId: namedGap?.id ? String(namedGap.id) : null, restingIds: restingGap, savedByStory })
+    foGapCtx = { closedKeys, saved: savedRows.map((r) => String(r.text ?? '')), product: foReq.product, askedKeys, askedTexts, optional: null }
+    console.log(JSON.stringify({ event: 'facts_only_gap', action: d.action, tier: d.action === 'ask' ? d.tier : null, questions: d.action === 'ask' ? d.questions.length : 0, skip, answered_here: answeredHere }))
     if (d.action === 'stop') {
-      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, error: 'Not enough of your own material for this request yet, so nothing was written.', questions: [] }, 409)
+      // Almost nothing real fits. Stop with a clear next step (#1374).
+      const steps = thinNextSteps(foReq, missingNeedKinds(foReq, foItemsGap, { ledger: gapLedger }))
+      console.log(JSON.stringify({ event: 'facts_only_next_steps', where: 'gap', kinds: steps.map((x) => x.kind) }))
+      return json(thinStopBody(steps, false), 409)
+    }
+    if (d.action === 'ask') {
+      // Shown once: recorded so none of them is ever asked again.
+      await admin.from('question_asks').insert(d.questions.map((q) => ({ owner_id: user.id, entity_key: foReq.product ? `product:${foReq.product.id}` : 'none', option_id: 'fo', slot_id: q.key, angle: 'facts_only', wording: q.question, outcome: 'shown' }))).then(() => {}, () => {})
+      return json({ code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, ask_first: true, tier: d.tier, can_skip: true, skip_label: 'Skip and write now', error: d.tier === 'deepen' ? 'One question to make this script yours. You can skip it and write now.' : 'A few specific questions first. You can skip them and write now.', questions: d.questions.map((q) => ({ field: q.key, kind: q.kind, question: q.question })) }, 409)
     }
   }
   // The panel final pass's view of her material (panel 13b; read at the end).
@@ -9457,11 +9493,18 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
       offers: [...products.map((p) => p.offer), String(readyOffer ?? '')].filter((o) => o.trim()),
     }
   }
-  if (readyMissing.length) {
+  // Facts-only writer on: the readiness story, angle and goal questions stand
+  // down (the gap layer asks for her material); audience, CTA and offer stay.
+  const readyAsks = readinessAsksUnderFactsOnly(readyMissing, factsOnlyNow(), [
+    ...Object.values(READY_OBJECTIVE_QUESTIONS),
+    ...Object.values(PURPOSE_LABEL).map((l) => `Nothing Twin knows about you fits ${l} yet. What is one real thing this video should say?`),
+  ])
+  if (readyAsks.length !== readyMissing.length) console.log(JSON.stringify({ event: 'readiness_facts_only_stood_down', fields: readyMissing.filter((m) => !readyAsks.includes(m)).map((m) => m.field) }))
+  if (readyAsks.length) {
     // ⚖️ ORDERED BY WHAT UNBLOCKS THE MOST, capped at three. A creator asked
     // eight questions abandons; a creator asked two answers them.
     const ORDER = ['goal', 'offer', 'angle', 'relationship', 'cta', 'claims', 'audience', 'screen']
-    const ask = readyMissing
+    const ask = readyAsks
       .slice()
       .sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field))
       .slice(0, 3)
@@ -10798,8 +10841,34 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
         .filter((k): k is (typeof kRows)[number] => !!k && k.basis !== 'inferred')
       : null
     // FACTS_ONLY_WRITER: her whole material, no ten-slot cap, no one-story cut, no topic scoping.
+    // Panel 14 fix 3: story rotation on the facts-only path. A story supplied in
+    // 2 of her last 5 scripts rests (the spend ledger records only the stories a
+    // facts-only script actually used; see below).
+    // compare-1 (advisor): the story the request names is never rested.
+    const foNamed = factsOnlyNow() && !chosenRows
+      ? chooseStory((kRows as Array<{ id?: unknown; kind: string; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))), String(reference_note ?? ''), recentStorySupply)
+      : null
+    if (foNamed?.id) foChosenStoryId = foNamed.id
+    // compare-3: the named story always wins. Other fitting stories rotate (no
+    // one centerpiece in every script), but rotation never leaves the request
+    // with no fitting story: the least-told fitting one stays.
+    const foKeep = new Set(foNamed?.id ? [String(foNamed.id)] : [])
+    const foRestingAll = factsOnlyNow() && !chosenRows ? restingStoryIds(kRows as Array<{ id?: unknown; kind?: unknown }>, recentStorySupply, STORY_KINDS, STORY_REST_AFTER, foKeep) : new Set<string>()
+    const foFitting = factsOnlyNow() ? [...fittingStoryIds((kRows as Array<{ id?: unknown; kind?: unknown; text?: unknown }>).filter((k) => STORY_KINDS.has(String(k.kind ?? ''))), String(reference_note ?? ''))] : []
+    if (foFitting.length && foFitting.every((id) => foRestingAll.has(id))) {
+      const leastTold = [...foFitting].sort((a, b) => (recentStorySupply.get(a) ?? 0) - (recentStorySupply.get(b) ?? 0))[0]!
+      foRestingAll.delete(leastTold)
+    }
+    // proof fix 6: one story per script. The other stories that fit this
+    // request rest for it, so the writer is handed one centerpiece.
+    if (foNamed?.id) {
+      for (const id of foFitting) if (id !== foNamed.id) foRestingAll.add(id)
+      for (const k of kRows as Array<{ id?: unknown; kind?: unknown; text?: unknown }>) if (STORY_KINDS.has(String(k.kind ?? '')) && String(k.id ?? '') !== foNamed.id && eventFit(String(k.text ?? ''), String(reference_note ?? '')) > 0) foRestingAll.add(String(k.id))
+    }
+    const foResting = foRestingAll
+    if (foResting.size) console.log(JSON.stringify({ event: 'facts_only_stories_resting', resting: foResting.size }))
     const factsOnlyAll = factsOnlyNow() && !chosenRows
-      ? kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered' && factsOnlyKeepsRow(k as never, new Set(uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids))))
+      ? kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered' && !foResting.has(String((k as { id?: unknown }).id ?? '')) && factsOnlyKeepsRow(k as never, new Set(uuidList((body as { exclude_knowledge_ids?: unknown }).exclude_knowledge_ids))))
       : null
     const speakableAll = chosenRows ?? factsOnlyAll ?? [
       ...askedHold.reserved,
@@ -13187,6 +13256,17 @@ This is the video's position. Every field below must serve it. If the reference'
           ...loopPainThemes.map((t) => `Her audience says (outside research, never her experience): ${t}`),
         ], foItems.filter((it) => it.layer === 'background').length + 1)
         factsOnlyBlock = renderFactsOnlyBlock(foItems, foStyle, foBackground)
+        {
+          // proof fixes 1 and 6: name the one story and her answers for it.
+          const cp = foItems.find((it) => it.id === foChosenStoryId)
+          const ans = foItems.filter((it) => foAnswerIdsOf(body.readiness_answers).includes(it.id) && it.layer === 'fact')
+          // compare-3 proof fixes (owner, 27 Nov): the chosen story in full,
+          // her answers for it, and a target length; her product and general
+          // facts stay as supporting lines; nothing beyond her material.
+          if (cp) factsOnlyBlock += `\n\nTHE STORY OF THIS SCRIPT (${cp.ref}), in full: "${cp.text}"\nTell this one story, all of it: what happened, in the order it happened. No line may come from any other story of hers.`
+          if (ans.length) factsOnlyBlock += `\nHER ANSWER${ans.length > 1 ? 'S' : ''} FOR THIS STORY: ${ans.map((a) => `${a.ref} "${a.text}"`).join('; ')}. Use ${ans.length > 1 ? 'them' : 'it'} in the story, in her words, at the moment ${ans.length > 1 ? 'they belong' : 'it belongs'}.`
+          if (cp || ans.length) factsOnlyBlock += `\nLENGTH: about 70 to 90 spoken words in total. Reach it with her story, her answers, and her product and general facts above as supporting lines (each with its source ref). Never add an event, number, feeling, result or claim that is not in her material; if her material runs out first, stop shorter.`
+        }
         console.log(JSON.stringify({ event: 'facts_only_layers', ...layerCounts(foItems, foStyle, foBackground) }))
       } catch (e) { console.warn('facts_only_layers_failed', String((e as Error)?.message ?? e).slice(0, 120)) }
     }
@@ -18206,7 +18286,7 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // account only). The gate job is also where the polish runs, so with the
     // gate off there is no later stage: the QC runs here, last, on the edge.
     // Same pure function as the worker; on any error the script stands.
-    else if (qualityProfile() === 'full_stack' && qFlag('QUALITY_CONTROLLER') === 'on' && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
+    else if (qualityProfile() === 'full_stack' && qFlag('QUALITY_CONTROLLER') === 'on' && !factsOnlyNow() && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       try {
         const bpq = blueprint as Record<string, unknown>
         const tgtQ = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
@@ -18298,19 +18378,104 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
     // never reworded. Counts and reasons in logs; examples on the blueprint.
     if (factsOnlyNow() && blueprint && typeof blueprint === 'object' && Array.isArray((blueprint as { script?: unknown }).script)) {
       const bpo = blueprint as Record<string, unknown>
+      let foPolish: unknown = null
       try {
         // Rule C: her product and brand names (a sentence naming them needs a source).
         const foNames = [...((libraryRows ?? []) as Array<{ name?: unknown }>).map((r) => String(r.name ?? '')), String((confirmedBrand as { name?: unknown } | null)?.name ?? '')].filter((n) => n.trim())
-        const r = traceAndCut(bpo.script as Array<Record<string, unknown>>, foItems, { style: foStyle, background: foBackground, names: foNames, hasProduct: !!ownedEntity })
-        bpo.script = r.beats
+        // Panel 14 fixes 2 and 4: another product's facts and words stay out; the hook traces like any line.
+        const foProducts = ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id)
+        const foTarget = (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null
+        // compare-1 follow-up: her last scripts (stock lines rest, openings differ)
+        // and her saved profile notes (never spoken).
+        let priorScripts: Array<Array<{ line?: unknown }>> = []
+        try {
+          const { data: priorGens } = await admin.from('generations').select('script:blueprint->script').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20)
+          priorScripts = ((priorGens ?? []) as Array<{ script?: unknown }>).map((g) => (Array.isArray(g.script) ? g.script as Array<{ line?: unknown }> : [])).filter((x) => x.length)
+        } catch { /* a failed read rests nothing */ }
+        const foPriorLines = priorScripts.slice(0, 3).flatMap((sc) => sc.map((b) => (typeof b?.line === 'string' ? b.line : '')).filter(Boolean))
+        const vpf = (vp ?? {}) as { niche?: unknown; sub_niche?: unknown; audience?: unknown; summary?: unknown }
+        const foProfileTexts = [vpf.niche, vpf.sub_niche, vpf.audience, vpf.summary, (brief as Record<string, unknown>).audience].filter((t): t is string => typeof t === 'string' && !!t.trim())
+        const foTraceOpts = { style: foStyle, background: foBackground, names: foNames, hasProduct: !!ownedEntity, targetProductId: foTarget, products: foProducts, profileTexts: foProfileTexts, priorLines: foPriorLines }
+        const r = traceAndCut(bpo.script as Array<Record<string, unknown>>, foItems, { ...foTraceOpts, strictHook: true })
+        const pol = polishFactsOnly(r.beats as Array<Record<string, unknown> & { line?: unknown }>)
+        bpo.script = pol.beats
+        if (Array.isArray(bpo.hook_options)) {
+          const th = traceHooks((bpo.hook_options as unknown[]).filter((h): h is string => typeof h === 'string'), foItems, foTraceOpts)
+          bpo.hook_options = th.hooks.map((h) => polishFactsOnly([{ line: h }]).beats[0]?.line).filter((h): h is string => typeof h === 'string' && !!h.trim())
+          // compare-3: at least 2 hook options. Top up from the traced script's
+          // own opening sentences (never a profile line: the trace cut those).
+          const hooks = bpo.hook_options as string[]
+          for (const b of (bpo.script as Array<{ line?: unknown }>)) {
+            if (hooks.length >= 2) break
+            const first = typeof b?.line === 'string' ? b.line.split(/(?<=[.!?])\s+/)[0]?.trim() : ''
+            if (first && first.split(/\s+/).length >= 4 && !hooks.some((h) => h.toLowerCase() === first.toLowerCase())) hooks.push(first)
+          }
+          if (th.dropped) console.log(JSON.stringify({ event: 'facts_only_hooks_dropped', dropped: th.dropped }))
+        }
+        // Fix 3: no two of her scripts open with the same line.
+        try {
+          const prior = priorScripts.map((sc) => openingOf(sc)).filter(Boolean)
+          const ro = dropRepeatedOpening(bpo.script as Array<Record<string, unknown>>, prior)
+          if (ro.cut) { bpo.script = ro.beats; console.log(JSON.stringify({ event: 'facts_only_repeated_opening_cut', cut: ro.cut })) }
+        } catch { /* a failed read cuts nothing */ }
+        // Fix 3: the spend ledger records the stories this script actually used, so rotation rests what was told.
+        const usedIds = new Set((bpo.script as Array<{ source_ids?: unknown }>).flatMap((b) => (Array.isArray(b.source_ids) ? b.source_ids.map(String) : [])))
+        suppliedKnowledgeIds = suppliedKnowledgeIds.filter((id) => usedIds.has(id))
+        foPolish = pol.record
         if (Array.isArray(bpo.shot_list)) bpo.shot_list = syncShotListSpokenText(bpo.shot_list as Array<{ spoken_text?: unknown }>, bpo.script as Array<{ line?: unknown }>).shots
-        bpo.facts_only = { ...r.record, layers_handed: layerCounts(foItems, foStyle, foBackground), word_budget: 'off', lengthen: 'off', payoff_repair: 'dropped' }
+        bpo.facts_only = { ...r.record, polish: foPolish, layers_handed: layerCounts(foItems, foStyle, foBackground), word_budget: 'off', lengthen: 'off', payoff_repair: 'dropped' }
         const { examples: _ex, ...counts } = r.record
         console.log(JSON.stringify({ event: 'facts_only_trace', where: 'edge', ...counts }))
       } catch (e) {
         // A safety pass is never skipped silently: the blueprint says it failed.
         bpo.facts_only = { error: true }
         console.warn(JSON.stringify({ event: 'facts_only_trace_failed', error: String((e as Error)?.name ?? 'error') }))
+      }
+      // compare-3 item 10: ONE FINAL CHECK on the finished script. Every line is
+      // traced to her material or cut; the table goes on the blueprint (trace).
+      let offRequest = false
+      let foCenter: string | null = null
+      try {
+        const foProductsF = ((libraryRows ?? []) as Array<{ id?: unknown; name?: unknown }>).map((p) => ({ id: String(p.id ?? ''), name: String(p.name ?? '') })).filter((p) => p.id)
+        const vpf2 = (vp ?? {}) as { niche?: unknown; sub_niche?: unknown; audience?: unknown; summary?: unknown }
+        const fc = finalCheck(bpo.script as Array<Record<string, unknown>>, foItems, { note: String(reference_note ?? ''), targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null, products: foProductsF, profileTexts: [vpf2.niche, vpf2.sub_niche, vpf2.audience, vpf2.summary].filter((t): t is string => typeof t === 'string'), centerpieceId: foChosenStoryId, storyOf: foStoryOf, answerIds: foAnswerIdsOf(body.readiness_answers) })
+        foCenter = fc.record.centerpiece
+        bpo.script = fc.beats
+        if (Array.isArray(bpo.shot_list)) bpo.shot_list = syncShotListSpokenText(bpo.shot_list as Array<{ spoken_text?: unknown }>, bpo.script as Array<{ line?: unknown }>).shots
+        bpo.facts_only = { ...((bpo.facts_only ?? {}) as Record<string, unknown>), final_check: fc.record }
+        offRequest = fc.record.off_request
+        console.log(JSON.stringify({ event: 'facts_only_final_check', cut: fc.record.cut, moved: fc.record.moved, off_request: fc.record.off_request, words: fc.record.words }))
+      } catch (e) {
+        bpo.facts_only = { ...((bpo.facts_only ?? {}) as Record<string, unknown>), final_check: { error: true } }
+        console.warn(JSON.stringify({ event: 'facts_only_final_check_failed', error: String((e as Error)?.name ?? 'error') }))
+      }
+      const thin0 = scriptShipThin(bpo.script as Array<{ line?: unknown }>)
+      // A script that does not answer the request is not shipped (item 10b).
+      const thin = offRequest ? { ...thin0, thin: true } : thin0
+      const foReqT = { note: String(reference_note ?? ''), goal: body.goal ?? null, product: foGapCtx?.product ?? null }
+      const qctx = { closedKeys: foGapCtx?.closedKeys ?? [], savedAnswers: foGapCtx?.saved ?? [], askedKeys: foGapCtx?.askedKeys ?? [], askedTexts: foGapCtx?.askedTexts ?? [] }
+      // proof fix 5: the one question that would fix a thin script: the next
+      // missing piece of the story it tells, else the request's open need.
+      const cpItem = foItems.find((it) => it.id === (foCenter ?? foChosenStoryId))
+      const pieceQ = thin.thin && cpItem ? pieceQuestion(cpItem, { ...qctx, savedForStory: [...foStoryOf.entries()].filter(([, sid]) => sid === cpItem.id).map(([kid]) => foItems.find((x) => x.id === kid)?.text ?? '').filter(Boolean) }) : null
+      const thinQ = thin.thin ? (pieceQ && questionRulesOk(pieceQ, foReqT, qctx) ? pieceQ : thinQuestion(foReqT, qctx)) : null
+      const optional = foGapCtx?.optional ?? (thinQ && questionRulesOk(thinQ, foReqT, qctx) ? thinQ : null)
+      // A script under 40 spoken words or 3 lines is never shipped (S-2F02FB):
+      // a true stop, refunded, with one specific question or a clear next step.
+      if (thin.thin && !isShadowRun) {
+        const q = thinQ && questionRulesOk(thinQ, foReqT, qctx) ? thinQ : null
+        console.log(JSON.stringify({ event: 'facts_only_thin_stop', words: thin.words, lines: thin.lines, asked: !!q }))
+        await refundOnce('facts_only_thin')
+        if (q) await admin.from('question_asks').insert({ owner_id: user.id, entity_key: foReqT.product ? `product:${foReqT.product.id}` : 'none', option_id: 'fo', slot_id: q.key, angle: 'facts_only', wording: q.question, outcome: 'shown' }).then(() => {}, () => {})
+        return json(q
+          ? { code: 'NEEDS_STORY', check_status: 'needs_answers', facts_only: true, thin: true, error: 'One specific question first: what you have told Twin is not enough for this script yet.', questions: [{ field: q.key, kind: q.kind, question: q.question }] }
+          : thinStopBody(thinNextSteps(foReqT), true), 409)
+      }
+      if (optional) {
+        bpo.facts_only_question = { field: optional.key, kind: optional.kind, question: optional.question, optional: true }
+        // Shown once: recorded so it is never asked again.
+        await admin.from('question_asks').insert({ owner_id: user.id, entity_key: foReqT.product ? `product:${foReqT.product.id}` : 'none', option_id: 'fo', slot_id: optional.key, angle: 'facts_only', wording: optional.question, outcome: 'shown' }).then(() => {}, () => {})
+        console.log(JSON.stringify({ event: 'facts_only_optional_question', kind: optional.kind }))
       }
     }
     traceBeats('shipped', (blueprint as { script?: unknown })?.script)
@@ -18583,6 +18748,8 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
             rescueRecheck = { ledger: { answers: gateAnswers, outside: gateOutside, offer: gateOffer, target_product_id: gateTarget, ...(gateMeasure ? { measure_only: true } : {}), ...(trialOn ? { rule_review: true, hold_asks: true } : {}), ...(trialOn && checkLineOn(Deno.env.get('CHECK_LINE_KILL')) ? { check_lines: true } : {}), ...(trialOn && Deno.env.get('REPAIR_CAL_KILL') !== '1' ? { repair_calibrated: true } : {}), ...panel7GateExtras() } }
             // FACTS_ONLY_WRITER (default off): no word budget; the worker re-runs the trace pass.
             Object.assign(rescueRecheck.ledger, factsOnlyGateExtras())
+            // SCRIPT_CLEANUP_V1 (default off): the worker's cleanup runs on a rescued script too.
+            if (cleanupV1) rescueRecheck.ledger.script_cleanup_v1 = true
             console.log(JSON.stringify({ event: 'invention_gate_queued', rescued: true }))
           } catch { /* the gate bookkeeping never loses a rescued script */ }
         }

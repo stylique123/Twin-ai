@@ -79,6 +79,12 @@ export function panelFilterFromEnv(env = process.env, group = '') {
   const rangeTok = tokens.find((x) => x.startsWith('panel-range:'))?.slice('panel-range:'.length) ?? ''
   const out = { modes: [...new Set([...fromEnv, ...fromGroup])], range: String(env.PANEL_RANGE ?? '').trim() || rangeTok.trim() }
   if (tokens.includes('panel-viewer-arms')) out.viewerArms = true
+  // compare-3 proofs: `panel-repeat:7+29` runs those requests (1-based, like the
+  // range) a second time at the end, for the same creator, so the second
+  // question can be checked against the first.
+  const repTok = tokens.find((x) => x.startsWith('panel-repeat:'))?.slice('panel-repeat:'.length) ?? ''
+  const repeat = repTok.split(/[+;]/).map((x) => Number(x.trim())).filter((x) => Number.isInteger(x) && x >= 1)
+  if (repeat.length) out.repeat = repeat
   return out
 }
 
@@ -107,6 +113,16 @@ export function panelScenarios(fixture, accountsDoc, limit = Infinity, filter = 
       ...(r.angle ? { angle: { kind: r.angle, gist: r.note } } : {}) }
     return { n, group: 'panel', mode, label: `${r.creator} ${r.kind}`, id: r.id ?? null, template: r.template ?? null, profile: r.profile ?? null, lacks: r.lacks ?? [], creator: r.creator, kind: r.kind, product: r.product ?? null, owner_id: acct.owner_id, email: acct.email, reference: mode === 'reference' ? r.reference : null, body }
   })
+}
+
+/** Repeat scenarios: request k (1-based) again, last, as n = REPEAT_BASE + fixture index (request_n keeps the index). */
+export const REPEAT_BASE = 1000
+export function withRepeats(list, fixture, accountsDoc, repeat = []) {
+  const extra = repeat.map((k) => {
+    const base = panelScenarios(fixture, accountsDoc, Infinity, { range: String(k) })[0]
+    return base ? { ...base, n: REPEAT_BASE + base.n, request_n: base.n, repeat_of: base.n } : null
+  }).filter(Boolean)
+  return [...list, ...extra]
 }
 
 /** The `transcripts` row a fictional reference is stored as: the creator's own row (the edge reads
@@ -342,16 +358,73 @@ let panel14Doc = null
  * for this request; a fixture "skip", or a key the fixture does not hold, is
  * sent as the skip text, which the edge stores as skipped and closes.
  */
-export function panel14Answers(questions, body, requestId, doc = null) {
+export function panel14Answers(questions, body, requestId, doc = null, creator = null, request = null) {
   const d = doc ?? (panel14Doc ??= JSON.parse(readFileSync(PANEL14_ANSWERS, 'utf8')))
   const fixture = d?.requests?.[requestId]?.answers ?? {}
   const out = { ...(body.readiness_answers ?? {}) }
   for (const q of questions ?? []) {
     if (!q?.field) continue
     const v = fixture[q.field]
-    out[q.field] = typeof v === 'string' && v.trim() && v !== 'skip' ? v : PANEL_SKIP_ANSWER
+    // compare-3 (owner): the exact fixture answer when it is real material;
+    // otherwise answered BY KIND from her fictional material, so a stopped
+    // request can continue. Never her profile or niche text.
+    const exact = typeof v === 'string' && v.trim() && v !== 'skip' && !isProfileText(v, creator) ? v : null
+    out[q.field] = exact ?? answerByKind(q, creator, request) ?? PANEL_SKIP_ANSWER
   }
   return { readiness_answers: out }
+}
+
+const words = (t) => new Set(String(t ?? '').toLowerCase().match(/[a-z]{4,}/g) ?? [])
+const shared = (a, b) => { const wb = words(b); let n = 0; for (const w of words(a)) if (wb.has(w)) n++; return n }
+const normT = (t) => String(t ?? '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+/**
+ * compare-3 proof fixes (owner, 27 Nov): a story-piece question is answered
+ * from THIS creator's fictional fixture (`piece_answers`), for the story the
+ * question quotes ("In your story \"<first words>…\"") and the piece it asks
+ * for. Never one shared text. Null when the fixture has no answer for it.
+ */
+export function pieceAnswer(q, creator) {
+  const piece = String(q?.field ?? '').split(':')[4] ?? ''
+  const quoted = /In your story "([^"…]+)/.exec(String(q?.question ?? ''))?.[1] ?? ''
+  if (!piece || !quoted.trim()) return null
+  const row = (creator?.piece_answers ?? []).find((r) => r?.fictional === true && normT(r.story).startsWith(normT(quoted)))
+  const v = row?.[piece]
+  return typeof v === 'string' && v.trim() ? v : null
+}
+/** A creator's profile or niche text (never an answer to a material question). */
+export function isProfileText(text, creator) {
+  const t = String(text ?? '').trim().toLowerCase()
+  if (!t) return false
+  if (/^(?:i am|i'm|we are|we're)\s+(?:a|an|the|just a)\b/.test(t)) return true
+  return ['profile', 'niche'].some((k) => String(creator?.answers?.[k] ?? '').trim().toLowerCase() === t)
+}
+/**
+ * compare-3: answer a facts-only question by its kind (story, proof, steps,
+ * opinion, number, product fact) from the creator's fictional material: the
+ * item that best fits the request. Null when nothing of that kind exists.
+ */
+export function answerByKind(q, creator, request) {
+  if (!creator) return null
+  const parts = String(q?.field ?? '').split(':')
+  // compare-3: a question deepening one piece of a story (mn:fo:piece:<story>:<piece>).
+  if (parts[2] === 'piece') return pieceAnswer(q, creator)
+  const kind = String(q?.kind ?? parts[2] ?? 'story')
+  const note = `${request?.note ?? ''} ${q?.question ?? ''}`
+  const stories = (creator.stories ?? []).filter((s) => s?.text && !isProfileText(s.text, creator))
+  const best = (xs) => [...xs].sort((a, b) => shared(b.text, note) - shared(a.text, note))[0]?.text ?? null
+  const product = (creator.products ?? []).find((p) => p.key === request?.product) ?? null
+  const facts = (product?.facts ?? []).map((f) => String(f?.value ?? '')).filter(Boolean)
+  switch (kind) {
+    case 'product_fact': return facts.length ? facts.slice(0, 2).join('. ') : (creator.answers?.product_slot ?? null)
+    case 'steps': return best(stories.filter((s) => s.kind === 'framework')) ?? best(stories.filter((s) => s.kind === 'experience'))
+    case 'opinion': return best(stories.filter((s) => s.kind === 'opinion' || s.kind === 'belief')) ?? best(stories)
+    case 'number': return best(stories.filter((s) => /\d|forty|twenty|hundred|thousand|percent/i.test(s.text))) ?? (facts.find((f) => /\d/.test(f)) ?? null)
+    default: {
+      const story = best(stories.filter((s) => s.kind === 'experience' || s.kind === 'story'))
+      const ans = creator.answers?.story && !isProfileText(creator.answers.story, creator) ? creator.answers.story : null
+      return story ?? ans
+    }
+  }
 }
 export const isFactsOnlyStop = (r) => r?.status === 409 && r?.json?.code === 'NEEDS_STORY' && r?.json?.facts_only === true && Array.isArray(r?.json?.questions)
 
@@ -391,7 +464,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
   const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'))
   const budget = Number(process.env.PANEL_BUDGET_USD || 2.5)
   const qArms = qualityArms(accounts)
-  const list = expandQualityArms(panelScenarios(fixture, accounts, limit, filter), qArms)
+  const list = withRepeats(expandQualityArms(panelScenarios(fixture, accounts, limit, filter), qArms), fixture, accounts, filter.repeat ?? [])
   if (qArms.length) console.log(`panel ${batch}: quality arms ${qArms.join(' | ')}${qArms.length > 1 ? ` on the SAME ${list.length / qArms.length} requests (arm k stored at n + ${QUALITY_ARM_STRIDE}k)` : ''}`)
   if (qArms.length && refillArm(accounts)) console.log(`::warning title=panel-arms::refill_arm is also set; an explicit refill_arm wins over the profile's refill on the edge`)
   if (filter.modes.length || filter.range) console.log(`panel ${batch}: subset modes=${filter.modes.join(',') || 'all'} range=${filter.range || 'all'} -> ${list.length} requests, est $${panelEstimate(list.length).toFixed(2)} at $${PANEL_EST_USD_PER_REQUEST}/request`)
@@ -432,7 +505,9 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     // Reference mode: the made-up reference is stored as this creator's transcripts row
     // (subject 'reference'); the edge reads it by transcript_id and never fetches the url.
     const refBody = sc.reference ? { transcript_id: await storeFictionalReference(admin, sc.owner_id, sc.reference) } : {}
-    let body = { ...sc.body, ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.request_n ?? sc.n), ...realisticBody(real, sc), ...(sc.quality_profile ? { quality_profile: sc.quality_profile } : {}), idempotency_key: `${batch}-${sc.n}` }
+    // compare-3: the skip path ("Skip and write now") on every 5th request.
+    const skipPath = (sc.request_n ?? sc.n) % 5 === 4
+    let body = { ...sc.body, ...(skipPath ? { skip_questions: true } : {}), ...refBody, ...(process.env.BATCH_LENGTHEN === 'on' ? {} : { lengthen: false }), ...armBody(accounts, sc.request_n ?? sc.n), ...realisticBody(real, sc), ...(sc.quality_profile ? { quality_profile: sc.quality_profile } : {}), idempotency_key: `${batch}-${sc.n}` }
     const post = async () => {
       const t0 = Date.now()
       const res = await fetch(`${url}/functions/v1/generate-blueprint`, {
@@ -473,21 +548,21 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
     const asked = []
     const fields = []
-    for (let round = 0; round < 3 && r.status === 409 && r.json?.code === 'READINESS_INCOMPLETE' && Array.isArray(r.json.questions); round++) {
+    // One loop for both stops, in whatever order the edge returns them (Panel 14:
+    // a facts-only answer can be followed by a readiness question, and the reverse).
+    // Readiness: answered as before (fixture or skip) and sent again. Facts-only
+    // (Panel 14): questions recorded; in fixture mode (pass 2) answered from
+    // panel14-answers.json and sent again; in skip mode (pass 1) the stop stands.
+    // At most 5 rounds in all.
+    for (let round = 0; round < 5; round++) {
+      const readiness = r.status === 409 && r.json?.code === 'READINESS_INCOMPLETE' && Array.isArray(r.json.questions)
+      const factsOnly = isFactsOnlyStop(r) && r.json.questions.length > 0
+      if (!readiness && !factsOnly) break
       asked.push(...r.json.questions.map((q) => q.question))
       fields.push(...r.json.questions.map((q) => q?.field).filter((f) => f && f !== 'selected_product'))
-      body = { ...body, ...(mode === 'fixture' ? fixtureAnswers(r.json.questions, body, answersBy.get(sc.creator)) : skipAnswers(r.json.questions, body)) }
-      await new Promise((res) => setTimeout(res, 6000))
-      try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
-    }
-    // Panel 14: a facts-only stop. Its questions are recorded; in fixture mode
-    // (pass 2) they are answered from panel14-answers.json and the request is
-    // sent again (at most 3 rounds). In skip mode (pass 1) the stop stands.
-    for (let round = 0; isFactsOnlyStop(r) && r.json.questions.length && round < 3; round++) {
-      asked.push(...r.json.questions.map((q) => q.question))
-      fields.push(...r.json.questions.map((q) => q?.field).filter(Boolean))
-      if (mode !== 'fixture') break
-      body = { ...body, ...panel14Answers(r.json.questions, body, fixture.requests[sc.request_n ?? sc.n]?.id) }
+      if (factsOnly && mode !== 'fixture') break
+      body = { ...body, ...(factsOnly ? panel14Answers(r.json.questions, body, fixture.requests[sc.request_n ?? sc.n]?.id, null, fixture.creators.find((c) => c.key === sc.creator) ?? null, fixture.requests[sc.request_n ?? sc.n] ?? null)
+        : mode === 'fixture' ? fixtureAnswers(r.json.questions, body, answersBy.get(sc.creator)) : skipAnswers(r.json.questions, body)) }
       await new Promise((res) => setTimeout(res, 6000))
       try { r = await post() } catch (e) { r = { status: 0, ok: false, json: null, text: `network: ${String(e?.message ?? e).slice(0, 120)}`, ms: 0 } }
     }
@@ -520,7 +595,7 @@ export async function runPanel({ url, anon, service, batch, limit = Infinity, pa
     if (r.json?.id && !viewerArms) await admin.from('audience_tests').upsert({ generation_id: r.json.id, owner_id: sc.owner_id, status: 'failed', failure: 'skipped: fictional panel measure run', created_at: new Date().toISOString() }, { onConflict: 'generation_id', ignoreDuplicates: true })
     const row = (arm, armBp, armLines, extra = {}) => ({
       batch, n: sc.n,
-      scenario: { group: 'panel', ...(arm ? { viewer_arm: arm, ...extra } : {}), mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, ...(asked.length ? { asked_questions: asked.slice(0, 9) } : {}), template: templateOf(bp), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
+      scenario: { group: 'panel', ...(arm ? { viewer_arm: arm, ...extra } : {}), mode: sc.mode, label: sc.label, creator: sc.creator, kind: sc.kind, product: sc.product, fictional: true, answers_simulated: asked.length > 0, answer_style: asked.length ? mode : null, questions: qrec, ...(asked.length ? { asked_questions: asked.slice(0, 9) } : {}), template: templateOf(bp), ...(body.skip_questions ? { skipped_questions: true } : {}), ...(bp?.facts_only_question ? { optional_question: String(bp.facts_only_question.question ?? '') } : {}), ...(r.json?.next_steps ? { next_steps: r.json.next_steps.length } : {}), panel_arm: bp?.panel_arm ?? (armBody(accounts, sc.request_n ?? sc.n).panel_arm ?? null), refill_arm: bp?.refill_arm ?? (armBody(accounts, sc.request_n ?? sc.n).refill_arm ?? null), quality_profile: sc.quality_profile ?? bp?.quality_profile?.profile ?? null, request_n: sc.request_n ?? sc.n, word_budget: bp?.word_budget ?? null, body },
       status: r.status, code: r.json?.code ?? null, reason: r.ok ? null : String(r.json?.error ?? r.text).slice(0, 400),
       generation_id: r.json?.id ?? null, duration_ms: r.ms,
       findings: [
