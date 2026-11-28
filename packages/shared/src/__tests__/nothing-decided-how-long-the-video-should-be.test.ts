@@ -221,7 +221,7 @@ describe('the writer is actually told the length', () => {
     // ⚠️⚠️ AND IT IS FED HER PICK, NOT THE REFERENCE. This assertion is the
     // ruling: if `ref?.duration_sec` ever reappears in this call the reference
     // is deciding the length again.
-    expect(EDGE).toMatch(/durationBriefInline\(body\.target_seconds, softwareTargetSec, availableBeats\)/)
+    expect(EDGE).toMatch(/durationBriefInline\(body\.target_seconds, softwareTargetSec, (?:factsOnlyNow\(\) \? null : )?availableBeats\)/)
     const call = EDGE.slice(EDGE.indexOf('const durationBrief_ ='))
     expect(call.slice(0, 200)).not.toMatch(/duration_sec/)
   })
