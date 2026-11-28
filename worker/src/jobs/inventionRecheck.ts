@@ -125,7 +125,8 @@ export function applyFactsOnly(bp: Record<string, unknown>, extra: Record<string
     const note = items.find((it) => it.id === 'note')?.text ?? ''
     const storyOf = new Map(Object.entries(rec(extra.facts_only_story_of)).map(([k, v]) => [k, String(v)]))
     const fc = finalCheck(bp.script as Array<Record<string, unknown>>, items, { note, targetProductId: target, products, centerpieceId: typeof extra.facts_only_centerpiece === 'string' ? extra.facts_only_centerpiece : null, storyOf, answerIds: Array.isArray(extra.facts_only_answer_ids) ? extra.facts_only_answer_ids.map(String) : [] })
-    bp.script = fc.beats
+    // compare-3 last attempt item 3: orphan ordinals renumbered after the cuts.
+    bp.script = polishFactsOnly(fc.beats as Array<Record<string, unknown> & { line?: unknown }>).beats
     resyncShotListToScript(bp)
     const thinF = scriptThin(bp.script as Array<{ line?: unknown; section?: unknown }>)
     // compare-3 proof fix 4 (owner, 27 Nov): the worker never ships fewer
