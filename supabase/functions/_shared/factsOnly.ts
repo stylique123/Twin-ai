@@ -114,7 +114,7 @@ export function renderFactsOnlyBlock(items: readonly WriterItem[], style: readon
     '- "link": ties to another of her real stored stories that genuinely fits; source_ids = that story\'s F ref.',
     '- "style": wording only (hook, transition, call to action) with no new claim; source_ids = [].',
     'Quote her facts faithfully. Never add an effect, a scene, a number, a consequence or a detail that is not in the F item you cite.',
-    'There is no word count. Write as much as layer 1 supports and stop. Do not pad.',
+    'LENGTH: at least 6 script beats and about 70 to 90 spoken words. Reach it with layer 1: her story told in full, her answers, and her product and general facts as supporting lines. Every beat states something from layer 1 (or is her opinion, a hook or a call to action); never add anything that is not in layer 1.',
     'Retell her facts in her spoken voice. Do not copy more than about 8 words in a row from any item; keep her numbers and names exact.',
     'Give at least 2 hook options, each from layer 1. A hook is never a line about who she is or who she talks to.',
     'If you promise a number of items ("three things"), give exactly that many, in order. Never start a list with "another" or "the second".',
@@ -947,6 +947,33 @@ const RESTOCK_RE = /\b(?:next batch|drops? (?:today|soon|this week|next week|fri
 const SAVE_THING_RE = /\bsave (?:this|my) (\w+)/i
 const BACKREF_RE = /\b(?:that (?:whole |same |first |very )?(?:evening|day|night|morning|week|batch|load|time|moment|winter|fair|buyer|customer)|after that|since then|from then on)\b/i
 const contentOf = (t: string) => new Set(String(t ?? '').toLowerCase().match(/[a-z]{4,}/g)?.filter((w) => !STOP.has(w)) ?? [])
+
+/**
+ * compare-3 last attempt (owner, 28 Nov): when the writer returns under 40
+ * spoken words, the script is assembled from her own lines only, in order:
+ * the chosen story, her answers for it, one supporting product or general
+ * fact, and a call to action only if one is on file (the offer). No model
+ * wording, so nothing can be invented. Null when there is no story to tell.
+ */
+export function assembleFromMaterial(items: readonly WriterItem[], opts: { centerpieceId?: string | null; answerIds?: readonly string[]; note?: string; targetProductId?: string | null; storyOf?: ReadonlyMap<string, string> } = {}): Array<{ section: string; line: string; source_ids: string[]; layer_tag: string; assembled: true }> | null {
+  const usable = (it: WriterItem | undefined): it is WriterItem => !!it && it.layer === 'fact' && !it.profile && it.id !== 'note' && !!it.text.trim()
+  const story = items.find((it) => it.id === opts.centerpieceId && usable(it)) ?? items.find((it) => usable(it) && (opts.answerIds ?? []).includes(it.id) && /mn:fo:story:/.test(it.id))
+  if (!usable(story)) return null
+  const sentence = (t: string) => { const x = t.replace(/\s+/g, ' ').trim(); return /[.!?]$/.test(x) ? x : `${x}.` }
+  const out: Array<{ section: string; line: string; source_ids: string[]; layer_tag: string; assembled: true }> = []
+  const parts = story.text.split(SENTENCES).map((x) => x.trim()).filter(Boolean)
+  parts.forEach((p, i) => out.push({ section: i === 0 ? 'Hook' : 'Story', line: sentence(p), source_ids: [story.id], layer_tag: 'fact', assembled: true }))
+  const center = story.id
+  const answers = items.filter((it) => usable(it) && ((opts.answerIds ?? []).includes(it.id) || storyIdOfItem(it.id, items, opts.storyOf) === center) && it.id !== center)
+  for (const a of answers) if (!out.some((b) => overlap(b.line, a.text) >= 0.6)) out.push({ section: 'Story', line: sentence(a.text), source_ids: [a.id], layer_tag: 'fact', assembled: true })
+  const note = opts.note ?? ''
+  const support = items.filter((it) => usable(it) && !it.opinion && it.origin !== 'offer' && !storyIdOfItem(it.id, items, opts.storyOf) && (it.origin === 'product_fact' ? (!opts.targetProductId || it.productId === opts.targetProductId) : it.origin === 'her_fact'))
+    .sort((a, b) => (b.productId && b.productId === opts.targetProductId ? 1 : 0) - (a.productId && a.productId === opts.targetProductId ? 1 : 0) || overlap(b.text, note) - overlap(a.text, note))[0]
+  if (support && !out.some((b) => overlap(b.line, support.text) >= 0.6)) out.push({ section: 'Payoff', line: sentence(support.text), source_ids: [support.id], layer_tag: 'fact', assembled: true })
+  const offer = items.find((it) => usable(it) && it.origin === 'offer' && (!opts.targetProductId || !it.productId || it.productId === opts.targetProductId))
+  if (offer) out.push({ section: 'CTA', line: sentence(offer.text), source_ids: [offer.id], layer_tag: 'fact', assembled: true })
+  return out
+}
 
 /**
  * compare-3 proof fix 2: the story an item belongs to. Her story is its own;

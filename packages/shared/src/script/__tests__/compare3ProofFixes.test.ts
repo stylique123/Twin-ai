@@ -118,3 +118,26 @@ describe('fix 5: a thin script asks the one question that would fix it', () => {
     expect(q2.key.startsWith('mn:fo:piece:st-batch:')).toBe(true)
   })
 })
+
+describe('last attempt: assembly from her own lines when the writer comes back short', () => {
+  const OFFER = { ref: 'F9', id: 'offer', origin: 'offer', layer: 'fact' as const, text: 'Calm Cream is in the shop, link in bio', productId: 'cream' }
+  const all: WriterItem[] = [...items, OFFER]
+  it('story, her answer, one supporting fact, the CTA on file; every line verbatim and sourced', async () => {
+    const { assembleFromMaterial } = await import('../factsOnly')
+    const a = assembleFromMaterial(all, { centerpieceId: 'st-batch', answerIds: [FEEL.id], note: NOTE.text, targetProductId: 'cream' })!
+    const src = a.map((b) => b.source_ids[0])
+    expect(src[0]).toBe('st-batch')
+    expect(src.indexOf(FEEL.id)).toBeGreaterThan(src.lastIndexOf('st-batch'))
+    expect(src.indexOf('p1')).toBeGreaterThan(src.indexOf(FEEL.id))
+    expect(src[src.length - 1]).toBe('offer')
+    const sources = new Map(all.map((it) => [it.id, it.text]))
+    for (const b of a) expect(sources.get(b.source_ids[0]!)!.replace(/\s+/g, ' ')).toContain(b.line.replace(/[.]$/, '').split(';')[0]!.trim().slice(0, 20))
+    expect(a.some((b) => /stomach dropped/.test(b.line))).toBe(true)
+    expect(a.filter((b) => b.section === 'CTA')).toHaveLength(1)
+  })
+  it('no CTA when none is on file, and nothing when there is no story', async () => {
+    const { assembleFromMaterial } = await import('../factsOnly')
+    expect(assembleFromMaterial(items, { centerpieceId: 'st-batch' })!.some((b) => b.section === 'CTA')).toBe(false)
+    expect(assembleFromMaterial(items, { centerpieceId: null })).toBeNull()
+  })
+})

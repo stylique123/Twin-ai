@@ -57,7 +57,7 @@ describe('1. the writer is handed her whole material', () => {
     expect(facts).not.toMatch(/Most people never open|Reddit theme|So here is the thing/)
     expect(block).toMatch(/LAYER 2: STORYTELLING[\s\S]*So here is the thing/)
     expect(block).toMatch(/LAYER 3: BACKGROUND[\s\S]*Reddit theme/)
-    expect(block).toMatch(/no word count/i)
+    expect(block).toMatch(/at least 6 script beats/i)
   })
   it('removes the caps: 6 answers at 600 characters, 5 pillars, 3 sample lines, 3 pain themes', () => {
     const long = 'x'.repeat(900)

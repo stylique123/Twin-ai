@@ -907,6 +907,7 @@ const EVENTS = {
   facts_only_repeated_opening_cut: { kind: 'counter_ephemeral', why: 'FACTS_ONLY_WRITER: opening sentences cut because an earlier script of hers opened the same way. The shipped script on the generation row is the record.' },
   facts_only_thin_stop: { kind: 'counter_ephemeral', why: 'FACTS_ONLY_WRITER: a thin script was not written and one question was asked. A stopped request writes no generation; the 409 is what the panel records.' },
   facts_only_next_steps: { kind: 'counter_ephemeral', why: 'FACTS_ONLY_WRITER: a thin request with nothing left to ask; logs which next-step kinds were offered. A stopped request writes no generation; the 409 is what the panel records.' },
+  facts_only_assembled: { kind: 'counter_ephemeral', why: 'FACTS_ONLY_WRITER: the writer came back under 40 spoken words and the script was assembled from her own lines; the generation records it as facts_only.assembled.' },
   facts_only_final_check: { kind: 'counter', stored: 'generations.blueprint', why: 'FACTS_ONLY_WRITER: the final check on every script; the per-line table is stored as blueprint.facts_only.final_check.' },
   facts_only_final_check_failed: { kind: 'counter_ephemeral', why: 'FACTS_ONLY_WRITER: the final check threw; recorded as blueprint.facts_only.final_check.error on the generation row.' },
   facts_only_optional_question: { kind: 'counter_ephemeral', why: 'FACTS_ONLY_WRITER: an optional question rode on a script; the question is on blueprint.facts_only_question and in question_asks.' },

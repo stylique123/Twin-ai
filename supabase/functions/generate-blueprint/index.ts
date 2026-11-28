@@ -112,7 +112,7 @@ import { dropUnbackedFeatures } from '../_shared/featureClaims.ts'
 import { dropWrongProductFacts, needsStoryAsk, storyQuestion } from '../_shared/productFactScope.ts'
 import { panelFinalPass } from '../_shared/panelFinalPass.ts'
 import { setUrlSafeSplitting, scriptCleanupV1On, sentenceMatch } from '../_shared/urlSafe.ts'
-import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, chooseStory, eventFit, pieceQuestion, scriptShipThin, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, planFactsOnly, planAskFirst, finalCheck, questionRulesOk, fittingStoryIds, STOP_MIN_WORDS, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, restingStoryIds, thinNextSteps, thinStopBody, missingNeedKinds, type WriterItem, type FoQuestion } from '../_shared/factsOnly.ts'
+import { factsOnlyWriterOn, factsOnlyKeepsRow, closedKeysFrom, chooseStory, eventFit, pieceQuestion, scriptShipThin, assembleFromMaterial, THIN_MIN_WORDS, writerItems, styleItems, backgroundItems, renderFactsOnlyBlock, planFactsOnly, planAskFirst, finalCheck, questionRulesOk, fittingStoryIds, STOP_MIN_WORDS, traceAndCut, layerCounts, traceHooks, polishFactsOnly, dropRepeatedOpening, openingOf, scriptThin, thinQuestion, restingStoryIds, thinNextSteps, thinStopBody, missingNeedKinds, type WriterItem, type FoQuestion } from '../_shared/factsOnly.ts'
 import { scriptCleanupV1, finalPassCuts } from '../_shared/scriptCleanupV1.ts'
 // Her items that are stories or frameworks (panel 13b ask rule and final pass).
 const PANEL_STORY_KINDS = new Set(['experience', 'story', 'event', 'framework', 'opinion', 'belief', 'lesson', 'mistake'])
@@ -5898,6 +5898,8 @@ const blueprintSchemaFactsOnly = (() => {
   const c = JSON.parse(JSON.stringify(blueprintSchema)) as { properties: { script: { items: { properties: Record<string, unknown> } } } }
   c.properties.script.items.properties.source_ids = arr(str)
   c.properties.script.items.properties.layer_tag = str
+  // compare-3 last attempt (owner, 28 Nov): the reply format asks for a minimum number of beats.
+  ;(c.properties.script as Record<string, unknown>).minItems = 6
   return c
 })()
 const isBlueprintSchema = (s: unknown) => s === blueprintSchema || s === blueprintSchemaFactsOnly
@@ -10069,7 +10071,9 @@ function freshObjectiveAnswerLine(question: string, answer: string, trial = fals
     // product or business video the objective now names the beats it needs and
     // the close, and says what to do when a beat has no fact.
     const subjectPicked = (body.mentioned_product_id ?? '').trim() !== '' || (body.selected_product_id ?? '').trim() !== ''
-    const objectiveContract = subjectPicked ? OBJECTIVE_CONTRACT_INLINE[String(body.goal ?? '').trim()] ?? '' : ''
+    // compare-3 last attempt: no brevity wording on the facts-only path (its final check removes anything invented).
+    const objectiveContract0 = subjectPicked ? OBJECTIVE_CONTRACT_INLINE[String(body.goal ?? '').trim()] ?? '' : ''
+    const objectiveContract = factsOnlyNow() ? objectiveContract0.replace(/\s*If none is given, keep it short and general rather than invent one\./, '') : objectiveContract0
     // ⚖️ THE ANGLE SHE PICKED BEFORE ANY EXPENSIVE WORK (owner brief 2026-10-01).
     const pickedAngle = (body.angle && typeof body.angle === 'object') ? body.angle as { kind?: unknown; gist?: unknown; offered?: unknown } : null
     const pickedAngleLine = angleContract(pickedAngle ? { kind: String(pickedAngle.kind ?? ''), gist: String(pickedAngle.gist ?? '') } : null)
@@ -13055,8 +13059,8 @@ ${fenced('claims this creator may NOT make', forbidden)}
     // The software default rides the stored-default rung; say why it is short,
     // never that it is her usual length (she has not made it before).
     const durationBrief_ = softwareTargetSec != null && body.target_seconds == null
-      ? durationBriefInline(body.target_seconds, softwareTargetSec, availableBeats).replace('it is the length they usually make', 'short videos work best for showing software')
-      : durationBriefInline(body.target_seconds, softwareTargetSec, availableBeats)
+      ? durationBriefInline(body.target_seconds, softwareTargetSec, factsOnlyNow() ? null : availableBeats).replace('it is the length they usually make', 'short videos work best for showing software')
+      : durationBriefInline(body.target_seconds, softwareTargetSec, factsOnlyNow() ? null : availableBeats)
     // PANEL-7 LENGTH (trial; kill LENGTH_BUDGET=false): the profile's word budget, as a number.
     const budgetLine = trialOn && Deno.env.get('LENGTH_BUDGET') !== 'false'
       ? budgetPromptLine(DURATION_PROFILES[profileForSeconds(body.target_seconds, softwareTargetSec != null)].words) : ''
@@ -13265,7 +13269,7 @@ This is the video's position. Every field below must serve it. If the reference'
           // facts stay as supporting lines; nothing beyond her material.
           if (cp) factsOnlyBlock += `\n\nTHE STORY OF THIS SCRIPT (${cp.ref}), in full: "${cp.text}"\nTell this one story, all of it: what happened, in the order it happened. No line may come from any other story of hers.`
           if (ans.length) factsOnlyBlock += `\nHER ANSWER${ans.length > 1 ? 'S' : ''} FOR THIS STORY: ${ans.map((a) => `${a.ref} "${a.text}"`).join('; ')}. Use ${ans.length > 1 ? 'them' : 'it'} in the story, in her words, at the moment ${ans.length > 1 ? 'they belong' : 'it belongs'}.`
-          if (cp || ans.length) factsOnlyBlock += `\nLENGTH: about 70 to 90 spoken words in total. Reach it with her story, her answers, and her product and general facts above as supporting lines (each with its source ref). Never add an event, number, feeling, result or claim that is not in her material; if her material runs out first, stop shorter.`
+          if (cp || ans.length) factsOnlyBlock += `\nLENGTH: about 70 to 90 spoken words in total. Write at least 6 beats. Reach it with her story told in full, her answers, and her product and general facts above as supporting lines (each with its source ref). Never add an event, number, feeling, result or claim that is not in her material.`
         }
         console.log(JSON.stringify({ event: 'facts_only_layers', ...layerCounts(foItems, foStyle, foBackground) }))
       } catch (e) { console.warn('facts_only_layers_failed', String((e as Error)?.message ?? e).slice(0, 120)) }
@@ -18440,9 +18444,22 @@ ${goalRulesLine}${durationBriefLine}- beat_plan: BEFORE writing any words, decid
         const vpf2 = (vp ?? {}) as { niche?: unknown; sub_niche?: unknown; audience?: unknown; summary?: unknown }
         const fc = finalCheck(bpo.script as Array<Record<string, unknown>>, foItems, { note: String(reference_note ?? ''), targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null, products: foProductsF, profileTexts: [vpf2.niche, vpf2.sub_niche, vpf2.audience, vpf2.summary].filter((t): t is string => typeof t === 'string'), centerpieceId: foChosenStoryId, storyOf: foStoryOf, answerIds: foAnswerIdsOf(body.readiness_answers) })
         foCenter = fc.record.centerpiece
-        bpo.script = fc.beats
+        // compare-3 last attempt item 3: an ordinal or "another" line left without
+        // its first item after the cuts is renumbered (or its list word dropped).
+        bpo.script = polishFactsOnly(fc.beats as Array<Record<string, unknown> & { line?: unknown }>).beats
+        // Item 2: under 40 spoken words, the script is assembled from her own lines.
+        let assembled = false
+        if (scriptThin(bpo.script as Array<{ line?: unknown }>).words < THIN_MIN_WORDS) {
+          const asm = assembleFromMaterial(foItems, { centerpieceId: fc.record.centerpiece ?? foChosenStoryId, answerIds: foAnswerIdsOf(body.readiness_answers), note: String(reference_note ?? ''), targetProductId: (ownedEntity as { id?: unknown } | null)?.id ? String((ownedEntity as { id?: unknown }).id) : null, storyOf: foStoryOf })
+          if (asm && scriptThin(asm).words > scriptThin(bpo.script as Array<{ line?: unknown }>).words) {
+            bpo.script = asm
+            assembled = true
+            if (Array.isArray(bpo.hook_options)) bpo.hook_options = [asm[0]!.line, ...(bpo.hook_options as unknown[]).filter((h) => typeof h === 'string' && h !== asm[0]!.line)].slice(0, 5)
+            console.log(JSON.stringify({ event: 'facts_only_assembled', words: scriptThin(asm).words, lines: asm.length }))
+          }
+        }
         if (Array.isArray(bpo.shot_list)) bpo.shot_list = syncShotListSpokenText(bpo.shot_list as Array<{ spoken_text?: unknown }>, bpo.script as Array<{ line?: unknown }>).shots
-        bpo.facts_only = { ...((bpo.facts_only ?? {}) as Record<string, unknown>), final_check: fc.record }
+        bpo.facts_only = { ...((bpo.facts_only ?? {}) as Record<string, unknown>), final_check: fc.record, ...(assembled ? { assembled: true } : {}) }
         offRequest = fc.record.off_request
         console.log(JSON.stringify({ event: 'facts_only_final_check', cut: fc.record.cut, moved: fc.record.moved, off_request: fc.record.off_request, words: fc.record.words }))
       } catch (e) {
